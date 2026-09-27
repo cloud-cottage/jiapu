@@ -52,8 +52,8 @@
         </view>
       </view>
 
-      <!-- 树内搜索框 + 左侧视图切换（血脉图示 / 版式文档） -->
-      <!-- 树内搜索框（血脉图示 / 版式文档 两个视图共用） -->
+      <!-- 树内搜索框 + 左侧视图切换（血脉图示 / 在线文谱） -->
+      <!-- 树内搜索框（血脉图示 / 在线文谱 两个视图共用） -->
       <view class="search-box">
         <t-input
           :value="searchQuery"
@@ -84,7 +84,7 @@
         </template>
       </view>
 
-      <!-- 左侧视图切换（正方形按钮）：血脉图示（默认）/ 版式文档 -->
+      <!-- 左侧视图切换（正方形按钮）：血脉图示（默认）/ 在线文谱 -->
       <view class="view-toggle">
         <view
           class="view-btn"
@@ -98,7 +98,7 @@
           :class="{ active: view === 'doc' }"
           @click="view = 'doc'"
         >
-          <text class="view-text">版式文档</text>
+          <text class="view-text">在线文谱</text>
         </view>
         <!-- 家族消息（审批入口）：仅本树管理权限可见 -->
         <view
@@ -122,10 +122,10 @@
       </view>
 
       <view v-else class="view-body">
-        <!-- 版式文档（暂以 PDF 导出面板占位） -->
-        <DocLayoutPanel :tree-id="treeId" />
+        <!-- 在线文谱（仿真古籍书页；分页与繁体文案由 business/wenpu.ts 承担） -->
+        <WenpuBook :tree-id="treeId" />
 
-        <!-- 文献地址入口（版式文档视图底部） -->
+        <!-- 文献地址入口（在线文谱视图底部） -->
         <view class="archive-section">
           <view class="archive-entry" @click="openArchive">
             <text class="archive-icon">📚</text>
@@ -345,7 +345,7 @@ import type { TreeEntry, PersonSummary, SetTreeOriginResult } from '@/business/t
 import { personIdDisplay, attrMapOf } from '@/business/format';
 import TreePedigree from '@/components/tree-pedigree/tree-pedigree.vue';
 import ClanHall from '@/components/clan-hall/clan-hall.vue';
-import DocLayoutPanel from '@/components/doc-layout-panel/doc-layout-panel.vue';
+import WenpuBook from '@/components/wenpu-book/wenpu-book.vue';
 import FamilyMessages from '@/components/family-messages/family-messages.vue';
 import ShibenTimeline from '@/components/shiben-timeline/shiben-timeline.vue';
 import PersonDetailModal from '@/components/person-detail-modal/person-detail-modal.vue';
@@ -360,7 +360,7 @@ const props = withDefaults(
   defineProps<{
     /** 家族树 tree_id */
     treeId?: string;
-    /** 是否把导航栏标题同步为家族名称（家谱 tab 传 false 以保持「我的家谱」） */
+    /** 是否把导航栏标题同步为家族名称（家谱 tab 传 false 以保持「我的家族」） */
     syncNavTitle?: boolean;
   }>(),
   { treeId: '', syncNavTitle: true },
@@ -382,7 +382,7 @@ const saving = ref(false);
 const editError = ref('');
 const editForm = ref({ display_title: '', genealogy_name: '', archive_url: '', hall_name: '', description: '' });
 
-// 视图切换：血脉图示（默认） / 版式文档 / 家族消息（审批入口，仅管理权限）
+// 视图切换：血脉图示（默认） / 在线文谱 / 家族消息（审批入口，仅管理权限）
 const view = ref<'pedigree' | 'doc' | 'msg'>('pedigree');
 
 /**
@@ -708,7 +708,7 @@ async function loadAll() {
         break;
       }
     }
-    // 导航栏标题 = 家族名称（家谱 tab 需保持「我的家谱」→ 传 syncNavTitle=false 时不写）
+    // 导航栏标题 = 家族名称（家谱 tab 需保持「我的家族」→ 传 syncNavTitle=false 时不写）
     if (props.syncNavTitle && hallInfo.value?.display_title) {
       uni.setNavigationBarTitle({ title: hallInfo.value.display_title });
     }
@@ -964,7 +964,7 @@ async function saveEdit() {
 /* 视图内容留出左右图标空间 */
 .view-body { margin: 0 0 0 8px; }
 
-/* 文献地址入口（版式文档视图底部） */
+/* 文献地址入口（在线文谱视图底部） */
 .archive-section {
   margin-top: 28px;
   padding: 16px;

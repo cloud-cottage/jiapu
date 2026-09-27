@@ -9,7 +9,7 @@
     {
       "path": "pages/family/index",
       "style": {
-        "navigationBarTitleText": "我的家谱"
+        "navigationBarTitleText": "我的家族"
       }
     },
     {
@@ -141,7 +141,7 @@
       },
       {
         "pagePath": "pages/family/index",
-        "text": "家谱"
+        "text": "我的家族"
       },
       {
         "pagePath": "pages/mine/index",

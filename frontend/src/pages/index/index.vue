@@ -5,7 +5,7 @@
       <text class="subtitle">多姓氏、多支派家谱数字化展示平台</text>
     </view>
 
-    <!-- 双视图：家族列表 / 中华世本（浮动按钮切换，无 t-tabs） -->
+    <!-- 双视图：家谱列表 / 中华世本（浮动按钮切换，无 t-tabs） -->
     <!-- 视图1：普通家族树列表（不含 zhonghua） -->
     <view v-if="!showMaster" class="hall-list">
       <!-- 全站人物搜索（跨家族树：姓名 / 编号；回车或点「搜索」触发） -->
@@ -39,8 +39,8 @@
         </template>
       </view>
 
-      <!-- 一行两段：左＝排序分段控件（综合 / 人数 / 活跃度，仅「家族」tab 有）；
-           右＝列表切换（家族 | 祖谱）。只用已加载的等级数据，不新增请求 -->
+      <!-- 一行两段：左＝排序分段控件（综合 / 人数 / 活跃度，仅「家谱」tab 有）；
+           右＝列表切换（家谱 | 祖谱）。只用已加载的等级数据，不新增请求 -->
       <view class="sort-bar">
         <view v-if="listTab === 'family'" class="sort-group">
           <view
@@ -71,7 +71,7 @@
             :class="{ active: listTab === 'family' }"
             @click="listTab = 'family'"
           >
-            <text class="tab-text">家族</text>
+            <text class="tab-text">家谱</text>
           </view>
           <view
             class="tab-btn"
@@ -114,7 +114,7 @@
         <text>{{ listTab === 'clan' ? '暂无祖谱' : '暂无已上线的家族数字馆' }}</text>
       </view>
 
-      <!-- 新建家族树（仅总编辑；只在「家族」tab 显示 —— 它是建家族树的入口） -->
+      <!-- 新建家族树（仅总编辑；只在「家谱」tab 显示 —— 它是建家族树的入口） -->
       <view v-if="canCreateTree && listTab === 'family'" class="create-entry" @click="openCreateTree">
         <text class="create-icon">＋</text>
         <text class="create-text">新建家族树</text>
@@ -132,7 +132,7 @@
     <!-- 浮动切换按钮（右侧，固定在 tabbar 上方） -->
     <view class="floating-switch" @click="toggleView">
       <text class="floating-icon">{{ showMaster ? '🏠' : '🌐' }}</text>
-      <text class="floating-text">{{ showMaster ? '家族列表' : '中华世本' }}</text>
+      <text class="floating-text">{{ showMaster ? '家谱列表' : '中华世本' }}</text>
     </view>
 
     <!-- 新建家族树表单（内联弹层） -->
@@ -627,10 +627,10 @@ function goToPage(path: string) {
 .ps-tip { text-align: center; font-size: 13px; color: #A1887F; padding: 14px 0; }
 .ps-error { color: #C62828; }
 
-/* ---- 排序 + 列表切换（同一行：左＝综合/人数/活跃度，右＝家族 | 祖谱） ----
+/* ---- 排序 + 列表切换（同一行：左＝综合/人数/活跃度，右＝家谱 | 祖谱） ----
    单行硬约束：nowrap 组内不换行 + min-height 钉住行高。
    垂直账：排序组 = padding 8×2 + border 1×2 = 18px；切 tab 组 = border 1×2 + padding 2×2 + 按钮 padding 6×2 = 18px；
-   两组文字同字号 → 行盒等高，故「家族」tab（有排序组）与「祖谱」tab（排序组 v-if 移除）行高严格一致，列表不再跳动。 */
+   两组文字同字号 → 行盒等高，故「家谱」tab（有排序组）与「祖谱」tab（排序组 v-if 移除）行高严格一致，列表不再跳动。 */
 .sort-bar { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; min-height: 36px; }
 .sort-group { display: flex; gap: 8px; flex-wrap: nowrap; min-width: 0; }
 .sort-btn {
