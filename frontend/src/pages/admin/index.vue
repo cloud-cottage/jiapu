@@ -334,6 +334,64 @@
         </template>
       </view>
 
+      <!-- 签到设置（**沿用既有治理路由** `PUT /admin/wallet-fee`，**不新增路由 / 不新增页面**）：
+           键名逐字 = `signin_pool`（按 kind 逐行的**相对权重** / 数量）/ `signin_makeup_cost_bamboos`（补签成本·竹片）/
+           `signin_day7_fragments`（第 7 天大奖·石榴籽碎片）；权限与资产运维同口径（仅总编辑，后端 403 一致） -->
+      <view class="section">
+        <text class="section-title">签到设置</text>
+        <view v-if="!isChief" class="empty">需要总编辑权限</view>
+
+        <template v-else>
+          <text class="field-label">随机池（按道具种类逐行：相对权重 / 发放数量；两项都留空 = 该项不参与）</text>
+          <view class="delta-grid">
+            <view v-for="k in SIGNIN_POOL_KINDS" :key="k" class="delta-cell">
+              <text class="delta-name">{{ signinKindName(k) }}</text>
+              <view class="pool-inputs">
+                <t-input
+                  :value="signinPool[k].weight"
+                  type="number"
+                  placeholder="权重"
+                  size="small"
+                  class="pool-input"
+                  @update:value="(v: string) => setPoolField(k, 'weight', v)"
+                />
+                <t-input
+                  :value="signinPool[k].qty"
+                  type="number"
+                  placeholder="数量"
+                  size="small"
+                  class="pool-input"
+                  @update:value="(v: string) => setPoolField(k, 'qty', v)"
+                />
+              </view>
+            </view>
+          </view>
+
+          <text class="field-label">补签成本（竹片，正整数；留空 = 不改）</text>
+          <t-input
+            :value="signinMakeupCostInput"
+            type="number"
+            placeholder="如 2"
+            class="field"
+            @update:value="(v: string) => signinMakeupCostInput = v"
+          />
+
+          <text class="field-label">第 7 天奖励（石榴籽碎片，正整数；留空 = 不改）</text>
+          <t-input
+            :value="signinDay7Input"
+            type="number"
+            placeholder="如 3"
+            class="field"
+            @update:value="(v: string) => signinDay7Input = v"
+          />
+
+          <view v-if="signinFeeError" class="grant-error">{{ signinFeeError }}</view>
+          <t-button theme="primary" block :loading="signinFeeSaving" @click="submitSigninFee">
+            保存签到设置
+          </t-button>
+        </template>
+      </view>
+
       <view v-if="error" class="error">{{ error }}</view>
     </template>
   </view>
@@ -341,13 +399,13 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { fetchUserList, setUserRole, setAnchor, fetchLeaveRequests, approveLeave, fetchJoinRequests, approveJoinRequest, rejectJoinRequest, searchPeople, fetchMarriageRequests, decideMarriageRequest, postAdminAssetsGrant, fetchAdminAssetsLogs, fetchAdminAssetsUser, jadeListOf, jadeCountOf } from '@/business/api';
+import { fetchUserList, setUserRole, setAnchor, fetchLeaveRequests, approveLeave, fetchJoinRequests, approveJoinRequest, rejectJoinRequest, searchPeople, fetchMarriageRequests, decideMarriageRequest, postAdminAssetsGrant, fetchAdminAssetsLogs, fetchAdminAssetsUser, jadeListOf, jadeCountOf, putSigninFeeSettings } from '@/business/api';
 import { isAuthenticated, authState, getAuthToken } from '@/business/auth';
 import type { ManagedUser, LeaveRequestItem, JoinRequestItem, OpsLog, AdminAssetSnapshot } from '@/business/api';
 import type { AssetDelta, Jade } from '@/business/api';
-import { scrollDeltaLabel, scrollFragmentDeltaLabel } from '@/business/asset-text';
+import { scrollDeltaLabel, scrollFragmentDeltaLabel, signinKindName } from '@/business/asset-text';
 import { SCROLL_PIECES_PER_ITEM } from '@/business/inventory';
-import type { ScrollLot } from '@/business/types';
+import type { ScrollLot, SigninPoolEntry, SigninFeeSettingsPayload } from '@/business/types';
 import type { PersonSummary } from '@/business/types';
 import { personIdDisplay } from '@/business/format';
 
@@ -576,6 +634,37 @@ const logOperator = ref('');
 const logsError = ref('');
 const logsLoading = ref(false);
 
+// ---- 签到设置（`PUT /admin/wallet-fee` 的签到三键；**沿用既有治理路由，不新增路由**）----
+
+/**
+ * 随机池可录道具种类 —— **= 前端清单 ∩ 后端白名单**（现证 `cloudfunctions/compat-api/lib/wallet.js`
+ * 的 `SIGNIN_POOL_KINDS = ['fragment','bamboo','scroll_fragment','scroll','scrollFragment']`）：
+ * - 后端**不接受** `seed` / `jade`（提交即 400「第 N 项奖励类型不合法」）⇒ 本页**不列**该两行；
+ * - 后端另接受的 `scroll_fragment` 与 `scrollFragment` 是**同一资产**（兰帖残页）的两种字面
+ *   （后端注明 `scrollFragment` 为别名，读回**原样回显**）⇒ 本页只按默认池字面 `scrollFragment` 录一行，
+ *   免得同一资产出现两行、两行都填时被后端判成重复语义。
+ */
+const SIGNIN_POOL_KINDS = ['fragment', 'bamboo', 'scrollFragment', 'scroll'] as const;
+type SigninPoolKind = (typeof SIGNIN_POOL_KINDS)[number];
+
+/** 随机池录入行（文本态）：**「权重 + 数量」两项都空 = 该项不参与**，只填一项 ⇒ 当场报错（不猜口径） */
+const signinPool = ref<Record<SigninPoolKind, { weight: string; qty: string }>>({
+  fragment: { weight: '', qty: '' },
+  bamboo: { weight: '', qty: '' },
+  scrollFragment: { weight: '', qty: '' },
+  scroll: { weight: '', qty: '' },
+});
+/** 补签成本（竹片；空 = 不改该项） */
+const signinMakeupCostInput = ref('');
+/** 第 7 天大奖（石榴籽碎片；空 = 不改该项） */
+const signinDay7Input = ref('');
+const signinFeeError = ref('');
+const signinFeeSaving = ref(false);
+
+function setPoolField(kind: SigninPoolKind, field: 'weight' | 'qty', value: string) {
+  signinPool.value[kind][field] = value;
+}
+
 const snapshotJades = computed<Jade[]>(() => (snapshot.value ? jadeListOf(snapshot.value) : []));
 /** 兰帖批次（后端 §A4 追加出参；旧后端不返 ⇒ 空数组，不抛错） */
 const snapshotScrollLots = computed<ScrollLot[]>(() => snapshot.value?.scroll_lots || []);
@@ -597,6 +686,103 @@ function parseDeltaInput(): AssetDelta {
     delta[f.key] = f.key === 'scrolls' ? Number(raw) * SCROLL_PIECES_PER_ITEM : Number(raw);
   }
   return delta;
+}
+
+/**
+ * 逐行文本 → 结构化随机池（值形状**以后端为准** = `[{ kind, qty, weight }]`）：
+ * - 两项**都空** ⇒ 该行跳过（= 该项不参与随机池）；
+ * - **只填一项** ⇒ 报错（**不猜、不补默认值** —— 静默补 0 会改变发奖口径）；
+ * - **权重**须为正整数（**相对权重**：后端按各项权重加权抽 1，**不要求各项之和为 100**）；
+ * - **数量**须为正整数。
+ */
+function parseSigninPool(): SigninPoolEntry[] {
+  const pool: SigninPoolEntry[] = [];
+  for (const kind of SIGNIN_POOL_KINDS) {
+    const wRaw = (signinPool.value[kind].weight || '').trim();
+    const qRaw = (signinPool.value[kind].qty || '').trim();
+    if (!wRaw && !qRaw) continue;
+    if (!wRaw || !qRaw) {
+      throw new Error(`${signinKindName(kind)}：权重与发放数量须同时填写（只填一项无法确定发奖口径）`);
+    }
+    if (!/^\d+$/.test(wRaw) || Number(wRaw) < 1) {
+      throw new Error(`${signinKindName(kind)}：权重必须为正整数（相对权重，不要求和为 100）`);
+    }
+    if (!/^\d+$/.test(qRaw) || Number(qRaw) < 1) {
+      throw new Error(`${signinKindName(kind)}：发放数量必须为正整数`);
+    }
+    pool.push({ kind, qty: Number(qRaw), weight: Number(wRaw) });
+  }
+  return pool;
+}
+
+/**
+ * 解析结果**回头结构化校验**（防解析分支漏判：逐条断言形状 / 取值范围 / 种类合法且不重复）。
+ * 后端「非空数组」规则在此**不另判空**：本页只在 `pool.length > 0` 时才把 `signin_pool` 放进
+ * body（见 `submitSigninFee`）⇒ 线上永不发空数组；「一项都不填」= 不改该项，不是非法值。
+ */
+function validateSigninPool(pool: SigninPoolEntry[]) {
+  const seen = new Set<string>();
+  for (const entry of pool) {
+    const kind = String(entry?.kind ?? '');
+    if (!SIGNIN_POOL_KINDS.includes(kind as SigninPoolKind)) {
+      throw new Error(`随机池解析结果含未知道具种类：${kind || '（空）'}`);
+    }
+    if (seen.has(kind)) throw new Error(`随机池解析结果重复：${signinKindName(kind)}`);
+    seen.add(kind);
+    if (typeof entry.weight !== 'number' || !Number.isInteger(entry.weight) || entry.weight < 1) {
+      throw new Error(`${signinKindName(kind)}：权重解析结果非法`);
+    }
+    if (typeof entry.qty !== 'number' || !Number.isInteger(entry.qty) || entry.qty < 1) {
+      throw new Error(`${signinKindName(kind)}：发放数量解析结果非法`);
+    }
+  }
+}
+
+/** 正整数文本校验（就地拦下，后端仍复验，不代替服务端校验） */
+function parsePositiveInt(raw: string, label: string): number {
+  if (!/^\d+$/.test(raw) || Number(raw) < 1) throw new Error(`${label}必须为正整数`);
+  return Number(raw);
+}
+
+/**
+ * 保存签到设置（`PUT /admin/wallet-fee`；**只把填写的键放进 body**，缺省键 = 后端不改该项）。
+ * 三段输入（随机池逐行 / 补签成本 / 第 7 天奖励）全空 ⇒ 不提交、就地提示。
+ * 失败一律透出后端 `error` 原文（不吞）。
+ */
+async function submitSigninFee() {
+  signinFeeError.value = '';
+  const costRaw = signinMakeupCostInput.value.trim();
+  const day7Raw = signinDay7Input.value.trim();
+  let pool: SigninPoolEntry[] = [];
+  try {
+    pool = parseSigninPool();
+    validateSigninPool(pool);
+  } catch (e: any) {
+    signinFeeError.value = e?.message || '随机池解析失败';
+    return;
+  }
+  const payload: SigninFeeSettingsPayload = {};
+  try {
+    if (pool.length) payload.signin_pool = pool;
+    if (costRaw) payload.signin_makeup_cost_bamboos = parsePositiveInt(costRaw, '补签成本（竹片）');
+    if (day7Raw) payload.signin_day7_fragments = parsePositiveInt(day7Raw, '第 7 天奖励（石榴籽碎片）');
+  } catch (e: any) {
+    signinFeeError.value = e?.message || '签到设置不合法';
+    return;
+  }
+  if (!Object.keys(payload).length) {
+    signinFeeError.value = '请至少填写一项签到设置（随机池 / 补签成本 / 第 7 天奖励）';
+    return;
+  }
+  signinFeeSaving.value = true;
+  try {
+    await putSigninFeeSettings(payload);
+    uni.showToast({ title: '签到设置已保存', icon: 'success' });
+  } catch (e: any) {
+    signinFeeError.value = e?.message || '保存签到设置失败';
+  } finally {
+    signinFeeSaving.value = false;
+  }
 }
 
 /** 发放 / 扣减（POST /admin/assets/grant）：成功 toast「资产已变更」并回读快照 + 日志 */
@@ -879,6 +1065,9 @@ function goLogin() {
 .delta-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .delta-cell { flex: 1 1 45%; }
 .delta-name { font-size: 12px; color: #999; display: block; margin-bottom: 2px; }
+/* 随机池行（每行 = 道具名 + 概率 / 数量两个输入） */
+.pool-inputs { display: flex; gap: 6px; }
+.pool-input { flex: 1; min-width: 0; }
 .grant-error { color: #C62828; font-size: 13px; margin: 8px 0; }
 .grant-sub { margin-top: 18px; padding-top: 12px; border-top: 1px solid #f5f0ea; }
 .query-row { display: flex; gap: 6px; align-items: center; }

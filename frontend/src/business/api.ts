@@ -29,6 +29,10 @@ import type {
   SiblingReorderPayload,
   SiblingReorderResult,
   ScrollLot,
+  SigninCalendarDay,
+  SigninItem,
+  SigninMakeupResult,
+  SigninFeeSettingsPayload,
 } from './types';
 
 // API 基础路径
@@ -2253,9 +2257,26 @@ export interface AssetsSummary {
   txs: AssetTx[];
   /** 最近一次签到的北京时间自然日 YYYY-MM-DD；从未签到为空串 */
   signin_date: string;
+  /**
+   * 连签天数（**可选**：后端未重启 / 旧版无此键 ⇒ `undefined`，页面**不渲染连签行**、不显 NaN）。
+   * 0 = 今日还未签到。
+   */
+  signin_streak?: number;
+  /**
+   * 签到 7 天日历（**可选**；长度 7，形状同 `SigninCalendarDay`）。
+   * 页面加载即可渲染日历条 ⇒ **不得为此新增请求**；缺键 / 非 7 长 ⇒ 不渲染日历条。
+   */
+  signin_calendar?: SigninCalendarDay[];
+  /**
+   * 补签成本（**整数**，单位竹片；后端 `GET /assets/summary` 新增出参，现证 `index.js` 下发
+   * `wallet.getSigninMakeupCostBamboos()`）。
+   * **可选**：旧后端无此键 ⇒ `undefined`，补签确认文案回退到**不带数字**的形态（不假报数字）。
+   */
+  signin_makeup_cost_bamboos?: number;
 }
 
-/** 签到结果（POST /assets/signin） */
+/** 签到结果（POST /assets/signin）—— 出参既有键（`task` / `day` / `state` / `state_text` / `reward`
+ *  由任务中心同一入口下发，本单**不使用**、故不在此登记形状，避免与后端并行单漂移） */
 export interface SigninResult {
   ok: boolean;
   fragments: number;
@@ -2263,6 +2284,15 @@ export interface SigninResult {
   synthesized: number;
   seed_lot?: SeedLot | null;
   signin_date: string;
+  /** 连签天数（**可选**，旧版后端无此键 ⇒ 页面不渲染连签行） */
+  streak?: number;
+  /** 本周期第几天 1..7（**可选**；= 7 时 toast 追加第 7 天大奖句） */
+  cycle_day?: number;
+  /** 本次实际发放清单（基础 + 随机 + 第 7 天大奖）—— toast **逐件列举**的唯一数据源；
+   *  缺失（旧后端）⇒ 退回既有逐字句「获得石榴籽碎片 +1」 */
+  items?: SigninItem[];
+  /** 签到后的整条日历（**可选**，形状同 `AssetsSummary.signin_calendar`）；缺失 ⇒ 由 summary 就地重拉补齐 */
+  calendar?: SigninCalendarDay[];
 }
 
 /** 资产总览（本人四类资产 + 最近流水；服务端先 sweep 惰性结算过期批次） */
@@ -2279,6 +2309,53 @@ export async function fetchAssetsExpiring(days = 30): Promise<ExpiringAsset[]> {
 /** 每日签到（每自然日 1 碎片；同自然日重复 → 409「今日已签到」） */
 export async function postSignin(): Promise<SigninResult> {
   return assetRequest<SigninResult>('/assets/signin', 'POST');
+}
+
+/**
+ * 补签（POST /assets/signin/makeup）：`date` = 目标自然日 `YYYY-MM-DD`（取日历格的 `date`）。
+ * 可补范围 = 今天往前 1–7 天；不足 / 越界 ⇒ 400 / 409（**前端一律透出后端 `error` 原文，不吞、不自造**）。
+ * 出参壳现证 = `{ ok, message:'补签成功', data:{ streak / cycle_day / cost_bamboos / calendar … } }`
+ * ⇒ 这里就地把 `data` 摊平到顶层（旧壳字段本就在顶层时原样返回），页面拿读数**零分支**。
+ * 出参**不含 `items`**（补签不补发道具）。
+ */
+export async function postSigninMakeup(date: string): Promise<SigninMakeupResult> {
+  const body = await assetPostJson<SigninMakeupResult & { data?: SigninMakeupResult }>(
+    '/assets/signin/makeup',
+    { date },
+  );
+  const data = body?.data;
+  return data && typeof data === 'object' ? { ...body, ...data } : body;
+}
+
+/**
+ * 后台签到设置（**沿用既有治理路由** `PUT /admin/wallet-fee`，**不新增路由** —— 与既有
+ * `fee` / `branch_fee_seeds` / `converge_spirit_ratio` 三键同体例）：
+ * 键名**逐字** = `signin_pool` / `signin_makeup_cost_bamboos` / `signin_day7_fragments`；
+ * **只把填写的键放进 body**（缺省键 = 后端不改该项，同后端 `has(k)` 语义）。
+ * 权限由后端判（`chief_editor`，否则 403）；失败按后端 `error` 原文抛出（不吞）。
+ *
+ * `signin_pool` 的值形状**以后端为准**（现证 `lib/wallet.js` 的 `normalizeSigninPool`）：
+ * `[{ kind, qty, weight }]` —— `weight` = **相对权重**（正整数，**不要求和为 100**）；
+ * 后端逐项**重建**对象，只留这三键（body 里多传的字段不会落配置）。
+ */
+export async function putSigninFeeSettings(
+  payload: SigninFeeSettingsPayload,
+): Promise<{ ok?: boolean }> {
+  const token = getAuthToken();
+  if (!token) throw new ApiStatusError('请先登录后再进行编辑操作', 401);
+  const res = await fetch(`${API_BASE}/admin/wallet-fee`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + token,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new ApiStatusError(err?.error || `保存签到设置失败 (${res.status})`, res.status, err);
+  }
+  return res.json();
 }
 
 // ---- 时流子域（家族专属空间：玉的合成 / 分解 / 镶嵌 + 玉露灵泽蓄能）

@@ -429,3 +429,106 @@ export interface ScrollSummaryFields {
   /** 兰帖原始批次数组（后端不筛选、不增删字段） */
   scroll_lots: ScrollLot[];
 }
+
+// ============ 签到 7 天日历（2026-09-28 · 纯追加） ============
+
+/**
+ * 签到发放项（`POST /assets/signin` 出参 `items` 的元素）—— 本次实际发放清单
+ * （基础 + 随机池 + 第 7 天大奖 **逐件列举**）。
+ */
+export interface SigninItem {
+  /** 道具种类（逐字）：`fragment` / `bamboo` / `scrollFragment` / `scroll` / `seed` / `jade` */
+  kind: string;
+  /** 本次发放数量 */
+  qty: number;
+}
+
+/** 签到日历单格状态（逐字；后端未给 / 给未知值 ⇒ 页面按 `future` 渲染，不臆造「已签」） */
+export type SigninCalendarState = 'signed' | 'missed' | 'today' | 'future';
+
+/**
+ * 签到日历单格 —— `GET /assets/summary` 的 `signin_calendar` 与 `POST /assets/signin` 的 `calendar`
+ * **同形状**（长度恒 7，`cycle_day` 1..7）。
+ */
+export interface SigninCalendarDay {
+  /** 周期内第几天（1..7） */
+  cycle_day: number;
+  /** 该格道具种类（逐字，同 `SigninItem.kind`） */
+  kind: string;
+  /** 该格发放数量 */
+  qty: number;
+  /** 是否第 7 天大奖格（**仅标识**，不加发资产） */
+  is_bonus: boolean;
+  /** 状态：已签 / 漏签（可补签）/ 今天 / 未来 */
+  state: SigninCalendarState;
+  /** 该格对应的自然日 `YYYY-MM-DD`（补签请求的 `date` 入参取此值） */
+  date: string;
+  /**
+   * 固定**基础项**（逐项列举，如 `[{kind:'fragment',qty:1},{kind:'bamboo',qty:1}]`；**可选**）。
+   * 缺失（旧后端单格只给主项 `kind` / `qty`）⇒ 页面回退旧渲染（`signinCellBaseItems` 兜底），
+   * **不崩、不显 NaN**。
+   */
+  base?: SigninItem[];
+  /**
+   * 当天是否还会**随机掉一件**（**可选**）；为真 ⇒ 格内出「随机」短 chip ——
+   * 口径 = 只标「固定基础 + 随机标记」，**不预标**随机品种（方案乙，Kevin 2026-09-28 拍定）。
+   */
+  random?: boolean;
+  /**
+   * 第 7 天**额外大奖**（**可选**，仅第 7 格；如 `{kind:'fragment',qty:10}`）。
+   * 缺失 / 非法 ⇒ 不渲染该件（不臆造）。
+   */
+  bonus?: SigninItem | null;
+}
+
+/**
+ * 补签结果（`POST /assets/signin/makeup`）—— 后端成功壳 = `{ ok, message:'补签成功', data:{ … } }`，
+ * 读数落在 `data` 里（`api.ts` 的 `postSigninMakeup` 已就地摊平；旧壳在顶层时亦兼容）。
+ * 出参**不含 `items`**（补签**不补发任何道具**）⇒ toast 只说「补签成功」。
+ * 字段一律可选，页面缺字段时不显示对应行（不臆造、不显 NaN）。
+ */
+export interface SigninMakeupResult {
+  ok?: boolean;
+  /** 后端成功文案（现证逐字 `补签成功`） */
+  message?: string;
+  /** 补签后连签天数（现证 `data.streak` / `data.signin_streak`；缺失 ⇒ 沿用当前读数） */
+  streak?: number;
+  /** 补签后所在周期天（现证 `data.cycle_day`；缺失 ⇒ 不显示） */
+  cycle_day?: number;
+  /** 本次实扣竹片数（现证 `data.cost_bamboos`；缺失 ⇒ 不显示） */
+  cost_bamboos?: number;
+  /** 补签后的整条日历（现证 `data.calendar`；缺失 ⇒ 由 `GET /assets/summary` 就地重拉补齐） */
+  calendar?: SigninCalendarDay[];
+}
+
+// ============ 后台签到设置（`PUT /admin/wallet-fee` 的签到三键 · 纯追加） ============
+
+/**
+ * 随机池单行（后台「按 kind 逐行」录入 → 结构化）。
+ * 值形状**以后端为准**（`cloudfunctions/compat-api/lib/wallet.js` 的 `normalizeSigninPool` 现证逐字
+ * = `{ kind, qty, weight }`；后端返回的是**逐项重建**的新对象，只留这三键）。
+ */
+export interface SigninPoolEntry {
+  /** 道具种类（逐字；仅后端白名单内的四种，见后台页 `SIGNIN_POOL_KINDS`） */
+  kind: string;
+  /** 发放数量（**正整数**） */
+  qty: number;
+  /**
+   * **相对权重**（**正整数**）—— 后端按权重加权抽 1 件。
+   * **不要求各项权重之和为 100**（后端只校验「正整数」；按总和归一化由后端在抽取时完成）。
+   */
+  weight: number;
+}
+
+/**
+ * 后台签到设置请求体 —— **键名逐字** = `signin_pool` / `signin_makeup_cost_bamboos` /
+ * `signin_day7_fragments`；**只填写的键才随请求发出**（缺省键 = 后端不改该项）。
+ */
+export interface SigninFeeSettingsPayload {
+  /** 随机池（按 kind 逐行）。值形状 = `[{kind, qty, weight}]`，见 `SigninPoolEntry` */
+  signin_pool?: SigninPoolEntry[];
+  /** 补签成本（**竹片**，正整数） */
+  signin_makeup_cost_bamboos?: number;
+  /** 第 7 天大奖（**石榴籽碎片**，正整数） */
+  signin_day7_fragments?: number;
+}

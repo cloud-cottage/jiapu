@@ -47,20 +47,60 @@
       @refresh="refreshInventory"
     />
 
-    <!-- 每日签到（独立卡 · 古风印章式）：置于行囊卡下方；**不展示碎片进度（N/9）**，签到结果只走 toast -->
+    <!-- 每日签到（独立卡 · 古风印章式）：置于行囊卡下方；**不展示碎片进度（N/9）**，签到结果只走 toast。
+         本批新增：7 天签到日历条（**真实道具图标 + 数量角标 + 状态色 + 第 7 天金边大奖**）、连签行、
+         漏签格二次确认后**花竹片补签**；日历数据来自 `GET /assets/summary` 的 `signin_calendar`（**不新增请求**） -->
     <view v-if="isAuthenticated()" class="sign-card">
-      <view
-        class="sign-seal"
-        :class="{ 'sign-seal-done': signedToday, 'sign-seal-busy': signing }"
-        @click="doSignin"
-      >签</view>
-      <view class="sign-body">
-        <text class="sign-title">每日签到</text>
-        <text class="sign-hint">{{ signedToday ? '今日已签到' : '轻触印章 · 领 1 片石榴籽碎片' }}</text>
-        <!-- 今日奖励入口（子包页 pages/task/index）：不显示 x/3 进度，本行不新增取数 -->
-        <text class="sign-reward" @click="goTaskCenter">今日奖励 · 去领取 →</text>
-        <text v-if="signError" class="sign-error">{{ signError }}</text>
+      <view class="sign-top">
+        <view
+          class="sign-seal"
+          :class="{ 'sign-seal-done': signedToday, 'sign-seal-busy': signing }"
+          @click="doSignin"
+        >签</view>
+        <view class="sign-body">
+          <text class="sign-title">{{ SIGNIN_TITLE }}</text>
+          <text class="sign-hint">{{ signedToday ? SIGNIN_HINT_DONE : SIGNIN_HINT_PENDING }}</text>
+          <!-- 连签行：`streak` 缺失（后端未重启）⇒ 空串 = 整行不渲染，不显 NaN、不臆造 -->
+          <text v-if="streakText" class="sign-streak">{{ streakText }}</text>
+          <text v-if="signError" class="sign-error">{{ signError }}</text>
+        </view>
       </view>
+
+      <!-- 签到 7 天日历条（7 格横排）：口径 = 只标**固定基础** + 「随机」标记（方案乙，Kevin 2026-09-28 拍定）——
+           格内逐项出**真实道具图标**（business/icons.ts 单点；`qty > 1` 才出 `×N` 角标）；
+           底部短 chip = 当天还会随机掉一件（**不预标**随机品种）；第 7 天另出大奖图标 + `×N`（金边）；
+           日序标签 `第 N 天` / `第 7 天 · 大奖`；状态色 = 已签（置淡 + 打勾）/ 今天（朱红描边）/ 漏签（虚线边 · 可点击补签）/ 未来（灰）；
+           缺键 / 非 7 长（旧后端）⇒ 整条不渲染（**不臆造格子**）；`base` / `bonus` 缺键 ⇒ 回退单件渲染（不崩、不显 NaN） -->
+      <view v-if="signinCalendar.length" class="sign-cal">
+        <view
+          v-for="c in signinCalendar"
+          :key="c.cycle_day"
+          class="cal-cell"
+          :class="[`cal-${c.state}`, { 'cal-bonus': c.is_bonus, 'cal-tappable': c.state === 'missed' && !makeupBusy }]"
+          @click="onCalendarCell(c)"
+        >
+          <view class="cal-slot">
+            <view class="cal-items">
+              <view v-for="(it, i) in c.baseItems" :key="`base-${i}`" class="cal-item">
+                <image v-if="assetKindIconSrc(it.kind)" class="cal-ico" :src="assetKindIconSrc(it.kind)" mode="aspectFit" />
+                <text v-if="it.qty > 1" class="cal-qty">{{ signinQtyBadge(it.qty) }}</text>
+              </view>
+              <!-- 第 7 天大奖（缺失 ⇒ 空项 `qty === 0` ⇒ 不渲染，不显 NaN） -->
+              <view v-if="c.bonusItem.qty > 0" class="cal-item">
+                <image v-if="assetKindIconSrc(c.bonusItem.kind)" class="cal-ico" :src="assetKindIconSrc(c.bonusItem.kind)" mode="aspectFit" />
+                <text class="cal-qty">{{ signinQtyBadge(c.bonusItem.qty) }}</text>
+              </view>
+            </view>
+            <text v-if="c.state === 'signed'" class="cal-check">{{ SIGNIN_CELL_CHECK }}</text>
+          </view>
+          <text class="cal-day">{{ signinDayLabel(c.cycle_day, c.is_bonus) }}</text>
+          <text v-if="c.random" class="cal-chip">{{ SIGNIN_RANDOM_CHIP }}</text>
+        </view>
+      </view>
+
+      <!-- 今日奖励入口（子包页 pages/task/index）：不显示 x/3 进度，本行不新增取数；
+           位置 = 日历条**之下**（与「签到读数在下、领奖入口最后」的阅读顺序一致） -->
+      <text class="sign-reward" @click="goTaskCenter">{{ SIGNIN_REWARD_LINK }}</text>
     </view>
 
     <!-- 家族互动（好友域入口 · 子包 pages/friend）：位置 = 每日签到卡之后、功能菜单卡之前 -->
@@ -176,11 +216,38 @@
 import { ref, computed, onMounted } from 'vue';
 import { isAuthenticated, authState, clearAuth, getAuthToken } from '@/business/auth';
 import { fetchMyAnchor, requestLeave, fetchTreeMetaRemote, fetchMessages, deleteAccount, ApiStatusError } from '@/business';
-import { fetchAssetsSummary, postSignin } from '@/business/api';
+import { fetchAssetsSummary, postSignin, postSigninMakeup } from '@/business/api';
 import type { AssetsSummary } from '@/business/api';
 import { fetchFriends, scrollLockOf, type ScrollLockView } from '@/business/friends';
-// 注销确认弹窗的六类品类名引用单点常量（SCROLL_NAME='兰帖' / SCROLL_FRAGMENT_NAME='兰帖残页'，asset-text.ts）
-import { SCROLL_NAME, SCROLL_FRAGMENT_NAME } from '@/business/asset-text';
+/** 道具 kind → 图标 URL（**单点** = `business/icons.ts`；日历格内为**真实道具图标**，不用 emoji 代替） */
+import { assetKindIconSrc } from '@/business/icons';
+import type { SigninCalendarDay, SigninCalendarState, SigninItem } from '@/business/types';
+import type { SigninCellAsset } from '@/business/asset-text';
+// 注销确认弹窗的六类品类名 + 签到卡全部文案 / toast 拼装引用单点常量（asset-text.ts：
+// `SCROLL_NAME='兰帖'` / `SCROLL_FRAGMENT_NAME='兰帖残页'` / `signinToastText()` 等，本页**不散落签到字面**）
+import {
+  SCROLL_NAME,
+  SCROLL_FRAGMENT_NAME,
+  SIGNIN_TITLE,
+  SIGNIN_HINT_PENDING,
+  SIGNIN_HINT_DONE,
+  SIGNIN_REWARD_LINK,
+  SIGNIN_CELL_CHECK,
+  SIGNIN_FAIL,
+  SIGNIN_RANDOM_CHIP,
+  SIGNIN_MAKEUP_TITLE,
+  SIGNIN_MAKEUP_FAIL,
+  SIGNIN_MAKEUP_CONFIRM_TEXT,
+  SIGNIN_MAKEUP_CANCEL_TEXT,
+  signinQtyBadge,
+  signinDayLabel,
+  signinCellBaseItems,
+  signinCellBonusItem,
+  signinStreakText,
+  signinToastText,
+  signinMakeupConfirmText,
+  signinMakeupToastText,
+} from '@/business/asset-text';
 import AssetInventory from '@/components/asset-inventory/asset-inventory.vue';
 
 const anchor = ref<{ tree_id: string; person_handle: string; updated_at: string } | null>(null);
@@ -207,6 +274,32 @@ const signing = ref(false);
 /** 本次会话内已签到（签到成功 / 同自然日 409 均置位） */
 const signedLocal = ref(false);
 const signError = ref('');
+/**
+ * 日历格视图（= `SigninCalendarDay` + 渲染派生项）：
+ * `baseItems` / `bonusItem` 由 `asset-text.ts` **单点**推导（含旧后端兜底），页面不自行拼。
+ * `bonusItem` 恒非空（缺失 ⇒ `{ kind:'', qty:0 }`）⇒ 模板只需判 `qty > 0`，无需空值断言。
+ */
+interface CalCell extends SigninCalendarDay {
+  /** 固定基础项（逐项；旧后端无 `base` ⇒ 单件兜底） */
+  baseItems: SigninCellAsset[];
+  /** 第 7 天大奖（缺失 ⇒ 空项） */
+  bonusItem: SigninCellAsset;
+}
+
+/** 空道具项（`bonus` 缺失 / 非法时的占位：`qty === 0` ⇒ 不渲染） */
+const EMPTY_CELL_ASSET: SigninCellAsset = { kind: '', qty: 0 };
+
+/**
+ * 签到 7 天日历条（`GET /assets/summary` 的 `signin_calendar`，**不新增请求**）：
+ * 缺键 / 非 7 长（后端未重启）⇒ 空数组 = 整条不渲染（**不臆造格子**）。
+ */
+const signinCalendar = ref<CalCell[]>([]);
+/** 连签天数（`GET /assets/summary` 的 `signin_streak`）；缺键 / 非法 ⇒ `null` = 不渲染连签行（不显 NaN） */
+const signinStreak = ref<number | null>(null);
+/** 补签成本（竹片；`GET /assets/summary` 的 `signin_makeup_cost_bamboos`）；缺键 / 非法 ⇒ `null` = 确认文案回退无数字版 */
+const makeupCostBamboos = ref<number | null>(null);
+/** 补签进行中（防重复提交；进行中漏签格不可再点） */
+const makeupBusy = ref(false);
 // 账号注销（docs/economy-ops.spec.md §7）
 const deleting = ref(false);
 const deleteError = ref('');
@@ -235,6 +328,80 @@ const signedToday = computed(
     signedLocal.value ||
     (inventorySummary.value?.signin_date || '') === cnDateOf(Date.now()),
 );
+
+/**
+ * 今日是否已签（**判据只取后端出参**，不新增请求）：`GET /assets/summary` 的 `signin_calendar` 内
+ * **存在 `state === 'today'` 的格 ⇒ 今日未签（`false`）**；日历非空且无该格 ⇒ 今日已签（`true`）；
+ * **日历缺失 / 为空（后端未重启或字段漂移）⇒ `undefined` = 不可判定** ⇒ 连签行回退旧口径。
+ * ⚠️ **不得**在此自算「今天」的日期串、不得硬编时区（`signedToday` 是另一条链路的判据，不用于此处）。
+ */
+const signedTodayOfCalendar = computed<boolean | undefined>(() =>
+  signinCalendar.value.length ? !signinCalendar.value.some((c) => c.state === 'today') : undefined,
+);
+
+/**
+ * 连签行文本（`streak` 缺失 ⇒ 空串 = 该行不渲染；0 ⇒「今日还未签到」；
+ * 今日已签 / 未签由日历出参判定，日历不可用 ⇒ 回退只出「已连签 N 天」）。
+ */
+const streakText = computed(() =>
+  signinStreak.value === null ? '' : signinStreakText(signinStreak.value, signedTodayOfCalendar.value),
+);
+
+/** 日历格状态白名单（后端给未知值 ⇒ 按 `future` 渲染，**绝不臆造成「已签」**） */
+const SIGNIN_STATES: readonly string[] = ['signed', 'missed', 'today', 'future'];
+
+/**
+ * 后端日历 → 页面视图：**长度恒 7**（非 7 长 ⇒ 空数组 = 不渲染整条），逐格做数值 / 枚举校验
+ * （`cycle_day` / `qty` 非法值就地兜底）⇒ 后端未重启、字段缺失或漂移时**不崩、不显 NaN**。
+ * 新契约（**只增不删**）`base` / `random` / `bonus` 逐格原样收下，再由 `asset-text.ts` 单点推导
+ * 渲染项：`base` 缺失 ⇒ 回退旧单件渲染；`bonus` 缺失 ⇒ 不渲染；`random` 非 true ⇒ 不显 chip。
+ */
+function normalizeCalendar(raw: unknown): CalCell[] {
+  if (!Array.isArray(raw) || raw.length !== 7) return [];
+  return raw.map((item, i) => {
+    const c = (item || {}) as Record<string, unknown>;
+    const cycleDay = Math.floor(Number(c.cycle_day));
+    const qty = Math.floor(Number(c.qty));
+    const state = String(c.state ?? '');
+    const day: SigninCalendarDay = {
+      cycle_day: Number.isFinite(cycleDay) && cycleDay > 0 ? cycleDay : i + 1,
+      kind: String(c.kind ?? ''),
+      qty: Number.isFinite(qty) && qty > 0 ? qty : 0,
+      is_bonus: c.is_bonus === true,
+      state: (SIGNIN_STATES.includes(state) ? state : 'future') as SigninCalendarState,
+      date: String(c.date ?? ''),
+      base: Array.isArray(c.base) ? (c.base as SigninItem[]) : undefined,
+      random: c.random === true,
+      bonus: c.bonus && typeof c.bonus === 'object' ? (c.bonus as SigninItem) : null,
+    };
+    return {
+      ...day,
+      baseItems: signinCellBaseItems(day),
+      bonusItem: signinCellBonusItem(day) || EMPTY_CELL_ASSET,
+    };
+  });
+}
+
+/** 把 `GET /assets/summary` 的签到读数落到页面（缺键 ⇒ 清空旧值，**不保留、不臆造**） */
+function applySummarySigninReadings(s: AssetsSummary | null) {
+  signinCalendar.value = normalizeCalendar(s?.signin_calendar);
+  const raw = Number(s?.signin_streak);
+  signinStreak.value = Number.isFinite(raw) ? raw : null;
+  // 补签成本新出参（旧后端无 ⇒ null）—— 只用于二次确认文案，**不臆造数字**
+  const cost = Number(s?.signin_makeup_cost_bamboos);
+  makeupCostBamboos.value = Number.isFinite(cost) && cost >= 0 ? cost : null;
+}
+
+/**
+ * 把**签到 / 补签出参**里更新的读数覆盖到页面（仅覆盖出参**确有**的字段；缺失 ⇒ 沿用 summary 读数）。
+ * 复用体例：出参比 summary 更新，故在 `loadInventory(true)` 之后调用。
+ */
+function applySigninPayloadReadings(res: { streak?: number; calendar?: SigninCalendarDay[] } | null) {
+  const cal = normalizeCalendar(res?.calendar);
+  if (cal.length) signinCalendar.value = cal;
+  const raw = Number(res?.streak);
+  if (Number.isFinite(raw)) signinStreak.value = raw;
+}
 
 function roleName(role: string): string {
   return ROLE_LABELS[role] || role;
@@ -405,6 +572,7 @@ async function loadFriendLock() {
 async function loadInventory(silent = false) {
   if (!isAuthenticated()) {
     scrollLock.value = null;
+    applySummarySigninReadings(null); // 未登录 ⇒ 清空签到读数（不留上一账号的日历 / 连签）
     return;
   }
   void loadFriendLock(); // 锁定态与行囊同一入口刷新（不新增刷新按钮）
@@ -412,8 +580,11 @@ async function loadInventory(silent = false) {
   inventoryError.value = '';
   try {
     inventorySummary.value = await fetchAssetsSummary();
+    // 签到读数与行囊**同一入口**：签到 / 补签「就地重拉」即刷新日历条与连签行（**不新增请求、不新增刷新按钮**）
+    applySummarySigninReadings(inventorySummary.value);
   } catch (e: any) {
     inventorySummary.value = null;
+    applySummarySigninReadings(null);
     inventoryError.value = e?.message || '加载行囊失败';
   } finally {
     inventoryLoading.value = false;
@@ -426,9 +597,12 @@ function refreshInventory() {
 }
 
 /**
- * 每日签到（POST /assets/signin）：每自然日 1 碎片（满 10 自动合成 1 颗石榴籽）。
- * 回执口径：基础「获得石榴籽碎片 +1」；**本次触发自动合成时必须追加一句**（不得静默吞掉状态变化）；
- * 同自然日重复 → 409「今日已签到」⇒ 按钮置灰 + 文案「今日已签到」（不弹错误）。
+ * 每日签到（POST /assets/signin）：**奖励清单由后端 `items` 逐件下发**（基础 + 随机 + 第 7 天大奖）。
+ * 回执口径（文案单点 = `asset-text.ts` 的 `signinToastText()`）：
+ * - 有 `items` ⇒ **逐件列举**（`获得 石榴籽碎片 ×1、竹片 ×1…`）—— 本批修掉「**竹片静默到账**」；
+ * - 无 `items`（旧后端）⇒ 退回既有逐字句「获得石榴籽碎片 +1」；
+ * - `cycle_day === 7` ⇒ 追加第 7 天大奖句；`synthesized > 0` ⇒ 追加「满 10 已合成 N 颗石榴籽」（**逐字保留**）；
+ * - 同自然日重复 → 409「今日已签到」⇒ 印章置灰 + 文案「今日已签到」（不弹错误）。
  */
 async function doSignin() {
   if (!isAuthenticated() || signedToday.value || signing.value) return;
@@ -437,20 +611,60 @@ async function doSignin() {
   try {
     const res = await postSignin();
     signedLocal.value = true;
-    const parts = ['获得石榴籽碎片 +1'];
-    if (res?.synthesized > 0) parts.push(`满 10 已合成 ${res.synthesized} 颗石榴籽`);
-    uni.showToast({ title: parts.join('，'), icon: 'none', duration: 3000 });
-    await loadInventory(true); // 就地更新行囊（碎片 / 籽格）
+    uni.showToast({ title: signinToastText(res), icon: 'none', duration: 3000 });
+    await loadInventory(true); // 就地更新行囊（碎片 / 籽 / 竹片格）与签到读数
+    applySigninPayloadReadings(res); // 出参若带更新的日历 / 连签 ⇒ 覆盖 summary 读数（字段缺失则沿用）
   } catch (e: any) {
     if (e instanceof ApiStatusError && e.status === 409) {
       // 同自然日重复：置灰 + 文案提示，不弹错误
       signedLocal.value = true;
-      uni.showToast({ title: '今日已签到', icon: 'none' });
+      uni.showToast({ title: SIGNIN_HINT_DONE, icon: 'none' });
     } else {
-      signError.value = e?.message || '签到失败';
+      signError.value = e?.message || SIGNIN_FAIL;
     }
   } finally {
     signing.value = false;
+  }
+}
+
+/**
+ * 日历格点击：**只有 `missed` 格可补签**（`signed` / `today` / `future` 点击无操作）。
+ * 补签前**二次确认**（文案 = 文案单点 `signinMakeupConfirmText()`），确认后才调接口。
+ */
+function onCalendarCell(c: SigninCalendarDay) {
+  if (c.state !== 'missed' || makeupBusy.value) return;
+  uni.showModal({
+    title: SIGNIN_MAKEUP_TITLE,
+    // 成本取 `GET /assets/summary` 的 `signin_makeup_cost_bamboos`（后端新出参）⇒ 文案为
+    //「补签将消耗 N 片竹片，确认继续？」；旧后端无该出参 ⇒ 自动回退到不带数字的形态（不假报数字）
+    content: signinMakeupConfirmText(makeupCostBamboos.value),
+    confirmText: SIGNIN_MAKEUP_CONFIRM_TEXT,
+    cancelText: SIGNIN_MAKEUP_CANCEL_TEXT,
+    success: (r) => {
+      if (r.confirm) doMakeup(c.date);
+    },
+  });
+}
+
+/**
+ * 补签（POST /assets/signin/makeup`{ date }`）：成功后就地重拉行囊 + 签到读数
+ * （复用既有 `loadInventory(true)` 体例，**不新增刷新按钮 / 不新增请求**）；
+ * 成功 toast = 文案单点 `signinMakeupToastText()` ⇒ **只出「补签成功」**：
+ * 补签**不补发任何道具**（后端现证），故不再逐件列举「获得 …」，避免谎报发放；
+ * 失败**一律透出后端 `error` 原文**（不吞、不自造）。
+ */
+async function doMakeup(date: string) {
+  if (!date || makeupBusy.value) return;
+  makeupBusy.value = true;
+  try {
+    const res = await postSigninMakeup(date);
+    uni.showToast({ title: signinMakeupToastText(res), icon: 'none', duration: 3000 });
+    await loadInventory(true);
+    applySigninPayloadReadings(res);
+  } catch (e: any) {
+    uni.showToast({ title: e?.message || SIGNIN_MAKEUP_FAIL, icon: 'none', duration: 3000 });
+  } finally {
+    makeupBusy.value = false;
   }
 }
 
@@ -541,11 +755,13 @@ onMounted(() => {
 
 /* 每日签到（古风印章式独立卡；位于行囊卡下方；不展示碎片进度） */
 .sign-card {
-  display: flex; align-items: center; gap: 16px;
+  display: flex; flex-direction: column; align-items: stretch;
   background: linear-gradient(180deg, #FFFDF8, #F8F0E5);
   border: 1px solid #E3D3BE; border-radius: 14px; padding: 16px;
   margin-bottom: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);
 }
+/* 印章 + 文案行（视觉与改动前一致：印章在左、文案在右；整卡改为纵向以容纳日历条横排） */
+.sign-top { display: flex; align-items: center; gap: 16px; }
 /* 朱红方印（点击区）；已签到 → 整体置灰 */
 .sign-seal {
   width: 56px; height: 56px; flex-shrink: 0; border-radius: 8px;
@@ -564,6 +780,42 @@ onMounted(() => {
 .sign-body { flex: 1; }
 .sign-title { font-size: 16px; font-weight: bold; color: #3E2723; letter-spacing: 2px; display: block; }
 .sign-hint { font-size: 12px; color: #B08D57; display: block; margin-top: 4px; }
+/* 连签行（streak；0 天 = 今日还未签到） */
+.sign-streak { font-size: 12px; color: #A8322D; display: block; margin-top: 4px; }
+
+/* 签到 7 天日历条（7 格横排 · 卡内全宽） */
+.sign-cal { display: flex; gap: 6px; margin-top: 12px; }
+.cal-cell {
+  flex: 1; min-width: 0; padding: 6px 2px 4px; border-radius: 10px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  background: #FFFDF8; border: 1px solid #E3D3BE;
+}
+/* 图标 + 数量角标 + 打勾的叠放容器（多件基础项 ⇒ `cal-items` 自动换行；角标压在各自图标右下角） */
+.cal-slot { position: relative; width: 100%; min-height: 26px; display: flex; align-items: center; justify-content: center; }
+/* 固定基础项 + 第 7 天大奖项的横排容器（一格可能 2–3 件，窄屏自动折行，不撑破格子） */
+.cal-items { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px; }
+.cal-item { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+.cal-ico { width: 15px; height: 15px; }
+.cal-qty { position: absolute; right: -5px; bottom: -3px; font-size: 9px; line-height: 1; color: #8B4513; }
+/* 随机掉落短 chip（格子最底部）：当天还会随机掉一件，**不预标**品种（方案乙口径） */
+.cal-chip {
+  font-size: 9px; line-height: 1.2; color: #8B4513; padding: 0 4px;
+  border: 1px solid #E3D3BE; border-radius: 8px; background: #FFF7EC;
+}
+.cal-day { font-size: 10px; color: #B08D57; text-align: center; line-height: 1.2; word-break: break-all; }
+/* 状态 ①：已签 = 置淡 + 右上打勾叠标 */
+.cal-signed { opacity: 0.55; }
+.cal-check { position: absolute; left: -5px; top: -4px; font-size: 12px; line-height: 1; color: #2E7D32; }
+/* 状态 ②：今天 = 朱红描边高亮（与既有印章同色系 #A8322D） */
+.cal-today { border: 2px solid #A8322D; box-shadow: 0 0 0 2px rgba(168, 50, 45, 0.12); background: #FFF7F5; }
+/* 状态 ③：漏签 = 虚线边 + 可点击补签（点击后二次确认） */
+.cal-missed { border-style: dashed; border-color: #C08A3E; background: #FFFBF4; }
+.cal-tappable { cursor: pointer; }
+/* 状态 ④：未来 = 灰 */
+.cal-future { opacity: 0.45; background: #F5F5F5; border-color: #DDDDDD; }
+/* 第 7 天大奖格 = 金边（用 outline 与状态边框并存，故「未来态的大奖格」金边也照样可见） */
+.cal-bonus { outline: 2px solid #C9A227; outline-offset: 1px; }
+
 /* 今日奖励入口行（不显示 x/3 进度） */
 .sign-reward { font-size: 12px; color: #8B4513; display: block; margin-top: 6px; }
 .sign-error { font-size: 12px; color: #C62828; display: block; margin-top: 4px; }

@@ -35,3 +35,21 @@ export function genderIconSrc(gender?: 'M' | 'F' | 'U' | string | null): string 
   if (gender === 'F') return ICON.GENDER_FEMALE;
   return '';
 }
+
+/**
+ * 按**道具种类**（`kind`）取图标 URL —— 六类道具的**唯一映射点**（签到日历条 / 后续按 kind 出图处一律引用本函数）。
+ * 键与 `business/inventory.ts` 的 `InventoryKind`、后端签到出参 `kind` 取值**同集**（逐字：
+ * `fragment` / `bamboo` / `scrollFragment` / `scroll` / `seed` / `jade`）—— 本模块**不反向 import** 任何业务模块。
+ * 未知 `kind` ⇒ 空串（调用方不渲染 `<image>`，**绝不回退到某个具体道具图标**以免指鹿为马）。
+ */
+export function assetKindIconSrc(kind: string): string {
+  switch (kind) {
+    case 'fragment': return ICON.FRAGMENT;
+    case 'bamboo': return ICON.BAMBOO;
+    case 'scrollFragment': return ICON.SCROLL_SHARD;
+    case 'scroll': return ICON.SCROLL;
+    case 'seed': return ICON.SEED;
+    case 'jade': return ICON.JADE;
+    default: return '';
+  }
+}

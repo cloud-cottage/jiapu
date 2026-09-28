@@ -199,14 +199,16 @@ export type AssetPoemKey = 'bamboo' | 'scroll' | 'scrollFragment' | 'jade' | 'se
  * （同本模块「展示名 / 状态文案单点」的约定）。
  * **展示位置（Kevin 已定）** = 道具属性提示层内（`asset-inventory.vue` 的 `.inv-tip`，z-index 1010）：
  * 点开某道具时，层内显示该道具对应的诗句。
+ *
+ * **出处署名简化 = Kevin 2026-09-28 裁定，诗句本句一字未改**（只去篇名《》与朝代前缀，署名内用「·」）。
  */
 export const ASSET_POEMS: Record<AssetPoemKey, string> = {
   bamboo: '书于简策，以诏子孙，敦睦九族。——古·佚名',
-  scroll: '金兰幸有同心契，莫负山中一段香。——明·唐寅《题画》',
+  scroll: '金兰幸有同心契，莫负山中一段香。——明·唐寅',
   scrollFragment: '用证兰盟，互通芳谱。——古·佚名',
-  jade: '五龙一门，金友玉昆。——魏晋·无名氏《秦雍为辛氏语》',
-  seed: '榴枝婀娜榴实繁，榴膜轻明榴子鲜。——唐·李商隐《石榴》',
-  fragment: '千房同膜，千子如一。——西晋·潘尼《安石榴赋》',
+  jade: '五龙一门，金友玉昆。——晋·佚名',
+  seed: '榴枝婀娜榴实繁，榴膜轻明榴子鲜。——唐·李商隐',
+  fragment: '千房同膜，千子如一。——晋·潘尼',
 };
 
 /** 取某类道具的诗句（键 = `InventoryItem.kind`）；未知键 → 空串（**不渲染该行**，不新造文案） */
@@ -341,4 +343,249 @@ export function assetNameOf(field: string): string {
   if (key === 'bamboo_pieces') return BAMBOO_PIECES_NAME;
   if (key === 'scroll_fragments') return SCROLL_FRAGMENT_NAME;
   return key;
+}
+
+// ============ 签到 7 天日历文案**单点**（2026-09-28 · 纯追加 · 上文既有行一字未改） ============
+
+/**
+ * 签到域文案与拼装（**唯一真源**）—— 落点 =「我的」页签到卡（`pages/mine/index.vue`）
+ * 与后台签到设置（`pages/admin/index.vue`）。
+ *
+ * 纪律（同本模块「展示名 / 状态文案单点」的既有约定）：签到卡的**标题 / 提示行 / 连签行 /
+ * 逐格标签 / 补签确认 / toast 拼装**一律经本模块，**页面内不得再写这些中文字面**。
+ * 数值一律由调用方传入（本模块不复制后端常量）。
+ */
+
+/** 签到卡标题（逐字） */
+export const SIGNIN_TITLE = '每日签到';
+
+/** 未签到提示行（逐字；沿用既有文案，未改一字） */
+export const SIGNIN_HINT_PENDING = '轻触印章 · 领 1 片石榴籽碎片';
+
+/** 今日已签到（逐字）—— 签到卡提示行与「同自然日重复」toast **共用同一字面** */
+export const SIGNIN_HINT_DONE = '今日已签到';
+
+/** 今日奖励入口行（逐字） */
+export const SIGNIN_REWARD_LINK = '今日奖励 · 去领取 →';
+
+/** 已签到格的打勾叠标（装饰字形；唯一字面） */
+export const SIGNIN_CELL_CHECK = '✓';
+
+/** 签到失败行兜底（**仅当异常未带 message 时**；后端原文一律优先透出） */
+export const SIGNIN_FAIL = '签到失败';
+
+/** 石榴籽展示名（签到随机池可能发整颗籽；单点 —— 组件 / 页面不得另写） */
+export const SEED_NAME = '石榴籽';
+
+/** 石榴籽玉展示名（单点） */
+export const JADE_NAME = '石榴籽玉';
+
+/**
+ * 签到 `kind`（**逐字**）→ 展示名（**单点**）。
+ * 六键与后端 `kind` 取值逐字对应：`fragment` / `bamboo` / `scrollFragment` / `scroll` / `seed` / `jade`。
+ * **未知键 ⇒ 原样返回键名**（同 `assetNameOf` 口径：不猜品类、也不把该件静默丢掉）。
+ */
+export const SIGNIN_KIND_NAME: Record<string, string> = {
+  fragment: SEED_FRAGMENT_NAME,
+  bamboo: BAMBOO_PIECES_NAME,
+  scrollFragment: SCROLL_FRAGMENT_NAME,
+  scroll: SCROLL_NAME,
+  seed: SEED_NAME,
+  jade: JADE_NAME,
+};
+
+/** 取签到 `kind` 的展示名（未知键 → 原样键名，见 `SIGNIN_KIND_NAME` 注） */
+export function signinKindName(kind: string): string {
+  const key = String(kind ?? '');
+  return SIGNIN_KIND_NAME[key] || key;
+}
+
+/** 数量角标（唯一字面 `×N`；`qty` 非法 / ≤0 ⇒ `×0`，**不显 `NaN`**） */
+export function signinQtyBadge(qty: unknown): string {
+  const n = Math.floor(Number(qty));
+  return `×${Number.isFinite(n) && n > 0 ? n : 0}`;
+}
+
+/**
+ * 逐格日序标签（唯一字面 `第 N 天`）；`is_bonus` 格追加 ` · 大奖`
+ * （金边由页面 CSS 画，本函数只给文字）。`cycle_day` 非法 ⇒ 按第 1 天显示，**不显 `NaN`**。
+ */
+export function signinDayLabel(cycleDay: unknown, isBonus?: unknown): string {
+  const n = Math.floor(Number(cycleDay));
+  const day = Number.isFinite(n) && n > 0 ? n : 1;
+  return isBonus ? `第 ${day} 天 · 大奖` : `第 ${day} 天`;
+}
+
+/** 逐件列举的**单件**片段（唯一拼装点）：`石榴籽碎片 ×1` */
+export function signinItemLine(kind: string, qty: unknown): string {
+  return `${signinKindName(kind)} ${signinQtyBadge(qty)}`;
+}
+
+/** `items` 逐件列举的前缀（唯一字面） */
+export const SIGNIN_GAIN_PREFIX = '获得 ';
+
+/**
+ * 基础发放句（**逐字保留** —— 后端未返回 `items`（旧版）时的兜底，**不得改写**）。
+ * 新版后端一律走 `items` 逐件列举（竹片不再静默到账）。
+ */
+export const SIGNIN_BASE_TOAST = '获得石榴籽碎片 +1';
+
+/**
+ * 第 7 天大奖追加句（唯一字面）—— 大奖资产本身**已在 `items` 里逐件列出**，
+ * 本句只作「触发大奖」的显式告知，**不重复数字**。
+ */
+export const SIGNIN_DAY7_TOAST = '已连签 7 天 · 第 7 天大奖已发放';
+
+/** 满 10 自动合成句（**逐字保留**既有实现：`满 10 已合成 N 颗石榴籽`） */
+export function signinSynthToast(synthesized: number): string {
+  return `满 10 已合成 ${synthesized} 颗石榴籽`;
+}
+
+/**
+ * 签到成功 toast（**唯一拼装点**；页面不得自行拼串）：
+ * ① `items` 逐件列举（`获得 石榴籽碎片 ×1、竹片 ×1`）—— 即本批「**修掉竹片静默到账**」的落点；
+ * ② `items` 缺失 / 非数组（旧后端）⇒ 退回既有逐字句 `SIGNIN_BASE_TOAST`；
+ * ③ `cycle_day === 7` ⇒ 追加 `SIGNIN_DAY7_TOAST`；
+ * ④ `synthesized > 0` ⇒ 追加 `signinSynthToast()`（**逐字保留**）。
+ * 句间分隔恒为 `，`。
+ */
+export function signinToastText(
+  r?: { items?: unknown; cycle_day?: unknown; synthesized?: unknown } | null,
+): string {
+  const parts: string[] = [];
+  const items = Array.isArray(r?.items) ? (r?.items as Array<{ kind?: unknown; qty?: unknown }>) : [];
+  if (items.length) {
+    parts.push(
+      `${SIGNIN_GAIN_PREFIX}${items.map((it) => signinItemLine(String(it?.kind ?? ''), it?.qty)).join('、')}`,
+    );
+  } else {
+    parts.push(SIGNIN_BASE_TOAST);
+  }
+  if (Math.floor(Number(r?.cycle_day)) === 7) parts.push(SIGNIN_DAY7_TOAST);
+  const synthesized = Math.floor(Number(r?.synthesized));
+  if (Number.isFinite(synthesized) && synthesized > 0) parts.push(signinSynthToast(synthesized));
+  return parts.join('，');
+}
+
+// ---- 补签（`POST /assets/signin/makeup`）文案 ----
+
+/** 补签确认层标题（唯一字面） */
+export const SIGNIN_MAKEUP_TITLE = '补签';
+
+/** 补签确认按钮文案（唯一字面） */
+export const SIGNIN_MAKEUP_CONFIRM_TEXT = '确认补签';
+
+/** 补签取消按钮文案（唯一字面） */
+export const SIGNIN_MAKEUP_CANCEL_TEXT = '取消';
+
+/** 补签成功（唯一字面；后端未返回 `items` 时只出此句） */
+export const SIGNIN_MAKEUP_OK = '补签成功';
+
+/** 补签失败兜底（**仅当异常未带 message 时**；后端 `error` 原文一律优先透出、不吞、不改写） */
+export const SIGNIN_MAKEUP_FAIL = '补签失败';
+
+/**
+ * 补签二次确认正文（**唯一拼装点**；`costBamboos` = 补签成本，单位**竹片**）：
+ * - `costBamboos` 是**有限数字** ⇒ `补签将消耗 N 片竹片，确认继续？`（数字源 = `GET /assets/summary` 的
+ *   `signin_makeup_cost_bamboos` 新出参；页面据此传入）；
+ * - **拿不到成本**（旧后端无该出参 ⇒ 页面传 `null` / `undefined`；或值非法）⇒ `补签将消耗竹片，确认继续？`
+ *   —— **明示「有成本」但不假报数字**。
+ * ⚠️ `null` **必须**走无数字版：`Number(null) === 0`，若不显式排除就会谎报「0 片竹片」。
+ */
+export function signinMakeupConfirmText(costBamboos?: number | null): string {
+  const n = Math.floor(typeof costBamboos === 'number' ? costBamboos : NaN);
+  if (Number.isFinite(n) && n >= 0) {
+    return `补签将消耗 ${n} ${BAMBOO_PIECES_UNIT}${BAMBOO_PIECES_NAME}，确认继续？`;
+  }
+  return `补签将消耗${BAMBOO_PIECES_NAME}，确认继续？`;
+}
+
+/**
+ * 补签成功 toast（唯一字面 = `补签成功`）。
+ * **补签不补发任何道具**（后端现证：只补日期集 + 重算连签，出参**不含 `items`**）
+ * ⇒ 不再拼「获得 …」逐件列举，避免谎报发放。
+ * 入参保留可选（调用点无需改动），**一律忽略**。
+ */
+export function signinMakeupToastText(_result?: unknown): string {
+  return SIGNIN_MAKEUP_OK;
+}
+
+// ---- 连签行（`streak`）文案 ----
+
+/** 连签 0 天（= 今日还未签到）行（逐字） */
+export const SIGNIN_STREAK_NONE = '今日还未签到';
+
+/**
+ * 连签行（逐字；**三段互斥**，非专）：
+ * - `N > 0` 且**今日未签** ⇒ `` `已连签 ${N} 天 · 今日还未签到` ``（末段逐字 = `SIGNIN_STREAK_NONE`）；
+ * - `N > 0` 且**今日已签** ⇒ `` `已连签 ${N} 天` ``；
+ * - `N === 0` ⇒ `今日还未签到`。
+ *
+ * `signedToday` 的判据**只能来自后端出参**（`GET /assets/summary` 的 `signin_calendar` 内有无
+ * `state === 'today'` 的格）：**存在该格 ⇒ 今日未签（`false`）**；不存在且日历非空 ⇒ 今日已签（`true`）；
+ * **日历缺失 / 空数组 ⇒ `undefined` ⇒ 回退旧口径**（只出 `已连签 N 天` / `今日还未签到`，不报错、不显 NaN）。
+ * ⚠️ 调用方**不得**自行推算「今天」的日期串、不得硬编时区 —— 判据一律由日历出参推导后传入。
+ *
+ * `N` 非法 / 缺失（后端未重启，无 `signin_streak`）⇒ **空串 = 不渲染该行**（不臆造、不显 NaN）。
+ */
+export function signinStreakText(streak: unknown, signedToday?: boolean): string {
+  const n = Math.floor(Number(streak));
+  if (!Number.isFinite(n) || n < 0) return '';
+  if (n === 0) return SIGNIN_STREAK_NONE;
+  return signedToday === false ? `已连签 ${n} 天 · ${SIGNIN_STREAK_NONE}` : `已连签 ${n} 天`;
+}
+
+// ---- 日历格渲染项（**末尾追加**；口径 = 方案乙 · Kevin 2026-09-28 拍定：「只标固定基础 + 随机标记」）----
+
+/**
+ * 日历格「随机掉落」短 chip（唯一字面）—— 表示**当天还会随机掉一件**，
+ * **不预标**随机品种（抽中何种由后端领取时刻决定，前端不猜）。
+ */
+export const SIGNIN_RANDOM_CHIP = '随机';
+
+/** 日历格内的一个道具项（kind + qty；页面据此出真实图标与数量角标） */
+export interface SigninCellAsset {
+  kind: string;
+  qty: number;
+}
+
+/** 单格原始形状（只取本模块要用的键，全部 `unknown` ⇒ 后端字段漂移时不崩、不显 NaN） */
+type SigninCellRaw = {
+  kind?: unknown;
+  qty?: unknown;
+  base?: unknown;
+  bonus?: unknown;
+};
+
+/** 校验一件：`kind` 非空 且 `qty` 为正整数 ⇒ 出项；否则 `null`（**静默跳过，绝不造数**） */
+function cellAssetOf(raw: unknown): SigninCellAsset | null {
+  const it = (raw || {}) as { kind?: unknown; qty?: unknown };
+  const kind = String(it.kind ?? '');
+  const qty = Math.floor(Number(it.qty));
+  if (!kind || !Number.isFinite(qty) || qty <= 0) return null;
+  return { kind, qty };
+}
+
+/**
+ * 单格**固定基础项**（唯一拼装点）：
+ * - `base` 为数组且含合法项 ⇒ **逐项**返回（新契约：`[{kind:'fragment',qty:1},{kind:'bamboo',qty:1}]`）；
+ * - `base` 缺失 / 非法（旧后端单格只给主项 `kind` / `qty`）⇒ 回退为**那一件**（旧渲染不变、不崩）；
+ * - 两路都拿不到 ⇒ 空数组（页面不渲染图标，**不显 NaN、不臆造品类**）。
+ */
+export function signinCellBaseItems(day?: SigninCellRaw | null): SigninCellAsset[] {
+  const items: SigninCellAsset[] = [];
+  if (Array.isArray(day?.base)) {
+    for (const raw of day?.base as unknown[]) {
+      const asset = cellAssetOf(raw);
+      if (asset) items.push(asset);
+    }
+  }
+  if (items.length) return items;
+  const fallback = cellAssetOf({ kind: day?.kind, qty: day?.qty });
+  return fallback ? [fallback] : [];
+}
+
+/** 单格**第 7 天大奖**项（`bonus`）；缺失 / 非法 ⇒ `null` ⇒ 页面不渲染（不臆造） */
+export function signinCellBonusItem(day?: SigninCellRaw | null): SigninCellAsset | null {
+  return cellAssetOf(day?.bonus);
 }

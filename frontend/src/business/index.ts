@@ -34,6 +34,9 @@ export { provincesOf, citiesOf, countiesOf, resolveNames, pathOfCode, isKnownCod
 export type { GeoProvince, GeoCity, GeoCounty, ResolvedOriginNames, OriginPath } from './geo';
 export { MAX_RESIDENCE_PLACES, emptyPlaceInput, normalizePlace, prunePlaces, placesDirty, placeDisplayOf, placeViewOf, placeViewsOf } from './place';
 export type { PersonPlaceInput, PersonPlaceView, ProfileLifespanView } from './types';
-export { ICON, genderIconSrc } from './icons';
+export { ICON, genderIconSrc, assetKindIconSrc } from './icons';
 export type { TreePersonNode } from './pedigree';
 export type { TreeMeta, TreeEntry, PersonSummary, PersonDetail, PersonProfile, FamilyRef, EventRef, MediaRef, CitationRef, NoteRef, CustomAttribute, SearchParams, SearchResult, DigitalHallCard } from './types';
+// 签到 7 天日历（2026-09-28）：补签接口 + 后台签到设置（**沿用既有治理路由** `PUT /admin/wallet-fee`，不新增路由）
+export { postSigninMakeup, putSigninFeeSettings } from './api';
+export type { SigninItem, SigninCalendarState, SigninCalendarDay, SigninMakeupResult, SigninPoolEntry, SigninFeeSettingsPayload } from './types';
