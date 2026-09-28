@@ -19,6 +19,9 @@
  *   /market/official-buy（市集 + 官方竹简每日限量发售 · docs/economy-market.spec.md §6 / §7；挂单与家族树无关 K7）
  *   POST /assets/signin（签到：北京时间自然日各 1 次；同日重复 409「今日已签到」，§6-2）
  *      —— 已改为**调用任务中心同一入口**（`POST /tasks/claim {task:'signin'}`），与签到任务共用同一 `signin_date` 判定
+ *      —— 出参新增 `streak` / `cycle_day` / `items` / `calendar`（连签 7 天 + 每日随机追加，Zang 裁定 v1）
+ *   POST /assets/signin/makeup（补签：今天往前 1–7 天且未签；成本 = `signin_makeup_cost_bamboos` 片竹片，
+ *      走既有 FIFO 批扣，不足 ⇒ 409 `ASSET_INSUFFICIENT`；**不补发任何道具**，只补日期集 + 重算连签；Zang 裁定 v1）
  *   GET  /tasks/today | POST /tasks/claim（任务中心：三条每日任务三态 + 手动领取；领取即 friend-ops 奖励池入口）
  *      —— 任务枚举逐字 `signin`（签到）/ `invite`（邀请新用户注册）/ `write`（平台写操作）
  *   GET  /messages | POST /messages/read（站内信中心：四类预警惰性生成 + 已读，docs/economy-ops.spec.md §4）
@@ -666,6 +669,13 @@ async function handleRequest(event) {
     // - `fee`：建树费（¥，既有键 —— 行为与出参 `tree_create_fee_yuan` 保持原样、不得改）
     // - `branch_fee_seeds`：立支费（颗完整石榴籽，默认 9999）
     // - `converge_spirit_ratio`：汇宗灵气折损比例（0–1，默认 0.5）
+    // - 🆕 签到域三键（Zang 裁定 v1 · 2026-09-28；同一载体 `jiazu_wallets.config`，**不新增设置路由**）：
+    //     `signin_pool`（非空数组，元素 {kind, qty, weight}；kind ∈ fragment|bamboo|scroll_fragment|scroll）
+    //       ⚠️ 权重键名**权威 = `weight`**（相对权重、正整数，不要求和为 100）；后台 UI 显示为「权重」；
+    //       **不得**改用 `probability` / `percent`（下游漂移即静默丢权重）。
+    //     `signin_makeup_cost_bamboos`（正整数，默认 2）
+    //     `signin_day7_fragments`（非负整数，默认 10）
+    //   逐键 `has(k)` 判定、非法 400（照既有两键体例）。
     if (pathname === '/admin/wallet-fee' && method === 'PUT') {
       const u = await authUser(headers);
       if (!u || u.role !== 'chief_editor') return send(403, { error: '需要总编辑权限' });
@@ -692,6 +702,30 @@ async function handleRequest(event) {
         }
         out.converge_spirit_ratio = await wallet.setConvergeSpiritRatio(ratio);
       }
+      // 签到奖池：空数组会被上面的 `has()` 判成「未给」（`String([]).trim() === ''`）⇒
+      //   这里显式把「已给的空数组」也纳入判定，保证「非空数组」这条校验能给出**精确 400 文案**
+      //   （否则会落到末尾的兜底 400「请输入正确的费用」，答非所问）。
+      if (has('signin_pool') || Array.isArray(body.signin_pool)) {
+        try {
+          out.signin_pool = await wallet.setSigninPool(body.signin_pool);
+        } catch (e) {
+          return send(400, { error: e?.message || '请输入正确的签到奖励池（非空数组，含 kind / qty / weight）' });
+        }
+      }
+      if (has('signin_makeup_cost_bamboos')) {
+        const cost = Number(body.signin_makeup_cost_bamboos);
+        if (!Number.isFinite(cost) || cost <= 0 || Math.floor(cost) !== cost) {
+          return send(400, { error: '请输入正确的补签费用（正整数，片竹片）' });
+        }
+        out.signin_makeup_cost_bamboos = await wallet.setSigninMakeupCostBamboos(cost);
+      }
+      if (has('signin_day7_fragments')) {
+        const day7 = Number(body.signin_day7_fragments);
+        if (!Number.isFinite(day7) || day7 < 0 || Math.floor(day7) !== day7) {
+          return send(400, { error: '请输入正确的第 7 天奖励（非负整数，个石榴籽碎片）' });
+        }
+        out.signin_day7_fragments = await wallet.setSigninDay7Fragments(day7);
+      }
       if (Object.keys(out).length === 1) return send(400, { error: '请输入正确的费用' });
       return send(200, out);
     }
@@ -702,9 +736,21 @@ async function handleRequest(event) {
       const u = await authUser(headers);
       if (!u) return send(401, { error: '未登录或登录已过期' });
       const now = new Date();
+      // 签到域扩展（Zang 裁定 v1）：出参**新增** `signin_streak`（ledger `summarize` 出）
+      //   ＋ `signin_calendar`（7 格日历条；**未签到也能渲染** ⇒ 前端**不得**为此另开请求）。
+      // 拼装落点：日历推导是签到域纯函数（`task-center.signinCalendarOf`），故在**同一次资产事务内**
+      //   随 `summarize` 一并读出 —— 只读、零写入（mutator 不改任何字段），不产生第二次资产读。
+      // 🆕 收口（Kevin 2026-09-28）：再新增 `signin_makeup_cost_bamboos`（当前生效值，正整数片）——
+      //   前端拼「补签将消耗 N 片竹片」确认文案用；**不得**让前端硬编码 2 / 另开设置读接口。
+      const tc = await import('./lib/task-center.js');
+      const day7 = await wallet.getSigninDay7Fragments();
+      const makeupCost = await wallet.getSigninMakeupCostBamboos();
       const summary = await ledger.mutateAssets(u.phone, (user) => {
         ledger.sweep(user, now); // 任何资产入口先惰性结算（§5-4-1）
-        return ledger.summarize(user, now);
+        const s = ledger.summarize(user, now);
+        s.signin_calendar = tc.signinCalendarOf(user, now, { day7_fragments: day7 });
+        s.signin_makeup_cost_bamboos = makeupCost;
+        return s;
       });
       return send(200, summary);
     }
@@ -733,6 +779,9 @@ async function handleRequest(event) {
       //     friend-ops.distributeFriendRewards）；
       //   · 既有出参形状**逐字保留**（`fragments` / `synthesized` / `seed_lot` / `signin_date`、
       //     同日重复 409 `{ error: '今日已签到' }`、未登录 401），前端与 assets.test.js 零改动。
+      // 🆕 签到域扩展（Zang 裁定 v1 · 2026-09-28）：出参**新增** `streak`（连签天数）/ `cycle_day`（1..7）/
+      //   `items`（本次实发清单：[{kind, qty}]，含基础 + 随机 + 第 7 天）/ `calendar`（7 格视图）。
+      //   既有键一律逐字保留（**只增不删**）；拒绝路径（401 / 409）文案与形状一字未改。
       try {
         const tc = await import('./lib/task-center.js');
         const r = await tc.claimTask(u.phone, 'signin', new Date());
@@ -747,12 +796,53 @@ async function handleRequest(event) {
           state: r.state,
           state_text: r.state_text,
           reward: r.reward,
+          streak: r.streak,
+          cycle_day: r.cycle_day,
+          items: r.items,
+          calendar: r.calendar,
         });
       } catch (e) {
         if (isSystemFailure(e)) return send(500, { error: eco.INTERNAL_ERROR_TEXT, status: 500 });
         // 同日重复：**逐字保留**既有文案与形状（`{"error":"今日已签到"}` + 409，资产一字节不变）
         if (e?.code === 'TASK_ALREADY_CLAIMED') return send(409, { error: '今日已签到' });
         return send(Number(e?.status) || 409, { error: e?.message || '签到失败' });
+      }
+    }
+
+    // 补签（Zang 裁定 v1 · Kevin 2026-09-28 拍定；本单新增路由）：
+    //   POST /assets/signin/makeup  { date }   date = `YYYY-MM-DD`，可补 = **今天往前 1–7 天**且该日未签。
+    // 权限：已登录本人（未登录 401，不降级 guest）。
+    // 错误口径（逐字）：范围外（未来 / 今天 / 超出 7 天）⇒ 400「补签日期不在可补范围内」；
+    //   范围内的已签日 ⇒ 400「该日已签到，无需补签」；竹片不足 ⇒ **409 `ASSET_INSUFFICIENT`**（走
+    //   `eco.errorPayload`：need / current / unit='bamboos' / how_to_get），**整单拒绝、不部分扣、零写入**。
+    //   范围判定优先于「已签」判定：补今天 / 未来 / 超出 7 天 ⇒ 一律 400「补签日期不在可补范围内」；仅当目标日落在 1–7 天前范围内且已签 ⇒ 400「该日已签到，无需补签」。质检易把前者误判为「已签分支失效」，特此注明。
+    // 实现唯一落点 = `lib/task-center.js` 的 `signinMakeup`（本路由只做鉴权 + 出参壳，不写第二套记账）。
+    // 🆕 出参**定形状**（逐字 · Kevin 2026-09-28 收口）= `{ ok:true, date, streak, cycle_day, cost_bamboos, calendar }`：
+    //   · `cost_bamboos` = 本次实扣片数（= 后台 `signin_makeup_cost_bamboos` 生效值）；
+    //   · `calendar` = 补签后重算的 7 格视图（`signinCalendarOf`，形状同 `/assets/summary` 的 `signin_calendar`）。
+    //   **不返回 `items`** —— 补签**不补发任何道具**（只恢复连签连续性），这是防
+    //   「用 2 片竹片买回 >2 片竹片道具」套利的硬口径：任何实现都不得在补签路径上加发奖。
+    if (pathname === '/assets/signin/makeup' && method === 'POST') {
+      const u = await authUser(headers);
+      if (!u) return send(401, { error: '未登录或登录已过期' });
+      try {
+        const tc = await import('./lib/task-center.js');
+        const r = await tc.signinMakeup(u.phone, parseBody(event).date, new Date());
+        // 逐字投影（**不**透传 signinMakeup 的内部明细键，尤其**不含 items**）
+        return send(200, {
+          ok: true,
+          date: r.date,
+          streak: r.streak,
+          cycle_day: r.cycle_day,
+          cost_bamboos: r.cost_bamboos,
+          calendar: r.calendar,
+        });
+      } catch (e) {
+        if (isSystemFailure(e)) return send(500, { error: eco.INTERNAL_ERROR_TEXT, status: 500 });
+        // 资产不足：**全字段**响应体（`eco.errorPayload` ⇒ code / need / current / unit / how_to_get）
+        if (e?.code === 'ASSET_INSUFFICIENT') return send(Number(e?.status) || 409, eco.errorPayload(e));
+        // 两条 400 文案逐字透出（**不**经 errorPayload：白名单外 code 会被通用句覆盖）
+        return send(Number(e?.status) || 400, { error: e?.message || '补签失败' });
       }
     }
 

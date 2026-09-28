@@ -454,9 +454,12 @@ const NEW_KEYS = [
   'scrolls_item_count',
   'scroll_lot_count',
   'scroll_lots',
+  // 签到域（Zang 裁定 v1 · 2026-09-28）：连签天数 + 已签日期集（最近 30 天；只增不删）
+  'signin_streak',
+  'signin_days',
 ];
 
-test('summarize：新增 6 个出参逐字与取值正确，既有出参键集与取值一字未改', () => {
+test('summarize：新增 8 个出参逐字与取值正确，既有出参键集与取值一字未改', () => {
   const u = newUser();
   u.fragments = 3;
   u.scroll_fragments = 42;
@@ -602,6 +605,8 @@ test('R-1：源码中不存在 bamboo_fragments；空记录含 scroll_fragments 
     'scrolls',
     'seeds',
     'signin_date',
+    'signin_days',
+    'signin_streak',
     'txs',
   ]);
 });

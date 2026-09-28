@@ -68,6 +68,13 @@ export const SCROLL_SOURCE_SYNTH = 'scroll_synth';
 export const EXPIRING_DEFAULT_DAYS = 30;
 
 /**
+ * 签到域：已签日期集 `signin_days` 的**保留窗口**（最近 30 天已签日期，含补签；超出裁掉）。
+ * 口径来源 = Zang 裁定 v1（Kevin 2026-09-28 拍定）：「只保留最近 30 天已签（含补签）日期」。
+ * 与连签周期（7 天，写死不配）无关：本值只决定**存储裁剪**，不参与奖励判定。
+ */
+export const SIGNIN_DAYS_KEEP = 30;
+
+/**
  * P0 使用的 Tx.type 白名单（§4-6 全表的子集；新增取值必须先改总纲再改这里）
  * P1（docs/economy-fee.spec.md §2 对齐表）追加扣费 / 冲正取值：
  *   `edit_fee`（修改 / 同树改父）、`delete_fee`（删除节点）、`move_fee`（跨树迁移）、
@@ -153,9 +160,54 @@ export function beijingDate(date = new Date()) {
   return new Date(toMs(date) + 8 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
-/** 空资产记录（§4-1 + §15-2 / §15-3 追加字段；既有字段形状一字不改） */
+/** 已签日期串形状（`YYYY-MM-DD`） */
+const SIGNIN_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * 收口「已签日期集」`signin_days`（Zang 裁定 v1 · Kevin 2026-09-28 拍定）：
+ * **升序、去重、只保留最近 30 天**（`SIGNIN_DAYS_KEEP`，超出裁掉）。
+ *
+ * 纪律（与 `toNonNegInt` 同向的「外部值收口」）：
+ *   · 非数组 / 缺失 ⇒ `[]`（不臆造）；
+ *   · 逐项只认**形状合法且真实存在**的 `YYYY-MM-DD`（`2026-13-45` 这类形状合法却不存在的串一律丢弃）；
+ *   · `Infinity` / `NaN` / 对象 / 数字等一律不参与（本字段是字符串数组，绝不强转）；
+ *   · **零 IO、纯函数**（`blankUser` / `ensureUser` / `summarize` 共用同一收口）。
+ * @param {unknown} v 外部值（资产记录内的 `signin_days`）
+ * @returns {string[]} 升序、去重、至多 30 项的日期串数组
+ */
+export function normalizeSigninDays(v) {
+  if (!Array.isArray(v)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of v) {
+    const s = typeof raw === 'string' ? raw.trim() : '';
+    if (!SIGNIN_DAY_RE.test(s)) continue;
+    // 形状合法 ≠ 真实日期：以「UTC 零点往返后逐字节相同」为判据，挡掉 2026-02-31 / 2026-13-45
+    const ms = Date.parse(`${s}T00:00:00.000Z`);
+    if (!Number.isFinite(ms) || new Date(ms).toISOString().slice(0, 10) !== s) continue;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  out.sort();
+  return out.length > SIGNIN_DAYS_KEEP ? out.slice(-SIGNIN_DAYS_KEEP) : out;
+}
+
+/** 空资产记录（§4-1 + §15-2 / §15-3 追加字段 + 签到域追加字段；既有字段形状一字不改） */
 function blankUser() {
-  return { fragments: 0, scroll_fragments: 0, seeds: [], bamboos: [], jades: [], scrolls: [], txs: [], signin_date: '' };
+  return {
+    fragments: 0,
+    scroll_fragments: 0,
+    seeds: [],
+    bamboos: [],
+    jades: [],
+    scrolls: [],
+    txs: [],
+    signin_date: '',
+    // ---- 签到域（Zang 裁定 v1 · Kevin 2026-09-28 拍定）：连签天数 + 已签日期集（只增不删既有键）----
+    signin_streak: 0,
+    signin_days: [],
+  };
 }
 
 function ensureUser(doc, phone) {
@@ -174,6 +226,9 @@ function ensureUser(doc, phone) {
   cur.scrolls = cur.scrolls || [];
   cur.txs = cur.txs || [];
   cur.signin_date = cur.signin_date || '';
+  // 签到域收口（非法 / 缺失 → 默认值；`signin_days` 一律升序去重并裁到最近 30 天）
+  cur.signin_streak = toNonNegInt(cur.signin_streak);
+  cur.signin_days = normalizeSigninDays(cur.signin_days);
   return cur;
 }
 
@@ -622,6 +677,9 @@ export function summarize(user, now = new Date(), opts = {}) {
     jades_total: jades.length,
     jades: jades.map((j) => ({ ...j, permanent: j.expires_at === null })),
     signin_date: user.signin_date || '',
+    // ---- 签到域新增出参（Zang 裁定 v1；既有键名与形状一字未改）----
+    signin_streak: toNonNegInt(user.signin_streak),
+    signin_days: normalizeSigninDays(user.signin_days),
     expiring: expiringItems(user, now),
     txs: (user.txs || []).slice(-50).reverse(),
   };

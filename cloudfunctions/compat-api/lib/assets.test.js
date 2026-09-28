@@ -362,14 +362,22 @@ test('sweep 脏数据收口：小数 / 字串数字 qty 被取整，总量与明
 
 test('签到：日切可再签，同日重复 → 409「今日已签到」且资产与 signin_date 不变', async () => {
   await seedAssets(USER, { fragments: 0, seeds: [], bamboos: [], jades: [], txs: [], signin_date: '2000-01-01' });
+  // 签到口径（Zang 裁定 v1）：基础（碎片 1 + 竹片 1）+ **每日随机追加 1 件**（随机源 = 生产 Math.random，
+  //   测试不可注入）⇒ 数量断言一律以响应里的 `items`（本次实发清单）为准，绝不写死。
+  const itemQty = (body, kind) => body.items.filter((x) => x.kind === kind).reduce((s, x) => s + x.qty, 0);
   const first = await call('/assets/signin', 'POST', bearer(USER));
   assert.equal(first.statusCode, 200);
   const body = JSON.parse(first.body);
   assert.equal(body.ok, true);
-  assert.equal(body.fragments, 1);
+  assert.equal(body.fragments, itemQty(body, 'fragment'), '碎片 = 基础 1 +（随机抽中碎片时的 1）；<10 不合成');
+  assert.ok(itemQty(body, 'fragment') >= 1, '基础奖励必含 1 个石榴籽碎片');
+  assert.ok(itemQty(body, 'bamboo') >= 1, '基础奖励必含 1 片竹片');
   assert.equal(body.synthesized, 0);
   assert.equal(body.seed_lot, null);
   assert.equal(body.signin_date, beijingToday(), 'signin_date = 北京时间自然日');
+  assert.equal(body.streak, 1, '首次签到 ⇒ 连签 1');
+  assert.equal(body.cycle_day, 1);
+  assert.equal(body.calendar.length, 7, '日历条恒 7 格');
 
   const before = await readAssets(USER);
   const second = await call('/assets/signin', 'POST', bearer(USER));
@@ -383,7 +391,13 @@ test('签到：日切可再签，同日重复 → 409「今日已签到」且资
   });
   const third = await call('/assets/signin', 'POST', bearer(USER));
   assert.equal(third.statusCode, 200);
-  assert.equal(JSON.parse(third.body).fragments, 2, '日切后碎片再 +1');
+  const thirdBody = JSON.parse(third.body);
+  assert.equal(
+    thirdBody.fragments,
+    body.fragments + itemQty(thirdBody, 'fragment'),
+    '日切后再签：碎片再 +1（基础）+ 随机追加（合计 <10 ⇒ 不合成）',
+  );
+  assert.equal(thirdBody.synthesized, 0);
 
   const anon = await call('/assets/signin', 'POST', {});
   assert.equal(anon.statusCode, 401);
@@ -395,7 +409,10 @@ test('签到满 10 联动：碎片 9 再签 → 当场 1 籽 + 碎片归零（se
   const res = await call('/assets/signin', 'POST', bearer(USER));
   assert.equal(res.statusCode, 200);
   const body = JSON.parse(res.body);
-  assert.equal(body.fragments, 0);
+  // 本单起签到奖励含**每日随机追加**（随机源 = Math.random）⇒ 期望值由 `items` 推出：
+  //   到手碎片 = 9 + 基础 1 + （随机抽中碎片时的 1）∈ {10, 11} ⇒ 恒合成 1 颗籽，余数 0 或 1。
+  const fragAdd = body.items.filter((x) => x.kind === 'fragment').reduce((s, x) => s + x.qty, 0);
+  assert.equal(body.fragments, (9 + fragAdd) % 10);
   assert.equal(body.synthesized, 1);
   assert.ok(body.seed_lot && body.seed_lot.qty === 1, '合成批次随签到响应返回');
   assert.equal(body.seed_lot.source, 'fragment_synth');

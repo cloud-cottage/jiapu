@@ -846,25 +846,26 @@ test('F-A 只做编排：资产只经 ledger 的 withAssets/导出读写（无�
   assert.equal(SRC.includes('colAll('), true, 'sweepFriends / 句柄反查 需要全量遍历');
 });
 
-// ══ ⑯ 注册数 35 与磁盘一致 ══════════════════════════════════════════════════════
-// ⚠️ 本判据的基线必须跟随**磁盘真值**：本单新增第 35 个测试文件（geo-hot.test.js）后，
-//    此处残留的旧基线 34 变成假红。基线口径 = 「package.json 注册数 = 磁盘 *.test.js 数 = 定额」，
-//    仍为**精确等值 + 双向零缺口 + 去重**（不放宽、不删除任何断言），只把定额改成实得真值 35。
-test('package.json 注册数 = 磁盘 *.test.js 数 = 35，且双向零缺口', async () => {
+// ══ ⑯ 注册数 36 与磁盘一致 ══════════════════════════════════════════════════════
+// ⚠️ 本判据的基线必须跟随**磁盘真值**：新增第 36 个测试文件（signin-streak.test.js，签到连签域）后，
+//    此处残留的旧基线 35 变成假红。基线口径 = 「package.json 注册数 = 磁盘 *.test.js 数 = 定额」，
+//    仍为**精确等值 + 双向零缺口 + 去重**（不放宽、不删除任何断言），只把定额改成实得真值 36。
+test('package.json 注册数 = 磁盘 *.test.js 数 = 36，且双向零缺口', async () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));
   const registered = pkg.scripts.test
     .split(/\s+/)
     .filter((x) => x.endsWith('.test.js'))
     .map((x) => path.basename(x));
   const onDisk = fs.readdirSync(HERE).filter((f) => f.endsWith('.test.js')).sort();
-  assert.equal(registered.length, 35, `注册数应为 35，实得 ${registered.length}`);
-  assert.equal(onDisk.length, 35, `磁盘 *.test.js 应为 35，实得 ${onDisk.length}`);
+  assert.equal(registered.length, 36, `注册数应为 36，实得 ${registered.length}`);
+  assert.equal(onDisk.length, 36, `磁盘 *.test.js 应为 36，实得 ${onDisk.length}`);
   assert.equal(new Set(registered).size, registered.length, '注册项不得重复');
   const missingOnDisk = registered.filter((f) => !onDisk.includes(f));
   const unregistered = onDisk.filter((f) => !registered.includes(f));
   assert.deepEqual(missingOnDisk, [], `已注册但磁盘缺失：${missingOnDisk.join(', ')}`);
   assert.deepEqual(unregistered, [], `磁盘存在但未注册：${unregistered.join(', ')}`);
   assert.ok(registered.includes('friend-ops.test.js'), 'friend-ops.test.js 必须已注册');
+  assert.ok(registered.includes('signin-streak.test.js'), 'signin-streak.test.js 必须已注册');
 });
 
 // ══ ⑰ 真源零写入 ════════════════════════════════════════════════════════════════

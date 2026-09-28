@@ -378,10 +378,21 @@ test('⑥ 签到卡片与签到任务共用同一 signin_date：卡先领 ⇒ �
   assert.equal(card.statusCode, 200);
   const cb = json(card);
   assert.equal(cb.ok, true, '既有 ok 字段');
-  assert.equal(cb.fragments, 1, '既有 fragments 字段（碎片 +1）');
+  // 本单起签到奖励 = 基础（碎片 1 + 竹片 1）+ 每日随机追加 1 件（随机源 = Math.random，测试不可注入）
+  //   ⇒ 既有键一律仍按**本次实发清单** `items` 判读，绝不写死数值。
+  const p1Frag = cb.items.filter((x) => x.kind === 'fragment').reduce((s, x) => s + x.qty, 0);
+  const p1Bamboo = cb.items.filter((x) => x.kind === 'bamboo').reduce((s, x) => s + x.qty, 0);
+  assert.ok(p1Frag >= 1, '基础奖励必含碎片 1');
+  assert.ok(p1Bamboo >= 1, '基础奖励必含竹片 1');
+  assert.equal(cb.fragments, p1Frag, '既有 fragments 字段（基础 + 随机；<10 不合成）');
   assert.equal(cb.synthesized, 0);
   assert.equal(cb.seed_lot, null);
   assert.equal(cb.signin_date, cnDay(new Date()));
+  // 本单新增出参（Zang 裁定 v1）
+  assert.equal(cb.streak, 1, '首次签到 ⇒ 连签 1');
+  assert.equal(cb.cycle_day, 1);
+  assert.equal(cb.calendar.length, 7);
+  assert.equal(cb.calendar[6].is_bonus, true, '第 7 格 = 第 7 天奖励格');
   const t1 = json(await call('/tasks/today', 'GET', bearer(p1)));
   const signin1 = t1.data.tasks.find((t) => t.task === 'signin');
   assert.equal(signin1.state, 'claimed', '卡先领 ⇒ 签到任务即视为已领');
@@ -390,8 +401,8 @@ test('⑥ 签到卡片与签到任务共用同一 signin_date：卡先领 ⇒ �
   const dup = await call('/tasks/claim', 'POST', bearer(p1), { task: 'signin' });
   assert.equal(dup.statusCode, 409);
   assert.equal(json(dup).error.code, 'TASK_ALREADY_CLAIMED');
-  assert.equal(await fragmentsOf(p1), 1, '签到碎片只 +1（绝不双发）');
-  assert.equal(await bamboosOf(p1), 1, '竹片只 +1（绝不双发）');
+  assert.equal(await fragmentsOf(p1), p1Frag, '签到碎片只发 items 里那点（绝不双发）');
+  assert.equal(await bamboosOf(p1), p1Bamboo, '竹片只发 items 里那点（绝不双发）');
   const cardAgain = await call('/assets/signin', 'POST', bearer(p1));
   assert.equal(cardAgain.statusCode, 409);
   assert.deepEqual(json(cardAgain), { error: '今日已签到' }, '同日重复：既有文案与形状逐字保留');
@@ -401,9 +412,12 @@ test('⑥ 签到卡片与签到任务共用同一 signin_date：卡先领 ⇒ �
   await seed(p2, { fragments: 0, seeds: [], bamboos: [], jades: [], scrolls: [], txs: [], signin_date: '' });
   const claimed = await call('/tasks/claim', 'POST', bearer(p2), { task: 'signin' });
   assert.equal(claimed.statusCode, 200, claimed.body);
-  assert.equal(json(claimed).data.signin_date, cnDay(new Date()), '领取签到任务即写入共用 signin_date');
-  assert.equal(await fragmentsOf(p2), 1);
-  assert.equal(await bamboosOf(p2), 1);
+  const c2 = json(claimed).data;
+  assert.equal(c2.signin_date, cnDay(new Date()), '领取签到任务即写入共用 signin_date');
+  const p2Frag = c2.items.filter((x) => x.kind === 'fragment').reduce((s, x) => s + x.qty, 0);
+  const p2Bamboo = c2.items.filter((x) => x.kind === 'bamboo').reduce((s, x) => s + x.qty, 0);
+  assert.equal(await fragmentsOf(p2), p2Frag);
+  assert.equal(await bamboosOf(p2), p2Bamboo);
   const cardAfter = await call('/assets/signin', 'POST', bearer(p2));
   assert.equal(cardAfter.statusCode, 409);
   assert.deepEqual(json(cardAfter), { error: '今日已签到' }, '任务先领 ⇒ 卡即视为已领（共用 signin_date）');
@@ -413,8 +427,12 @@ test('⑥ 签到卡片与签到任务共用同一 signin_date：卡先领 ⇒ �
   assert.equal(sg.length, 1, '签到事件在账本内留痕（既有枚举 signin）');
   assert.deepEqual(sg[0].delta, {}, '审计条 delta 全 0（奖励统一由 reward 流水体现）');
   const reward = txs.filter((t) => t.type === 'reward');
-  assert.equal(reward.length, 1, '奖励走既有枚举 reward（签到卡不再独立发奖）');
-  assert.deepEqual(reward[0].delta, { fragments: 1, bamboos: 1, scroll_fragments: 0 });
+  assert.equal(reward.length, 1, '奖励走既有枚举 reward（基础 + 随机合并一次入账；签到卡不再独立发奖）');
+  assert.deepEqual(reward[0].delta, {
+    fragments: p2Frag,
+    bamboos: p2Bamboo,
+    scroll_fragments: c2.items.filter((x) => x.kind === 'scrollFragment').reduce((s, x) => s + x.qty, 0),
+  });
   // 源码判据：签到路由已改为调用任务中心同一入口（不得两套数值并存）
   assert.ok(INDEX_SRC.includes("tc.claimTask(u.phone, 'signin', new Date())"), 'index.js 签到卡必须调用任务中心同一入口');
   const signinHandler = INDEX_SRC.slice(INDEX_SRC.indexOf("pathname === '/assets/signin'"), INDEX_SRC.indexOf("pathname === '/spirit'"));
@@ -762,11 +780,11 @@ test('⑬ TOCTOU：锁定读与兰帖扣减同锁（持锁期间读不得返回�
 });
 
 // ══ ⑩ 注册数 / ⑪ 真源零写入 ════════════════════════════════════════════════════
-test('⑩ 注册数 35 = 磁盘 *.test.js 数；「已注册但磁盘缺失」0 条；磁盘未注册 0 条', () => {
+test('⑩ 注册数 36 = 磁盘 *.test.js 数；「已注册但磁盘缺失」0 条；磁盘未注册 0 条', () => {
   const pkg = JSON.parse(fs.readFileSync(PKG_FILE, 'utf8'));
   const registered = (pkg.scripts.test.match(/[\w./-]+\.test\.js/g) || []).map((p) => p.replace(/^.*lib\//, ''));
   const onDisk = fs.readdirSync(HERE).filter((f) => f.endsWith('.test.js'));
-  assert.equal(registered.length, 35, `注册数应为 35，实得 ${registered.length}`);
+  assert.equal(registered.length, 36, `注册数应为 36，实得 ${registered.length}`);
   assert.equal(onDisk.length, registered.length, `磁盘 *.test.js 数 ${onDisk.length} 应等于注册数 ${registered.length}`);
   assert.equal(new Set(registered).size, registered.length, '注册项不得重复');
   const missing = registered.filter((f) => !fs.existsSync(path.join(HERE, f)));
@@ -774,6 +792,7 @@ test('⑩ 注册数 35 = 磁盘 *.test.js 数；「已注册但磁盘缺失」0 
   const unregistered = onDisk.filter((f) => !registered.includes(f));
   assert.deepEqual(unregistered, [], '磁盘未注册必须 0 条');
   assert.ok(registered.includes('task-center.test.js'), '本单新增测试必须已注册');
+  assert.ok(registered.includes('signin-streak.test.js'), '签到连签单测必须已注册（未注册 = 假绿）');
 });
 
 test('⑪ 真源零写入：config/ + migrate-output/ 全量指纹与本文件开工时逐字节一致', () => {
