@@ -770,6 +770,7 @@ onMounted(() => {
   box-shadow: inset 0 0 0 2px rgba(255, 240, 220, 0.75), 0 2px 6px rgba(139, 69, 19, 0.25);
   color: #FFF6EA; font-size: 26px; font-weight: bold; transform: rotate(-4deg);
   user-select: none; -webkit-user-select: none;
+  cursor: pointer;
 }
 .sign-seal-done {
   background: linear-gradient(160deg, #C9BEB2, #A79A8C);
