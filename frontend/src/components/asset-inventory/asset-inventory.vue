@@ -2063,8 +2063,8 @@ onUnmounted(() => {
   transform: translate(-50%, -50%);
 }
 .inv-badge {
-  position: absolute; right: 3px; bottom: 1px; font-size: 8px; line-height: 1; color: #8B4513;
-  text-shadow: 0 0 3px #FFFDF8, 0 0 3px #FFFDF8;
+  position: absolute; right: 3px; bottom: 1px; font-size: 8px; line-height: 1; color: #FFFFFF;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75), 0 0 3px rgba(0, 0, 0, 0.5);
   transition: transform .11s cubic-bezier(.34, 1.56, .64, 1);
 }
 /* 分解收束：角标跳动（唯一被施加 transform 的真实节点；绝对定位 ⇒ 不影响格 / 卡片尺寸） */
@@ -2073,7 +2073,7 @@ onUnmounted(() => {
 .inv-lock {
   position: absolute; left: 3px; bottom: 1px;
   font-size: 8px; line-height: 1; color: #A8322D;
-  text-shadow: 0 0 3px #FFFDF8, 0 0 3px #FFFDF8;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75), 0 0 3px rgba(0, 0, 0, 0.5);
 }
 /* 属性提示层内的兰帖锁定态整句（文案取自 business/asset-text.ts 的 SCROLL_LOCK_TEXT） */
 .inv-tip-lock { color: #FFC9C9; font-weight: bold; }
