@@ -5039,3 +5039,9 @@ wc -c < cloudfunctions/deploy/compat-api/index.js; md5 -q cloudfunctions/deploy/
 - **⚠️ 本行取代登记（**旧行原文保留**）**：本册 **§41-4** 内「**未登记「第 1 条签到」相关任何内容**（**签到新口径仍在 Kevin 待裁中，未裁前不得登记**）」（**现证 `NR==4939`**）**已被取代** —— **该前置条件已消失**（**Kevin 2026-09-28 当面拍定**）⇒ **本册自本节起登记签到域上云动作**；**旧行一字不改、不上移、不删行**（`AGENTS.md` §0-4）。
 - **一句话可改**：改本节 **§42-0** 表任一行一处（须同步 **§42-1 / §42-2** 判据与 **§42-4** 冒烟清单，并同步 `docs/economy-ops.spec.md` **§15**）。
 - **本批质检证据册（交叉指向 · 追加行 · 本节内新增一行 · 不涉上游 §42-0–§42-8 任何行）** = **`docs/signin.qa.md`**（**签到批 · 两轮质检证据** —— 判据表 + 缺陷单 + **未实测项 5 条**；**只追加 · 不回改**，承 `AGENTS.md` §0-5）—— **本节只登记上云动作与判据、不含任何实现状态读数**，**质检结论一律以该册为准**。
+
+---
+
+## §43 玉分解返还 990 + 行囊六类提示层文案批 + 兰帖角标改「张」/ 单格 100 张批次（**云函数重打包 + H5 / 小程序两产物重打** · **无新集合 · 无数据修正 · 无真源写入** · 2026-09-29 · **只追加 · 不改 §0–§42 任何行**）（Jing 制度员）
+
+> **本行即本批上云登记（单行 · Kevin 2026-09-29 裁定）**：本批上云动作面 = **① 云函数 `compat-api` 重打包 + `tcb fn deploy`**（后端单点 `cloudfunctions/compat-api/lib/economy-spirit.js` 新增 `JADE_DECOMPOSE_SEEDS = 990`，与 `JADE_SYNTH_SEEDS = 999` **解耦**；不改集合、不改路由数）；**② 前端 H5 + 小程序两产物重打**（`frontend/src/business/jade-ops.ts` / `frontend/src/business/asset-text.ts` / `frontend/src/business/inventory.ts` / `frontend/src/components/asset-inventory/asset-inventory.vue`）；**③ 集合 / 云端数据 = 本轮无**（**无新集合、无 `COLLECTIONS` 变更、无数据修正 / 无存量迁移、无真源写入**）。**口径真源** = `docs/spirit-domain.spec.md` **§15** · `docs/economy-ops.spec.md` **§16** · `docs/economy.spec.md` **§24**。**顺序纪律**：先 ① 再 ②（承 §35-2 / §38-0 / §40-0 / §42-0）。**前置门槛**：`npm test` 全绿 + `cd frontend && npm run type-check` = `EXIT 0` 后方可打包（承 §29-6 第 1 条 / §42-0）。**本阶段不上云、只登记**（**未打包 / 未部署 / 未上传 / 未重传**）；**本节不写任何实现读数**（测试条数 / 构建字节 / 产物 md5 / 路由条数一律**以对应命令的实际输出为准**）。
