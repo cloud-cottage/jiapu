@@ -290,6 +290,7 @@ import {
   SYNTH_CONFIRM_TITLE,
 } from '@/business/jade-ops';
 import {
+  BADGE_FONT_MIN_PX,
   BADGE_FONT_RATIO,
   buildInventory,
   JADES_PER_ITEM,
@@ -378,7 +379,7 @@ const cells = computed<(InventoryItem | null)[]>(() =>
 const gridStyle = computed(() => `grid-template-columns: repeat(${SLOT_COLUMNS}, 1fr);`);
 
 /**
- * 格内角标（`.inv-badge` / `.inv-lock`）字号的内联值：= 实测格宽 × `BADGE_FONT_RATIO`，保留 1 位小数。
+ * 格内角标（`.inv-badge` / `.inv-lock`）字号的内联值：= `max(实测格宽 × BADGE_FONT_RATIO, BADGE_FONT_MIN_PX)`，保留 1 位小数。
  * `''` = 未量到 / 格宽为 0 / 非有限数 ⇒ **不写内联字号**（落 CSS 兜底值，见 `.inv-badge` / `.inv-lock`）。
  * 用**内联**施到两个角标节点，不引入 CSS 变量（小程序端自定义属性兼容性不确定）。
  */
@@ -1206,7 +1207,7 @@ function measureSlots(done?: () => void): void {
 }
 
 /**
- * 量测**第一格** `.inv-slot-box` 的宽（= 格边长）→ 角标字号 = 宽 × `BADGE_FONT_RATIO`，保留 1 位小数。
+ * 量测**第一格** `.inv-slot-box` 的宽（= 格边长）→ 角标字号 = `max(宽 × BADGE_FONT_RATIO, BADGE_FONT_MIN_PX)`，保留 1 位小数。
  *
  * 走本组件既有的量测通道（H5 `getBoundingClientRect()` / 小程序 `boundingClientRect()`，
  * 见 `measureRects` 的两条口径说明，**不混用**）；`.inv-slot-box` 是正方形（`padding-top: 100%`）
@@ -1218,7 +1219,7 @@ function measureBadgeFont(): void {
   measureRects('.inv-slot-box', true, (list) => {
     const width = list[0] ? Number(list[0].width) : 0;
     if (!Number.isFinite(width) || width <= 0) return; // 量不到：保持现状（`''` ⇒ CSS 兜底）
-    badgeFontSize.value = `${(width * BADGE_FONT_RATIO).toFixed(1)}px`;
+    badgeFontSize.value = `${Math.max(width * BADGE_FONT_RATIO, BADGE_FONT_MIN_PX).toFixed(1)}px`;
   });
 }
 
@@ -2104,8 +2105,8 @@ onUnmounted(() => {
   transform: translate(-50%, -50%);
 }
 /*
-  `.inv-badge` / `.inv-lock` 的字号由脚本按「格子边长 × BADGE_FONT_RATIO（= 0.20，business/inventory.ts 单点）」
-  算好后**内联**施入（`:style="badgeFontStyle"`，保留 1 位小数）；
+  `.inv-badge` / `.inv-lock` 的字号由脚本按「格子边长 × BADGE_FONT_RATIO（= 0.16，business/inventory.ts 单点），
+  下限 BADGE_FONT_MIN_PX（= 8px，同处单点）」算好后**内联**施入（`:style="badgeFontStyle"`，保留 1 位小数）；
   本处的 `font-size: 12px` 是**量测失败兜底，非目标值**（量不到 / 格宽 0 时不写内联字号，落回本值）。
 */
 .inv-badge {
@@ -2118,7 +2119,7 @@ onUnmounted(() => {
 /* 兰帖锁定态角标（格内左下角；绝对定位 ⇒ 不参与布局、不改格尺寸） */
 .inv-lock {
   position: absolute; left: 3px; bottom: 1px;
-  /* 量测失败兜底，非目标值（目标 = 格子边长 × BADGE_FONT_RATIO，由脚本内联施入） */
+  /* 量测失败兜底，非目标值（目标 = max(格子边长 × BADGE_FONT_RATIO, BADGE_FONT_MIN_PX)，由脚本内联施入） */
   font-size: 12px; line-height: 1; color: #A8322D;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75), 0 0 3px rgba(0, 0, 0, 0.5);
 }
