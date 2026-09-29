@@ -39,9 +39,9 @@
             <image v-else-if="cell.kind === 'scroll'" class="inv-ico" :src="ICON.SCROLL" mode="aspectFit" />
             <image v-else-if="cell.kind === 'scrollFragment'" class="inv-ico" :src="ICON.SCROLL_SHARD" mode="aspectFit" />
             <image v-else class="inv-ico" :src="ICON.FRAGMENT" mode="aspectFit" />
-            <text v-if="cell.badge" class="inv-badge" :class="{ 'inv-badge-pop': badgePopIndex === i }">{{ cell.count }}</text>
+            <text v-if="cell.badge" class="inv-badge" :class="{ 'inv-badge-pop': badgePopIndex === i }" :style="badgeFontStyle">{{ cell.count }}</text>
             <!-- 兰帖锁定态（好友域续约申请占用的那张）：格角标 + 属性提示层整句（文案单点 = business/asset-text.ts） -->
-            <text v-if="cell.kind === 'scroll' && scrollLock" class="inv-lock">锁</text>
+            <text v-if="cell.kind === 'scroll' && scrollLock" class="inv-lock" :style="badgeFontStyle">锁</text>
           </template>
           <!--
             格位特效层（V3 灵石共鸣）：绝对定位叠加层 + `pointer-events: none` ⇒ 零布局影响、不夺命中。
@@ -290,6 +290,7 @@ import {
   SYNTH_CONFIRM_TITLE,
 } from '@/business/jade-ops';
 import {
+  BADGE_FONT_RATIO,
   buildInventory,
   JADES_PER_ITEM,
   moveItem,
@@ -375,6 +376,22 @@ const cells = computed<(InventoryItem | null)[]>(() =>
   Array.from({ length: SLOT_COUNT }, (_, i) => ordered.value[i] || null),
 );
 const gridStyle = computed(() => `grid-template-columns: repeat(${SLOT_COLUMNS}, 1fr);`);
+
+/**
+ * 格内角标（`.inv-badge` / `.inv-lock`）字号的内联值：= 实测格宽 × `BADGE_FONT_RATIO`，保留 1 位小数。
+ * `''` = 未量到 / 格宽为 0 / 非有限数 ⇒ **不写内联字号**（落 CSS 兜底值，见 `.inv-badge` / `.inv-lock`）。
+ * 用**内联**施到两个角标节点，不引入 CSS 变量（小程序端自定义属性兼容性不确定）。
+ */
+const badgeFontSize = ref('');
+const badgeFontStyle = computed((): Record<string, string> =>
+  badgeFontSize.value ? { fontSize: badgeFontSize.value } : {});
+/**
+ * 是否已挂载。`rebuild` 会被下面的 `watch(..., { immediate: true })` **同步**在 setup 期调用一次，
+ * 那时两端都还没有可量测的布局（小程序端 `createSelectorQuery().in(inst)` 在 ready 前也不可用）
+ * ⇒ 只在挂载后触发「行囊数据刷新后重量」。
+ * **声明必须在那个 immediate watcher 之前**（否则 `rebuild` 读它会 TDZ）。
+ */
+let badgeMeasureReady = false;
 
 const tipIndex = ref(-1);
 const tipStyle = ref('');
@@ -1102,6 +1119,8 @@ function rebuild(summary: AssetsSummary | null): void {
   const reveal = pendingReveal;
   pendingReveal = null;
   if (reveal && Date.now() - reveal.at <= FX_REVEAL_TTL_MS) void runReveal(reveal.kind);
+  // 数据刷新后格位可能变化（小程序端无 resize 通道）⇒ 重量一次角标字号；量不到则保持 CSS 兜底
+  if (badgeMeasureReady) nextTick(measureBadgeFont);
 }
 
 // ---------------- 格位量测与命中 ----------------
@@ -1183,6 +1202,23 @@ function measureSlots(done?: () => void): void {
   measureRects('.inv-slot', false, (list) => {
     if (list.length === SLOT_COUNT) slotRects.value = list;
     if (done) done();
+  });
+}
+
+/**
+ * 量测**第一格** `.inv-slot-box` 的宽（= 格边长）→ 角标字号 = 宽 × `BADGE_FONT_RATIO`，保留 1 位小数。
+ *
+ * 走本组件既有的量测通道（H5 `getBoundingClientRect()` / 小程序 `boundingClientRect()`，
+ * 见 `measureRects` 的两条口径说明，**不混用**）；`.inv-slot-box` 是正方形（`padding-top: 100%`）
+ * 且宽 = 格宽 ⇒ 量宽即边长。
+ * **兜底（硬）**：量不到（`normalizeRects` 已滤掉 0 尺寸节点）/ 宽为 0 / 非有限数 ⇒ 一律**不写内联字号**，
+ * 由 CSS 兜底值（`.inv-badge` / `.inv-lock` 的 `font-size: 12px`）接管，绝不写 NaN。
+ */
+function measureBadgeFont(): void {
+  measureRects('.inv-slot-box', true, (list) => {
+    const width = list[0] ? Number(list[0].width) : 0;
+    if (!Number.isFinite(width) || width <= 0) return; // 量不到：保持现状（`''` ⇒ CSS 兜底）
+    badgeFontSize.value = `${(width * BADGE_FONT_RATIO).toFixed(1)}px`;
   });
 }
 
@@ -1896,6 +1932,8 @@ function onDocumentScroll(): void {
 function onWindowResize(): void {
   refreshRects(0, 0, true);
   if (tipIndex.value >= 0) placeTip(tipIndex.value);
+  // 尺寸变化 ⇒ 格宽变 ⇒ 角标字号按固定比例跟随（沿用同一条 H5 resize 通道，不另起监听）
+  measureBadgeFont();
 }
 
 function bindMouseListeners(): void {
@@ -1988,6 +2026,9 @@ function onDocumentTouchEnd(e: TouchEvent): void {
 
 onMounted(() => {
   measureSlots();
+  // 角标字号：挂载后量一次格子边长（下一 tick 保证布局已就绪；小程序端同用本挂载时机）
+  badgeMeasureReady = true;
+  nextTick(measureBadgeFont);
   // #ifdef H5
   bindMouseListeners();
   bindTouchListeners();
@@ -2062,8 +2103,13 @@ onUnmounted(() => {
   position: absolute; left: 50%; top: 50%; width: 96%; height: 96%;
   transform: translate(-50%, -50%);
 }
+/*
+  `.inv-badge` / `.inv-lock` 的字号由脚本按「格子边长 × BADGE_FONT_RATIO（= 0.20，business/inventory.ts 单点）」
+  算好后**内联**施入（`:style="badgeFontStyle"`，保留 1 位小数）；
+  本处的 `font-size: 12px` 是**量测失败兜底，非目标值**（量不到 / 格宽 0 时不写内联字号，落回本值）。
+*/
 .inv-badge {
-  position: absolute; right: 3px; bottom: 1px; font-size: 8px; line-height: 1; color: #FFFFFF;
+  position: absolute; right: 3px; bottom: 1px; font-size: 12px; line-height: 1; color: #FFFFFF;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75), 0 0 3px rgba(0, 0, 0, 0.5);
   transition: transform .11s cubic-bezier(.34, 1.56, .64, 1);
 }
@@ -2072,7 +2118,8 @@ onUnmounted(() => {
 /* 兰帖锁定态角标（格内左下角；绝对定位 ⇒ 不参与布局、不改格尺寸） */
 .inv-lock {
   position: absolute; left: 3px; bottom: 1px;
-  font-size: 8px; line-height: 1; color: #A8322D;
+  /* 量测失败兜底，非目标值（目标 = 格子边长 × BADGE_FONT_RATIO，由脚本内联施入） */
+  font-size: 12px; line-height: 1; color: #A8322D;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75), 0 0 3px rgba(0, 0, 0, 0.5);
 }
 /* 属性提示层内的兰帖锁定态整句（文案取自 business/asset-text.ts 的 SCROLL_LOCK_TEXT） */

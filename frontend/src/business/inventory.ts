@@ -68,6 +68,19 @@ export const SCROLL_FRAGMENTS_PER_ITEM = 100;
 export const SLOT_COUNT = 36;
 /** 道具栏列数（6 × 6；渲染端取本常量，避免第二套网格口径） */
 export const SLOT_COLUMNS = 6;
+/**
+ * 行囊角标字号 / 格子（`.inv-slot-box`）边长的**固定比例** = 0.18。
+ *
+ * Kevin 2026-09-29 拍定：「字号偏小，约 2 倍为宜」+「它应该是固定值」⇒ 角标字号 = **实测格宽 × 本比例**
+ * （原口径 = 固定 `font-size: 8px`）；先按「约 2 倍」落 **0.20**。
+ * 2026-09-29 Kevin 见真机反馈：「右下角角标非常显眼，甚至略微过度显眼了」⇒ 在 0.20 的基础上下调一档至 **0.18**。
+ * 实测（2026-09-29 headless Chrome，5199 实页）：
+ * - 0.20 旧值：桌面格 `78.66px` ⇒ **15.7px**（≈ 原 8px 的 2 倍，即 Kevin 目测的那档）；375 宽真机格 `42.16px` ⇒ **8.4px**（历史口径，已被 0.18 取代）。
+ * - 0.18 新值：桌面格 `78.66px` ⇒ **14.2px**（≈ 原 8px 的 1.77 倍）；375 宽真机格 `42.16px` ⇒ **7.6px**。
+ * **不得写死单一 px**，两端（H5 / 小程序）共用本比例。
+ * 量不到 / 格宽为 0 ⇒ 不写内联字号，落 CSS 兜底值（`.inv-badge` / `.inv-lock` 的 `font-size: 12px`）。
+ */
+export const BADGE_FONT_RATIO = 0.18;
 
 /** 道具类型（决定图标 / 文案 / 换算 / 溢出提示）；`scroll` = 兰帖、`scrollFragment` = 兰帖碎片 */
 export type InventoryKind = 'bamboo' | 'scroll' | 'jade' | 'seed' | 'scrollFragment' | 'fragment';
