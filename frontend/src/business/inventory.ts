@@ -3,19 +3,28 @@
  *
  * 口径（Kevin 口径 v3 + `docs/economy.spec.md` §15，逐条落地；均为纯函数 / 纯数据，跨端无 DOM）：
  * - **整堆格**：竹简 `floor(bamboos_total_pieces / 100)` 格、石榴籽 `floor(seeds_total / 9999)` 格、
- *   **兰帖 `floor(Σ scrolls[].qty / 100)` 格（100 片 = 1 张，与竹简同构）**、
- *   石榴籽玉 **1 枚 = 1 格**；角标 = 该类的道具量上限（100 片 / 9999 颗 / 100 片 / 1 枚）；
+ *   **兰帖 `floor(Σ scrolls[].qty / 10000)` 格（单格容量 = 100 张 = 10000 片；Kevin 2026-09-29 裁定）**、
+ *   石榴籽玉 **1 枚 = 1 格**；角标 = 该类的道具量上限（100 片 / 9999 颗 / **100 张** / 1 枚）；
  *   **玉格不显示数量角标**（`badge = false`，模板据此不渲染角标）；
+ *   ⚠️ **兰帖格角标口径 = 张**（`片数 / 100`，可带 2 位小数；见 `SCROLL_PIECES_PER_CELL` 与
+ *   `asset-text.ts` 的 `scrollZhangQty()`）—— 旧口径「角标 = 片数」已随本批作废；
  * - **玉只计未镶嵌**：`summary.jades` 里 `mounted_tree_id` 非空的玉**不入行囊、不渲染、不计格**
  *   （口径：已镶嵌玉不属于用户了）⇒ 玉格数 / 占格数 / 溢出**一律只按未镶嵌玉计**；
- * - **余数格**：竹简 / 籽 / 兰帖 `% 每格量 > 0` 时**另加 1 格**，角标显示**实际余量**（如 37 片 / 5925 颗）；
+ * - **余数格**：竹简 / 籽 / 兰帖 `% 每格量 > 0` 时**另加 1 格**，角标显示**实际余量**
+ *   （如 37 片 / 5925 颗 / 兰帖 99 片 ⇒ `0.99` 张）；**兰帖余数格自本批起可分解**
+ *   （判据改为「整张数 ≥ 1」，不再以「是否整格」判定，见 `asset-inventory.vue`）；
  * - **碎片格**：`fragments > 0` 即占 1 格（1–9 片均占 1 格，0 片不占），角标显示**实际个数**（如 3）；
  *   **兰帖残页（`scroll_fragments`）**：**每 999 片占 1 格**（`ceil(片数 / 999)` 格，0 片不占；
  *   整格角标 = 999、余数格角标 = 余数 —— 沿用既有余数格体例），后端**不设拒绝阈值、不截断**；
  *   满 100 片**由用户手动**点【合成】合成 1 张兰帖（前端只提供入口与门槛判定，记账一律在后端）；
  *   **v2 的「碎片恒 0 格」与「零头行」已彻底废弃**（模板 / 样式 / 数据字段 / 逻辑一并删除，不留死代码）；
  * - **兰帖永久有效**（`ScrollLot.expires_at` 恒 `null`）⇒ 兰帖格 `expiresAtMs = Infinity`，
- *   **不排入到期排序、不渲染任何「最近到期 / 有效期至」行**（与玉的永久批次同体例）；
+ *   **不排入到期排序**；提示层耐久行恒为 `耐久：9999 天`（= `asset-text.ts` 的 `durabilityLine(null)`）；
+ * - **提示层正文行（Kevin 2026-09-29 逐条清单）**：六类道具一律收成「数量行 + 耐久行
+ *   （`asset-text.ts` 的 `durabilityLine()`，取代旧「最近到期 / 有效期至 / 永久有效」三种形态）」。
+ *   按清单**删除**的行：石榴籽玉的「1 枚」与「未镶嵌 · 可免费分解」与「1 枚石榴籽玉 = 1 格」、
+ *   籽 / 竹简 / 碎片 / 兰帖残页的换算行与余数行、兰帖的「（100 片）」括注 / 分解比例行 / 行囊口径行；
+ *   兰帖换算行（`KIND_CONVERT.scroll`）**Kevin 未列入删除 ⇒ 保留**（其余五类已删 ⇒ 本表仅剩 1 条）；
  * - **默认序**（**2026-09-25 变更 · 取代 Z-9**）：竹简 → 兰帖 → 兰帖残页 → 石榴籽玉 → 石榴籽 → 石榴籽碎片；
  *   同类内**到期近的在前**，永久有效的玉排该类最后，
  *   **余数格排在该类最后一个**；同到期以**稳定 id** 兜底 ⇒ 默认序确定可复现；占用格连续排 1..N，
@@ -32,12 +41,8 @@ import {
   SCROLL_FRAGMENT_NAME,
   SCROLL_ITEM_UNIT,
   SCROLL_NAME,
-  SCROLL_PIECES_UNIT,
-  SCROLL_STATUS_PERMANENT,
-  formatAssetDate,
-  jadeSubLine,
-  jadeTitle,
-  scrollFragmentSynthLine,
+  durabilityLine,
+  scrollZhangQty,
 } from './asset-text';
 import type { ScrollLot, ScrollSummaryFields } from './types';
 
@@ -49,6 +54,20 @@ export const JADES_PER_ITEM = 1;
 export const BAMBOO_PIECES_PER_ITEM = 100;
 /** 兰帖：100 片 = 1 张（与竹简 100 片/格**数值相同、物品不同** ⇒ 各自持有常量，**不得共用**） */
 export const SCROLL_PIECES_PER_ITEM = 100;
+/**
+ * 兰帖**单格容量** = 100 张（张数口径；Kevin 2026-09-29 裁定）。
+ *
+ * 由来：旧口径「1 格 = 1 张 = 100 片」⇒ 每格恒 100 片、角标恒显示片数 100；
+ * 新口径「单个格子内可最多容纳 **100 张**兰帖」⇒ 网格切分分母 = `100 张 × 100 片 = 10000 片`，
+ * 角标 / 提示层计数行一律按**张**显示（`片数 / 100`，可带 2 位小数）。
+ * **溢出计数（按张）与默认序不因本批改变**。
+ */
+export const SCROLL_ITEMS_PER_CELL = 100;
+/**
+ * 兰帖**单格容量**（片）= `SCROLL_PIECES_PER_ITEM × SCROLL_ITEMS_PER_CELL` = **10000**。
+ * 本常量是切格分母的**唯一字面**（`floor(片总数 / 本值)` 个整堆格 + `% 本值` 的余数格）。
+ */
+export const SCROLL_PIECES_PER_CELL = SCROLL_PIECES_PER_ITEM * SCROLL_ITEMS_PER_CELL;
 /** 石榴籽碎片：10 片 = 1 颗石榴籽（服务端 `fragment_cap = 9` ⇒ 实测 1–9 片，仍占 1 格） */
 export const FRAGMENTS_PER_ITEM = 10;
 /**
@@ -111,7 +130,11 @@ export interface InventoryItem {
   slotKind: InventorySlotKind;
   /** 道具名（逐字：石榴籽玉 / 石榴籽 / 竹简 / 石榴籽碎片 / 兰帖 / 兰帖碎片） */
   name: string;
-  /** 格内角标数量：整堆 = 该类道具量上限；余数 / 碎片 = 实际数量 */
+  /**
+   * 格内角标数量：整堆 = 该类道具量上限；余数 / 碎片 = 实际数量。
+   * ⚠️ **兰帖格的口径 = 张**（`片数 / 100`，可带 2 位小数，如 `100` / `0.99`；
+   * Kevin 2026-09-29 裁定：角标 = 兰帖**张数**，非片数），模板**直接渲染本值**（不再二次换算）。
+   */
   count: number;
   /** 是否渲染格内角标（**玉格不显示数量角标** ⇒ false；其余为 true） */
   badge: boolean;
@@ -182,14 +205,16 @@ const KIND_ITEM_UNIT: Record<InventoryKind, string> = {
   fragment: '片',
 };
 
-/** 换算依据行（逐字） */
-const KIND_CONVERT: Record<InventoryKind, string> = {
-  bamboo: `1 格 = ${BAMBOO_PIECES_PER_ITEM} 片竹简`,
+/**
+ * 换算依据行（逐字）。
+ *
+ * **2026-09-29（Kevin 逐条清单）**：石榴籽玉 / 石榴籽 / 石榴籽碎片 / 竹简 / 兰帖残页五类的换算行
+ * **按清单删除** ⇒ 本表**仅剩兰帖一条**（「1 张 = 100 片兰帖」Kevin 未列入删除 ⇒ 保留；
+ * 整块删掉会把这条也一起丢掉，故**保留本表 + 唯一一条**）。
+ * 类型收窄为 `Record<'scroll', string>`（其余键已不存在 ⇒ 不给它们留 `undefined` 分支）。
+ */
+const KIND_CONVERT: Record<'scroll', string> = {
   scroll: `1 张 = ${SCROLL_PIECES_PER_ITEM} 片${SCROLL_NAME}`,
-  jade: `1 枚石榴籽玉 = ${JADES_PER_ITEM} 格`,
-  seed: `1 格 = ${SEEDS_PER_ITEM} 颗石榴籽`,
-  scrollFragment: `1 格 = ${SCROLL_FRAGMENT_PIECES_PER_CELL} 片${SCROLL_FRAGMENT_NAME}`,
-  fragment: `1 格 = ${FRAGMENTS_PER_ITEM} 片石榴籽碎片`,
 };
 
 /** 溢出提示文案（逐字；玉与「籽 / 竹简 / 碎片 / 兰帖 / 兰帖碎片」两类） */
@@ -280,12 +305,10 @@ function jadeItems(jades: Jade[]): InventoryItem[] {
         count: JADES_PER_ITEM,
         badge: false,
         jadeId: j.id,
-        tooltipLines: [
-          `${JADES_PER_ITEM} ${KIND_QTY_UNIT.jade}`,
-          jadeTitle(j),
-          jadeSubLine(j),
-          KIND_CONVERT.jade,
-        ],
+        // 提示层正文（Kevin 2026-09-29 清单）：删「1 枚」、删「jd_* · 」短 id 前缀、删
+        // 「未镶嵌 · 可免费分解」、删「1 枚石榴籽玉 = 1 格」⇒ 仅保留耐久行
+        //（永久玉 = `耐久：9999 天`；有到期的玉 = 实际剩余天数）。
+        tooltipLines: [durabilityLine(j.expires_at)],
         expiresAtMs: permanent ? Infinity : timestampOf(j.expires_at),
       };
     });
@@ -305,44 +328,46 @@ function fragmentItems(fragments: number): InventoryItem[] {
     tooltipLines: [
       `${count} ${KIND_QTY_UNIT.fragment}`,
       `满 ${FRAGMENTS_PER_ITEM} 自动合成 1 颗石榴籽`,
-      KIND_CONVERT.fragment,
     ],
     expiresAtMs: Infinity,
   }];
 }
 
 /**
- * 兰帖：`Σ scrolls[].qty` 按 **100 片 = 1 张** 切整堆格，**不足一格的余量另占 1 个余数格**
- * （角标 = 实际余量；该类内排最后）—— 口径与竹简 / 籽的余数占格**同体例**（§15-6②）。
+ * 兰帖：`Σ scrolls[].qty` 按 **单格容量 100 张 = 10000 片**（`SCROLL_PIECES_PER_CELL`）切整堆格，
+ * **不足一格的余量另占 1 个余数格**（该类内排最后）—— 口径与竹简 / 籽的余数占格**同体例**（§15-6②）。
+ *
+ * **格内角标 / 提示层计数行一律按「张」**（`片数 / 100`，`scrollZhangQty()` ⇒ 整数不带小数点、
+ * 非整最多 2 位去尾零；整格 10000 片 ⇒ `100 张`，99 片 ⇒ `0.99 张`）。Kevin 2026-09-29 裁定：
+ * 角标代表**兰帖张数**（不是残页/片数），单格最多容纳 100 张。
  *
  * **每格恒永久**（`ScrollLot.expires_at` 恒 `null`，§15-3）⇒ `expiresAtMs = Infinity`、
- * 提示正文只给「永久有效」，**不出现任何「最近到期 / 有效期至」行**（U-1）。量为 0 的批次不占格。
+ * 耐久行恒为 `耐久：9999 天`；换算行保留 `KIND_CONVERT.scroll`（Kevin 未列入删除）。量为 0 的批次不占格。
  */
 function scrollItems(lots: ScrollLot[]): InventoryItem[] {
   const total = (lots || []).reduce((sum, lot) => sum + Math.max(0, Number(lot.qty) || 0), 0);
-  const count = Math.floor(total / SCROLL_PIECES_PER_ITEM);
-  const rest = total % SCROLL_PIECES_PER_ITEM;
-  const make = (id: string, slotKind: InventorySlotKind, qty: number): InventoryItem => ({
+  const count = Math.floor(total / SCROLL_PIECES_PER_CELL);
+  const rest = total % SCROLL_PIECES_PER_CELL;
+  const make = (id: string, slotKind: InventorySlotKind, pieces: number): InventoryItem => ({
     id,
     kind: 'scroll' as InventoryKind,
     slotKind,
     name: KIND_NAME.scroll,
-    count: qty,
+    // 角标 / 计数行口径 = 张（`片数 / 100`；合法片数 ⇒ 恒为有限数，绝不 NaN）
+    count: scrollZhangQty(pieces, SCROLL_PIECES_PER_ITEM),
     badge: true,
     tooltipLines: [
-      // 兰帖按「张」表达量词（`SCROLL_PIECES_PER_ITEM` = 100 片 = 1 张）：整堆格恰为 1 张 ⇒「1 张（100 片）」；
-      // 余数格不足 1 张（< 100 片）⇒ 只标片数（片数不得标成张）
-      slotKind === 'remainder'
-        ? `${qty} ${SCROLL_PIECES_UNIT}`
-        : `${qty / SCROLL_PIECES_PER_ITEM} ${KIND_QTY_UNIT.scroll}（${qty} ${SCROLL_PIECES_UNIT}）`,
-      ...(slotKind === 'remainder' ? [`本格为余数 · 不足 1 ${KIND_QTY_UNIT.scroll}完整${KIND_NAME.scroll}`] : []),
-      SCROLL_STATUS_PERMANENT,
+      // 数量行：`N 张`（Kevin 清单：**删「（100 片）」括注**、保留张数计数）
+      `${scrollZhangQty(pieces, SCROLL_PIECES_PER_ITEM)} ${KIND_QTY_UNIT.scroll}`,
+      // 耐久行：兰帖恒永久 ⇒ `耐久：9999 天`（取代旧「永久有效」）
+      durabilityLine(null),
+      // 换算行：Kevin 清单未列入删除 ⇒ 保留
       KIND_CONVERT.scroll,
     ],
     expiresAtMs: Infinity,
   });
   const items: InventoryItem[] = [];
-  for (let k = 0; k < count; k += 1) items.push(make(`scroll:${k}`, 'stack', SCROLL_PIECES_PER_ITEM));
+  for (let k = 0; k < count; k += 1) items.push(make(`scroll:${k}`, 'stack', SCROLL_PIECES_PER_CELL));
   if (rest > 0) items.push(make('scroll:rest', 'remainder', rest));
   return items;
 }
@@ -367,9 +392,8 @@ function scrollFragmentItems(fragments: number): InventoryItem[] {
     badge: true,
     tooltipLines: [
       `${count} ${KIND_QTY_UNIT.scrollFragment}`,
-      ...(slotKind === 'remainder' ? [`本格为余数（${count} ${KIND_QTY_UNIT.scrollFragment}），不足 1 格`] : []),
-      scrollFragmentSynthLine(SCROLL_FRAGMENTS_PER_ITEM),
-      KIND_CONVERT.scrollFragment,
+      // 余数行与「满 100 片可手动合成 1 张兰帖」行、换算行：Kevin 2026-09-29 清单整句删除
+      // （合成入口 = 本层【合成】按钮，未达标时由层内原因行 `scrollSynthShortReasonLine` 明写）
     ],
     expiresAtMs: Infinity,
   });
@@ -424,8 +448,8 @@ function lotItems(
       badge: true,
       tooltipLines: [
         `${perItem} ${KIND_QTY_UNIT[kind]}`,
-        `最近到期 ${formatAssetDate(expiresAt)}`,
-        KIND_CONVERT[kind],
+        // 耐久行（Kevin 2026-09-29 清单：「最近到期 YYYY-MM-DD」→「耐久：N 天」，实际剩余天数）
+        durabilityLine(expiresAt),
       ],
       expiresAtMs: timestampOf(expiresAt),
     });
@@ -441,9 +465,8 @@ function lotItems(
       badge: true,
       tooltipLines: [
         `${rest} ${KIND_QTY_UNIT[kind]}`,
-        '本格为余数 · 不足 1 格',
-        `最近到期 ${formatAssetDate(expiresAt)}`,
-        KIND_CONVERT[kind],
+        // 「本格为余数 · 不足 1 格」行：Kevin 2026-09-29 清单整句删除（籽 / 竹简两类）
+        durabilityLine(expiresAt),
       ],
       expiresAtMs: timestampOf(expiresAt),
     });

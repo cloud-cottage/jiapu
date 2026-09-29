@@ -2610,7 +2610,7 @@ export async function postSynthesizeJade(): Promise<JadeSynthesizeResult> {
   return assetPostJson<JadeSynthesizeResult>('/assets/synthesize-jade');
 }
 
-/** 分解石榴籽玉（POST /assets/decompose-jade）：**免费**，返还 999 颗籽（统一 365 天）；已镶嵌玉 → 409 */
+/** 分解石榴籽玉（POST /assets/decompose-jade）：**免费**，返还 990 颗籽（统一 365 天）；已镶嵌玉 → 409 */
 export async function postDecomposeJade(jadeId: string): Promise<JadeDecomposeResult> {
   return assetPostJson<JadeDecomposeResult>('/assets/decompose-jade', { jade_id: jadeId });
 }

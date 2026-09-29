@@ -1,27 +1,38 @@
 /**
- * 资产展示文案单点（玉标题 / 玉状态行 / 日期格式化）。
+ * 资产展示文案单点（耐久行 / 日期格式化 / 量词与换算 / 签到与任务文案）。
  *
- * 落点：**资产页（`pages/assets/index.vue` 的「我的玉」列表）** 与
- * **道具栏（`components/asset-inventory/` 的属性提示）** 共用本模块 —— 玉的状态文案以本模块为唯一真源，
+ * 落点：**资产页（`pages/assets/index.vue`）** 与
+ * **道具栏（`components/asset-inventory/` 的属性提示层）** 共用本模块 ——
  * 新增页面一律引用本模块，禁止再复制一套（同 `business/jade-ops.ts` 的「前端唯一副本」约定）。
  *
- * 已知例外（**既有代码，待后续批次收敛**，勿在本模块内追平）：
- * `pages/spirit/index.vue` 仍自带第三份手写副本（第 175 行「未镶嵌 · 可免费分解」、
- * 第 586 / 658 行的「有效期至 / 永久有效」拼装），本次未改该页；本模块的「唯一」仅就
- * 资产页 + 道具栏两条链路成立。
+ * ⚠️ **2026-09-29 删改（Kevin 逐条清单，行囊属性提示层）**：提示层不再出现
+ * 「最近到期 YYYY-MM-DD / 有效期至 YYYY-MM-DD / 永久有效」三种旧形态，一律改为
+ * `durabilityLine()`（`耐久：N 天`；无到期 / 永久 ⇒ `耐久：9999 天`）。
+ * 随本次删改**已成死代码并删除**的旧单点（原消费点只有 `business/inventory.ts`）：
+ * `jadeTitle` / `jadeSubLine` / `shortAssetId`（资产页自有 `jadeSub` 现算，不依赖本模块）、
+ * `SCROLL_STATUS_PERMANENT`（`永久有效`）/ `scrollDecomposeHintLine` / `scrollCaliberLine` /
+ * `scrollFragmentSynthLine` / `scrollRemainderReasonLine`（后者改由 `scrollShortReasonLine` 承担）。
  *
- * 文案口径（逐字，与资产页原实现一致）：
- * - 标题 = `<短 id> · 有效期至 YYYY-MM-DD` / `<短 id> · 永久有效`；
- * - 状态行 = `已镶嵌至 <tree_id> · 不可分解` / `未镶嵌 · 可免费分解`；
- * - 日期空值 / 非法值 → `—`。
+ * 已知例外（**既有代码，待后续批次收敛**，勿在本模块内追平）：
+ * ⚠️ **2026-09-29 实测订正**：原文称 `pages/spirit/index.vue`「仍自带第三份手写副本（第 175 行
+ * 「未镶嵌 · 可免费分解」、第 586 / 658 行的「有效期至 / 永久有效」拼装）」——**行号与首串均不实**，
+ * 现据实测逐条重写（该页全文 668 行，本次未改）：
+ * - `grep '未镶嵌 · 可免费分解'` = **0 命中**；第 175 行实为 `</view>`、第 586 行实为 `.section-head {`、
+ *   第 658 行实为 `}` —— 该串**仅存于行囊侧注释**（`business/inventory.ts` L25 / L309），页面内无渲染；
+ * - **实际残留（如实登记）**：① 第 545 行 `jadeLabel()` 仍**手写拼装** `` `有效期至 ${formatDate(...)}` : '永久有效' ``，
+ *   经第 87 行模板 `{{ jadeLabel(j) }}` 渲染；② 第 46 行模板静态文案「永久有效（镶嵌即永久占用）」。
+ *   ⇒ 该页仍是无 `durabilityLine()` 口径的一处例外，收敛归后续批次。
+ *
+ * 日期口径：`formatAssetDate` 空值 → `—`、非法值原样返回。
  *
  * 兰帖域（`docs/economy.spec.md` §15）追加单点：
- * - 兰帖 / 兰帖碎片的**展示名**与**状态文案**（`SCROLL_NAME` / `SCROLL_FRAGMENT_NAME` /
- *   `SCROLL_STATUS_PERMANENT` / `scrollFragmentSynthLine()`）**只在本模块定义** ——
+ * - 兰帖 / 兰帖残页的**展示名** / **量词** / **张数展示值**（`SCROLL_NAME` / `SCROLL_FRAGMENT_NAME` /
+ *   `SCROLL_ITEM_UNIT` / `SCROLL_PIECES_UNIT` / `scrollZhangQty()`）**只在本模块定义** ——
  *   `business/inventory.ts` 的 `KIND_NAME` / `KIND_CONVERT` 与组件一律引用本模块，
  *   不在组件里散落中文字面；
- * - 兰帖**永久有效**（`ScrollLot.expires_at` 恒 `null`）⇒ 本模块只给「永久有效」，
- *   不提供任何「有效期至 / 最近到期」拼装（口径：兰帖不得排入到期排序或到期提示行）。
+ * - 兰帖**永久有效**（`ScrollLot.expires_at` 恒 `null`）⇒ 行囊耐久行恒为 `耐久：9999 天`
+ *   （`durabilityLine(null)`），不提供任何「有效期至 / 最近到期」拼装
+ *   （口径：兰帖不得排入到期排序）。
  *
  * 量词单点（2026-09-26 扩充）：**资产不足（`ASSET_INSUFFICIENT`）明细行的量词**也只在本模块定义 ——
  * - 后端 `unit` 键 → 中文量词 = `SHORTAGE_UNIT_BY_KEY`；拼装行 = `shortageLine()`；
@@ -29,7 +40,6 @@
  *   `SEED_FRAGMENT_UNIT` / `BAMBOO_PIECES_UNIT` / `SCROLL_PIECES_UNIT`；
  * - `person-manage-panel.vue` 只传后端 `unit` 键，**组件内不得自带量词字面**（未知 / 缺失键 → 只出数字）。
  */
-import type { Jade } from './api';
 
 /** `YYYY-MM-DD`（本地时区）；空值 → `—`，非法值原样返回 */
 export function formatAssetDate(iso: string): string {
@@ -41,20 +51,31 @@ export function formatAssetDate(iso: string): string {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
-/** 长 id 截断（> 14 字符 → 前 14 + `…`）；空 → `—` */
-export function shortAssetId(id: string | undefined): string {
-  if (!id) return '—';
-  return id.length > 14 ? `${id.slice(0, 14)}…` : id;
-}
+/**
+ * 永久（无到期）资产展示的耐久天数（**唯一字面**）= `9999`。
+ * Kevin 2026-09-29 逐字给定：永久 / 无到期的道具行一律为 `耐久：9999 天`。
+ */
+export const DURABILITY_PERMANENT_DAYS = 9999;
 
-/** 玉的展示标题（永久玉显示「永久有效」） */
-export function jadeTitle(j: Jade): string {
-  return `${shortAssetId(j.id)} · ${j.expires_at ? `有效期至 ${formatAssetDate(j.expires_at)}` : '永久有效'}`;
-}
-
-/** 玉的状态行：已镶嵌（不可分解）/ 未镶嵌（可免费分解） */
-export function jadeSubLine(j: Jade): string {
-  return j.mounted_tree_id ? `已镶嵌至 ${j.mounted_tree_id} · 不可分解` : '未镶嵌 · 可免费分解';
+/**
+ * 耐久行（**唯一拼装点**；行囊属性提示层六类道具格共用）—— 逐字体例 `耐久：N 天`
+ * （**中文冒号「：」+「天」前一个空格**，一字不改，体例 = `耐久：362 天`）：
+ * - `expiresAt` 有值且可解析 ⇒ `耐久：${Math.max(0, Math.ceil((到期时刻 − 现在) / 86400000))} 天`
+ *   （**实际剩余天数**；已过期 ⇒ `0 天`，**绝不出现负数**）；
+ * - 无值 / 空串 / `null`（永久批次，如兰帖 `ScrollLot.expires_at` 恒 `null`）⇒
+ *   `耐久：${DURABILITY_PERMANENT_DAYS} 天`；
+ * - 非法值（`Date` 解析失败）⇒ `耐久：0 天`（**绝不出现 `NaN`**）。
+ *
+ * 本行取代本批之前的「最近到期 YYYY-MM-DD」/「有效期至 YYYY-MM-DD」/「永久有效」三种旧形态
+ * （Kevin 2026-09-29 清单）。天数按**本地时区毫秒差**取整（`ceil` ⇒ 不足一天也计 1 天）。
+ */
+export function durabilityLine(expiresAt?: string | null): string {
+  if (expiresAt === undefined || expiresAt === null || expiresAt === '') {
+    return `耐久：${DURABILITY_PERMANENT_DAYS} 天`;
+  }
+  const ts = new Date(expiresAt).getTime();
+  if (Number.isNaN(ts)) return '耐久：0 天';
+  return `耐久：${Math.max(0, Math.ceil((ts - Date.now()) / 86400000))} 天`;
 }
 
 /** 兰帖：展示名（逐字；单点 —— 组件 / 行囊逻辑不得另写一遍） */
@@ -66,12 +87,6 @@ export const SCROLL_NAME = '兰帖';
  * 与接口入出参**一字未动**，本常量仍是页面 / 组件可见文案的唯一来源。
  */
 export const SCROLL_FRAGMENT_NAME = '兰帖残页';
-
-/**
- * 兰帖批次状态行（逐字）：兰帖**永久有效**（`ScrollLot.expires_at` 恒 `null`）
- * ⇒ 恒为「永久有效」，无「有效期至」形态（口径：不得排入到期排序 / 到期提示行）。
- */
-export const SCROLL_STATUS_PERMANENT = '永久有效';
 
 /**
  * 兰帖**锁定态**文案（逐字；单点）—— 续约申请等待对方确认期间，发起方自持的那张兰帖
@@ -111,39 +126,22 @@ export function scrollDecomposeConfirmLines(
   ];
 }
 
-/** 兰帖格属性提示层的分解比例行（**先让用户看到比例，再谈操作**） */
-export function scrollDecomposeHintLine(piecesPerItem: number, refundPerItem: number): string {
-  const perLoss = Math.max(0, piecesPerItem - refundPerItem);
-  return `分解 1 张${SCROLL_NAME}：${piecesPerItem} 片 ⇒ 返还 ${refundPerItem} 片${SCROLL_FRAGMENT_NAME}（留 ${perLoss} 片损耗）`;
-}
-
 /**
- * 兰帖「格数 / 张数」两口径行（`docs/economy.spec.md` §14-13 —— **两者不是同一个数、不得混用**）：
- * - **格数**（展示层唯一口径）= 行囊占格，**含余数格**（整格 + 零头另占 1 格）；
- * - **张数**（整道具数，= 接口 `scrolls_item_count` 口径）= `floor(片总数 / ${piecesPerItem})`。
- * 实测同体例：**250 片 ⇒ 3 格 / 2 张**。行囊内**一律以格数**渲染占格与逐格角标。
+ * 兰帖格【分解】未达标原因之一：**本格（= 本人兰帖片数）不足 1 张**（`pieces < perItem`）
+ * ⇒ 按钮置灰 + 层内明写本行 + 点按直出同一句（三态可见，**不得静默**）。
+ *
+ * 体例对齐残页侧的 `scrollSynthShortReasonLine`（同为本模块单点）。**2026-09-29 口径变更**：
+ * 兰帖单格容量改为 **100 张 = 10000 片** 后，「非整格」不再等于「不可分解」——
+ * 判据改为**整张数**（`floor(片数 / perItem) ≥ 1` 才可分解），故本行取代旧
+ * `scrollRemainderReasonLine`（旧名 + 旧文案「本格为余数（…）」已随本批删除）。
  */
-export function scrollCaliberLine(cells: number, items: number, piecesPerItem: number): string {
-  return `行囊口径：占 ${cells} 格（含余数格）· 整格 ${items} 张（1 张 = ${piecesPerItem} 片）—— 格数与张数不同数，勿混`;
-}
-
-/** 余数格（不足 1 张成品兰帖）⇒【分解】未达标原因（**必须显示出来，不得静默**） */
-export function scrollRemainderReasonLine(count: number, piecesPerItem: number): string {
-  return `本格为余数（${count} 片），不足 1 张${SCROLL_NAME}（${piecesPerItem} 片），无法分解`;
+export function scrollShortReasonLine(pieces: number, perItem: number): string {
+  return `当前 ${pieces} 片${SCROLL_NAME}，不足 ${perItem} 片，无法分解`;
 }
 
 /** 可分解的兰帖被待确认的续约申请锁定（`scrollLock`）⇒【分解】未达标原因（**必须显示，不得静默**） */
 export function scrollLockedReasonLine(): string {
   return `续约申请待确认：锁定的${SCROLL_NAME}不可分解（可解除该关系或等对方处理后重试）`;
-}
-
-/**
- * 兰帖残页的状态行：满 `perItem` 片**可手动**合成 1 张兰帖（2026-09-26 裁定：自动合成已取消，
- * 合成由用户在行囊残页格属性提示层点【合成】触发）。`perItem` 由 `business/inventory.ts` 的常量传入
- * （避免两模块互相 import 成环）。
- */
-export function scrollFragmentSynthLine(perItem: number): string {
-  return `满 ${perItem} 片可手动合成 1 张${SCROLL_NAME}`;
 }
 
 // ============ 兰帖残页【手动合成】文案单点（2026-09-26 裁定 · 逐字） ============
@@ -243,11 +241,30 @@ export const SCROLL_PIECES_UNIT = '片';
  * 单点：数字为**整道具数**（张）时经本常量拼装；数字为**片数**时一律用 `SCROLL_PIECES_UNIT`。
  * 本常量是「张」的**唯一字面**，三处同源（无一例外，勿再抄一遍）：
  * ① 本常量 `asset-text.ts` 的 `SCROLL_ITEM_UNIT`；
- * ② `business/inventory.ts` 的 `KIND_QTY_UNIT.scroll`（行囊角标 / 余数格提示 / 换算依据行）；
+ * ② `business/inventory.ts` 的 `KIND_QTY_UNIT.scroll`（行囊角标 / 提示层计数行 / 换算依据行）；
  * ③ `business/inventory.ts` 的 `KIND_ITEM_UNIT.scroll`（溢出行的道具计数）。
  * ②③ 现均**引用本常量**（`inventory.ts` 已从本模块导入；方向与 `SCROLL_NAME` / `SCROLL_FRAGMENT_NAME` 一致，不成环）。
  */
 export const SCROLL_ITEM_UNIT = '张';
+
+/**
+ * 兰帖**片 → 张**的展示值（**唯一换算点**；行囊角标 + 提示层计数行共用）。
+ *
+ * 口径（Kevin 2026-09-29 给定）：1 张 = 100 片 ⇒ `片数 / 100`；量化到 **2 位小数**
+ * （`Number(x.toFixed(2))` ⇒ 去尾零）。渲染体例：
+ * - 整数**不带小数点**（`1` / `100`；如整格 10000 片 ⇒ `100`）；
+ * - 非整**最多 2 位**且去尾零（99 片 ⇒ `0.99`；2500 片 ⇒ `25`；9950 片 ⇒ `99.5`）。
+ *
+ * 非法 / 负值 ⇒ `0`（**绝不出现 `NaN`**）；分子按**整片**取整（片数恒为整数）。
+ * 比例常量由调用方传入 `100`（= `business/inventory.ts` 的 `SCROLL_PIECES_PER_ITEM`），
+ * 本模块不复制比例常量（同既有约定，避免两模块 import 成环）。
+ */
+export function scrollZhangQty(pieces: unknown, piecesPerItem: number): number {
+  const p = Math.max(0, Math.floor(Number(pieces) || 0));
+  const per = Math.floor(Number(piecesPerItem) || 0);
+  if (per <= 0) return 0;
+  return Number((p / per).toFixed(2));
+}
 
 // ============ 资产不足（`ASSET_INSUFFICIENT`）明细行量词**单点** ============
 
@@ -314,8 +331,8 @@ export function shortageLine(need: unknown, current: unknown, unitKey: string | 
  * - 否则 ⇒ `M 片兰帖`（数值即片数）。
  *
  * `piecesPerItem` 由调用方传入 `business/inventory.ts` 的 `SCROLL_PIECES_PER_ITEM`
- * （**本模块不复制比例常量**，避免两模块 `import` 成环 —— 同 `scrollFragmentSynthLine` / `scrollCaliberLine`
- * 的既有约定）。**换算式只有本函数一份**：`pages/assets/index.vue`（我的资产流水）与
+ * （**本模块不复制比例常量**，避免两模块 `import` 成环 —— 同 `scrollZhangQty` 的既有约定）。
+ * **换算式只有本函数一份**：`pages/assets/index.vue`（我的资产流水）与
  * `pages/admin/index.vue`（资产变动日志）一律经本函数，页面内**不得再写 `% 100`**。
  */
 export function scrollDeltaLabel(pieces: number, piecesPerItem: number): string {

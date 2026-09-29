@@ -59,7 +59,7 @@
       属性提示层：**自绘**（不用 `uni.showModal`）—— `uni-modal` 的 z-index = 999 会被自绘遮罩压住，
       先例见 `components/sibling-order-modal/`（`docs/sibling-order.spec.md` §9-2-1）；本层 z-index = 1010。
       鼠标悬停（H5）与轻触（全端）打开同一层；空格轻触不弹提示。
-      **层内直操作**（可交互）：籽格 → 【合成】（消耗 `JADE_SYNTH_SEEDS`）；玉格 → 【分解】（免费 / 返还 999 / 365 天）。
+      **层内直操作**（可交互）：籽格 → 【合成】（消耗 `JADE_SYNTH_SEEDS`）；玉格 → 【分解】（免费 / 返还 990 / 365 天）。
       关闭边界 = 「格子 + 提示层」整体：鼠标从格移到本层不关（否则点不到按钮），离开二者即关。
       点【合成】/【分解】打开**自绘二次确认框**（遮罩 1030 / 面板 1031，恒在本层之上）⇒ 本层**无需先关**：
       旧实现「先 `closeTip()` 再 `uni.showModal`」是因 `.uni-modal`（999）低于本层（1010）而被迫的绕法，
@@ -70,13 +70,10 @@
       <text v-for="(line, li) in tipCell.tooltipLines" :key="li" class="inv-tip-line">{{ line }}</text>
       <text v-if="tipCell.kind === 'scroll' && scrollLock" class="inv-tip-line inv-tip-lock">{{ scrollLock.text }}</text>
       <!--
-        兰帖格：分解口径行（比例单点 = `business/asset-text.ts`）+ **格数 / 张数两口径**行
-        （`docs/economy.spec.md` §14-13 —— 格数看行囊（含余数格）、张数看整道具数，**两者不是同一个数**）。
+        兰帖格：**本批已删除**本层内的「分解比例行」（`分解 1 张兰帖：100 片 ⇒ 返还 99 片…`）与
+        「行囊口径行」（`行囊口径：占 N 格 …`）—— Kevin 2026-09-29 清单两句整句删除；
+        分解比例仍在【分解】二次确认框正文内（`scrollDecomposeConfirmLines`，不受本批影响）。
       -->
-      <template v-if="tipCell.kind === 'scroll'">
-        <text class="inv-tip-line inv-tip-ratio">{{ scrollHintText }}</text>
-        <text class="inv-tip-line">{{ scrollCaliberText }}</text>
-      </template>
       <view v-if="tipCell.kind === 'seed'" class="inv-tip-acts">
         <view
           class="inv-tip-btn"
@@ -221,9 +218,10 @@
  *   ② 同格再轻触 toggle 关闭（不依赖空格 ⇒ 36 格全满也能关）；③ 拖曳 / 滚动 / 数据刷新；
  *   触摸后 Chrome 补发的兼容鼠标事件按 `TOUCH_MOUSE_GUARD` 窗口忽略（防 hover 把轻触选中的格抢回去）；
  * - 提示层内直操作：籽格 → 【合成】（`JADE_SYNTH_SEEDS`；籽不足置灰 +「再攒 N 颗」）；
- *   玉格 → 【分解】（免费 / 固定返还 999 颗 / 统一 365 天）；**兰帖格 → 【分解】**
+ *   玉格 → 【分解】（免费 / 固定返还 `JADE_DECOMPOSE_SEEDS`（现 990）颗 / 统一 365 天）；**兰帖格 → 【分解】**
  *   （`POST /assets/scroll/decompose` 按**张**：1 张 = 100 片 ⇒ 返还 99 片、每张留 1 片损耗；
- *   **余数格**（不足 1 张）与被续约申请**锁定**的张数 ⇒ 按钮置灰 + 层内明写原因 + 点按直出同一句）；
+ *   判据 = **本人整张数 ≥ 1**（2026-09-29 起不再看「是否整格」，余数格同样可分解）；
+ *   片数不足 1 张 与 被续约申请**锁定**的张数 ⇒ 按钮置灰 + 层内明写原因 + 点按直出同一句）；
  *   **兰帖残页格 → 【合成】**（`POST /assets/scroll/synthesize` 按**张**：一次 1 张 = 恰好消耗 100 片
  *   残页、余数保留；2026-09-26 裁定：残页自动合成已取消 ⇒ 本按钮是**唯一**合成入口；
  *   不足 100 片 ⇒ 按钮置灰 + 层内明写原因 + 点按直出同一句；免费、不扣竹片）；
@@ -270,11 +268,9 @@ import {
   SCROLL_FRAGMENT_NAME,
   SCROLL_SYNTH_OK_TEXT,
   SCROLL_SYNTH_TITLE,
-  scrollCaliberLine,
   scrollDecomposeConfirmLines,
-  scrollDecomposeHintLine,
   scrollLockedReasonLine,
-  scrollRemainderReasonLine,
+  scrollShortReasonLine,
   scrollSynthConfirmLines,
   scrollSynthFailText,
   scrollSynthShortReasonLine,
@@ -284,6 +280,7 @@ import { ICON } from '@/business/icons';
 import {
   DECOMPOSE_CONFIRM_BODY,
   DECOMPOSE_CONFIRM_TITLE,
+  JADE_DECOMPOSE_SEEDS,
   JADE_SYNTH_SEEDS,
   SEED_VALID_DAYS,
   SYNTH_CONFIRM_BODY,
@@ -422,12 +419,14 @@ const seedsToGo = computed(() => Math.max(0, JADE_SYNTH_SEEDS - seedsTotal.value
 /** 玉操作（合成 / 分解）进行中：并发保护，期间按钮不可点 */
 const busy = ref(false);
 
-// ============ 兰帖（分解 · §14-13 两口径；比例 / 文案单点 = `business/asset-text.ts`） ============
+// ============ 兰帖（分解；比例 / 文案单点 = `business/asset-text.ts`） ============
 //
 // 兰帖与玉 / 籽的**关键差异**：分解入参单位 = **成品（整）兰帖张数**（1 张 = 100 片），返还每张 **99** 片
 // （后端 `SCROLL_DECOMPOSE_REFUND`，留 1 片损耗 —— 该取值 2026-09-26 一字未改；旧理由「返 100 会触发
 // 满 100 自动合成 ⇒ 分解成空操作」随**取消自动合成**已不成立，仅为保留既有产出比例）。因此：
-// - 【分解】只在**整堆格**（每格恒 100 片）可用；**余数格**（不足 1 张）不可分解；
+// - 可分解判据 = **本人兰帖整张数 ≥ 1**（`floor(片数 / 100) ≥ 1`，且扣除续约申请锁定的张数）。
+//   ⚠️ **2026-09-29 口径变更**：单格容量改为 100 张 = 10000 片后，「本格是不是整格」不再等于
+//   「能不能分解」（余数格同样可能装下若干整张）⇒ 判据由「`slotKind === 'stack'`」改为**整张数**；
 // - 被续约申请锁定的张数（`scrollLockOf` 投影）不可分解（否则待对方确认时会 409）；
 // - 未达标一律「按钮置灰 + 层内明写原因 + 点按直出同一句」⇒ **三态可见、不静默**。
 /** 每张成品兰帖片数（`business/inventory.ts` 常量：100 片 = 1 张） */
@@ -440,33 +439,30 @@ const scrollPiecesTotal = computed(() => {
   const lots = (props.summary as InventorySummary | null)?.scroll_lots || [];
   return lots.reduce((sum, lot) => sum + Math.max(0, Number(lot.qty) || 0), 0);
 });
-/** §14-13 ① **格数**（展示层唯一口径）= 行囊占格，**含余数格**（整格 100 片 + 零头另占 1 格） */
-const scrollCellCount = computed(() => Math.ceil(scrollPiecesTotal.value / SCROLL_PIECES));
-/** §14-13 ② **张数**（整道具数，= 接口 `scrolls_item_count` 口径）= `floor(片总数 / 100)` —— **不是格数** */
-const scrollItemCount = computed(() => Math.floor(scrollPiecesTotal.value / SCROLL_PIECES));
 /** 续约申请锁定的兰帖片数（`scrollLockView.pieces` 单位 = 成品张数 ⇒ × 100 折算成片） */
 const lockedScrollPieces = computed(() => Math.max(0, props.scrollLock?.pieces || 0) * SCROLL_PIECES);
-/** 可分解张数 = `floor((片总数 − 锁定片数) / 100)`（锁定中的张数不参与） */
+/** 可分解张数 = `floor((片总数 − 锁定片数) / 100)`（锁定中的张数不参与）—— 即**本人整张数**口径 */
 const scrollDecomposableCount = computed(() =>
   Math.floor(Math.max(0, scrollPiecesTotal.value - lockedScrollPieces.value) / SCROLL_PIECES));
-/** 当前兰帖格是否可分解（**整堆格** 且 可分解张数 ≥ 1） */
+/** 当前兰帖格是否可分解（**本人整张数 ≥ 1**；不再以「是否整格」判定，见本节顶部口径变更） */
 const canDecomposeScroll = computed<boolean>(() => {
   const cell = tipCell.value;
-  return !!cell && cell.kind === 'scroll' && cell.slotKind === 'stack' && scrollDecomposableCount.value >= 1;
+  return !!cell && cell.kind === 'scroll' && scrollDecomposableCount.value >= 1;
 });
-/** 未达标原因（**必须显示**；余数格与锁定各一句，文案单点 = `asset-text.ts`） */
+/**
+ * 未达标原因（**必须显示**；「不足 1 张」与「锁定」各一句，文案单点 = `asset-text.ts`）：
+ * - 片数不足 1 张（`< 100` 片）⇒ `scrollShortReasonLine`（取代旧「本格为余数…」整句）；
+ * - 否则 = 整张都被续约申请锁定 ⇒ `scrollLockedReasonLine`。
+ */
 const scrollDisabledNote = computed<string>(() => {
   const cell = tipCell.value;
   if (!cell || cell.kind !== 'scroll') return '';
-  if (cell.slotKind !== 'stack') return scrollRemainderReasonLine(cell.count, SCROLL_PIECES);
+  if (scrollPiecesTotal.value < SCROLL_PIECES) {
+    return scrollShortReasonLine(scrollPiecesTotal.value, SCROLL_PIECES);
+  }
   if (scrollDecomposableCount.value < 1) return scrollLockedReasonLine();
   return '';
 });
-/** 层内分解比例行（1 张 = 100 片 ⇒ 返还 99 片，留 1 片损耗） */
-const scrollHintText = computed<string>(() => scrollDecomposeHintLine(SCROLL_PIECES, SCROLL_REFUND_PER_ITEM));
-/** 层内「格数 / 张数」两口径行（提示层内并列展示，**不得混用**） */
-const scrollCaliberText = computed<string>(() =>
-  scrollCaliberLine(scrollCellCount.value, scrollItemCount.value, SCROLL_PIECES));
 
 // ============ 兰帖残页【手动合成】（2026-09-26 裁定；文案单点 = `business/asset-text.ts`） ============
 //
@@ -1317,12 +1313,13 @@ function applyTipStyle(): void {
 
 /**
  * 首次渲染（实测高度未知）用的层高估算（px）。
- * 除 `tooltipLines` 外，模板按格型还会附加渲染行（兰帖格：分解比例行 + 格数/张数行；锁定态：锁定行），
+ * 除 `tooltipLines` 外，模板按格型还会附加渲染行（**仅剩**兰帖锁定态整句一行 ——
+ * 旧「兰帖分解比例行 + 格数/张数两口径行」已按 Kevin 2026-09-29 清单删除）
  * 一并计入 —— **只影响首次渲染的摆位**（量到实测高度后由「最多一次」的贴合校正收尾，口径不变）。
  */
 function estimateTipHeight(): number {
   const cell = tipCell.value;
-  const extra = cell?.kind === 'scroll' ? 2 + (props.scrollLock ? 1 : 0) : 0;
+  const extra = cell?.kind === 'scroll' && props.scrollLock ? 1 : 0;
   return TIP_LINE_H * ((cell?.tooltipLines.length || 0) + extra + 1) + 18 +
     (tipHasActions.value ? TIP_ACTIONS_H : 0) + estimatePoemHeight();
 }
@@ -1488,8 +1485,8 @@ async function doSynthesize(): Promise<void> {
 }
 
 /**
- * 【分解】：同样打开自绘二次确认框（文案逐字取 `DECOMPOSE_*`：免费 / 固定返还 999 颗 / 统一 365 天）。
- * A1 已把「已镶嵌玉」挡在行囊之外 ⇒ 能看到的玉格都是未镶嵌、均可分解。
+ * 【分解】：同样打开自绘二次确认框（文案逐字取 `DECOMPOSE_*`：免费 / 固定返还 `JADE_DECOMPOSE_SEEDS`
+ * （后端现 990）颗 / 统一 365 天）。A1 已把「已镶嵌玉」挡在行囊之外 ⇒ 能看到的玉格都是未镶嵌、均可分解。
  */
 function onDecomposeTap(): void {
   const jadeId = tipCell.value?.jadeId;
@@ -1517,8 +1514,9 @@ async function doDecompose(jadeId: string): Promise<void> {
     emit('refresh');
     await fxWait(FX_DECOMP_MS - (Date.now() - startedAt));
     clearFx();
-    // 结果浮字 = 数量摘要（返还量 = `JADE_SYNTH_SEEDS` 颗籽；量词 / 道具名取 `inventory.ts` 装配产物）
-    fxFloat(fxQtySummary('seed', JADE_SYNTH_SEEDS));
+    // 结果浮字 = 数量摘要（返还量 = `JADE_DECOMPOSE_SEEDS` 颗籽，与后端 `seeds_returned` 同源；
+    // 量词 / 道具名取 `inventory.ts` 装配产物）
+    fxFloat(fxQtySummary('seed', JADE_DECOMPOSE_SEEDS));
     uni.showToast({ title: msg, icon: 'none', duration: 4000 });
   } catch (e) {
     await failFeedback('');
@@ -2125,8 +2123,6 @@ onUnmounted(() => {
 }
 /* 属性提示层内的兰帖锁定态整句（文案取自 business/asset-text.ts 的 SCROLL_LOCK_TEXT） */
 .inv-tip-lock { color: #FFC9C9; font-weight: bold; }
-/* 属性提示层内的兰帖分解比例行（比例单点 = business/asset-text.ts：1 张 = 100 片 ⇒ 返还 99 片） */
-.inv-tip-ratio { color: #FFE9C9; }
 /*
   属性提示层内的**道具诗句**（文案单点 = business/asset-text.ts 的 `ASSET_POEMS`，组件内零诗句字面）。
   体例同 `.inv-tip-line`，但**长句换行**：恒 `width: 100%` + `overflow-wrap` ⇒ 最长句（26 字）在 240px
