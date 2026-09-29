@@ -80,7 +80,7 @@ export const SIGNIN_DAYS_KEEP = 30;
  *   `edit_fee`（修改 / 同树改父）、`delete_fee`（删除节点）、`move_fee`（跨树迁移）、
  *   `tree_create`（建树扣 9 籽）、`fee_refund`（落库失败原路返还）。
  * P2（docs/spirit-domain.spec.md §3-2 / 总册 §4-6）追加时流子域取值：
- *   `jade_synth`（999 籽 → 玉）、`jade_decompose`（玉 → 999 籽）、
+ *   `jade_synth`（999 籽 → 玉）、`jade_decompose`（玉 → 990 籽，数值见 `economy-spirit.JADE_DECOMPOSE_SEEDS`）、
  *   `jade_mount`（镶嵌，`delta` 为 0 的记账条）、`spirit_charge`（玉露灵泽蓄能）。
  */
 export const TX_TYPES = [

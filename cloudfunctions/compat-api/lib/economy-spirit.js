@@ -59,8 +59,15 @@ export const MASTER_TREE_ID = process.env.MASTER_TREE_ID || 'zhonghua';
 export const BUFFER_DAYS = 30;
 /** 永久判定阈值（天，§5-1：参与籽**全部**剩余 ≥ 360 天 → 永久） */
 export const PERMANENT_THRESHOLD_DAYS = 360;
-/** 合成一枚玉的固定消耗 / 分解固定返还（颗，§3-3 SEED_COST） */
+/** 合成一枚玉的固定消耗（颗，§3-3 SEED_COST；**分解不再共用本值**） */
 export const JADE_SYNTH_SEEDS = 999;
+/**
+ * 分解一枚玉的固定返还（颗）。**独立单点常量**，与 `JADE_SYNTH_SEEDS` 解耦（改动互不影响）。
+ *
+ * 依据 = Kevin 2026-09-29 裁定「从分解为 999 颗石榴籽改为 990 颗石榴籽」；
+ * 合成消耗 `JADE_SYNTH_SEEDS` 仍为 999，不在本次裁定范围内。
+ */
+export const JADE_DECOMPOSE_SEEDS = 990;
 /** 籽的统一有效期（天，分解产籽同样 365 天；**无永久籽**） */
 export { SEED_TTL_DAYS };
 /** 赠送竹片有效期（天，§6-4） */
@@ -439,7 +446,7 @@ export async function synthesizeJade(phone, now = new Date()) {
 
 /**
  * 分解石榴籽玉（§5-2）：任意玉（**含永久玉**）免费分解、无损耗，
- * 移除该玉 + 返还 **999 颗籽单一新批次**（365 天、`source='jade_decompose'`）+ 流水 `jade_decompose`。
+ * 移除该玉 + 返还 **990 颗籽**（`JADE_DECOMPOSE_SEEDS`；365 天、`source='jade_decompose'`）+ 流水 `jade_decompose`。
  * 守卫：玉不存在（含已过期）→ **404**；已镶嵌（`mounted_tree_id` 非空）→ **409**（**镶嵌不可逆，无反向路由**）。
  */
 export async function decomposeJade(phone, jadeId, now = new Date()) {
@@ -450,12 +457,12 @@ export async function decomposeJade(phone, jadeId, now = new Date()) {
     if (!jade || jadeExpired(jade, now)) throw httpError(404, ERR_JADE_NOT_FOUND);
     if (jade.mounted_tree_id) throw httpError(409, ERR_JADE_MOUNTED_DECOMPOSE);
     user.jades = (user.jades || []).filter((j) => j.id !== jadeId);
-    const lot = addLot(user, 'seed', JADE_SYNTH_SEEDS, { ttl_days: SEED_TTL_DAYS, source: 'jade_decompose', now });
+    const lot = addLot(user, 'seed', JADE_DECOMPOSE_SEEDS, { ttl_days: SEED_TTL_DAYS, source: 'jade_decompose', now });
     recordTx(
       user,
       {
         type: 'jade_decompose',
-        delta: { jades: -1, seeds: JADE_SYNTH_SEEDS },
+        delta: { jades: -1, seeds: JADE_DECOMPOSE_SEEDS },
         ref: { jade_id: jadeId },
         desc: '分解石榴籽玉',
       },
@@ -463,7 +470,7 @@ export async function decomposeJade(phone, jadeId, now = new Date()) {
     );
     return {
       ok: true,
-      seeds_returned: JADE_SYNTH_SEEDS,
+      seeds_returned: JADE_DECOMPOSE_SEEDS,
       seed_expires_at: lot.expires_at,
       seed_lot_id: lot.id,
       jade_id: jadeId,

@@ -10,7 +10,7 @@
  *  ③ 合成三态：全 ≥360 天 → 永久 / 恰好 360 天 → 永久（边界）/ 有不足 → 取最早到期**原值**
  *  ④ 合成 FIFO 跨批拆批（剩余 qty 与 `expires_at` 不变、无 qty=0 残留批）+ 流水 `jade_synth`
  *  ⑤ 合成不足 999 → 409 整单拒绝（一籽不扣、无玉、无流水）
- *  ⑥ 分解：永久玉 → 999 籽单一新批（365 天 / `jade_decompose`）；有期限玉同样 365 天；流水
+ *  ⑥ 分解：永久玉 → 990 籽单一新批（365 天 / `jade_decompose`，`JADE_DECOMPOSE_SEEDS` 独立单点）；有期限玉同样 365 天；流水
  *  ⑦ 分解守卫：玉不存在 404 / 已镶嵌 409（镶嵌不可逆）/ 缺 jade_id 400
  *  ⑧ 镶嵌：建立初态（`status='inactive'`、`spirit_expires_at=null`、`logs=[]`）+ 个人侧留痕 + `jade_mount`
  *  ⑨ 镶嵌守卫：同树二次 409 / 同玉异树 409 / 总谱 400 / 树不存在 404 / 缺参 400 / 非本人玉 404
@@ -193,7 +193,9 @@ test('五档表：实价 1/29/109/149/299 籽，天数 1/30/90/180/365，折扣�
   assert.deepEqual(sp.SPIRIT_PLANS.map((p) => p.days), [1, 30, 90, 180, 365]);
   assert.deepEqual(sp.SPIRIT_PLANS.map((p) => p.discount), ['100%', '97%', '91%', '83%', '82%']);
   assert.deepEqual(sp.SPIRIT_PLANS.map((p) => p.activity_min_discount), [null, null, '83%', '72%', '60%']);
-  assert.equal(sp.JADE_SYNTH_SEEDS, 999);
+  assert.equal(sp.JADE_SYNTH_SEEDS, 999, '合成消耗保持 999 不变（Kevin 2026-09-29 只裁定分解侧）');
+  assert.equal(sp.JADE_DECOMPOSE_SEEDS, 990, '分解返还独立单点常量 = 990（Kevin 2026-09-29 裁定）');
+  assert.notEqual(sp.JADE_DECOMPOSE_SEEDS, sp.JADE_SYNTH_SEEDS, '合成/分解已解耦，不得共用同一常量');
   assert.equal(sp.PERMANENT_THRESHOLD_DAYS, 360);
   assert.equal(sp.SEED_TTL_DAYS, 365);
   assert.equal(sp.BUFFER_DAYS, 30);
@@ -301,23 +303,24 @@ test('合成 · 不足 999 → 409 整单拒绝（一籽不扣、不产玉、无
 
 // ==================== ⑥⑦ 分解 ====================
 
-test('分解 · 永久玉 → 999 籽单一新批（365 天 / source=jade_decompose）+ 流水', async () => {
+test('分解 · 永久玉 → 990 籽单一新批（365 天 / source=jade_decompose）+ 流水', async () => {
   const phone = nextPhone();
   await setAssets(phone, { jades: [jadeOf('jd_perm', null)] });
   const res = await sp.decomposeJade(phone, 'jd_perm', T0);
-  assert.equal(res.seeds_returned, 999);
+  assert.equal(res.seeds_returned, sp.JADE_DECOMPOSE_SEEDS);
+  assert.equal(res.seeds_returned, 990);
   assert.equal(res.jade_id, 'jd_perm');
   assert.equal(res.seed_expires_at, isoAt(365), '永久玉分解同样产 365 天籽（无永久籽）');
   const after = await assetsOf(phone);
   assert.equal(after.jades.length, 0);
   assert.equal(after.seeds.length, 1);
   assert.equal(after.seeds[0].id, res.seed_lot_id);
-  assert.equal(after.seeds[0].qty, 999);
+  assert.equal(after.seeds[0].qty, 990);
   assert.equal(after.seeds[0].source, 'jade_decompose');
   assert.equal(after.seeds[0].expires_at, isoAt(365));
   const tx = after.txs.filter((t) => t.type === 'jade_decompose');
   assert.equal(tx.length, 1);
-  assert.deepEqual(tx[0].delta, { jades: -1, seeds: 999 });
+  assert.deepEqual(tx[0].delta, { jades: -1, seeds: 990 });
 });
 
 test('分解 · 有期限玉同样返 365 天籽（不继承玉的 expires_at）', async () => {
@@ -1057,7 +1060,7 @@ test('路由 · 合成：不足 999 → 409（code/need/current，籽与玉都�
   assert.equal(after2.seeds.length, 0);
 });
 
-test('路由 · 分解：已镶嵌玉 409 / 玉不存在 404 / 未镶嵌玉 200（返 999 籽 / 365 天）', async () => {
+test('路由 · 分解：已镶嵌玉 409 / 玉不存在 404 / 未镶嵌玉 200（返 990 籽 / 365 天）', async () => {
   const treeId = nextTree();
   const phone = await newUser();
   await setAssets(phone, { jades: [jadeOf('jd_m', null), jadeOf('jd_free', null)] });
@@ -1079,12 +1082,12 @@ test('路由 · 分解：已镶嵌玉 409 / 玉不存在 404 / 未镶嵌玉 200�
   assert.equal(freed.statusCode, 200, freed.body);
   const d = jsonOf(freed);
   assert.equal(d.ok, true);
-  assert.equal(d.seeds_returned, 999);
+  assert.equal(d.seeds_returned, 990);
   assert.equal(d.jade_id, 'jd_free');
   assert.ok(Date.parse(d.seed_expires_at) > Date.now() + 364 * DAY, '分解产籽统一 365 天');
   const after = await assetsOf(phone);
   assert.equal(after.jades.length, 1, '仅移除被分解的玉');
-  assert.equal(after.seeds[0].qty, 999);
+  assert.equal(after.seeds[0].qty, 990);
 });
 
 test('路由 · GET /spirit 惰性推进：buffer / expired / inactive（写时间字段造态，不睡时钟）', async () => {
