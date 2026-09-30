@@ -81,6 +81,34 @@
         <!-- 身份认定已取消（申请-审批制；docs/permission-tier.spec.md §9）：自助认领不再提供 -->
       </view>
 
+      <!-- 邀请入族（批 C-2 **入口一 · 节点型**）：显示条件 = **已登录 且（本人锚点属本树 或 role='chief_editor'）**。
+           短链 + 长链（仅 node 型）+ 复制按钮；节点已被他人绑定 ⇒ 后端 **409**，按邀请域文案提示（不静默）。 -->
+      <view v-if="canInvitePerson" class="invite-box">
+        <view class="invite-entry" @click="openInvite">
+          <text class="invite-entry-text">{{ INVITE_NODE_ENTRY }}</text>
+        </view>
+        <view v-if="invitePanel" class="invite-panel">
+          <text class="invite-hint">{{ INVITE_NODE_HINT }}</text>
+          <text v-if="inviteBusy" class="invite-tip">{{ INVITE_GENERATING }}</text>
+          <template v-else-if="inviteShort">
+            <text class="invite-label">{{ INVITE_SHORT_LABEL }}</text>
+            <text class="invite-link">{{ inviteShort }}</text>
+            <view class="invite-copy" @click="copyInvite(inviteShort)">
+              <text class="invite-copy-text">{{ INVITE_COPY_BTN }}</text>
+            </view>
+            <template v-if="inviteLong">
+              <text class="invite-label">{{ INVITE_LONG_LABEL }}</text>
+              <text class="invite-link">{{ inviteLong }}</text>
+              <view class="invite-copy" @click="copyInvite(inviteLong)">
+                <text class="invite-copy-text">{{ INVITE_COPY_BTN }}</text>
+              </view>
+            </template>
+            <text v-if="inviteExpiry" class="invite-expiry">{{ inviteExpiry }}</text>
+          </template>
+          <text v-if="inviteErr" class="invite-err">{{ inviteErr }}</text>
+        </view>
+      </view>
+
       <view class="info-row" v-if="isLivingPerson">
         <t-tag theme="warning" variant="light">在世</t-tag>
       </view>
@@ -802,8 +830,21 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { fetchPerson, fetchPersonForEdit, savePerson, savePersonPlaces, isLiving, API_BASE, fetchTreeMetaRemote, searchPeople, searchMarriageCandidates, removeBranchLink, reparentNode, deleteNode, marriageRequest, marryEnd, founderRequest, fetchFounderRequests, attachFounder, detachFounder, resetFounder, fetchClans, treeKindLabel, treeKindOf, feeText, isAssetInsufficientError, showAssetInsufficientGuide, fetchPersonList, fetchFamilyList, fetchSpirit, postConvergeClan, mirrorNoteText, mirrorReadonlyViewOf, treeDisplayTitleOf, MAX_RESIDENCE_PLACES, emptyPlaceInput, normalizePlace, prunePlaces, placesDirty, placeDisplayOf } from '@/business';
+import { fetchPerson, fetchPersonForEdit, savePerson, savePersonPlaces, isLiving, API_BASE, fetchTreeMetaRemote, searchPeople, searchMarriageCandidates, removeBranchLink, reparentNode, deleteNode, marriageRequest, marryEnd, founderRequest, fetchFounderRequests, attachFounder, detachFounder, resetFounder, fetchClans, treeKindLabel, treeKindOf, feeText, isAssetInsufficientError, showAssetInsufficientGuide, fetchPersonList, fetchFamilyList, fetchSpirit, postConvergeClan, mirrorNoteText, mirrorReadonlyViewOf, treeDisplayTitleOf, MAX_RESIDENCE_PLACES, emptyPlaceInput, normalizePlace, prunePlaces, placesDirty, placeDisplayOf, fetchMyAnchor, createInviteCode, inviteShortUrl, inviteLongUrl } from '@/business';
 import { isAuthenticated, authState, getAuthToken } from '@/business/auth';
+// 邀请域文案单点（批 C-2 入口一）：组件内**不得**散落用户可见字面
+import {
+  INVITE_NODE_ENTRY,
+  INVITE_NODE_HINT,
+  INVITE_SHORT_LABEL,
+  INVITE_LONG_LABEL,
+  INVITE_COPY_BTN,
+  INVITE_COPIED,
+  INVITE_GENERATING,
+  INVITE_FAIL,
+  inviteErrorText,
+  inviteExpiryLine,
+} from '@/business/asset-text';
 import type { PersonDetail, PersonSummary, SiblingReorderSegment } from '@/business/types';
 import type { MirrorFields, MirrorReadonlyView, MirrorTarget, MarriageCandidate, PersonPlaceInput } from '@/business';
 import type { ClanSummary, FeeInfo, NodeDeleteMode, NodeDeleteResult } from '@/business/api';
@@ -1853,6 +1894,94 @@ const deathText = computed(() => {
   return dateDisplay(person.value.death_date) || '不详';
 });
 
+// ---- 邀请入族（批 C-2 **入口一 · 节点型**）----
+// 显示条件（逐字按派单）：**已登录 且（本人锚点属本树 或 role='chief_editor'）**，不叠加任何其它条件。
+// 节点型 = 指定建议绑定节点 + 一次性；签发时节点已被他人绑定 ⇒ 后端 409（不签发废码），此处按域内文案提示。
+
+/** 本人锚点所属树（`GET /admin/get-anchor`；未登录 / 读不到 ⇒ 空串 = 入口不外显） */
+const myAnchorTreeId = ref('');
+const invitePanel = ref(false);
+const inviteBusy = ref(false);
+const inviteShort = ref('');
+const inviteLong = ref('');
+const inviteExpiry = ref('');
+const inviteErr = ref('');
+
+const canInvitePerson = computed(() => {
+  if (!isAuthenticated()) return false;
+  if (!person.value) return false;
+  if (!treeId.value) return false;
+  return myAnchorTreeId.value === treeId.value || authState.role === 'chief_editor';
+});
+
+/** 读本人锚点树（只看 tree_id；读不到一律当「非本树成员」，不外显入口） */
+async function loadMyAnchorTree(): Promise<void> {
+  const token = getAuthToken();
+  if (!token) {
+    myAnchorTreeId.value = '';
+    return;
+  }
+  try {
+    const anchor = await fetchMyAnchor(token);
+    myAnchorTreeId.value = anchor?.tree_id || '';
+  } catch {
+    myAnchorTreeId.value = '';
+  }
+}
+
+/**
+ * 签发**节点型**邀请码（`POST /invite/code {kind:'node', tree_id, person_handle}`）并展示短链 + 长链。
+ * url 由前端拼（`business/api.ts`）：短链 = `<origin>/#/pages/invite/landing?c=<code>`；
+ * 长链 = 短链 + `&invite_code=<邀请人手机号>&tree_id=&person_handle=`。
+ */
+async function openInvite(): Promise<void> {
+  if (inviteBusy.value) return;
+  invitePanel.value = true;
+  if (inviteShort.value) return;
+  const handle = person.value?.handle || props.handle;
+  if (!handle) return;
+  const token = getAuthToken();
+  if (!token) {
+    // 极端态：可见性已含「已登录」，此处只可能是登录态刚好过期 ⇒ 回登录页（不新写认证链路）
+    invitePanel.value = false;
+    uni.navigateTo({ url: '/pages/login/index' });
+    return;
+  }
+  inviteBusy.value = true;
+  inviteErr.value = '';
+  try {
+    const res = await createInviteCode({ kind: 'node', tree_id: treeId.value, person_handle: handle }, token);
+    inviteShort.value = inviteShortUrl(res.code);
+    inviteLong.value =
+      res.tree_id && res.person_handle
+        ? inviteLongUrl({
+            code: res.code,
+            inviterPhone: authState.phone,
+            treeId: res.tree_id,
+            personHandle: res.person_handle,
+          })
+        : '';
+    inviteExpiry.value = inviteExpiryLine(res.expires_at);
+  } catch (e) {
+    // 409（节点已被他人绑定）等错误码 → 邀请域文案（后端原文优先）
+    inviteErr.value = inviteErrorText(e, INVITE_FAIL);
+  } finally {
+    inviteBusy.value = false;
+  }
+}
+
+function copyInvite(text: string): void {
+  if (!text) return;
+  uni.setClipboardData({
+    data: text,
+    success: () => uni.showToast({ title: INVITE_COPIED, icon: 'success' }),
+  });
+}
+
+onMounted(() => {
+  void loadMyAnchorTree();
+});
+
 // 编辑权限：登录 + 非 guest；总谱仅 chief_editor
 const canEdit = computed(() => {
   if (!isAuthenticated()) return false;
@@ -2701,4 +2830,31 @@ async function doEndMarriage() {
   margin-top: 10px; padding: 12px; background: #FFF8E1; border-radius: 8px;
 }
 .identity-text { font-size: 13px; color: #5D4037; line-height: 1.6; }
+
+/* 邀请入族（批 C-2 入口一 · 节点型）：入口条 + 短链/长链复制的链接面板 */
+.invite-box { margin-bottom: 16px; }
+.invite-entry {
+  padding: 9px 0; border-radius: 10px; text-align: center;
+  background: linear-gradient(180deg, #FFFDF8, #F8F0E5);
+  border: 1px solid #E3D3BE;
+}
+.invite-entry-text { font-size: 13px; color: #8B4513; }
+.invite-panel {
+  margin-top: 10px; padding: 12px;
+  background: #FBF6EF; border: 1px dashed #E3D3BE; border-radius: 10px;
+}
+.invite-hint { display: block; font-size: 11px; color: #B5A594; line-height: 1.7; }
+.invite-tip { display: block; font-size: 12px; color: #B08D57; margin-top: 8px; }
+.invite-label { display: block; font-size: 11px; color: #8B4513; margin-top: 10px; }
+.invite-link {
+  display: block; font-size: 11px; color: #5D4037; line-height: 1.6;
+  margin-top: 4px; word-break: break-all;
+}
+.invite-copy {
+  display: inline-block; margin-top: 6px; padding: 4px 14px; border-radius: 6px;
+  background: #FBF8F5; border: 1px solid #E0D6CB;
+}
+.invite-copy-text { font-size: 12px; color: #5D4037; }
+.invite-expiry { display: block; font-size: 11px; color: #B08D57; margin-top: 8px; }
+.invite-err { display: block; font-size: 12px; color: #C62828; line-height: 1.6; margin-top: 8px; }
 </style>

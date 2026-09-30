@@ -43,6 +43,10 @@
  * - 「颗」/「枚」的唯一字面 = `SEED_QTY_UNIT` / `JADE_QTY_UNIT`（新增）；片类复用既有
  *   `SEED_FRAGMENT_UNIT` / `BAMBOO_PIECES_UNIT` / `SCROLL_PIECES_UNIT`；
  * - `person-manage-panel.vue` 只传后端 `unit` 键，**组件内不得自带量词字面**（未知 / 缺失键 → 只出数字）。
+ *
+ * 邀请域（批 C-2）追加单点（**三段唯一字面**）：落地页标题 / 建议节点行 / 三选与失效态按钮 /
+ * 双入口按钮（节点详情页 = `INVITE_NODE_ENTRY`、【我的】页 = `INVITE_PLAIN_ENTRY`）/ 链接面板 /
+ * 更换节点面板 / 三选回执 / 409 · 404 · 400 兜底文案 —— 落地页、`person-archive`、【我的】页一律引用本模块。
  */
 
 /** `YYYY-MM-DD`（本地时区）；空值 → `—`，非法值原样返回 */
@@ -609,4 +613,115 @@ export function signinCellBaseItems(day?: SigninCellRaw | null): SigninCellAsset
 /** 单格**第 7 天大奖**项（`bonus`）；缺失 / 非法 ⇒ `null` ⇒ 页面不渲染（不臆造） */
 export function signinCellBonusItem(day?: SigninCellRaw | null): SigninCellAsset | null {
   return cellAssetOf(day?.bonus);
+}
+
+// ==================== 邀请域（批 C-2：节点型 / 普通型邀请 + 落地页三选） ====================
+//
+// **唯一真源**：落地页（`pages/invite/landing.vue`）、节点详情页入口（`components/person-archive`）、
+// 【我的】页入口（`pages/mine/index.vue`）三处的用户可见文案一律取本模块，页面 / 组件内**不得散落字面**。
+
+/** 落地页标题（node 型：`<邀请人昵称> 邀请你加入『<谱名>』`；无名 / 无谱名走退化形态） */
+export function inviteHeadTitle(inviterNickname: string, treeName: string): string {
+  const who = (inviterNickname || '').trim() || '一位族人';
+  const tree = (treeName || '').trim();
+  return tree ? `${who} 邀请你加入『${tree}』` : `${who} 邀请你加入家族`;
+}
+
+/** 建议节点行（node 型逐字：`建议绑定：<节点名>`；节点名缺失 ⇒ 空串 = 不渲染该行） */
+export function inviteSuggestedLine(personName: string): string {
+  const name = (personName || '').trim();
+  return name ? `建议绑定：${name}` : '';
+}
+
+/** 落地页三选按钮（**逐字**，验收按这三串找） */
+export const INVITE_BTN_ACCEPT = '接受并绑定';
+export const INVITE_BTN_REPLACE = '更换节点';
+export const INVITE_BTN_SKIP = '暂不绑定，仅注册';
+
+/** 失效 / 无码时仍可注册的入口按钮（**逐字**） */
+export const INVITE_BTN_REGISTER = '普通注册';
+/** 未登录时引导登录 / 注册的按钮（复用现有登录页，**不新写认证链路**） */
+export const INVITE_BTN_LOGIN = '登录 / 注册';
+
+/** 未登录提示行 */
+export const INVITE_GUEST_HINT = '登录或注册后即可接受邀请';
+
+/** 无 `c` 参数（只带 `invite_code`）时的普通型落地文案 */
+export const INVITE_NO_CODE_TITLE = '你收到一条家族邀请';
+export const INVITE_NO_CODE_HINT = '登录或注册后可继续；本链接未指定具体家族，可在家族页申请加入';
+
+/** 码无效 / 过期 / 已用尽：友好提示（后端 `reason` 原文优先透出） */
+export const INVITE_INVALID_TITLE = '邀请链接已失效';
+export const INVITE_INVALID_HINT = '仍可用手机号注册；稍后可在家族页申请加入';
+
+/** node 型 / plain 型说明行（入口面板与落地页共用） */
+export const INVITE_NODE_HINT = '节点型邀请：含建议绑定节点，对方接受并绑定后本链接立即失效（一次性）';
+export const INVITE_PLAIN_HINT = '普通型邀请：不针对任何节点，可多次使用';
+
+/**
+ * 落地页树图上**建议绑定节点**的卡面标记（传 `tree-pedigree` 的可选 prop `focus-label`）。
+ * 不能沿用缺省的「★我」——落地页里被邀请人尚未绑定，标「我」会误读。
+ */
+export const INVITE_SUGGEST_MARK = '★建议绑定';
+
+/** 建议节点不可绑时的原因行（node 型已被他人绑 / plain 型无建议节点 ⇒ 【更换节点】改选） */
+export const INVITE_ACCEPT_BLOCKED_BOUND = '建议节点已被他人绑定，请【更换节点】改选';
+export const INVITE_ACCEPT_BLOCKED_NONE = '本邀请未指定节点，请【更换节点】选择你的节点';
+
+/** 有效期行（`expires_at` → `邀请有效至 YYYY-MM-DD`；无值 ⇒ 空串不渲染） */
+export function inviteExpiryLine(expiresAt?: string | null): string {
+  return expiresAt ? `邀请有效至 ${formatAssetDate(expiresAt)}` : '';
+}
+
+/** 入口一（节点详情页）：邀请按钮（**逐字**，验收按这串找） */
+export const INVITE_NODE_ENTRY = '邀请此人入族（建议绑定此节点）';
+/** 入口二（【我的】页家族互动卡）：邀请按钮（**逐字**，验收按这串找） */
+export const INVITE_PLAIN_ENTRY = '邀请族人加入';
+/** 链接面板：分区标签 / 复制按钮 */
+export const INVITE_SHORT_LABEL = '短链';
+export const INVITE_LONG_LABEL = '长链（含建议节点）';
+export const INVITE_COPY_BTN = '复制';
+export const INVITE_GENERATING = '生成中…';
+/** 复制成功 toast（H5 剪贴板无成功回调也会走到，统一文案） */
+export const INVITE_COPIED = '链接已复制';
+
+/** 更换节点面板：标题 / 选树 / 选节点 / 提交 / 取消 */
+export const INVITE_REPLACE_TITLE = '更换节点';
+export const INVITE_REPLACE_TREE_LABEL = '选择家族树';
+export const INVITE_REPLACE_NODE_LABEL = '选择要绑定的节点';
+export const INVITE_REPLACE_SEARCH_PLACEHOLDER = '输入姓名或编号筛选';
+export const INVITE_REPLACE_EMPTY = '未找到匹配的节点';
+export const INVITE_REPLACE_SUBMIT = '确认绑定该节点';
+export const INVITE_CANCEL = '取消';
+
+/** 三选回执：绑定成功 / 仅注册（**注册 ≠ 入族**） */
+export function inviteBoundDone(treeName: string): string {
+  const tree = (treeName || '').trim();
+  return tree ? `已加入『${tree}』` : '已加入家族';
+}
+export const INVITE_SKIP_DONE = '已注册，尚未加入家族（可稍后在家族页申请加入）';
+/** 回执后的去处按钮 */
+export const INVITE_GO_FAMILY = '进入家族页';
+
+/** 通用失败兜底（后端文案缺失时才用） */
+export const INVITE_FAIL = '操作失败，请重试';
+
+/** 409 兜底：节点已被他人绑定 */
+export const INVITE_ERR_CONFLICT = '该节点已被他人绑定，请【更换节点】改选';
+/** 404 兜底：节点不存在 */
+export const INVITE_ERR_NOT_FOUND = '该节点不存在或已被移除';
+/** 400 兜底：已处理过 / 参数有误 */
+export const INVITE_ERR_HANDLED = '本次邀请已处理过，或参数有误';
+
+/**
+ * 邀请域错误文案：**后端原文优先**（`ApiStatusError.message` 即后端 `error.message`），
+ * 无文案时按 HTTP 状态给出域内兜底（**409 = 节点已被他人绑定**）。
+ */
+export function inviteErrorText(e: unknown, fallback = INVITE_FAIL): string {
+  const status = (e as { status?: number })?.status;
+  const msg = String((e as { message?: string })?.message || '').trim();
+  if (status === 409) return msg && msg !== '处理邀请失败 (409)' ? msg : INVITE_ERR_CONFLICT;
+  if (status === 404) return msg && msg !== '处理邀请失败 (404)' ? msg : INVITE_ERR_NOT_FOUND;
+  if (status === 400) return msg && msg !== '处理邀请失败 (400)' ? msg : INVITE_ERR_HANDLED;
+  return msg || fallback;
 }

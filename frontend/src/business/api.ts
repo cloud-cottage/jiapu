@@ -33,6 +33,11 @@ import type {
   SigninItem,
   SigninMakeupResult,
   SigninFeeSettingsPayload,
+  InviteKind,
+  InviteDecision,
+  InviteCodeResult,
+  InviteResolveResult,
+  InviteBindResult,
 } from './types';
 
 // API 基础路径
@@ -44,9 +49,9 @@ export { API_BASE };
 
 async function request<T>(
   path: string,
-  options: { method?: string; body?: unknown; treeId?: string } = {},
+  options: { method?: string; body?: unknown; treeId?: string; inviteCode?: string } = {},
 ): Promise<T> {
-  const { method = 'GET', body, treeId } = options;
+  const { method = 'GET', body, treeId, inviteCode } = options;
   const headers: Record<string, string> = {};
 
   if (body !== undefined) {
@@ -55,6 +60,11 @@ async function request<T>(
   // 多 tree 支持：auth-server 按此 header 选择对应 Gramps 凭据
   if (treeId) {
     headers['X-Tree-Id'] = treeId;
+  }
+  // 邀请落地页专用（批 C-2）：持有效邀请码 ⇒ 既有读路由放行**整棵树**（不裁剪）。
+  // **只有落地页会传**（组件 prop `invite-code` 逐级下传）；其它页面一律不带该头。
+  if (inviteCode) {
+    headers['X-Invite-Code'] = inviteCode;
   }
   // 读路径节点级可见分层：携带登录态，服务端按 guest/logged-in/member 分档裁剪
   const token = getAuthToken();
@@ -400,13 +410,15 @@ export async function fetchPersonList(
   treeId: string,
   page = 0,
   pageSize = 0,
+  /** 邀请码（批 C-2）：仅落地页传入 ⇒ 服务端放行整棵树；其它宿主一律不传（既有裁剪行为不变） */
+  inviteCode = '',
 ): Promise<{ data: PersonSummary[]; total: number }> {
   // Gramps-Web 分页: page=0(默认) 返回全部; pagesize 无上限; 无 start 参数
   const query =
     page > 0 && pageSize > 0
       ? `/people/?profile=all&page=${page}&pagesize=${pageSize}`
       : `/people/?profile=all`;
-  const raw = await request<RawPerson[]>(query, { treeId });
+  const raw = await request<RawPerson[]>(query, { treeId, inviteCode });
   return {
     data: raw.map(toPersonSummary),
     total: raw.length,
@@ -425,6 +437,8 @@ export interface FamilySummary {
 
 export async function fetchFamilyList(
   treeId: string,
+  /** 邀请码（批 C-2）：仅落地页传入（同上） */
+  inviteCode = '',
 ): Promise<FamilySummary[]> {
   const raw = await request<Array<{
     handle: string;
@@ -432,7 +446,7 @@ export async function fetchFamilyList(
     father_handle?: string;
     mother_handle?: string;
     child_ref_list?: Array<{ ref: string }>;
-  }>>('/families/', { treeId });
+  }>>('/families/', { treeId, inviteCode });
   return raw.map((f) => ({
     handle: f.handle,
     gramps_id: f.gramps_id || '',
@@ -2959,4 +2973,103 @@ export async function deleteAccount(): Promise<DeleteAccountResult> {
     throw new ApiStatusError(body?.error || `注销失败 (${res.status})`, res.status, body);
   }
   return body as DeleteAccountResult;
+}
+
+// ---- 邀请（批 C-2：节点型 / 普通型邀请码 + 落地页三选） ----
+//
+// 契约（C-1 / C-2 **逐字共用**；后端同期落盘，前端按此写、不得改名）：
+// 1) `POST /invite/code`（需登录）body `{kind:'node'|'plain', tree_id?, person_handle?}`
+//    ⇒ `{ok, code, kind, tree_id|null, person_handle|null, expires_at}`；**url 由前端拼**：
+//    短链 = `<origin>/#/pages/invite/landing?c=<code>`（D3：不做极短别名页）；
+//    长链（**仅 node 型**）= 短链 + `&invite_code=<邀请人手机号>&tree_id=<tree>&person_handle=<handle>`。
+// 2) `GET /invite/code/resolve?c=<code>`（**免登录**）⇒ `InviteResolveResult`（**零手机号**）。
+// 3) 既有读路由（`fetchPersonList` / `fetchFamilyList`）可选请求头 `X-Invite-Code: <code>`
+//    ⇒ 落地页拿到**整棵树**（不裁剪）；**只有落地页会带**（经组件 prop 下传，见上方 `request`）。
+// 4) `POST /invite/bind`（需登录）body `{c, decision:'accept'|'replace'|'skip', tree_id?, person_handle?}`；
+//    错误码口径：**400**（参数 / 已处理过）、**404**（节点不存在）、**409**（节点已被他人绑定）。
+
+/** 落地页 hash 路由（短链的路径部分；= pages.json 子包 `pages/invite` 的 `landing` 页） */
+export const INVITE_LANDING_PATH = '/#/pages/invite/landing';
+
+/** 当前站点 origin（H5 才有；非 H5 / 取不到 ⇒ 空串，短链退化为路径形态） */
+export function inviteSiteOrigin(): string {
+  const w = typeof window !== 'undefined' ? (window as { location?: { origin?: string } }) : undefined;
+  return w?.location?.origin || '';
+}
+
+/** 短链 = `<origin>/#/pages/invite/landing?c=<code>`（**唯一形态**） */
+export function inviteShortUrl(code: string, origin = inviteSiteOrigin()): string {
+  return `${origin}${INVITE_LANDING_PATH}?c=${encodeURIComponent(code)}`;
+}
+
+/** 长链（**仅节点型**）= 短链 + `&invite_code=<邀请人手机号>&tree_id=<树>&person_handle=<节点>` */
+export function inviteLongUrl(args: {
+  code: string;
+  inviterPhone: string;
+  treeId: string;
+  personHandle: string;
+  origin?: string;
+}): string {
+  const base = inviteShortUrl(args.code, args.origin ?? inviteSiteOrigin());
+  return (
+    `${base}&invite_code=${encodeURIComponent(args.inviterPhone)}` +
+    `&tree_id=${encodeURIComponent(args.treeId)}` +
+    `&person_handle=${encodeURIComponent(args.personHandle)}`
+  );
+}
+
+/** 邀请域错误体 → `ApiStatusError`（**保留 status**：409 抢绑 / 404 节点不存在 / 400 已处理过，调用方按码分支） */
+function inviteErrorOf(body: any, status: number, fallback: string): ApiStatusError {
+  return new ApiStatusError(
+    body?.error?.message || body?.error || `${fallback} (${status})`,
+    status,
+    body,
+  );
+}
+
+/**
+ * 签发邀请码（需登录）。
+ * - `kind:'node'`（**节点详情页入口**）：`tree_id` + `person_handle` 必填 ⇒ **一次性**、含建议绑定节点；
+ * - `kind:'plain'`（**【我的】页入口**）：不带节点 ⇒ **可多次使用**。
+ */
+export async function createInviteCode(
+  payload: { kind: InviteKind; tree_id?: string; person_handle?: string },
+  token: string,
+): Promise<InviteCodeResult> {
+  const res = await fetch(`${API_BASE}/invite/code`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw inviteErrorOf(body, res.status, '生成邀请链接失败');
+  return body as InviteCodeResult;
+}
+
+/** 解析邀请码（**免登录**；出参零手机号）。失效 / 过期 / 已用尽 ⇒ `valid:false`（后端仍可能返回 4xx） */
+export async function resolveInviteCode(code: string): Promise<InviteResolveResult> {
+  const res = await fetch(`${API_BASE}/invite/code/resolve?c=${encodeURIComponent(code)}`);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw inviteErrorOf(body, res.status, '邀请链接解析失败');
+  return body as InviteResolveResult;
+}
+
+/**
+ * 落地页三选（需登录）：
+ * - `accept` = 接受并绑定（节点型：绑定码内建议节点；抢绑冲突 ⇒ **409**）；
+ * - `replace` = 更换节点（**必须**带 `tree_id` + `person_handle`）；
+ * - `skip` = 暂不绑定，仅注册（`bound:false` + `anchor:null`，**注册 ≠ 入族**）。
+ */
+export async function bindInvite(
+  payload: { c: string; decision: InviteDecision; tree_id?: string; person_handle?: string },
+  token: string,
+): Promise<InviteBindResult> {
+  const res = await fetch(`${API_BASE}/invite/bind`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw inviteErrorOf(body, res.status, '处理邀请失败');
+  return body as InviteBindResult;
 }

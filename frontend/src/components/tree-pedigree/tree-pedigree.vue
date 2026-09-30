@@ -103,6 +103,16 @@ import type { TreePersonNode } from '@/business/pedigree';
 import * as echarts from 'echarts';
 import PersonDetailModal from '@/components/person-detail-modal/person-detail-modal.vue';
 
+/**
+ * `focusHandle` 命中节点的**卡面标记**文案（批 B 起用于锚点「我」；沿用关键节点的 ★ 前缀风格，不新造图标）。
+ *
+ * ⚠️ 声明在 `withDefaults` **之前**：`withDefaults` 的默认值对象在模块求值期就会求值，写在后面会 TDZ。
+ * 邀请落地页（批 C-2）传 `focusLabel="★建议绑定"` —— 那里被邀请人尚未绑定，标「我」会误读。
+ */
+const FOCUS_MARKER = '★我';
+/** 「我」标记的高亮色（卡面文字改色，与关键节点标注同一套呈现方式） */
+const FOCUS_MARKER_COLOR = '#C62828';
+
 const props = withDefaults(
   defineProps<{
     treeId: string;
@@ -130,6 +140,24 @@ const props = withDefaults(
      * 缺省 0 = 沿用既有 totalPeople（其它宿主行为完全不变）。
      */
     peopleTotal?: number;
+    /**
+     * 「我」的锚点 handle（宿主传入：当前用户在本树绑定的那个节点；只有锚点属本树时才传）。
+     * ① 首屏**只居中一次**到该节点（此后用户拖动/缩放一律不被夺回；zoomReset 语义不变）；
+     * ② 该节点卡面追加「我」标记行并把卡面文字改成高亮色。
+     * 缺省空串 ⇒ 与原有行为完全一致。居中与标记对图元尺寸/布局零影响：
+     * 标记只追加进卡面文字，不参与卡宽/卡高/世代行距的计算。
+     */
+    focusHandle?: string;
+    /**
+     * `focusHandle` 命中节点的卡面标记文案（缺省 `★我` = 批 B 行为逐字不变）。
+     * 邀请落地页传 `★建议绑定`（被邀请人未绑定，标「我」会误读）。
+     */
+    focusLabel?: string;
+    /**
+     * **邀请落地页专用**（批 C-2）：持邀请码时把 `X-Invite-Code` 随 `fetchPersonList` / `fetchFamilyList`
+     * 一起发出 ⇒ 服务端放行**整棵树**（不裁剪）。缺省空串 ⇒ 两个请求都不带该头，其它宿主逐字回落既有行为。
+     */
+    inviteCode?: string;
   }>(),
   {
     defaultLayout: 'vertical',
@@ -139,6 +167,9 @@ const props = withDefaults(
     keyMarkers: () => ({}),
     treeManage: true,
     peopleTotal: 0,
+    focusHandle: '',
+    focusLabel: FOCUS_MARKER,
+    inviteCode: '',
   },
 );
 
@@ -307,8 +338,8 @@ async function loadData() {
   try {
     const [meta, people, families] = await Promise.all([
       fetchTreeMetaRemote().catch(() => null),
-      fetchPersonList(props.treeId, 0, 0),
-      fetchFamilyList(props.treeId),
+      fetchPersonList(props.treeId, 0, 0, props.inviteCode),
+      fetchFamilyList(props.treeId, props.inviteCode),
     ]);
     // tree-meta 仅用于 founder_gramps_id（不单独缓存）
     founderGrampsId.value = meta?.trees?.[props.treeId]?.founder_gramps_id || '';
@@ -552,6 +583,14 @@ function decorateTree(node: TreePersonNode, isVirtualRoot = false): TreePersonNo
   };
   // 关键节点：卡面文字用标注主题色（ECharts per-node label 覆盖；不命中则沿用系列默认深棕）
   if (km?.color) card.label = { color: km.color };
+  // 「我」/「建议绑定」标记（宿主传入的 focusHandle 节点）：卡面姓名下追加一行标记 + 卡面文字改高亮色。
+  // 标记文案由 `focusLabel` 决定（缺省 ★我 = 批 B 既有行为逐字不变；邀请落地页传 ★建议绑定）。
+  // 只写 _cardText（渲染文字），**不进 lines / cardLines**：卡宽、卡高、世代行距一律按未标记时的
+  // 原值计算 ⇒ 图元尺寸（symbolSize）与树布局零影响（本仓红线）；占位/虚拟根同 keyMarkers 不标记。
+  if (!artifact && props.focusHandle && node.handle === props.focusHandle) {
+    card._cardText = `${card._cardText}\n${props.focusLabel}`;
+    card.label = { color: FOCUS_MARKER_COLOR };
+  }
   if (node.children) card.children = node.children.map((c) => decorateTree(c));
   return card;
 }
@@ -606,6 +645,68 @@ function resetViewport() {
   if (!chart || !off) return;
   chart.dispatchAction({ type: 'treeRoam', seriesIndex: 0, dx: -off.x, dy: -off.y });
 }
+
+/* ---- 「我」的节点（focusHandle）：首屏只居中一次 ---- */
+
+/** 树图数据里 focusHandle 命中的下标（虚拟根 / 未画进图里的节点 ⇒ -1） */
+function focusDataIndex(): number {
+  const inst = chart as any;
+  const data = inst?.getModel?.()?.getSeriesByIndex?.(0)?.getData?.();
+  if (!data || !props.focusHandle) return -1;
+  const count = typeof data.count === 'function' ? data.count() : 0;
+  for (let i = 0; i < count; i++) {
+    if (data.getRawDataItem?.(i)?.handle === props.focusHandle) return i;
+  }
+  return -1;
+}
+
+/**
+ * 「我」节点当前的画布像素位置（供 treeRoam 求平移量）。口径 = 节点布局点（series 数据 layout）
+ * 经 view 坐标系变换（`coordinateSystem.dataToPoint`，已含当前漫游/缩放）+ 正交布局下 _mainGroup
+ * 的组偏移 `layoutInfo`（ECharts TreeView.render：`group.x = layoutInfo.x / group.y = layoutInfo.y`
+ * —— 该偏移不在 coordinateSystem 内）。**不读图元自身位置**：首屏入场动画期间图元仍在移动，读数会偏。
+ * 取不到（未传 handle / 节点不在本图）→ null。
+ */
+function focusNodePixel(): { x: number; y: number } | null {
+  const idx = focusDataIndex();
+  if (idx < 0) return null;
+  const model = (chart as any)?.getModel?.()?.getSeriesByIndex?.(0);
+  const layout = model?.getData?.()?.getItemLayout?.(idx);
+  if (!layout || !isFinite(layout.x) || !isFinite(layout.y)) return null;
+  const cs = model?.coordinateSystem;
+  const p = cs?.dataToPoint ? cs.dataToPoint([layout.x, layout.y]) : [layout.x, layout.y];
+  if (!p || !isFinite(p[0]) || !isFinite(p[1])) return null;
+  const box = model?.layoutInfo || { x: 0, y: 0 };
+  return { x: p[0] + (box.x || 0), y: p[1] + (box.y || 0) };
+}
+
+/** 首屏居中是否已执行（**只做一次**：用户后续拖动/缩放不再被夺回；zoomReset 既有语义不变） */
+let focusCentered = false;
+
+/**
+ * 把「我」的节点移到树图容器中心（**仅首屏一次**）。走与滚轮/拖动同一机制
+ * （treeRoam 的 dx/dy 是屏幕像素位移，只动「画面整体变换」）⇒ 不触碰节点尺寸与树布局，
+ * 且位移会同步回 series 的 center/zoom，后续 setOption 不会把它拽回初始视图。
+ */
+function centerOnFocusOnce() {
+  if (focusCentered || !props.focusHandle || !chart) return;
+  const el = document.getElementById('tree-chart') as HTMLDivElement | null;
+  const p = focusNodePixel();
+  if (!el || !p) return;
+  focusCentered = true;
+  chart.dispatchAction({
+    type: 'treeRoam',
+    seriesIndex: 0,
+    dx: el.clientWidth / 2 - p.x,
+    dy: el.clientHeight / 2 - p.y,
+  });
+}
+
+// 宿主可能在本组件渲染之后才拿到锚点（fetchMyAnchor 异步）⇒ handle 一到就尝试一次
+watch(
+  () => props.focusHandle,
+  () => centerOnFocusOnce(),
+);
 
 /** 滚轮提示文案（随布局变化：纵向上下 / 横向左右） */
 const panHint = computed(() => {
@@ -808,6 +909,9 @@ function renderChart() {
       },
     ],
   });
+
+  // 首屏把视野中心移到「我」的节点（内部只执行一次：用户后续拖动/缩放不被夺回）
+  centerOnFocusOnce();
 }
 
 /** 切换图示布局；迁徙地图为跳转专页 */

@@ -40,3 +40,14 @@ export type { TreeMeta, TreeEntry, PersonSummary, PersonDetail, PersonProfile, F
 // 签到 7 天日历（2026-09-28）：补签接口 + 后台签到设置（**沿用既有治理路由** `PUT /admin/wallet-fee`，不新增路由）
 export { postSigninMakeup, putSigninFeeSettings } from './api';
 export type { SigninItem, SigninCalendarState, SigninCalendarDay, SigninMakeupResult, SigninPoolEntry, SigninFeeSettingsPayload } from './types';
+// 邀请（批 C-2：节点型 / 普通型邀请码 + 落地页三选）—— 契约见 `business/api.ts` 该段注释
+export {
+  createInviteCode,
+  resolveInviteCode,
+  bindInvite,
+  inviteShortUrl,
+  inviteLongUrl,
+  inviteSiteOrigin,
+  INVITE_LANDING_PATH,
+} from './api';
+export type { InviteKind, InviteDecision, InviteCodeResult, InviteResolveResult, InviteBindResult } from './types';

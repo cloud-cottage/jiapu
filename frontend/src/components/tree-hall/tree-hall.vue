@@ -113,7 +113,7 @@
 
       <!-- 视图内容 -->
       <view v-if="view === 'pedigree'" class="view-body">
-        <TreePedigree :tree-id="treeId" :people-total="peopleTotal" />
+        <TreePedigree :tree-id="treeId" :people-total="peopleTotal" :focus-handle="focusHandle" />
       </view>
 
       <!-- 家族消息（审批入口） -->
@@ -410,6 +410,8 @@ const joinSelfName = ref('');
 const joinNote = ref('');
 /** 当前用户是否已绑定某棵家族树（member；已绑不再显示申请入口） */
 const joined = ref(false);
+/** 当前用户在本树绑定的节点 handle（下传给树图：首屏聚焦 + 「我」标记；空串 = 不聚焦，行为与既有版本一致） */
+const focusHandle = ref('');
 
 // 文献地址（tree-meta archive_url）
 const archiveUrl = computed(() => hallInfo.value?.archive_url || '');
@@ -746,8 +748,11 @@ async function loadAll() {
     try {
       const anchor = await fetchMyAnchor(tk);
       joined.value = !!anchor;
+      // 「我」的节点只在锚点属本树时下传（未绑定 / 锚点属其它树 ⇒ 空串 = 与既有行为一致）
+      focusHandle.value = anchor && anchor.tree_id === treeId.value ? anchor.person_handle : '';
     } catch {
       joined.value = false;
+      focusHandle.value = '';
     }
   }
 }
@@ -759,6 +764,7 @@ function resetState() {
   accessInfo.value = null;
   peopleTotal.value = 0;
   joined.value = false;
+  focusHandle.value = '';
   hasClan.value = false;
   canManageTree.value = false;
   view.value = 'pedigree';

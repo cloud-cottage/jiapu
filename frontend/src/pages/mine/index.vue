@@ -115,6 +115,32 @@
           <text class="fe-icon">＋</text>
           <text class="fe-text">邀请好友</text>
         </view>
+        <!-- 邀请族人加入（批 C-2 **入口二 · 普通型**）：不针对任何节点、可多次使用；
+             本页为唯一「新写请求」点：POST /invite/code {kind:'plain'} → 就地展示短链 + 复制 -->
+        <view class="fe-item fe-item-wide" @click="goInviteClan">
+          <text class="fe-icon">🏮</text>
+          <text class="fe-text">{{ INVITE_PLAIN_ENTRY }}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 普通型邀请链接（就地覆盖层：短链 + 复制；文案取邀请域单点） -->
+    <view v-if="inviteOpen" class="modal-mask" @click="inviteOpen = false">
+      <view class="modal" @click.stop>
+        <text class="modal-title">{{ INVITE_PLAIN_ENTRY }}</text>
+        <text class="modal-sub">{{ INVITE_PLAIN_HINT }}</text>
+        <text v-if="inviteError" class="bind-error">{{ inviteError }}</text>
+        <template v-else-if="inviteShort">
+          <text class="invite-label">{{ INVITE_SHORT_LABEL }}</text>
+          <text class="invite-link">{{ inviteShort }}</text>
+          <view class="invite-copy" @click="copyInviteShort">
+            <text class="invite-copy-text">{{ INVITE_COPY_BTN }}</text>
+          </view>
+          <text v-if="inviteExpiry" class="invite-expiry">{{ inviteExpiry }}</text>
+        </template>
+        <view class="modal-actions">
+          <t-button variant="text" block @click="inviteOpen = false">{{ INVITE_CANCEL }}</t-button>
+        </view>
       </view>
     </view>
 
@@ -215,7 +241,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { isAuthenticated, authState, clearAuth, getAuthToken } from '@/business/auth';
-import { fetchMyAnchor, requestLeave, fetchTreeMetaRemote, fetchMessages, deleteAccount, ApiStatusError } from '@/business';
+import { fetchMyAnchor, requestLeave, fetchTreeMetaRemote, fetchMessages, deleteAccount, ApiStatusError, createInviteCode, inviteShortUrl } from '@/business';
 import { fetchAssetsSummary, postSignin, postSigninMakeup } from '@/business/api';
 import type { AssetsSummary } from '@/business/api';
 import { fetchFriends, scrollLockOf, type ScrollLockView } from '@/business/friends';
@@ -247,6 +273,15 @@ import {
   signinToastText,
   signinMakeupConfirmText,
   signinMakeupToastText,
+  INVITE_PLAIN_ENTRY,
+  INVITE_PLAIN_HINT,
+  INVITE_SHORT_LABEL,
+  INVITE_COPY_BTN,
+  INVITE_CANCEL,
+  INVITE_COPIED,
+  INVITE_FAIL,
+  inviteErrorText,
+  inviteExpiryLine,
 } from '@/business/asset-text';
 import AssetInventory from '@/components/asset-inventory/asset-inventory.vue';
 
@@ -257,6 +292,14 @@ const showLeaveModal = ref(false);
 const leaveReason = ref('');
 const leaveError = ref('');
 const leaving = ref(false);
+
+// ---- 邀请族人加入（批 C-2 **入口二 · 普通型**）：不针对任何节点、可多次使用 ----
+// 唯一写请求 = `POST /invite/code {kind:'plain'}`（点击入口时才发；成功后就地展示短链 + 复制）
+const inviteOpen = ref(false);
+const inviteBusy = ref(false);
+const inviteShort = ref('');
+const inviteExpiry = ref('');
+const inviteError = ref('');
 
 // 站内信未读角标（GET /messages 的 unread；0 时不显示）
 const unreadCount = ref(0);
@@ -494,6 +537,44 @@ function goFriends() {
 
 function goInviteFriend() {
   uni.navigateTo({ url: '/pages/friend/invite/index' });
+}
+
+/**
+ * 【邀请族人加入】（批 C-2 **入口二 · 普通型**）：签发**普通型**邀请码（不含建议节点、可多次使用），
+ * 成功后就地弹覆盖层展示短链 + 复制。url 由前端拼（`business/api.ts` 的 `inviteShortUrl`，形态唯一）。
+ * 失败 ⇒ 覆盖层内出邀请域文案（`inviteErrorText` 优先透出后端原文），**不静默、不臆造链接**。
+ */
+async function goInviteClan() {
+  if (inviteBusy.value) return;
+  inviteOpen.value = true;
+  if (inviteShort.value) return; // 已签发过 ⇒ 复用同一张普通型邀请（可多次使用）
+  const token = getAuthToken();
+  if (!token) {
+    // 极端态：入口仅在已登录时渲染，走到这里只可能是登录态刚好过期 ⇒ 回登录页（不新写认证链路）
+    inviteOpen.value = false;
+    uni.navigateTo({ url: '/pages/login/index' });
+    return;
+  }
+  inviteBusy.value = true;
+  inviteError.value = '';
+  try {
+    const res = await createInviteCode({ kind: 'plain' }, token);
+    inviteShort.value = inviteShortUrl(res.code);
+    inviteExpiry.value = inviteExpiryLine(res.expires_at);
+  } catch (e) {
+    inviteError.value = inviteErrorText(e, INVITE_FAIL);
+  } finally {
+    inviteBusy.value = false;
+  }
+}
+
+/** 复制普通型邀请短链（剪贴板走本仓既有 `uni.setClipboardData`，与入口一同一体例） */
+function copyInviteShort(): void {
+  if (!inviteShort.value) return;
+  uni.setClipboardData({
+    data: inviteShort.value,
+    success: () => uni.showToast({ title: INVITE_COPIED, icon: 'success' }),
+  });
 }
 
 /** 今日奖励入口（子包页 pages/task/index，标题「领取今日奖励」） */
@@ -827,7 +908,7 @@ onMounted(() => {
   margin-bottom: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);
 }
 .interact-title { font-size: 16px; font-weight: bold; color: #3E2723; display: block; }
-.friend-entry { display: flex; gap: 10px; margin-top: 12px; }
+.friend-entry { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .fe-item {
   flex: 1; display: flex; align-items: center; justify-content: center;
   padding: 10px 0; border-radius: 12px;
@@ -837,6 +918,21 @@ onMounted(() => {
 }
 .fe-icon { font-size: 16px; margin-right: 6px; }
 .fe-text { font-size: 13px; color: #8B4513; }
+/* 「邀请族人加入」（普通型）入口条：.friend-entry 是横排 flex，故按 100% 基宽独占一行（另两格仍均分首行） */
+.fe-item-wide { flex: 1 0 100%; }
+
+/* 普通型邀请链接覆盖层（就地展示短链 + 复制；样式与入口一 person-archive 的同名类逐值一致） */
+.invite-label { display: block; font-size: 11px; color: #8B4513; margin-top: 10px; }
+.invite-link {
+  display: block; font-size: 11px; color: #5D4037; line-height: 1.6;
+  margin-top: 4px; word-break: break-all;
+}
+.invite-copy {
+  display: inline-block; margin-top: 6px; padding: 4px 14px; border-radius: 6px;
+  background: #FBF8F5; border: 1px solid #E0D6CB;
+}
+.invite-copy-text { font-size: 12px; color: #5D4037; }
+.invite-expiry { display: block; font-size: 11px; color: #B08D57; margin-top: 8px; }
 
 /* 弹窗 */
 .modal-mask {

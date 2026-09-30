@@ -532,3 +532,53 @@ export interface SigninFeeSettingsPayload {
   /** 第 7 天大奖（**石榴籽碎片**，正整数） */
   signin_day7_fragments?: number;
 }
+
+// ============ 邀请域（批 C-2：节点型 / 普通型邀请码 + 落地页三选） ============
+
+/**
+ * 邀请码类型（逐字 = 后端契约 `kind`）：
+ * - `node` = **节点型**：含建议绑定节点（`tree_id` + `person_handle`），**一次性**（对方接受绑定后失效）；
+ * - `plain` = **普通型**：不针对任何节点，**可多次使用**。
+ */
+export type InviteKind = 'node' | 'plain';
+
+/** 落地页三选决策（逐字 = `POST /invite/bind` 的 `decision`） */
+export type InviteDecision = 'accept' | 'replace' | 'skip';
+
+/** `POST /invite/code`（需登录）出参。短链 / 长链由前端按 `code` 现拼（见 `business/api.ts`） */
+export interface InviteCodeResult {
+  ok: true;
+  code: string;
+  kind: InviteKind;
+  /** 节点型 = 目标树；普通型 = null */
+  tree_id: string | null;
+  /** 节点型 = 建议绑定节点；普通型 = null */
+  person_handle: string | null;
+  expires_at: string;
+}
+
+/** `GET /invite/code/resolve?c=<code>`（免登录）出参 —— **零手机号** */
+export interface InviteResolveResult {
+  valid: boolean;
+  /** 失效原因（后端原文；前端只透出不改写） */
+  reason?: string;
+  kind?: InviteKind | null;
+  inviter_nickname?: string;
+  tree_id?: string;
+  tree_name?: string;
+  hall_name?: string;
+  person_handle?: string;
+  person_name?: string;
+  person_gender?: string;
+  /** 建议节点当前是否仍可绑定（已被他人绑定 ⇒ false） */
+  can_bind?: boolean;
+}
+
+/** `POST /invite/bind`（需登录）出参：`bound=false` = 已注册未入族（skip） */
+export interface InviteBindResult {
+  ok: true;
+  bound: boolean;
+  anchor: { tree_id: string; person_handle: string } | null;
+  /** 奖励回执（后端口径未定 ⇒ 只透传，不解析、不外显） */
+  rewards?: unknown;
+}
