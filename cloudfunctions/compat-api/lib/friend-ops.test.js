@@ -846,19 +846,22 @@ test('F-A 只做编排：资产只经 ledger 的 withAssets/导出读写（无�
   assert.equal(SRC.includes('colAll('), true, 'sweepFriends / 句柄反查 需要全量遍历');
 });
 
-// ══ ⑯ 注册数 36 与磁盘一致 ══════════════════════════════════════════════════════
-// ⚠️ 本判据的基线必须跟随**磁盘真值**：新增第 36 个测试文件（signin-streak.test.js，签到连签域）后，
-//    此处残留的旧基线 35 变成假红。基线口径 = 「package.json 注册数 = 磁盘 *.test.js 数 = 定额」，
-//    仍为**精确等值 + 双向零缺口 + 去重**（不放宽、不删除任何断言），只把定额改成实得真值 36。
-test('package.json 注册数 = 磁盘 *.test.js 数 = 36，且双向零缺口', async () => {
+// ══ ⑯ 注册数 38 与磁盘一致 ══════════════════════════════════════════════════════
+// ⚠️ 本判据的基线必须跟随**磁盘真值**：新增第 37 个测试文件（anchors.test.js，批 A 锚点域：全站唯一 +
+//    force 例外 + 存在性 + approve-join 缺省 reference_handle）后，此处残留的旧基线 36 变成假红；
+//    批 C-1 又新增第 38 个测试文件（invite-codes.test.js，邀请码链路：签发 / 解析 / 定向读放行 /
+//    绑定 / 奖励 + force 覆盖清锚点审计）⇒ 定额同步为实得真值 38。
+//    基线口径 = 「package.json 注册数 = 磁盘 *.test.js 数 = 定额」，仍为**精确等值 + 双向零缺口 + 去重**
+//    （不放宽、不删除任何断言），只把定额改成实得真值 38。
+test('package.json 注册数 = 磁盘 *.test.js 数 = 38，且双向零缺口', async () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));
   const registered = pkg.scripts.test
     .split(/\s+/)
     .filter((x) => x.endsWith('.test.js'))
     .map((x) => path.basename(x));
   const onDisk = fs.readdirSync(HERE).filter((f) => f.endsWith('.test.js')).sort();
-  assert.equal(registered.length, 36, `注册数应为 36，实得 ${registered.length}`);
-  assert.equal(onDisk.length, 36, `磁盘 *.test.js 应为 36，实得 ${onDisk.length}`);
+  assert.equal(registered.length, 38, `注册数应为 38，实得 ${registered.length}`);
+  assert.equal(onDisk.length, 38, `磁盘 *.test.js 应为 38，实得 ${onDisk.length}`);
   assert.equal(new Set(registered).size, registered.length, '注册项不得重复');
   const missingOnDisk = registered.filter((f) => !onDisk.includes(f));
   const unregistered = onDisk.filter((f) => !registered.includes(f));
@@ -866,6 +869,8 @@ test('package.json 注册数 = 磁盘 *.test.js 数 = 36，且双向零缺口', 
   assert.deepEqual(unregistered, [], `磁盘存在但未注册：${unregistered.join(', ')}`);
   assert.ok(registered.includes('friend-ops.test.js'), 'friend-ops.test.js 必须已注册');
   assert.ok(registered.includes('signin-streak.test.js'), 'signin-streak.test.js 必须已注册');
+  assert.ok(registered.includes('anchors.test.js'), 'anchors.test.js 必须已注册（未注册 = 假绿）');
+  assert.ok(registered.includes('invite-codes.test.js'), 'invite-codes.test.js 必须已注册（批 C-1 · 未注册 = 假绿）');
 });
 
 // ══ ⑰ 真源零写入 ════════════════════════════════════════════════════════════════

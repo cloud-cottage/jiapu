@@ -780,11 +780,12 @@ test('⑬ TOCTOU：锁定读与兰帖扣减同锁（持锁期间读不得返回�
 });
 
 // ══ ⑩ 注册数 / ⑪ 真源零写入 ════════════════════════════════════════════════════
-test('⑩ 注册数 36 = 磁盘 *.test.js 数；「已注册但磁盘缺失」0 条；磁盘未注册 0 条', () => {
+// 定额 = 磁盘真值：批 A 新增 anchors.test.js（37）；批 C-1 新增 invite-codes.test.js（38）。
+test('⑩ 注册数 38 = 磁盘 *.test.js 数；「已注册但磁盘缺失」0 条；磁盘未注册 0 条', () => {
   const pkg = JSON.parse(fs.readFileSync(PKG_FILE, 'utf8'));
   const registered = (pkg.scripts.test.match(/[\w./-]+\.test\.js/g) || []).map((p) => p.replace(/^.*lib\//, ''));
   const onDisk = fs.readdirSync(HERE).filter((f) => f.endsWith('.test.js'));
-  assert.equal(registered.length, 36, `注册数应为 36，实得 ${registered.length}`);
+  assert.equal(registered.length, 38, `注册数应为 38，实得 ${registered.length}`);
   assert.equal(onDisk.length, registered.length, `磁盘 *.test.js 数 ${onDisk.length} 应等于注册数 ${registered.length}`);
   assert.equal(new Set(registered).size, registered.length, '注册项不得重复');
   const missing = registered.filter((f) => !fs.existsSync(path.join(HERE, f)));
@@ -793,6 +794,8 @@ test('⑩ 注册数 36 = 磁盘 *.test.js 数；「已注册但磁盘缺失」0 
   assert.deepEqual(unregistered, [], '磁盘未注册必须 0 条');
   assert.ok(registered.includes('task-center.test.js'), '本单新增测试必须已注册');
   assert.ok(registered.includes('signin-streak.test.js'), '签到连签单测必须已注册（未注册 = 假绿）');
+  assert.ok(registered.includes('anchors.test.js'), '锚点域单测必须已注册（未注册 = 假绿）');
+  assert.ok(registered.includes('invite-codes.test.js'), '邀请码链路单测必须已注册（批 C-1 · 未注册 = 假绿）');
 });
 
 test('⑪ 真源零写入：config/ + migrate-output/ 全量指纹与本文件开工时逐字节一致', () => {

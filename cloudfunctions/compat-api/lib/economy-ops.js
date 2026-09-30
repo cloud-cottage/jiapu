@@ -666,19 +666,25 @@ export async function grantAssets(operator, input = {}, now = new Date()) {
   return { ok: true, summary: details.summary };
 }
 
-/** 追加一条 `OpsLog`（§5.3；保留符号，负值原样记录） */
+/**
+ * 追加一条 `OpsLog`（§5.3；保留符号，负值原样记录）。
+ * `log.ref`（可选）：**附加上文对象**（批 C-1 引入 —— 锚点 force 覆盖审计要落「目标节点 / 被移除者」）；
+ * 不给 ref 时落库形状与既往**逐字相同**（不新增空字段，既有调用方零影响）。
+ */
 export async function appendOpsLog(log) {
   const base = await colGet(OPS_LOGS_COL, OPS_LOGS_ID);
   const doc = base ? JSON.parse(JSON.stringify(base)) : blankOpsLogsDoc();
   doc.logs = Array.isArray(doc.logs) ? doc.logs : [];
-  doc.logs.push({
+  const entry = {
     id: log.id,
     ts: log.ts,
     operator: log.operator,
     target_phone: log.target_phone,
     delta: { ...(log.delta || {}) },
     reason: log.reason,
-  });
+  };
+  if (log.ref && typeof log.ref === 'object') entry.ref = { ...log.ref };
+  doc.logs.push(entry);
   await colSet(OPS_LOGS_COL, OPS_LOGS_ID, doc);
   return doc.logs[doc.logs.length - 1];
 }

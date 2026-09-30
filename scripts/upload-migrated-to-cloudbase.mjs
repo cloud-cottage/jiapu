@@ -45,6 +45,8 @@ const COLLECTIONS = [
   'jiazu_ops_logs',
   // 邀请链路（Zang 裁定 v3 · I-8）：每被邀请人一文档（_id = 被邀请人手机号）
   'jiazu_invites',
+  // 邀请码链路（批 C-1）：一码一文档（_id = 6 位短码）—— 漏了云端首写直接报错（AGENTS.md §8）
+  'jiazu_invite_codes',
 ];
 
 const app = cloudbase.init({ env: ENV, accessKey: KEY });

@@ -43,6 +43,9 @@
  *   POST /admin/clan-request | /admin/decide-clan
  *   GET  /admin/clan-requests | /admin/clans | /admin/clan-info（祖谱，docs/clan-tree.spec.md）
  *   POST /join | /leave-request
+ *   POST /invite/code | GET /invite/code/resolve | POST /invite/bind
+ *      （批 C-1 邀请码链路：6 位短码签发 · 免登录五态解析 · 接受邀请 = 直接绑定；新集合 jiazu_invite_codes）
+ *   GET /people | /families 支持可选请求头 `X-Invite-Code`（同树有效码 ⇒ 该次列表不裁剪；定点例外，其余读路由不认）
  *   POST /people/ | PUT /people/<handle> | POST /families/ | PUT /families/<handle>
  */
 import { getMeta, saveMeta, getTree, getAllDetails, getDetail, getEventIndex, colGet, colAll, colSet, updateTrees } from './lib/store.js';
@@ -56,7 +59,14 @@ import * as ops from './lib/economy-ops.js';
 // 邀请链路（邀请码 = 邀请人手机号）：新集合 jiazu_invites + 注册可选填邀请码 + GET /invite/me / POST /invite/accept
 // 口径 = Zang 裁定 v3（I-1…I-9）；兰帖碎片发奖用真源导出 addScrollFragments（I-7，不写第二版）。
 import * as invite from './lib/invite.js';
-import { getAnchor, setAnchor, clearAnchor, canEditPerson } from './lib/scope.js';
+// 邀请码链路（批 C-1 · Kevin 2026-09-30 逐条拍定）：新集合 jiazu_invite_codes
+//   POST /invite/code（签发：node 型一次性 / plain 型多次，TTL 30 天，可撤销）
+//   GET  /invite/code/resolve（免登录 · 五态 · 零手机号）
+//   POST /invite/bind（接受邀请 = 直接绑定 · accept/replace/skip · 幂等 · 档乙加成）
+//   既有列表读路由 GET /people、GET /families 支持可选 `X-Invite-Code`（同树有效码 ⇒ 不裁剪）
+// 基础关系与基础发奖**优先沿用 lib/invite.js 的 applyInvite 语义**（不另造一套）。
+import * as invc from './lib/invite-codes.js';
+import { getAnchor, setAnchor, clearAnchor, canEditPerson, assertAnchorBindable } from './lib/scope.js';
 import * as tw from './lib/tree-write.js';
 import * as mr from './lib/marriage.js';
 import * as cw from './lib/child-write.js';
@@ -404,6 +414,29 @@ async function resolveTreeAccess(headers, treeId, tree) {
   });
 }
 
+/**
+ * 批 C-1 **定点例外**：可选请求头 `X-Invite-Code`（**只对 `GET /people` 与 `GET /families` 两条列表路由生效**）。
+ *
+ * 当且仅当：码存在 **且** 未撤销 **且** 未过期 **且** 未用尽 **且** `code.tree_id === 本次请求的 tree_id`
+ * ⇒ 该次请求**不做节点级裁剪**（等价该树 member 读数：持码人放开节点级裁剪，Kevin 裁定 D6）。
+ * 无码 / 无效 / 异树 ⇒ 返回 `null`，调用方**逐字回落**既有 `readAccess`（不得改既有行为）。
+ * 其余读路由（`/search`、`/people/<handle>`、`/events/*`、`/tree/rank` …）**一律不认该头**。
+ */
+async function resolveInviteCodeAccess(rawCode, treeId, tree) {
+  const code = String(rawCode || '').trim();
+  if (!code) return null;
+  if (!(await invc.inviteCodeGrantsTree(code, treeId, new Date()))) return null;
+  // 复用同一套 access 计算（anchorTreeId = treeId ⇒ member=true ⇒ full），不另造一份口径
+  return computeAccess({
+    treeId,
+    isMaster: false,
+    role: null,
+    anchorTreeId: treeId,
+    people: tree?.people || {},
+    families: tree?.families || {},
+  });
+}
+
 async function handleRequest(event) {
   let pathname = (event.path || '').split('?')[0].replace(/\/+$/, '');
   if (pathname.startsWith('/api')) pathname = pathname.slice(4) || '/';
@@ -489,6 +522,88 @@ async function handleRequest(event) {
       const r = await invite.applyInvite(u.phone, parseBody(event).invite_code, { required: true, now: new Date() });
       if (!r.ok) return send(r.status, { error: r.error, code: r.code });
       return send(200, r);
+    }
+
+    // ---- 批 C-1 邀请码链路（签发 / 解析 / 绑定）· 新集合 jiazu_invite_codes ----
+    // 三条路由**均注册在树编辑闸门之前**（树上下文走 body / query，不依赖 X-Tree-Id）。
+
+    // POST /invite/code（需登录）—— 签发。body `{kind, tree_id?, person_handle?}`。
+    // 出参逐字 `{ok, code, kind, tree_id|null, person_handle|null, expires_at}`；**url 由前端拼**。
+    if (pathname === '/invite/code' && method === 'POST') {
+      const u = await authUser(headers);
+      if (!u) return send(401, { error: '未登录或登录已过期' });
+      const body = parseBody(event);
+      const kind = String(body.kind || '').trim();
+      if (!invc.INVITE_KINDS.includes(kind)) return send(400, { error: '参数错误：kind ∈ node/plain' });
+      let issueTree = null;
+      let issueHandle = null;
+      if (kind === 'node') {
+        // 校验顺序逐条照契约：树存在（404）→ 节点存在（404）→ 节点未被他人绑定（409）→ 调用者锚点属该树或 chief（403）
+        issueTree = String(body.tree_id || '').trim();
+        issueHandle = String(body.person_handle || '').trim();
+        if (!issueTree || !issueHandle) return send(400, { error: '参数错误：node 型需提供 tree_id + person_handle' });
+        const issueTargetTree = await getTree(issueTree);
+        if (!issueTargetTree) return send(404, { error: `家族树不存在: ${issueTree}` });
+        if (!issueTargetTree.people || !issueTargetTree.people[issueHandle]) {
+          return send(404, { error: `该家族树中找不到此节点: ${issueHandle}（tree_id=${issueTree}）` });
+        }
+        try {
+          // 复用批 A 单一单点函数：命中他人绑定 ⇒ 409（**签发时不给 force** —— 不签发废码；传参里不出现 force）
+          await assertAnchorBindable(issueHandle, '', { tree: issueTargetTree, treeId: issueTree, role: u.role });
+        } catch (e) {
+          if (e.status === 409) return send(409, { error: '该人物节点已被绑定，无法签发邀请' });
+          return send(e.status || 400, { error: e.message });
+        }
+        // 签发权限：调用者锚点属该树，或 chief_editor（其余角色 / 无锚点 ⇒ 403）
+        if (u.role !== 'chief_editor') {
+          const myAnchor = await getAnchor(u.phone);
+          if (!myAnchor || myAnchor.tree_id !== issueTree) {
+            return send(403, { error: '仅该家族树成员可邀请他人加入本树' });
+          }
+        }
+      }
+      let issued;
+      try {
+        issued = await invc.issueInviteCode({
+          inviterPhone: u.phone,
+          kind,
+          treeId: issueTree,
+          personHandle: issueHandle,
+          now: new Date(),
+        });
+      } catch (e) {
+        return send(e.status || 500, { error: e.message });
+      }
+      return send(200, {
+        ok: true,
+        code: issued.code,
+        kind: issued.kind,
+        tree_id: issued.tree_id,
+        person_handle: issued.person_handle,
+        expires_at: issued.expires_at,
+      });
+    }
+
+    // GET /invite/code/resolve?c=<code>（**免登录**）—— 五态 + 零手机号（昵称缺失给脱敏串）。
+    if (pathname === '/invite/code/resolve' && method === 'GET') {
+      return send(200, await invc.resolveInviteCodeInfo(query.c, new Date()));
+    }
+
+    // POST /invite/bind（需登录）—— accept / replace / skip；编排在 lib/invite-codes.js 内。
+    if (pathname === '/invite/bind' && method === 'POST') {
+      const u = await authUser(headers);
+      if (!u) return send(401, { error: '未登录或登录已过期' });
+      const body = parseBody(event);
+      const r = await invc.bindInviteCode({
+        phone: u.phone,
+        role: u.role,
+        c: body.c,
+        decision: body.decision,
+        treeId: body.tree_id,
+        personHandle: body.person_handle,
+        now: new Date(),
+      });
+      return send(r.status, r.body);
     }
 
     if (pathname === '/auth/me' && method === 'GET') {
@@ -1338,8 +1453,22 @@ async function handleRequest(event) {
       const personHandle = String(body.person_handle || '').trim();
       if (!targetPhone || !targetTree || !personHandle) return send(400, { error: '参数错误：phone + tree_id + person_handle 必填' });
       if (!(await colGet('jiazu_users', targetPhone))) return send(404, { error: `用户不存在: ${targetPhone}` });
+      // 存在性（404）+ 全站唯一（409 · person_handle 不按树分）—— 与 approve-join 共用同一单点函数
+      // force 只认请求体显式 `true` 且角色为 chief_editor（其它角色传了也忽略，仍 409）；
+      // force 放行时单点函数**一并清空原占用者锚点 + 写审计**，此处只把 `reassigned_from`（脱敏）回给前端。
+      let bindable;
+      try {
+        bindable = await assertAnchorBindable(personHandle, targetPhone, {
+          treeId: targetTree,
+          force: body.force === true,
+          role: u.role,
+          operator: u.phone,
+        });
+      } catch (e) {
+        return send(e.status || 400, { error: e.message });
+      }
       await setAnchor(targetPhone, targetTree, personHandle);
-      return send(200, { ok: true });
+      return send(200, { ok: true, reassigned_from: bindable.reassigned_from || null });
     }
 
     if (pathname === '/admin/get-anchor' && method === 'GET') {
@@ -1434,8 +1563,7 @@ async function handleRequest(event) {
       if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward) return send(403, { error: '需要族谱主理人或以上权限' });
       const body = parseBody(event);
       const id = String(body.id || '').trim();
-      const personHandle = String(body.person_handle || '').trim();
-      if (!id || !personHandle) return send(400, { error: '参数错误：id + person_handle 必填' });
+      if (!id) return send(400, { error: '参数错误：id 必填' });
       const jr = await colGet('jiazu_join_requests', id);
       if (!jr) return send(404, { error: '申请不存在' });
       if (jr.status !== 'pending') return send(400, { error: '该申请已处理' });
@@ -1443,15 +1571,29 @@ async function handleRequest(event) {
         const myTree = (await getAnchor(u.phone))?.tree_id;
         if (myTree && jr.tree_id !== myTree) return send(403, { error: '只能审批自己家族树的加入申请' });
       }
-      const tree = await getTree(jr.tree_id);
-      if (!tree?.people?.[personHandle]) return send(400, { error: '该家族树中找不到此节点' });
+      // person_handle **可选**：缺省取申请人自选节点 `jr.reference_handle`（§9.1 线索）；传入则仍以传入为准
+      const personHandle = String(body.person_handle || '').trim() || String(jr.reference_handle || '').trim();
+      if (!personHandle) return send(400, { error: '参数错误：该申请缺少 reference_handle，请显式指定 person_handle' });
+      // 存在性（404）+ 全站唯一（409）—— 与 set-anchor 共用同一单点函数，不得两套口径
+      // force 放行时单点函数一并清空原占用者锚点 + 写审计 → `reassigned_from`（脱敏）随响应回给前端。
+      let bindable;
+      try {
+        bindable = await assertAnchorBindable(personHandle, jr.phone, {
+          treeId: jr.tree_id,
+          force: body.force === true,
+          role: u.role,
+          operator: u.phone,
+        });
+      } catch (e) {
+        return send(e.status || 400, { error: e.message });
+      }
       if (await getAnchor(jr.phone)) return send(400, { error: '申请人已绑定家族树，无法重复绑定' });
       await setAnchor(jr.phone, jr.tree_id, personHandle);
       jr.status = 'approved';
       jr.handled_by = u.phone;
       jr.handled_at = new Date().toISOString();
       await colSet('jiazu_join_requests', jr._id, jr);
-      return send(200, { ok: true, status: 'approved' });
+      return send(200, { ok: true, status: 'approved', reassigned_from: bindable.reassigned_from || null });
     }
 
     if (pathname === '/admin/reject-join' && method === 'POST') {
@@ -3129,18 +3271,21 @@ async function handleRequest(event) {
 
     // GET /people/
     if (pathname === '/people' && method === 'GET') {
+      // 批 C-1 定点例外：持同树有效 `X-Invite-Code` ⇒ 本列表不裁剪（无效 / 异树 ⇒ 回落 readAccess）
+      const access = (await resolveInviteCodeAccess(header('x-invite-code'), treeId, tree)) || readAccess;
       const details = await getAllDetails(treeId);
       const detailMap = new Map(details.map((d) => [d.handle, d]));
       const out = Object.values(tree.people)
-        .filter((p) => !readAccess.isHiddenPerson(p.handle))
+        .filter((p) => !access.isHiddenPerson(p.handle))
         .map((p) => toRawPerson(tree, p, detailMap.get(p.handle)));
       return send(200, out);
     }
 
     // GET /families/
     if (pathname === '/families' && method === 'GET') {
+      const access = (await resolveInviteCodeAccess(header('x-invite-code'), treeId, tree)) || readAccess;
       const out = Object.values(tree.families)
-        .filter((f) => !isHiddenFamily(readAccess, f))
+        .filter((f) => !isHiddenFamily(access, f))
         .map((f) => ({
           handle: f.handle,
           gramps_id: f.gramps_id || '',
