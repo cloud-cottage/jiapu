@@ -13,15 +13,19 @@
  * `SCROLL_STATUS_PERMANENT`（`永久有效`）/ `scrollDecomposeHintLine` / `scrollCaliberLine` /
  * `scrollFragmentSynthLine` / `scrollRemainderReasonLine`（后者改由 `scrollShortReasonLine` 承担）。
  *
- * 已知例外（**既有代码，待后续批次收敛**，勿在本模块内追平）：
- * ⚠️ **2026-09-29 实测订正**：原文称 `pages/spirit/index.vue`「仍自带第三份手写副本（第 175 行
- * 「未镶嵌 · 可免费分解」、第 586 / 658 行的「有效期至 / 永久有效」拼装）」——**行号与首串均不实**，
- * 现据实测逐条重写（该页全文 668 行，本次未改）：
- * - `grep '未镶嵌 · 可免费分解'` = **0 命中**；第 175 行实为 `</view>`、第 586 行实为 `.section-head {`、
- *   第 658 行实为 `}` —— 该串**仅存于行囊侧注释**（`business/inventory.ts` L25 / L309），页面内无渲染；
- * - **实际残留（如实登记）**：① 第 545 行 `jadeLabel()` 仍**手写拼装** `` `有效期至 ${formatDate(...)}` : '永久有效' ``，
- *   经第 87 行模板 `{{ jadeLabel(j) }}` 渲染；② 第 46 行模板静态文案「永久有效（镶嵌即永久占用）」。
- *   ⇒ 该页仍是无 `durabilityLine()` 口径的一处例外，收敛归后续批次。
+ * 已知例外（**2026-09-30 全前端扫尾后的现状**；本模块只认自身口径，非耐久行语义不在此追平）：
+ * ⚠️ **2026-09-29 实测订正（历史记录，勿再据旧行号引用）**：原文曾称 `pages/spirit/index.vue`「仍自带
+ * 第三份手写副本（第 175 行「未镶嵌 · 可免费分解」、第 586 / 658 行的「有效期至 / 永久有效」拼装）」
+ * ——**行号与首串均不实**：`grep '未镶嵌 · 可免费分解' frontend/src` = **0 命中**，该串仅存于行囊侧注释
+ * （`business/inventory.ts` L25 / L309），页面内无渲染。
+ * ✅ **spirit 页已统一（2026-09-30 收敛，不再是本模块的例外）**：`jadeLabel()` 现为
+ * `` `${shortId(j.id)} · ${durabilityLine(j.expires_at)}` ``（不再手写「有效期至 / 永久有效」）；
+ * 同页镶嵌区静态文案改为 `耐久：9999 天（镶嵌即永久占用）`（走 `durabilityLine()` 无参 = 永久口径，
+ * 括注逐字保留）。同批 `pages/assets/index.vue` 的籽批次行（`N 个批次 · 耐久：N 天`）与
+ * 石榴籽玉行（`永久 N 枚 · 耐久：N 天`）亦改调本函数（旧「最近到期 YYYY-MM-DD」已删）。
+ * 仍在的旧形态（**各有独立语义 / 规格，未纳入耐久行口径，待后续批次裁决**）：
+ * `components/asset-inventory/asset-inventory.vue` 的合成回执 toast（`永久有效` / `有效期至 …`）、
+ * `business/jade-ops.ts` 的合成规则说明句、`business/friends.ts` 的兰帖关系域到期行（含缓冲期语义）。
  *
  * 日期口径：`formatAssetDate` 空值 → `—`、非法值原样返回。
  *

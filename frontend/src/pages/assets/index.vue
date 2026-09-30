@@ -71,7 +71,7 @@
           </view>
           <view class="asset-value-wrap">
             <text class="asset-value">{{ seedsTotal }} 颗</text>
-            <text class="asset-sub">{{ seedLotCount }} 个批次 · 最近到期 {{ formatDate(nearestSeedExpiry) }}</text>
+            <text class="asset-sub">{{ seedLotCount }} 个批次 · {{ durabilityLine(nearestSeedExpiry) }}</text>
           </view>
         </view>
 
@@ -148,7 +148,7 @@ import {
   postMessagesRead,
 } from '@/business/api';
 import type { AssetDelta, AssetsSummary, ExpiringAsset, MessageItem } from '@/business/api';
-import { formatAssetDate as formatDate, scrollDeltaLabel, scrollFragmentDeltaLabel } from '@/business/asset-text';
+import { durabilityLine, formatAssetDate as formatDate, scrollDeltaLabel, scrollFragmentDeltaLabel } from '@/business/asset-text';
 import { isAuthenticated } from '@/business/auth';
 import { ICON } from '@/business/icons';
 import { SCROLL_PIECES_PER_ITEM } from '@/business/inventory';
@@ -247,7 +247,7 @@ const jadeSub = computed(() => {
   const permanent = list.filter((j) => !j.expires_at).length;
   const dated = list.filter((j) => j.expires_at).map((j) => j.expires_at as string);
   const parts: string[] = [permanent ? `永久 ${permanent} 枚` : '无永久玉'];
-  if (dated.length) parts.push(`最近到期 ${formatDate(isoMin(dated))}`);
+  if (dated.length) parts.push(durabilityLine(isoMin(dated)));
   return parts.join(' · ');
 });
 

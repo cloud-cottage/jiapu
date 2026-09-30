@@ -43,7 +43,7 @@
               <text class="jade-line">已镶玉：{{ shortId(mountedJade?.jade_id) }}</text>
             </view>
             <text class="jade-line">镶嵌时间 {{ formatDate(mountedJade?.mounted_at || '') }}</text>
-            <text class="jade-line">永久有效（镶嵌即永久占用）</text>
+            <text class="jade-line">{{ durabilityLine() }}（镶嵌即永久占用）</text>
 
             <!-- 注入者（口径 v6 · 后端读侧反查）：三态展示，手机号不下发、不展示 -->
             <view class="injector-box">
@@ -195,6 +195,7 @@ import {
 } from '@/business/api';
 import type { AssetsSummary, Jade, SpiritInfo, SpiritLogItem, SpiritPlan, SpiritPlanItem } from '@/business/api';
 import { isAssetInsufficientError, showAssetInsufficientGuide } from '@/business/asset-guide';
+import { durabilityLine } from '@/business/asset-text';
 import {
   JADE_SYNTH_SEEDS,
   MOUNT_CONFIRM_BODY,
@@ -542,8 +543,7 @@ function logText(l: SpiritLogItem): string {
 }
 
 function jadeLabel(j: Jade): string {
-  const exp = j.expires_at ? `有效期至 ${formatDate(j.expires_at)}` : '永久有效';
-  return `${shortId(j.id)} · ${exp}`;
+  return `${shortId(j.id)} · ${durabilityLine(j.expires_at)}`;
 }
 
 function shortId(id: string | undefined): string {
