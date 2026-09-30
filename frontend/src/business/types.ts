@@ -560,7 +560,10 @@ export interface InviteCodeResult {
 /** `GET /invite/code/resolve?c=<code>`（免登录）出参 —— **零手机号** */
 export interface InviteResolveResult {
   valid: boolean;
-  /** 失效原因（后端原文；前端只透出不改写） */
+  /**
+   * 失效原因：后端**机读枚举**（`not_found` / `expired` / `revoked` / `used`）——
+   * 页面**不得**直接上屏，一律经 `business/asset-text.ts` 的 `inviteInvalidText()` 映为中文。
+   */
   reason?: string;
   kind?: InviteKind | null;
   inviter_nickname?: string;

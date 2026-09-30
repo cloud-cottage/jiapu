@@ -47,6 +47,8 @@
  * 邀请域（批 C-2）追加单点（**三段唯一字面**）：落地页标题 / 建议节点行 / 三选与失效态按钮 /
  * 双入口按钮（节点详情页 = `INVITE_NODE_ENTRY`、【我的】页 = `INVITE_PLAIN_ENTRY`）/ 链接面板 /
  * 更换节点面板 / 三选回执 / 409 · 404 · 400 兜底文案 —— 落地页、`person-archive`、【我的】页一律引用本模块。
+ * 其中**失效态 `reason`（后端机读枚举）→ 中文**也只在本模块定义（`INVITE_INVALID_REASON_TEXT` +
+ * `inviteInvalidText()`）：页面**不得**把 `not_found` / `expired` / `revoked` / `used` 原串上屏。
  */
 
 /** `YYYY-MM-DD`（本地时区）；空值 → `—`，非法值原样返回 */
@@ -650,9 +652,33 @@ export const INVITE_GUEST_HINT = '登录或注册后即可接受邀请';
 export const INVITE_NO_CODE_TITLE = '你收到一条家族邀请';
 export const INVITE_NO_CODE_HINT = '登录或注册后可继续；本链接未指定具体家族，可在家族页申请加入';
 
-/** 码无效 / 过期 / 已用尽：友好提示（后端 `reason` 原文优先透出） */
+/** 码无效 / 过期 / 已用尽：友好提示标题（后端 `reason` 一律不直接上屏） */
 export const INVITE_INVALID_TITLE = '邀请链接已失效';
 export const INVITE_INVALID_HINT = '仍可用手机号注册；稍后可在家族页申请加入';
+
+/**
+ * 后端 `resolve` 的 `reason`（**机器态枚举原串** = `inviteCodeState()` 五态中的四个失效态）
+ * → 中文逐字（**单点**）。
+ *
+ * ⚠️ 后端 `GET /invite/code/resolve` 在 `valid:false` 时回的是**机读枚举**（`not_found` /
+ * `expired` / `revoked` / `used`，见 `cloudfunctions/compat-api/lib/invite-codes.js` 的
+ * `inviteCodeState()`），**不是**给人看的文案 —— 直接上屏会把英文原串透给被邀请人。
+ * 故本表是其**唯一中文落点**：页面一律经 `inviteInvalidText()`，**不得**直接拼 `reason`。
+ */
+export const INVITE_INVALID_REASON_TEXT: Record<string, string> = {
+  not_found: '邀请链接无效或不存在',
+  expired: '邀请链接已过期',
+  revoked: '邀请已被邀请人撤销',
+  used: '该邀请已被使用（含建议节点的邀请码为一次性）',
+};
+
+/**
+ * 失效态提示行（**唯一拼装点**）：`reason` 命中枚举 ⇒ 对应中文（**绝不透出英文原串**）；
+ * **未知 / 缺失**（旧后端、字段漂移）⇒ 退回通用句 `INVITE_INVALID_HINT`（不臆造、不显枚举）。
+ */
+export function inviteInvalidText(reason?: string | null): string {
+  return INVITE_INVALID_REASON_TEXT[String(reason ?? '')] || INVITE_INVALID_HINT;
+}
 
 /** node 型 / plain 型说明行（入口面板与落地页共用） */
 export const INVITE_NODE_HINT = '节点型邀请：含建议绑定节点，对方接受并绑定后本链接立即失效（一次性）';

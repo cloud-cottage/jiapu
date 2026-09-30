@@ -138,7 +138,8 @@
  *   带 `X-Invite-Code`；无码 / 无效 / 异树 ⇒ 服务端回落既有裁剪（本页不自行裁字段）；
  * - **三选** = 【接受并绑定】/【更换节点】/【暂不绑定，仅注册】；**注册 ≠ 入族**（skip ⇒ 已登录未加入档）；
  * - 未登录 ⇒ 复用现有登录页引导（登录成功该页 `navigateBack` 回本页，`onShow` 继续；**不新写认证链路**）；
- * - 码无效 / 过期 / 已用尽 ⇒ 友好提示（后端 `reason` 原文优先）+ **仍允许【普通注册】**；
+ * - 码无效 / 过期 / 已用尽 ⇒ 友好提示（后端 `reason` 是**机读枚举** ⇒ 经
+ *   `asset-text.ts` 的 `inviteInvalidText()` 映为中文，**绝不透出英文原串**）+ **仍允许【普通注册】**；
  * - 本页**全程只读**：除三选提交（`POST /invite/bind`）外不发任何写请求；文案一律取
  *   `business/asset-text.ts` 邀请域单点，页面不散落用户可见字面。
  */
@@ -186,6 +187,7 @@ import {
   inviteBoundDone,
   inviteErrorText,
   inviteHeadTitle,
+  inviteInvalidText,
   inviteSuggestedLine,
 } from '@/business/asset-text';
 
@@ -271,7 +273,7 @@ async function load(): Promise<void> {
     const r = await resolveInviteCode(code.value);
     resolved.value = r;
     invalid.value = !r.valid;
-    invalidText.value = r.valid ? '' : r.reason || INVITE_INVALID_HINT;
+    invalidText.value = r.valid ? '' : inviteInvalidText(r.reason);
   } catch (e) {
     invalid.value = true;
     invalidText.value = inviteErrorText(e, INVITE_INVALID_HINT);
