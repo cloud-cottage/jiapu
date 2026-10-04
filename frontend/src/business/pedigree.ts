@@ -56,7 +56,8 @@ export interface TreePersonNode {
   /** 方案B 名卡：按卡宽截断后的显示文本（tooltip 仍显全名） */
   _cardText?: string;
   /** ECharts per-node label 覆盖（关键节点标注：卡面文字主题色） */
-  label?: { color?: string };
+  /** rich = ECharts 次级行样式块（弱化行字号/颜色），可选 */
+  label?: { color?: string; rich?: Record<string, { fontSize?: number; color?: string }> };
   children?: TreePersonNode[];
   _is_root?: boolean;
   _family_handle?: string;

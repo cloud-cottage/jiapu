@@ -428,6 +428,10 @@ const CARD_PAD_X = 8; // 单侧内边距
 const CARD_H = 28;
 const CARD_MAX_W = 128; // 含 padding，约 8 个汉字 / 17 个拉丁字符
 const CARD_MAX_W_TITLED = 216; // 带称号卡（姓+名+封号+谥号+号）放宽上限，避免称号被截断
+const WEAK_FONT = 11;
+const WEAK_COLOR = '#9E8F80';
+/** 次级行 rich 样式（配偶行 / 第N世 / 外树镜像角标）：视觉上弱于姓名（14px / #3E2723） */
+const WEAK_RICH = { w: { fontSize: WEAK_FONT, color: WEAK_COLOR } };
 
 /** 近似测量字符串渲染宽度（全角≈fontSize，半角≈0.62em，空格≈0.5em） */
 function estimateTextWidth(text: string, fontSize: number): number {
@@ -449,10 +453,10 @@ function estimateTextWidth(text: string, fontSize: number): number {
 }
 
 /** 卡内文本：按最大内宽截断并补省略号（tooltip 仍显全名） */
-function cardText(name: string, cardW: number): string {
+function cardText(name: string, cardW: number, fontSize = CARD_FONT): string {
   const inner = cardW - CARD_PAD_X * 2;
   let t = name || '';
-  while (t && estimateTextWidth(t, CARD_FONT) > inner) t = t.slice(0, -1);
+  while (t && estimateTextWidth(t, fontSize) > inner) t = t.slice(0, -1);
   return t === name ? name : `${t}…`;
 }
 
@@ -463,7 +467,8 @@ function genderFillColor(g: string | undefined): string {
 
 /** 递归生成名卡节点树（返回克隆，不改业务数据）：写入自适应卡宽/卡高 + 名卡样式。
  * 夫妇卡：节点有配偶（嫁入成员）时卡体加高，第二行起每行一个「娶 XX / 嫁 XX」（性别未知仍「配XX」），
- * 子女连线仍挂在整卡下方 —— 谱式“夫 + 配某氏”一格并列。 */
+ * 子女连线仍挂在整卡下方 —— 谱式“夫 + 配某氏”一格并列。
+ * 次级行（配偶行/第N世/外树镜像角标）弱化 = 11px/#9E8F80，弱于姓名行（14px/#3E2723）。 */
 const CARD_LINE_STEP = 22; // 每增一行的卡高增量（单行 CARD_H=28）
 const CARD_GAP = 12; // 世代行距：卡高之外每层再留的间距（整树展开时按卡高铺开）
 /** 卡片行数（与 decorateTree 的行构成一致）：姓名 / 关键节点标签 / 第N世 / 每位配偶各一行 */
@@ -558,22 +563,26 @@ function decorateTree(node: TreePersonNode, isVirtualRoot = false): TreePersonNo
   const border = artifact ? '#8B4513' : node.is_living === false ? '#000000' : 'transparent';
   const borderWidth = artifact ? 1.5 : node.is_living === false ? 2 : 0;
   const fill = artifact ? '#F7EFE3' : genderFillColor(node.gender);
-  const lines = [nameWithTitles(node.name, node.titles)];
+  const lines: string[] = [];
+  const weak: boolean[] = [];
+  /** 加一行卡面文本；isWeak=true = 次级行（11px/#9E8F80 渲染，且卡宽按其字号计） */
+  const pushLine = (text: string, isWeak = false) => { lines.push(text); weak.push(isWeak); };
+  pushLine(nameWithTitles(node.name, node.titles));
   // 关键节点标注（世本 KEY_NODES：人文始祖 / 五帝 / 元圣 / 得姓始祖 / 宗主）：
   // 姓名下一行加「★标签」角标，卡面文字改主题色（与「外树配偶」「第N世」同款行，不新造图标）
   const km = artifact ? null : keyMarkerOf(node);
-  if (km) lines.push(`★${km.label}`);
+  if (km) pushLine(`★${km.label}`);
   // 总谱：卡片内显示世数（源流链 external_chain_gen，由宿主传入 genMap）；世数 0 = 原始节点
   const gen = props.genMap?.[node.handle];
-  if (gen !== undefined && !artifact) lines.push(gen === 0 ? '原始' : `第${gen}世`);
+  if (gen !== undefined && !artifact) pushLine(gen === 0 ? '原始' : `第${gen}世`, true);
   // 外树镜像节点按 external_link_type 分档加角标行（口径 A 第 6 条），与真人区分
-  if (isMirrorNode(node) && !artifact) lines.push(mirrorLabelOf(node.external_link_type));
+  if (isMirrorNode(node) && !artifact) pushLine(mirrorLabelOf(node.external_link_type), true);
   // 配偶行文案按本节点性别分叉（2026-10 口径）：男「娶 某某」/ 女「嫁 某某」/ 性别未知仍「配某某」。
   // 一对夫妻在各自家族树图上互为「娶」「嫁」（如 季志全「娶 沈伟」↔ 沈伟「嫁 季志全」）。
   const spouseVerb = node.gender === 'M' ? '娶 ' : node.gender === 'F' ? '嫁 ' : '配';
-  for (const s of node.spouseNames || []) if (s) lines.push(`${spouseVerb}${s}`);
+  for (const s of node.spouseNames || []) if (s) pushLine(`${spouseVerb}${s}`, true);
   const rawW =
-    Math.max(...lines.map((l) => estimateTextWidth(l, CARD_FONT))) + CARD_PAD_X * 2;
+    Math.max(...lines.map((l, i) => estimateTextWidth(l, weak[i] ? WEAK_FONT : CARD_FONT))) + CARD_PAD_X * 2;
   // 带称号（姓+名+封号+谥号+号）的卡允许更宽，避免称号被截断
   const maxW = node.titles ? CARD_MAX_W_TITLED : CARD_MAX_W;
   const w = Math.max(34, Math.min(maxW, rawW));
@@ -582,17 +591,19 @@ function decorateTree(node: TreePersonNode, isVirtualRoot = false): TreePersonNo
     ...node,
     itemStyle: { color: fill, borderColor: border, borderWidth },
     symbolSize: [w, h],
-    _cardText: lines.map((l) => cardText(l, w)).join('\n'),
+    _cardText: lines
+      .map((l, i) => (weak[i] ? `{w|${cardText(l, w, WEAK_FONT)}}` : cardText(l, w)))
+      .join('\n'),
   };
   // 关键节点：卡面文字用标注主题色（ECharts per-node label 覆盖；不命中则沿用系列默认深棕）
-  if (km?.color) card.label = { color: km.color };
+  if (km?.color) card.label = { color: km.color, rich: WEAK_RICH };
   // 「我」/「建议绑定」标记（宿主传入的 focusHandle 节点）：卡面姓名下追加一行标记 + 卡面文字改高亮色。
   // 标记文案由 `focusLabel` 决定（缺省 ★我 = 批 B 既有行为逐字不变；邀请落地页传 ★建议绑定）。
   // 只写 _cardText（渲染文字），**不进 lines / cardLines**：卡宽、卡高、世代行距一律按未标记时的
   // 原值计算 ⇒ 图元尺寸（symbolSize）与树布局零影响（本仓红线）；占位/虚拟根同 keyMarkers 不标记。
   if (!artifact && props.focusHandle && node.handle === props.focusHandle) {
     card._cardText = `${card._cardText}\n${props.focusLabel}`;
-    card.label = { color: FOCUS_MARKER_COLOR };
+    card.label = { color: FOCUS_MARKER_COLOR, rich: WEAK_RICH };
   }
   if (node.children) card.children = node.children.map((c) => decorateTree(c));
   return card;
@@ -903,6 +914,7 @@ function renderChart() {
           rotate: 0,
           fontSize: CARD_FONT,
           color: '#3E2723',
+          rich: WEAK_RICH,
           formatter: labelFmt,
         },
         emphasis: {
