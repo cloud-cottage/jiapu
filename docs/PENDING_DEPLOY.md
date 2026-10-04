@@ -42,6 +42,9 @@
 > 云函数 `compat-api` **新增 1 条写路由** `POST /admin/sibling-reorder`（**必须重打包，否则云端 404**）；前端 H5 / 小程序**必须重打包**（人物档案子女区新增「调整排行」入口 + 新建次级模态框 `components/sibling-order-modal/`）；
 > **CloudBase 集合与云端数据：本轮无**（不新建集合、`COLLECTIONS` 保持 **12 项**；`migrate-output/**` 与 `config/tree-meta.json` 本批未被触碰）。
 > 本批状态：**实现已落盘（Kong 实测 · 工作区在途未提交）· 待 Neng 终校**；`npm test` 当前 **478 / 476 / 2（红）**（2 红 = 预存在的 `mirror-count` 真源漂移，见 §31-5）⇒ **本清单只登记上云动作，不表示已通过 / 已部署**。
+> **2026-10-04 追加（本批 → §4-2）**：**树图节点卡片配偶行按性别分叉**（男「娶 X」/ 女「嫁 X」/ 性别未知仍「配X」，空格只在娶·嫁后；行数·卡宽·卡高·布局与 hover 提示零改动）——**纯前端**（`frontend/src/components/tree-pedigree/tree-pedigree.vue` 一处代码 + 两处注释；`frontend/src/business/pedigree.ts` 仅注释）；
+> **云函数 `compat-api`：无新增路由 / 无改动；CloudBase 集合：无；云端数据：无**；**前端 H5 / 小程序必须重打包**（不重打则线上仍是旧「配X」）。
+> 本批状态：**已提交并 push（`d41136f`）· 真机渲染质检通过（2026-10-04）· 本清单只登记上云动作，不表示已部署**（证据见 §4-2）。
 
 ---
 
@@ -204,6 +207,48 @@ npm run build:mp-weixin                                        # 产物交微信
 
 > 遗留缺口（如实登记，未覆盖项不得当作已覆盖）：370/371px 断点边界、<320px 极窄视宽、真实移动端 UA / 真机字体未测；
 > 空态两档文案为**响应拦截模拟空库**验证（真源真空库未验证）。详见 `docs/home-sort-search.qa.md` §15.8。
+
+### 4-2 本批追加（2026-10-04）：树图节点卡片配偶行按性别分叉（纯前端）
+
+**为什么需要**
+
+- 树图（ECharts tree）节点卡片的配偶行原为硬编码前缀「配」（如「季志全 / 配沈伟」），与谱式称谓不符。
+  产品口径（Kevin 2026-10-04 拍板）：按**本节点性别**分叉 —— 男 `娶 X`、女 `嫁 X`（「娶」/「嫁」后各一个半角空格）、
+  性别未知（`U` / 缺字段）仍 `配X`（**不加空格**，保持现状）。
+- 落点只有一处：`frontend/src/components/tree-pedigree/tree-pedigree.vue` 的 `decorateTree()`（`spouseVerb` 三目）；
+  `frontend/src/business/pedigree.ts` **仅同步注释** —— `spouseNames` 仍是 `string[]`，**未引入配偶性别字段**。
+- **行数 / 卡宽 / 卡高 / 布局零改动**（`cardLines()` 未动，宽度仍由 `estimateTextWidth` 自适应）；
+  hover 提示保持中性的「配偶：X」（**未**改为娶/嫁）；同批不改 `wenpu-book` / `sibling-order-modal` 的「配偶」文案。
+- **本批后端零改动**（无新增路由、无出参变更、无集合变更）→ **`compat-api` 不需要为此重打包**；
+  但**前端 H5 / 小程序必须重打包**：不重打则线上仍是旧「配X」。
+
+**具体命令**（纯前端，无新增集合 / 无云端数据动作）
+
+```bash
+cd frontend
+VITE_API_BASE=https://<云函数 HTTP 域名> npm run build:h5      # 产物 frontend/dist/build/h5
+# → tcb hosting deploy frontend/dist/build/h5 /jiazu -e liwu-d8gek6jjdab1d087c   （子路径必填，见 §50-2）
+npm run build:mp-weixin                                        # 产物交微信开发者工具上传
+```
+
+**本地验证证据**（已提交 `d41136f` 并 push origin/main；工作区仅上述 2 个文件改动 +6/−3）
+
+- `npx vue-tsc --noEmit` **exit 0**（Zang 亲跑，非子代理自述）。
+- **真机渲染质检**（headless Chrome + CDP 读 `chart.getOption().series[0].data[]` 的 `_cardText`，chief 态注入，**零真源写入**）：
+  `ji_23395_01` 季志全 → `季志全\n娶 沈伟`；`shen_27784_01` 沈伟 → `沈伟·和平\n嫁 季志全`；`gu_39038_01` 顾景月 → `顾景月\n嫁 季清昆`；
+  三棵树共 19 张含配偶行卡片 `symbolSize[1]` **全 = 50**（无配偶行 = 28）⇒ 几何零回归；
+  `ji_23395_01` 11 张配偶行卡**无一条**以「配」开头；hover formatter 直调输出 `季志全（♂）/ 编号 000164 / 配偶：沈伟`；
+  世本 I0052 风伏羲 → `风伏羲 / ★人文始祖 / 第1世 / 娶 风娲`。
+- **全站改前基线**（esbuild 探针扫真源 19 棵树，开写前固化）：31 张含配偶行卡片 = 男 20 / 女 11 / **U 0**。
+- **真源零写入**：`config/tree-meta.json`、`migrate-output/trees/ji_23395_01.json`、`migrate-output/collections/jiazu_users.json`
+  三项 md5 前后一致（质检用的 chief 登录态走**自签 JWT**，不触发 `send-code` 写库）。
+
+**阻塞点**
+
+- H5 需确认 hosting 目标目录与云函数 HTTP 域名；小程序需开发者工具上传权限（同 §4 / §11-4）。
+- **如实登记的未实测项**：① `U`（性别未知）分支的真机**渲染卡** —— 三棵目标树里没有「gender=U 且含配偶行的被绘制节点」
+  （6 名 U 者只作为配偶名出现在男卡上），仅以组件 `decorateTree` 直调取证；② 「2 配偶行卡高 72」同样无真机样本（仅直调）。
+  两项**逻辑已知、渲染未实测**，不得当作已验证。
 
 ---
 
