@@ -38,7 +38,7 @@ export interface TreePersonNode {
   external_person_handle?: string;
   /** 跨树链接类型：branch=分迁占位 / marriage=出嫁 */
   external_link_type?: string;
-  /** 配偶姓名（family 中对方家长；用于夫妇卡第二行起“配XX”，嫁入成员因此上卡） */
+  /** 配偶姓名（family 中对方家长；用于夫妇卡第二行起“娶 XX / 嫁 XX”（性别未知仍「配XX」），嫁入成员因此上卡） */
   spouseNames?: string[];
   /** 称号串（封号·谥号·号，按固定顺序；详情文档 attributes 派生）——卡片姓名后追加 */
   titles?: string;

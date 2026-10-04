@@ -462,7 +462,7 @@ function genderFillColor(g: string | undefined): string {
 }
 
 /** 递归生成名卡节点树（返回克隆，不改业务数据）：写入自适应卡宽/卡高 + 名卡样式。
- * 夫妇卡：节点有配偶（嫁入成员）时卡体加高，第二行起每行一个「配XX」，
+ * 夫妇卡：节点有配偶（嫁入成员）时卡体加高，第二行起每行一个「娶 XX / 嫁 XX」（性别未知仍「配XX」），
  * 子女连线仍挂在整卡下方 —— 谱式“夫 + 配某氏”一格并列。 */
 const CARD_LINE_STEP = 22; // 每增一行的卡高增量（单行 CARD_H=28）
 const CARD_GAP = 12; // 世代行距：卡高之外每层再留的间距（整树展开时按卡高铺开）
@@ -568,7 +568,10 @@ function decorateTree(node: TreePersonNode, isVirtualRoot = false): TreePersonNo
   if (gen !== undefined && !artifact) lines.push(gen === 0 ? '原始' : `第${gen}世`);
   // 外树镜像节点按 external_link_type 分档加角标行（口径 A 第 6 条），与真人区分
   if (isMirrorNode(node) && !artifact) lines.push(mirrorLabelOf(node.external_link_type));
-  for (const s of node.spouseNames || []) if (s) lines.push(`配${s}`);
+  // 配偶行文案按本节点性别分叉（2026-10 口径）：男「娶 某某」/ 女「嫁 某某」/ 性别未知仍「配某某」。
+  // 一对夫妻在各自家族树图上互为「娶」「嫁」（如 季志全「娶 沈伟」↔ 沈伟「嫁 季志全」）。
+  const spouseVerb = node.gender === 'M' ? '娶 ' : node.gender === 'F' ? '嫁 ' : '配';
+  for (const s of node.spouseNames || []) if (s) lines.push(`${spouseVerb}${s}`);
   const rawW =
     Math.max(...lines.map((l) => estimateTextWidth(l, CARD_FONT))) + CARD_PAD_X * 2;
   // 带称号（姓+名+封号+谥号+号）的卡允许更宽，避免称号被截断
