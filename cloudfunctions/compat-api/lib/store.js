@@ -193,6 +193,182 @@ export async function colDelete(col, id) {
   map.delete(id);
 }
 
+// ---- CAS 变更原语（R2：唯一写路径；乐观锁 + 读回比对 + 有限重试） ----
+
+/**
+ * CAS 重试上限（首次写失败后**重读重放**的最大次数）。
+ * 退避表 `CAS_BACKOFF_MS` 与之等长：第 k 次重试前睡 `CAS_BACKOFF_MS[k-1]` 毫秒。
+ */
+export const CAS_MAX_RETRIES = 5;
+/** CAS 每次重试前的退避毫秒（常量化；长度 = CAS_MAX_RETRIES） */
+export const CAS_BACKOFF_MS = [20, 50, 120, 300, 700];
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** 版本收口：非有限 / 负数 / 缺失一律当 0（`version` 为非负整数，自 1 起） */
+const versionOf = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+};
+
+/**
+ * 读单档的**最新**值（**绕过进程内缓存**）：CAS 的冲突判定以磁盘 / 远端为准，绝不拿缓存旧值。
+ * 不存在 → `null`（调用方以 `{ _id, version: 0 }` 为起点）。
+ */
+async function readDocFresh(col, id) {
+  if (SOURCE === 'local') {
+    try {
+      const raw = JSON.parse(fs.readFileSync(colFilePath(col), 'utf8'));
+      return raw[id] ? JSON.parse(JSON.stringify(raw[id])) : null;
+    } catch {
+      return null;
+    }
+  }
+  return sdkCall(async () => {
+    const r = await getApp().database().collection(col).doc(id).get();
+    const d = r?.data;
+    return (Array.isArray(d) ? d[0] : d) || null;
+  });
+}
+
+/**
+ * local 条件写（**同步临界区**：读盘核 version → 写盘，中间无 await ⇒ 事件循环内原子，
+ * 同进程并发绝不丢更新；跨进程仍为「写前再核一次」的尽力而为，本地仅单实例运行）。
+ * 写后**读回比对**（读回 version 必须 == curVersion + 1）—— 不只看「写成功」。
+ * @returns {object|null} 成功 = 读回文档；冲突 → null（调用方重读重放）
+ */
+function commitLocalCas(col, id, curVersion, next) {
+  const target = colFilePath(col);
+  let raw = {};
+  try {
+    raw = JSON.parse(fs.readFileSync(target, 'utf8'));
+  } catch {
+    raw = {};
+  }
+  const diskVersion = raw[id] ? versionOf(raw[id].version) : 0;
+  if (diskVersion !== curVersion) return null; // 冲突：调用方重读重放
+  assertWriteAllowed(target);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  raw[id] = next;
+  fs.writeFileSync(target, JSON.stringify(raw, null, 2));
+  let back = null;
+  try {
+    back = JSON.parse(fs.readFileSync(target, 'utf8'))[id] || null;
+  } catch {
+    back = null;
+  }
+  return back && versionOf(back.version) === curVersion + 1 ? back : null;
+}
+
+/**
+ * cloud 条件写：`where({ _id, version: curVersion }).update(...)`（不存在 → `add` 以 `_id` 建）。
+ * ⚠️ 已知教训：`updated` 计数三义同形（同值 / 无权静默 / 不存在）⇒ **一律读回比对**，
+ * 读回 version 必须 == curVersion + 1 才算成功；写调用异常也不据此判失败（以读回为准）。
+ * @returns {object|null}
+ */
+async function commitCloudCas(col, id, curVersion, next) {
+  const db = getApp().database();
+  const { _id, ...rest } = next;
+  try {
+    if (curVersion === 0) {
+      await sdkCall(() => db.collection(col).add({ _id: id, ...rest }));
+    } else {
+      await sdkCall(() => db.collection(col).where({ _id: id, version: curVersion }).update({ ...rest }));
+    }
+  } catch {
+    /* 不据写调用结果判成败：一律以读回比对为准 */
+  }
+  const back = await readDocFresh(col, id);
+  return back && versionOf(back.version) === curVersion + 1 ? back : null;
+}
+
+/**
+ * CAS 变更原语（R2，唯一写路径）：**读当前档 → 纯函数 mutator → version+1 → 条件写 → 读回比对**。
+ *
+ * - 档不存在 ⇒ 以 `{ _id: id, version: 0 }` 为起点；写入后 `version` 自 **1** 起。
+ * - `mutator(doc)` **必须是纯函数**：同输入同输出、无 IO、不读 `Date` / 随机数；需要时间 / 随机
+ *   由调用方算好作参数传入 ⇒ 冲突重放（重读后再次调用）安全。返回**文档对象**（原语据其写库，
+ *   并强制覆写 `_id` / `version`）。
+ * - 冲突 ⇒ 重读重放，上限 `CAS_MAX_RETRIES` 次（退避 `CAS_BACKOFF_MS`）；**耗尽 ⇒ 抛明确错误**
+ *   （不静默成功、不吞）。
+ * @param {string} col 集合名
+ * @param {string} id 文档 `_id`
+ * @param {(doc:object)=>object|Promise<object>} mutator 纯变更函数
+ * @returns {Promise<object>} 写入并**读回比对通过**的文档（含新 `version`）
+ */
+export async function mutateDoc(col, id, mutator) {
+  const docId = String(id);
+  for (let attempt = 0; attempt <= CAS_MAX_RETRIES; attempt += 1) {
+    const cur = await readDocFresh(col, docId);
+    const curVersion = cur ? versionOf(cur.version) : 0;
+    const base = cur || { _id: docId, version: 0 };
+    const next = await mutator(JSON.parse(JSON.stringify(base)));
+    if (!next || typeof next !== 'object') {
+      throw new Error(`[store] CAS 变更原语：mutator 必须返回文档对象（${col}.${docId}）`);
+    }
+    next._id = docId;
+    next.version = curVersion + 1;
+    const written =
+      SOURCE === 'local'
+        ? commitLocalCas(col, docId, curVersion, next)
+        : await commitCloudCas(col, docId, curVersion, next);
+    if (written) {
+      // 成功后刷新进程内缓存（与磁盘 / 远端一致；缓存未命中则从盘读回，含本次写入）
+      const map = await loadCol(col);
+      map.set(docId, written);
+      return written;
+    }
+    if (attempt < CAS_MAX_RETRIES) {
+      await sleep(CAS_BACKOFF_MS[Math.min(attempt, CAS_BACKOFF_MS.length - 1)]);
+    }
+  }
+  throw new Error(
+    `[store] CAS 变更失败（${col}.${docId}）：并发冲突，重试 ${CAS_MAX_RETRIES} 次仍未成功`,
+  );
+}
+
+// ---- 分页列举原语（R3：改 per-主体后「全体」= 枚举，云端单次 get() 有上限须分页） ----
+
+/**
+ * 分页列举集合文档。
+ * - local：遍历 JSON 映射（`Map` 值序 = 落盘键序）
+ * - cloud：`orderBy('_id').skip(cursor).limit(limit).get()`（**必须分页拉全量**，单次 get() 有上限）
+ * @param {string} col 集合名
+ * @param {{limit?:number, cursor?:number}} [opts] `limit` 每页条数（缺省 100）；`cursor` 起始偏移（缺省 0）
+ * @returns {Promise<{items:object[], next_cursor:number|null}>} `next_cursor=null` ⇒ 已到末页
+ */
+export async function list(col, { limit = 100, cursor = 0 } = {}) {
+  const take = Math.max(1, Math.floor(Number(limit)) || 100);
+  const skip = Math.max(0, Math.floor(Number(cursor)) || 0);
+  if (SOURCE === 'local') {
+    const map = await loadCol(col);
+    const all = [...map.values()];
+    const items = all.slice(skip, skip + take);
+    return { items, next_cursor: skip + items.length < all.length ? skip + items.length : null };
+  }
+  const r = await sdkCall(() =>
+    getApp().database().collection(col).orderBy('_id', 'asc').skip(skip).limit(take).get(),
+  );
+  const items = r?.data || [];
+  return { items, next_cursor: items.length === take ? skip + take : null };
+}
+
+/**
+ * 列举集合**全量**文档（逐页拉齐；`max` 为兜底上限，防异常分页无限循环）。
+ * @returns {Promise<object[]>}
+ */
+export async function listAll(col, { limit = 100, max = 100000 } = {}) {
+  const out = [];
+  let cursor = 0;
+  for (;;) {
+    const { items, next_cursor } = await list(col, { limit, cursor });
+    out.push(...items);
+    if (next_cursor === null || out.length >= max) break;
+    cursor = next_cursor;
+  }
+  return out;
+}
+
 /**
  * 原子递增集合文档的数值字段（计数器用；docs/id-system.spec.md §3）。
  * - 云端：`db.collection.doc.update({ [field]: _.inc(delta) })` 原子自增 → 读回新值 → 返回**递增前**的值
@@ -297,16 +473,32 @@ function sameMetaStamp(a, b) {
  *   （2026-09-20 事故：修正脚本改好的 `origin` 被「修正前就已启动」的实例整份回写抹回）。
  *   对策：每次读都先 `stat` 一次，与缓存快照比对 mtimeMs + size + ctimeMs，
  *   **任一变化即重读并刷新缓存**，把「过期内存」的窗口从「实例寿命」压到「一次 stat」。
- *   ⚠️ 残留窗口：`getMeta()` → `saveMeta()` 之间仍有 TOCTOU（本函数只解决**读侧陈旧**，
- *      不引入写锁 —— 写侧的整份覆盖语义不在本次改动范围内）。
+ *   ⚠️ 旧残留窗口：`getMeta()` → `saveMeta()` 之间曾有 TOCTOU（整份读改写 = 整份覆盖）。
+ *      第 4 期已消：写侧不再走「读 getMeta → saveMeta 全量」——统一经 `mutateTreeMeta` /
+ *      `mutateMetaDoc`（cloud = 单档 CAS，local = 单进程临界区内**磁盘直读**再写），
+ *      「读」与「写」在同一次 CAS/临界区内完成，外部写入不再被陈旧内存整份抹掉。
+ *      `getMeta()` 出参形状不变（{_schema,_description,storage_files,trees} 聚合）。
  */
 export async function getMeta() {
   if (SOURCE !== 'local') {
-    // cloud：行为与改动前一致（缓存命中即返回，绝不每调一次就远程拉取）
+    // cloud：缓存命中即返回（绝不每调一次就远程拉取）；未命中则聚合「_meta 单档 + 每树一档」
     if (metaCache) return metaCache;
-    const r = await sdkCall(() => getApp().database().collection('jiazu_tree_meta').doc('global').get());
-    const d = r?.data;
-    metaCache = Array.isArray(d) ? d[0] || null : d || null;
+    const metaRes = await sdkCall(() => getApp().database().collection(META_COL).doc(META_DOC_ID).get());
+    const md = metaRes?.data;
+    const metaDoc = (Array.isArray(md) ? md[0] : md) || null;
+    const treesRes = await sdkCall(() => getApp().database().collection(META_COL).limit(5000).get());
+    const trees = {};
+    for (const d of treesRes?.data || []) {
+      if (!d || d._id === META_DOC_ID || !d.tree_id) continue; // 只认树档（_id=tree_id）
+      const { _id, ...entry } = d;
+      trees[d._id] = entry;
+    }
+    metaCache = {
+      _schema: metaDoc?._schema,
+      _description: metaDoc?._description,
+      storage_files: metaDoc?.storage_files || {},
+      trees,
+    };
     return metaCache;
   }
   if (metaCache) {
@@ -337,9 +529,214 @@ export async function getMeta() {
   return metaCache;
 }
 
+// ---- tree-meta 定向写原语（第 4 期：每树一档，消 TOCTOU） ----
+
+/**
+ * `_meta` 单档：`_schema` / `_description` / `storage_files`（配置类，先例 =
+ * economy-market.js 的 `OFFICIAL_ID='official'`）。云端 = `jiazu_tree_meta/_meta`；
+ * local = `config/tree-meta.json` 顶层同名字段（路径与形状不变）。
+ */
+export const META_DOC_ID = '_meta';
+const META_COL = 'jiazu_tree_meta';
+
+/** 剥离存储元字段 `_id`（保留 `version`：每树档 `version` 非负整数自 1 起，是本期新增契约） */
+function stripMetaDoc(doc) {
+  if (!doc || typeof doc !== 'object') return null;
+  const { _id, ...entry } = doc;
+  return entry;
+}
+
+/**
+ * 条目**内容**是否等价（忽略 `version`；键序无关）。
+ * 用于「无净变化 ⇒ 不写、不 bump version」的幂等判定（resetFounder 重复调用等场景；
+ * 与改动前「整份写同内容 = 文件字节不变」的观感一致）。
+ */
+function sameEntryContent(a, b) {
+  const canon = (o) => {
+    if (Array.isArray(o)) return `[${o.map(canon).join(',')}]`;
+    if (o && typeof o === 'object') {
+      return `{${Object.keys(o)
+        .filter((k) => k !== 'version')
+        .sort()
+        .map((k) => `${JSON.stringify(k)}:${canon(o[k])}`)
+        .join(',')}}`;
+    }
+    return JSON.stringify(o ?? null);
+  };
+  return canon(a) === canon(b);
+}
+
+/** 单进程内 meta 写临界区（串行化全部 meta 写：mutateTreeMeta / mutateMetaDoc / saveMeta 兼容路径） */
+let metaWriteLock = Promise.resolve();
+function withMetaWriteLock(fn) {
+  const run = metaWriteLock.then(() => fn());
+  metaWriteLock = run.catch(() => {});
+  return run;
+}
+
+/** local：磁盘直读 meta（写路径用 —— 绝不拿进程内缓存整份回写）；文件不存在时才回退基线 */
+function readMetaForWrite() {
+  if (fs.existsSync(META_FILE)) return JSON.parse(fs.readFileSync(META_FILE, 'utf8'));
+  if (metaCache) return JSON.parse(JSON.stringify(metaCache));
+  if (SANDBOX && !samePath(META_FILE, REAL_META_FILE) && fs.existsSync(REAL_META_FILE)) {
+    return JSON.parse(fs.readFileSync(REAL_META_FILE, 'utf8'));
+  }
+  return { trees: {} };
+}
+
+/** local：写 meta 文件（沙箱护栏 + 落盘后刷新缓存指纹） */
+function writeMetaFile(obj) {
+  const target = assertWriteAllowed(META_FILE);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, JSON.stringify(obj, null, 2) + '\n');
+  metaCache = obj;
+  metaStamp = statMetaFile();
+}
+
+/** local：按 tree_id 解析条目键（键通常 === tree_id，保留 keyOf 同口径的兼容查找） */
+function metaKeyOf(raw, treeId) {
+  const trees = raw?.trees || {};
+  return Object.keys(trees).find((k) => trees[k] && String(trees[k].tree_id) === String(treeId)) || null;
+}
+
+/**
+ * 定向写**单棵树的 meta 条目**（唯一写路径，R2 口径与 `economy-spirit.withSpirit` 同）：
+ * - cloud：经 `mutateDoc` 对该树档（`_id = treeId`）走 CAS（条件写 + 读回比对 + 重读重放）；
+ * - local：在单进程临界区内**磁盘直读** meta → 对 `trees[treeId]` 应用**纯函数** mutator → 写文件
+ *   → 读回校验 `version == cur+1`（临界区内无 await 于读改写之间 ⇒ 同进程并发绝不丢更新）。
+ * - mutator 收到 = 该树条目**本身**（不含 `_id`），返回新的条目对象（缺 `tree_id` 自动补 id）；
+ *   返回 `null`/`undefined` ⇒ 拒绝（删除请用 `removeTreeMeta`）。
+ * - 写入后条目 `version` = 旧值 + 1（不存在 ⇒ 1）；业务字段一律不改名 / 不改值。
+ * @param {string} treeId
+ * @param {(entry:object)=>object|Promise<object>} mutator 纯函数
+ * @returns {Promise<object>} 写入并读回通过的新条目（含新 `version`）
+ */
+export async function mutateTreeMeta(treeId, mutator) {
+  const id = String(treeId || '');
+  if (!id) throw new Error('[store] mutateTreeMeta：缺少 tree_id');
+  if (SOURCE !== 'local') {
+    const cur = await readDocFresh(META_COL, id);
+    const curEntry = cur ? stripMetaDoc(cur) : null;
+    if (curEntry) {
+      const probe = await mutator({ ...curEntry });
+      if (probe && typeof probe === 'object' && sameEntryContent(probe, curEntry)) {
+        if (metaCache) metaCache.trees = { ...(metaCache.trees || {}), [id]: curEntry };
+        return curEntry; // 无净变化 ⇒ 不写、不 bump version（幂等）
+      }
+    }
+    const written = await mutateDoc(META_COL, id, async (doc) => {
+      const entry = stripMetaDoc(doc) || { tree_id: id };
+      const next = await mutator(entry);
+      if (!next || typeof next !== 'object') {
+        throw new Error(`[store] mutateTreeMeta：mutator 必须返回条目对象（${id}）`);
+      }
+      return next;
+    });
+    if (metaCache) metaCache.trees = { ...(metaCache.trees || {}), [id]: stripMetaDoc(written) };
+    return stripMetaDoc(written);
+  }
+  return withMetaWriteLock(async () => {
+    const raw = readMetaForWrite();
+    const trees = { ...(raw.trees || {}) };
+    const key = metaKeyOf(raw, id) || id;
+    const cur = trees[key];
+    const curVersion = cur ? versionOf(cur.version) : 0;
+    const base = cur ? { ...cur } : { tree_id: id };
+    const next = await mutator(base);
+    if (!next || typeof next !== 'object') {
+      throw new Error(`[store] mutateTreeMeta：mutator 必须返回条目对象（${id}）`);
+    }
+    if (cur && sameEntryContent(next, cur)) return cur; // 无净变化 ⇒ 不写、不 bump version（幂等）
+    if (!next.tree_id) next.tree_id = id;
+    next.version = curVersion + 1;
+    trees[key] = next;
+    const out = { ...raw, trees };
+    writeMetaFile(out);
+    // 读回比对（只看「写成功」不够：磁盘 version 必须 == cur+1）
+    const back = JSON.parse(fs.readFileSync(META_FILE, 'utf8'));
+    if (versionOf(back?.trees?.[key]?.version) !== curVersion + 1) {
+      throw new Error(`[store] mutateTreeMeta 回读校验失败（${id}）`);
+    }
+    return next;
+  });
+}
+
+/**
+ * 定向**删除**单棵树的 meta 条目（与 `mutateTreeMeta` 对称；`mutateDoc` 只写不删）。
+ * 幂等：条目不存在 ⇒ 零变更，不抛错。
+ */
+export async function removeTreeMeta(treeId) {
+  const id = String(treeId || '');
+  if (!id) return;
+  if (SOURCE !== 'local') {
+    await colDelete(META_COL, id);
+    if (metaCache?.trees) {
+      const next = { ...metaCache.trees };
+      const key = metaKeyOf(metaCache, id);
+      if (key) delete next[key];
+      metaCache.trees = next;
+    }
+    return;
+  }
+  return withMetaWriteLock(async () => {
+    const raw = readMetaForWrite();
+    const key = metaKeyOf(raw, id);
+    if (!key) return;
+    const trees = { ...(raw.trees || {}) };
+    delete trees[key];
+    writeMetaFile({ ...raw, trees });
+  });
+}
+
+/**
+ * 定向写 **`_meta` 单档**（`_schema` / `_description` / `storage_files`）：
+ * - cloud：对 `_id='_meta'` 档走 `mutateDoc` CAS；
+ * - local：临界区内改 `config/tree-meta.json` 顶层字段（形状不变）。
+ * mutator 收到 = `{ _schema, _description, storage_files }`，返回同形对象（未给 `storage_files` 则保持原值）。
+ */
+export async function mutateMetaDoc(mutator) {
+  if (SOURCE !== 'local') {
+    const written = await mutateDoc(META_COL, META_DOC_ID, async (doc) => {
+      const cfg = { _schema: doc?._schema, _description: doc?._description, storage_files: doc?.storage_files };
+      const next = await mutator(cfg);
+      if (!next || typeof next !== 'object') {
+        throw new Error('[store] mutateMetaDoc：mutator 必须返回配置对象');
+      }
+      return {
+        _schema: next._schema,
+        _description: next._description,
+        storage_files: next.storage_files || {},
+      };
+    });
+    if (metaCache) {
+      metaCache._schema = written._schema;
+      metaCache._description = written._description;
+      metaCache.storage_files = written.storage_files || {};
+    }
+    return written;
+  }
+  return withMetaWriteLock(async () => {
+    const raw = readMetaForWrite();
+    const cfg = { _schema: raw._schema, _description: raw._description, storage_files: raw.storage_files };
+    const next = await mutator(cfg);
+    if (!next || typeof next !== 'object') {
+      throw new Error('[store] mutateMetaDoc：mutator 必须返回配置对象');
+    }
+    const out = { ...raw, _schema: next._schema, _description: next._description };
+    if (next.storage_files !== undefined) out.storage_files = next.storage_files;
+    writeMetaFile(out);
+    return next;
+  });
+}
+
+/**
+ * 兼容写路径（**已不被任何生产调用方使用**；17 处调用点全部改为 `mutateTreeMeta` /
+ * `mutateMetaDoc` / `removeTreeMeta`）。保留仅为测试与外部脚本的沙箱护栏回归。
+ * - local：写 `config/tree-meta.json`（或副本）本身 —— 本地存储本就是一个整文件；
+ * - cloud：**逐档写入** `_meta` + 每棵树档（`doc(id).set`），**绝不**再写单档 `global`。
+ */
 export async function saveMeta(meta) {
   if (SOURCE === 'local') {
-    // 写入目标：非沙箱 = config/tree-meta.json 真源；沙箱 = 副本（COMPAT_META_FILE / COMPAT_OUT_DIR）
     const target = assertWriteAllowed(META_FILE);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, JSON.stringify(meta, null, 2) + '\n');
@@ -349,7 +746,19 @@ export async function saveMeta(meta) {
     metaStamp = statMetaFile();
     return;
   }
-  await sdkCall(() => getApp().database().collection('jiazu_tree_meta').doc('global').set(meta));
+  const { _schema, _description, storage_files, trees } = meta || {};
+  await sdkCall(() =>
+    getApp()
+      .database()
+      .collection(META_COL)
+      .doc(META_DOC_ID)
+      .set({ _schema, _description, storage_files: storage_files || {} }),
+  );
+  for (const [key, entry] of Object.entries(trees || {})) {
+    const id = String(entry?.tree_id || key);
+    const { _id, ...body } = entry || {};
+    await sdkCall(() => getApp().database().collection(META_COL).doc(id).set(body));
+  }
   metaCache = meta;
 }
 
@@ -419,14 +828,15 @@ export async function createTreeFile(tree) {
     fs.mkdirSync(path.dirname(p), { recursive: true });
     fs.writeFileSync(p, JSON.stringify(tree, null, 2));
   } else {
-    const meta = await getMeta();
     const r = await sdkCall(() =>
       getApp().uploadFile({ cloudPath: `trees/${tree.tree_id}.json`, fileContent: Buffer.from(JSON.stringify(tree)) }),
     );
     if (!r?.fileID) throw new Error('云存储上传未返回 fileID');
-    meta.storage_files = meta.storage_files || {};
-    meta.storage_files[tree.tree_id] = r.fileID;
-    await saveMeta(meta);
+    // 定向写 `_meta` 单档的 storage_files（不再整份 saveMeta）
+    await mutateMetaDoc((cfg) => ({
+      ...cfg,
+      storage_files: { ...(cfg.storage_files || {}), [tree.tree_id]: r.fileID },
+    }));
   }
   treeCache.set(tree.tree_id, tree);
   return tree;
@@ -454,10 +864,12 @@ export async function deleteTree(treeId) {
   const fileId = meta?.storage_files?.[id];
   if (fileId) {
     await sdkCall(() => getApp().deleteFile({ fileID: fileId }));
-    if (meta.storage_files && id in meta.storage_files) {
-      delete meta.storage_files[id];
-      await saveMeta(meta); // 先删云文件成功，再从注册表摘掉 storage_files 条目
-    }
+    // 先删云文件成功，再由定向写从 `_meta` 档摘掉 storage_files 条目（不再整份 saveMeta）
+    await mutateMetaDoc((cfg) => {
+      const sf = { ...(cfg.storage_files || {}) };
+      delete sf[id];
+      return { ...cfg, storage_files: sf };
+    });
   }
   treeCache.delete(id);
   eventIndexCache.delete(id);

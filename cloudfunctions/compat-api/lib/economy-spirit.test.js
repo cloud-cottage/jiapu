@@ -132,16 +132,17 @@ async function setAssets(phone, { seeds = [], bamboos = [], jades = [] } = {}) {
 const assetsOf = (phone) => el.getAssets(phone);
 const seedSum = async (phone) => el.sumLots((await assetsOf(phone)).seeds);
 
-/** 读集合 jiazu_spirit 的某树记录（原始真源） */
+/** 读集合 jiazu_spirit 的某树记录（原始真源；**每树一档** `_id = tree_id`，剥离 `_id`/`version`） */
 async function entryOf(treeId) {
-  const doc = await store.colGet('jiazu_spirit', 'global');
-  return doc?.trees?.[treeId] || null;
+  const doc = await store.colGet('jiazu_spirit', treeId);
+  if (!doc) return null;
+  const rec = { ...doc };
+  delete rec._id;
+  delete rec.version;
+  return JSON.parse(JSON.stringify(rec));
 }
 async function setEntry(treeId, entry) {
-  const doc = (await store.colGet('jiazu_spirit', 'global')) || { _id: 'global', trees: {} };
-  doc.trees = doc.trees || {};
-  doc.trees[treeId] = entry;
-  await store.colSet('jiazu_spirit', 'global', doc);
+  await store.colSet('jiazu_spirit', treeId, { ...entry });
 }
 
 /** 造「已镶永久玉的树 + 新账号」，返回 { treeId, phone, jade_id } */
@@ -679,7 +680,7 @@ test('惰性推进 · 模块内无 setInterval / setTimeout / cron（不依赖�
   assert.equal(/setInterval\s*\(/.test(src), false, '不得用 setInterval 驱动状态推进');
   assert.equal(/setTimeout\s*\(/.test(src), false, '不得用 setTimeout 驱动状态推进');
   assert.equal(/node-cron|cron\.schedule|scheduleJob/.test(src), false, '不得注册定时任务');
-  assert.equal(/colSet\(/.test(src), true);
+  assert.equal(/mutateDoc\(/.test(src), true, '写入一律走 store.mutateDoc 的 CAS 原语');
   assert.match(src, /status = 'expired'/);
 });
 

@@ -1,5 +1,5 @@
 /**
- * 时流子域内核（P2 第一段 · 纯模块，不含路由）— 集合 jiazu_spirit（单文档 `_id='global'`）
+ * 时流子域内核（P2 第一段 · 纯模块，不含路由）— 集合 jiazu_spirit（**每树一文档**，`_id = tree_id`；R1 存储形态 v2）
  *
  * 唯一真源：docs/spirit-domain.spec.md（时流子域）+ docs/economy.spec.md（存储契约 / 枚举 / 算法）
  *   §3-1 存储契约（jiazu_spirit.trees / SpiritLog）/ §3-3 常量 / §4 四态状态机（7 条迁移）
@@ -19,14 +19,15 @@
  * 无任何路径先持 assets 锁再取 spirit 锁。跨集合（jiazu_assets + jiazu_spirit）无事务 API：
  * 先写临界区一侧，第二侧失败 → 用快照回滚第一侧（与 store.updateTrees 的「顺序写 + 失败回滚」口径一致）。
  *
- * 已知限制（与 economy-ledger 同批）：`jiazu_spirit` 同为全体家族树共用单文档 + 仅进程内串行锁，
- * 云端多实例并发可丢更新（登记 docs/PENDING_DEPLOY.md，部署前随资产集合一并重构）。
+ * **存储形态 v2（R1/R2，2026-10-03 Zang 裁定 · 路 B）**：`jiazu_spirit` 由「全体家族树共用单文档
+ * `_id='global'`（内嵌 `trees` 映射）」改为「**每树一文档**（`_id = tree_id`）」，每档带 `version`
+ * （非负整数，自 1 起），写入一律走 `store.mutateDoc` 的 **CAS**（读 → 纯函数 mutator → version+1 →
+ * 条件写 → 读回比对；冲突重读重放，上限 5 次）。文档体 = 原 `global.trees[tree_id]` 的值（键名不改）。
  */
 
-import { colGet, colSet, getMeta } from './store.js';
+import { colDelete, colGet, getMeta, listAll, mutateDoc } from './store.js';
 import {
   ASSETS_COL,
-  ASSETS_ID,
   BAMBOO_TTL_DAYS,
   SEED_TTL_DAYS,
   addLot,
@@ -47,7 +48,6 @@ import { getAnchor } from './scope.js';
 // ---- 集合与常量（§3-1 / §3-3：改动先改总册本册） ----
 
 export const SPIRIT_COL = 'jiazu_spirit';
-export const SPIRIT_ID = 'global';
 /** 账号集合（注入者昵称来源；与 economy-ops.js 同名单点） */
 const USERS_COL = 'jiazu_users';
 /** 锚点集合（注入者本树节点来源；与 scope.js 同名单点） */
@@ -196,10 +196,16 @@ export function spiritLogId() {
   return `spl_${Date.now()}_${rand}`;
 }
 
-/** 空集合文档 */
-function blankSpiritDoc() {
-  return { _id: SPIRIT_ID, trees: {} };
+/** 剥离存储元字段（`_id` / `version`）：mutator 见到的 entry 就是**文档体本身**（旧 `trees[tree_id]` 值） */
+function stripEntry(doc) {
+  const rec = { ...(doc || {}) };
+  delete rec._id;
+  delete rec.version;
+  return rec;
 }
+
+/** 文档有业务体？空体（仅 `_id`/`version`）视为「无记录」（= 该树未镶嵌） */
+const hasEntryBody = (rec) => Object.keys(rec).length > 0;
 
 /** 玉是否已过期（§5-4 sweep 口径：`expires_at=null` = 永久，恒不过期） */
 function jadeExpired(jade, now) {
@@ -336,49 +342,85 @@ export function mountableKind(tree) {
 const spiritLocks = new Map();
 
 /**
- * 时流子域读改写（唯一 IO 入口）：读单文档 → 深拷贝 → **先 settle** → mutator → 整体回写一次 `colSet`。
- * - mutator 抛错 → **一字节都不回写**（整单拒绝语义）
- * - 同一 `tree_id` 串行化：并发调用按到达顺序排队（凹槽唯一性临界区，§5-3 原子性）
- * - 仅在 `settle` 有变化或 mutator 显式置 `ctx.dirty = true` 时才写回（只读入口无副作用）
+ * 时流子域读改写（唯一 IO 入口）：**每树一档**，经 `store.mutateDoc` 的 **CAS** 提交。
+ *
+ * - 档 `_id` = `tree_id`；档不存在 ⇒ 以 `{_id, version:0}` 起点，写入后 `version=1`。
+ * - mutator 见到的 `entry` 就是**该树记录本身**（= 旧 `global.trees[tree_id]` 的值，不含 `_id`/`version`）；
+ *   就地改它，或改 `ctx.entry` 指定本次落库的文档体。返回值作为业务结果透传（CAS 原语只负责落盘）。
+ * - mutator 抛错 → **一字节都不回写**（整单拒绝语义）。
+ * - 同一 `tree_id` 串行化：并发调用按到达顺序排队（`spiritLocks`，减少本进程内无谓 CAS 冲突）；
+ *   跨实例并发由 CAS 的「条件写 + 读回比对 + 重试」兜底，绝不丢更新。
+ * - ⚠️ mutator 里若含**跨集合 IO**（如写 `jiazu_assets`），CAS 冲突重放会**重复执行**它 ⇒ 允许，
+ *   但调用方须把跨集合副作用移出 mutator（见 `chargeSpirit`：先写资产、再以**纯** mutator 写灵气）。
  * @param {string} treeId
- * @param {(entry: object|null, ctx: {doc:object, now:Date, treeId:string, dirty:boolean}) => any} mutator
+ * @param {(entry: object|null, ctx: {entry:object|null, now:Date, treeId:string, dirty:boolean}) => any} mutator
  * @param {Date} now
  */
 export async function withSpirit(treeId, mutator, now = new Date()) {
-  const lock = spiritLocks.get(treeId) || Promise.resolve();
+  const id = String(treeId);
+  const lock = spiritLocks.get(id) || Promise.resolve();
   const run = lock.then(async () => {
-    const base = await colGet(SPIRIT_COL, SPIRIT_ID);
-    const doc = base ? JSON.parse(JSON.stringify(base)) : blankSpiritDoc();
-    doc.trees = doc.trees || {};
-    const entry = doc.trees[treeId] || null;
-    const settled = settle(entry, now);
-    const ctx = { doc, now, treeId, dirty: settled };
-    const result = await mutator(entry, ctx);
-    if (ctx.dirty) await colSet(SPIRIT_COL, SPIRIT_ID, doc);
+    let result;
+    await mutateDoc(SPIRIT_COL, id, async (doc) => {
+      // 剥离存储元字段：entry 即该树记录本身（对外 / 对内形状与旧口径一字不差）
+      const rec = stripEntry(doc);
+      const entry = hasEntryBody(rec) ? rec : null;
+      settle(entry, now); // 先惰性推进（无 jade 的记录不进四态）
+      const ctx = { entry, now, treeId: id, dirty: false };
+      result = await mutator(entry, ctx);
+      return ctx.entry && hasEntryBody(ctx.entry) ? ctx.entry : entry || {};
+    });
     return result;
   });
-  spiritLocks.set(treeId, run.catch(() => {}));
+  spiritLocks.set(id, run.catch(() => {}));
   return run;
 }
 
-/** 只读快照（惰性推进有变化时写回；不落业务副作用） */
+/** 只读快照（惰性推进有变化时写回；不落业务副作用；**档不存在绝不因此新建**） */
 export async function readSpiritEntry(treeId, now = new Date()) {
-  return withSpirit(treeId, (entry) => (entry ? JSON.parse(JSON.stringify(entry)) : null), now);
+  const id = String(treeId);
+  const doc = await colGet(SPIRIT_COL, id);
+  if (!doc) return null;
+  const entry = stripEntry(doc);
+  if (!settle(entry, now)) return JSON.parse(JSON.stringify(entry));
+  // 有推进 → 仅在**已存在**的档上 CAS 回写（不创建新档；惰性结算口径与旧单文档一致）
+  return withSpirit(id, (e) => (e ? JSON.parse(JSON.stringify(e)) : null), now);
 }
 
 /**
- * 其它资产入口的惰性推进（§4-4 触发点）：推进**全部**树记录，仅在真有变化时写回。
- * 最佳努力（不加锁）：与业务写入不构成临界区，冲突时下一次入口再推进一次。
+ * 其它资产入口的惰性推进（§4-4 触发点）：**枚举全量档**（`listAll`），逐树 CAS 推进。
+ * 最佳努力（不跨树加锁）：与业务写入不构成临界区，冲突时下一次入口再推进一次。
  * @returns {Promise<string[]>} 发生变化的 tree_id 列表
  */
 export async function settleAllTrees(now = new Date()) {
-  const base = await colGet(SPIRIT_COL, SPIRIT_ID);
-  if (!base || !base.trees) return [];
-  const doc = JSON.parse(JSON.stringify(base));
+  const docs = await listAll(SPIRIT_COL);
   const changed = [];
-  for (const [tid, entry] of Object.entries(doc.trees)) if (settle(entry, now)) changed.push(tid);
-  if (changed.length > 0) await colSet(SPIRIT_COL, SPIRIT_ID, doc);
+  for (const doc of docs) {
+    const entry = stripEntry(doc);
+    if (!hasEntryBody(entry)) continue;
+    const probe = JSON.parse(JSON.stringify(entry));
+    if (settle(probe, now)) changed.push(String(doc._id));
+  }
+  for (const id of changed) {
+    await withSpirit(
+      id,
+      (e) => {
+        if (e) settle(e, now);
+        return null;
+      },
+      now,
+    );
+  }
   return changed;
+}
+
+/**
+ * 删除某树档（**仅用于 `mountJade` 的跨集合回滚**：资产侧失败 → 撤销刚占用的凹槽）。
+ * CAS 原语（`mutateDoc`）只写不删，文档删除走 `colDelete`（本模块唯一一处直删，
+ * 语义 = 旧实现的 `delete ctx.doc.trees[treeId]`）。
+ */
+async function deleteSpiritEntry(treeId) {
+  await colDelete(SPIRIT_COL, String(treeId));
 }
 
 // ---- §5-1 合成石榴籽玉 ----
@@ -505,28 +547,32 @@ export async function mountJade(phone, treeId, jadeId, now = new Date()) {
   const mountedAt = isoOf(now);
   const slot = { jade_id: jadeId, mounted_at: mountedAt, expires_at: mine.expires_at ?? null };
 
-  // ② 凹槽占用（临界区）
+  // ② 同一 jade_id 已镶嵌在**其它**树 → 409（跨档反查；本地单实例下与临界区同进程串行，
+  //    云端跨实例存在窄并发窗口，登记为已知限制）
+  const spiritDocs = await listAll(SPIRIT_COL);
+  for (const d of spiritDocs) {
+    if (String(d._id) === String(treeId)) continue;
+    if (d && d.jade && d.jade.jade_id === jadeId) throw httpError(409, ERR_JADE_MOUNTED);
+  }
+
+  // ③ 凹槽占用（临界区：每树一档 CAS → 同树并发二次镶嵌只有一个成功，§5-3 原子性）
   const mounted = await withSpirit(
     treeId,
     (entry, ctx) => {
       if (entry && entry.jade) throw httpError(409, ERR_SLOT_TAKEN);
-      for (const e of Object.values(ctx.doc.trees || {})) {
-        if (e && e.jade && e.jade.jade_id === jadeId) throw httpError(409, ERR_JADE_MOUNTED);
-      }
-      ctx.doc.trees[treeId] = {
+      ctx.entry = {
         jade: { jade_id: slot.jade_id, mounted_at: slot.mounted_at, expires_at: slot.expires_at },
         spirit_expires_at: null,
         buffer_until: null,
         status: 'inactive',
         logs: [],
       };
-      ctx.dirty = true;
       return { mounted_at: slot.mounted_at };
     },
     now,
   );
 
-  // ③ 个人侧去向留痕（记录保留、不做物理删除；失败 → 回滚 ② 的凹槽）
+  // ④ 个人侧去向留痕（记录保留、不做物理删除；失败 → 回滚 ③ 的凹槽）
   try {
     await withAssets(phone, (user) => {
       const j = (user.jades || []).find((x) => x.id === jadeId);
@@ -544,14 +590,7 @@ export async function mountJade(phone, treeId, jadeId, now = new Date()) {
       );
     });
   } catch (e) {
-    await withSpirit(
-      treeId,
-      (entry, ctx) => {
-        delete ctx.doc.trees[treeId];
-        ctx.dirty = true;
-      },
-      now,
-    ).catch(() => {});
+    await deleteSpiritEntry(treeId).catch(() => {});
     throw e;
   }
 
@@ -587,56 +626,63 @@ export async function chargeSpirit(phone, treeId, plan, now = new Date(), opts =
   if (!P) throw httpError(400, ERR_PLAN_INVALID);
   await treeMetaOf(treeId); // 树不存在 → 404
   const giftPieces = giftPiecesOf(plan, opts.env);
+
+  // 前置：该树必须**已镶嵌玉**（否则 409 整单拒绝）——先于任何写入（含资产侧）
+  const entry0 = await readSpiritEntry(treeId, now);
+  if (!entry0 || !entry0.jade) throw httpError(409, ERR_NO_JADE_ON_TREE);
+
   const assetsSnapshot = await getAssets(phone);
   let assetsWritten = false;
 
   try {
+    // ① 个人籽扣减 + 赠片（**一次性**；复用账本内核：sweep → 整单拒绝 → 扣减 → 批次/流水）。
+    //    ⚠️ 移出灵气 CAS mutator：CAS 冲突重放绝不重复扣资产（§5-7 第 3 条 / §7-7）。
+    const details = await withAssets(phone, async (user) => {
+      sweep(user, now);
+      let charge;
+      try {
+        charge = chargeLots(user.seeds, P.seeds, 'seed');
+      } catch (err) {
+        throw seedsInsufficient(P.seeds, err.current, `石榴籽不足：本次需 ${P.seeds} 颗，当前可用 ${err.current} 颗`);
+      }
+      user.seeds = (user.seeds || []).filter((l) => toNonNegInt(l.qty) > 0);
+      let gift_lot_id = null;
+      if (giftPieces > 0) {
+        gift_lot_id = addLot(user, 'bamboo', giftPieces, { source: 'spirit_gift', now }).id;
+      }
+      recordTx(
+        user,
+        {
+          type: 'spirit_charge',
+          delta: giftPieces > 0 ? { seeds: -P.seeds, bamboos: giftPieces } : { seeds: -P.seeds },
+          ref: { tree_id: treeId, plan },
+          desc: `灌注玉露灵泽（${plan}）`,
+        },
+        now,
+      );
+      return {
+        seeds_used: charge.taken.map((t) => ({ lot_id: t.id, qty: t.qty, expires_at: t.expires_at ?? null })),
+        seeds_balance_after: sumLots(user.seeds),
+        gift_lot_id,
+      };
+    });
+    assetsWritten = true;
+
+    // ② 灵气叠加顺延（**纯** mutator：基于最新档重算，绝不基于陈旧快照；冲突重放无跨集合副作用）
+    const logId = spiritLogId();
     return await withSpirit(
       treeId,
-      async (entry, ctx) => {
+      (entry) => {
         if (!entry || !entry.jade) throw httpError(409, ERR_NO_JADE_ON_TREE);
         const before = entry.spirit_expires_at || null;
-
-        // 个人籽扣减 + 赠片（复用账本内核：sweep → 整单拒绝 → 扣减 → 批次/流水）
-        const details = await withAssets(phone, async (user) => {
-          sweep(user, now);
-          let charge;
-          try {
-            charge = chargeLots(user.seeds, P.seeds, 'seed');
-          } catch (err) {
-            throw seedsInsufficient(P.seeds, err.current, `石榴籽不足：本次需 ${P.seeds} 颗，当前可用 ${err.current} 颗`);
-          }
-          user.seeds = (user.seeds || []).filter((l) => toNonNegInt(l.qty) > 0);
-          let gift_lot_id = null;
-          if (giftPieces > 0) {
-            gift_lot_id = addLot(user, 'bamboo', giftPieces, { source: 'spirit_gift', now }).id;
-          }
-          recordTx(
-            user,
-            {
-              type: 'spirit_charge',
-              delta: giftPieces > 0 ? { seeds: -P.seeds, bamboos: giftPieces } : { seeds: -P.seeds },
-              ref: { tree_id: treeId, plan },
-              desc: `灌注玉露灵泽（${plan}）`,
-            },
-            now,
-          );
-          return {
-            seeds_used: charge.taken.map((t) => ({ lot_id: t.id, qty: t.qty, expires_at: t.expires_at ?? null })),
-            seeds_balance_after: sumLots(user.seeds),
-            gift_lot_id,
-          };
-        });
-        assetsWritten = true;
-
-        // 灵气叠加顺延（active 原值未来 → 原值 + days；buffer / expired / inactive → now + days）
+        // active 原值未来 → 原值 + days；buffer / expired / inactive → now + days
         const newExp = chargeNextExpiry(before, P.days, now);
         entry.spirit_expires_at = newExp;
         entry.buffer_until = null;
         entry.status = 'active';
         entry.logs = entry.logs || [];
-        const log = {
-          id: spiritLogId(),
+        entry.logs.push({
+          id: logId,
           ts: isoOf(now),
           phone,
           plan,
@@ -644,10 +690,7 @@ export async function chargeSpirit(phone, treeId, plan, now = new Date(), opts =
           days: P.days,
           gift_bamboos: giftPieces,
           spirit_expires_at_after: newExp,
-        };
-        entry.logs.push(log);
-        ctx.dirty = true;
-
+        });
         return {
           ok: true,
           tree_id: treeId,
@@ -663,7 +706,7 @@ export async function chargeSpirit(phone, treeId, plan, now = new Date(), opts =
           gift_lot_id: details.gift_lot_id,
           seeds_used: details.seeds_used,
           seeds_balance_after: details.seeds_balance_after,
-          log_id: log.id,
+          log_id: logId,
           message: '灌注成功',
         };
       },
@@ -692,10 +735,10 @@ export function maskPhone(phone) {
 /**
  * 已镶玉的**注入者**反查（`GET /spirit` 的 `injector` 出参口径）。
  *
- * 来源 = **读侧反查**（零迁移、零新字段、零新集合）：在 `jiazu_assets`（单文档 `global`，
- * `users[phone].jades`）里反查 `mounted_tree_id === treeId` 的那一枚玉 → 持有者手机号 →
- * `jiazu_users` 昵称 + `jiazu_anchors` 锚点（`tree_id` / `person_handle`）。
- * 全程 `colGet` **只读**（不 sweep、不回写 ⇒ 不扰动真源）。
+ * 来源 = **读侧反查**（零迁移、零新字段、零新集合）：在 `jiazu_assets`（**每手机号一文档**，
+ * `_id = 手机号明文`；存储形态 v2）里**分页枚举**全部资产档，反查 `mounted_tree_id === treeId`
+ * 的那一枚玉 → 持有者手机号 → `jiazu_users` 昵称 + `jiazu_anchors` 锚点（`tree_id` / `person_handle`）。
+ * 全程**只读**（`listAll` 只读不写；不 sweep、不回写 ⇒ 不扰动真源）。
  *
  * 三态：
  * - 反查到 + 锚点 `tree_id === treeId` → `{ nickname, person_handle }`（前端给可点档案链接）；
@@ -706,11 +749,11 @@ export function maskPhone(phone) {
  */
 export async function injectorOf(treeId) {
   if (!treeId) return null;
-  const doc = await colGet(ASSETS_COL, ASSETS_ID);
+  const docs = await listAll(ASSETS_COL);
   let phone = '';
-  for (const [p, rec] of Object.entries(doc?.users || {})) {
+  for (const rec of docs) {
     if ((rec?.jades || []).some((j) => j && j.mounted_tree_id === treeId)) {
-      phone = p;
+      phone = String(rec._id || '');
       break;
     }
   }

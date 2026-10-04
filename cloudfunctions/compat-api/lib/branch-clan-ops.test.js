@@ -590,61 +590,57 @@ fs.writeFileSync(
 
 const seedLot = (id, qty, expDays) => ({ id, qty, expires_at: isoPlus(expDays), source: 'admin', created_at: new Date().toISOString() });
 const blankUser = () => ({ fragments: 0, seeds: [], bamboos: [], jades: [], txs: [], signin_date: '' });
-// 夹具形状（local 模式）：集合文件 = **{ 文档 id → 文档 }**（store.loadCol 读顶层键当 _id；
-// 真源 `migrate-output/collections/*.json` 亦为 `{ "global": {...} }`）——漏掉 `global` 外层会让
-// colGet('…','global') 恒返 null（资产 / 灵气 / 钱包全读成空），本文件曾因此 7 条用例假红。
+// 夹具形状（local 模式，**存储形态 v2**）：集合文件 = **{ 手机号明文 → 用户资产档 }**
+// （`_id` = 手机号，每档带 `version`；store.colGet('jiazu_assets', 手机号) 直取该档，
+//  getAssets(手机号) 读的就是它 —— 旧 `{ global: { users } }` 单文档形态已废弃）。
 fs.writeFileSync(
   path.join(COLS_DIR, 'jiazu_assets.json'),
   JSON.stringify({
-    global: {
-      _id: 'global',
-      users: {
-        // 数组顺序故意把晚到期批次放前面：FIFO 必须按 expires_at 升序命中 sl_a
-        [STEWARD]: { ...blankUser(), seeds: [seedLot('sl_b', 6000, 20), seedLot('sl_a', 5000, 10)] },
-        [ROLLBK]: { ...blankUser(), seeds: [seedLot('sl_y', 6000, 20), seedLot('sl_x', 5000, 10)] },
-        [POOR]: { ...blankUser(), seeds: [seedLot('sl_p', 9998, 10)] },
-        [FEE1U]: { ...blankUser(), seeds: [seedLot('sl_f', 3, 10)] },
-        [CHIEF]: {
-          ...blankUser(),
-          fragments: 3,
-          seeds: [seedLot('sl_c', 5, 30)],
-          bamboos: [{ id: 'bl_c', qty: 10, expires_at: isoPlus(30), source: 'admin', created_at: new Date().toISOString() }],
-          jades: [{ id: 'jd_c', expires_at: isoPlus(300), created_at: new Date().toISOString(), source: 'admin' }],
-        },
-      },
+    // 数组顺序故意把晚到期批次放前面：FIFO 必须按 expires_at 升序命中 sl_a
+    [STEWARD]: { _id: STEWARD, version: 1, ...blankUser(), seeds: [seedLot('sl_b', 6000, 20), seedLot('sl_a', 5000, 10)] },
+    [ROLLBK]: { _id: ROLLBK, version: 1, ...blankUser(), seeds: [seedLot('sl_y', 6000, 20), seedLot('sl_x', 5000, 10)] },
+    [POOR]: { _id: POOR, version: 1, ...blankUser(), seeds: [seedLot('sl_p', 9998, 10)] },
+    [FEE1U]: { _id: FEE1U, version: 1, ...blankUser(), seeds: [seedLot('sl_f', 3, 10)] },
+    [CHIEF]: {
+      _id: CHIEF,
+      version: 1,
+      ...blankUser(),
+      fragments: 3,
+      seeds: [seedLot('sl_c', 5, 30)],
+      bamboos: [{ id: 'bl_c', qty: 10, expires_at: isoPlus(30), source: 'admin', created_at: new Date().toISOString() }],
+      jades: [{ id: 'jd_c', expires_at: isoPlus(300), created_at: new Date().toISOString(), source: 'admin' }],
     },
   }),
 );
 
 const jade = (id) => ({ id, expires_at: isoPlus(300), created_at: new Date().toISOString(), source: 'admin' });
+// 集合 jiazu_spirit 真源 v2：**每树一档**（`_id = tree_id`，带 `version`）
+const SPIRIT_SEED = {
+  cv_main: { jade: jade('jd_cv_main'), spirit_expires_at: isoPlus(10), status: 'active', buffer_until: null, logs: [{ id: 'lg_cv_main', plan: 'quarter', days: 90 }] },
+  cv_t_main: { jade: jade('jd_cv_t_main'), spirit_expires_at: isoPlus(100), status: 'active', buffer_until: null, logs: [] },
+  cv_skip: { jade: jade('jd_cv_skip'), spirit_expires_at: isoPlus(10), status: 'active', buffer_until: null, logs: [] },
+  cv_d3: { jade: jade('jd_cv_d3'), spirit_expires_at: isoPlus(3), status: 'active', buffer_until: null, logs: [] },
+  cv_t5: { jade: jade('jd_cv_t5'), spirit_expires_at: isoPlus(50), status: 'active', buffer_until: null, logs: [] },
+  cv_exp: { jade: jade('jd_cv_exp'), spirit_expires_at: isoPlus(-5), status: 'expired', buffer_until: isoPlus(25), logs: [] },
+  cv_t6: { jade: jade('jd_cv_t6'), spirit_expires_at: isoPlus(20), status: 'active', buffer_until: null, logs: [] },
+  cv_ratio: { jade: jade('jd_cv_ratio'), spirit_expires_at: isoPlus(10), status: 'active', buffer_until: null, logs: [] },
+  cv_t_ratio: { jade: jade('jd_cv_t_ratio'), spirit_expires_at: isoPlus(100), status: 'active', buffer_until: null, logs: [] },
+  // §15-#8 系统级失败文案夹具：源树都有玉 + 10 天灵气（⑤ 阶段写入失败的那条走真实 EACCES）
+  cv_stage4: { jade: jade('jd_cv_stage4'), spirit_expires_at: isoPlus(10), status: 'active', buffer_until: null, logs: [] },
+  cv_stage5: { jade: jade('jd_cv_stage5'), spirit_expires_at: isoPlus(10), status: 'active', buffer_until: null, logs: [] },
+  cv_t_s4: { jade: jade('jd_cv_t_s4'), spirit_expires_at: isoPlus(100), status: 'active', buffer_until: null, logs: [] },
+  cv_t_s5: { jade: jade('jd_cv_t_s5'), spirit_expires_at: isoPlus(100), status: 'active', buffer_until: null, logs: [] },
+};
 fs.writeFileSync(
   path.join(COLS_DIR, 'jiazu_spirit.json'),
-  JSON.stringify({
-    global: {
-      _id: 'global',
-      trees: {
-        cv_main: { jade: jade('jd_cv_main'), spirit_expires_at: isoPlus(10), status: 'active', buffer_until: null, logs: [{ id: 'lg_cv_main', plan: 'quarter', days: 90 }] },
-        cv_t_main: { jade: jade('jd_cv_t_main'), spirit_expires_at: isoPlus(100), status: 'active', buffer_until: null, logs: [] },
-        cv_skip: { jade: jade('jd_cv_skip'), spirit_expires_at: isoPlus(10), status: 'active', buffer_until: null, logs: [] },
-        cv_d3: { jade: jade('jd_cv_d3'), spirit_expires_at: isoPlus(3), status: 'active', buffer_until: null, logs: [] },
-        cv_t5: { jade: jade('jd_cv_t5'), spirit_expires_at: isoPlus(50), status: 'active', buffer_until: null, logs: [] },
-        cv_exp: { jade: jade('jd_cv_exp'), spirit_expires_at: isoPlus(-5), status: 'expired', buffer_until: isoPlus(25), logs: [] },
-        cv_t6: { jade: jade('jd_cv_t6'), spirit_expires_at: isoPlus(20), status: 'active', buffer_until: null, logs: [] },
-        cv_ratio: { jade: jade('jd_cv_ratio'), spirit_expires_at: isoPlus(10), status: 'active', buffer_until: null, logs: [] },
-        cv_t_ratio: { jade: jade('jd_cv_t_ratio'), spirit_expires_at: isoPlus(100), status: 'active', buffer_until: null, logs: [] },
-        // §15-#8 系统级失败文案夹具：源树都有玉 + 10 天灵气（⑤ 阶段写入失败的那条走真实 EACCES）
-        cv_stage4: { jade: jade('jd_cv_stage4'), spirit_expires_at: isoPlus(10), status: 'active', buffer_until: null, logs: [] },
-        cv_stage5: { jade: jade('jd_cv_stage5'), spirit_expires_at: isoPlus(10), status: 'active', buffer_until: null, logs: [] },
-        cv_t_s4: { jade: jade('jd_cv_t_s4'), spirit_expires_at: isoPlus(100), status: 'active', buffer_until: null, logs: [] },
-        cv_t_s5: { jade: jade('jd_cv_t_s5'), spirit_expires_at: isoPlus(100), status: 'active', buffer_until: null, logs: [] },
-      },
-    },
-  }),
+  JSON.stringify(
+    Object.fromEntries(Object.entries(SPIRIT_SEED).map(([id, entry]) => [id, { _id: id, version: 1, ...entry }])),
+  ),
 );
 
 fs.writeFileSync(
   path.join(COLS_DIR, 'jiazu_wallets.json'),
-  JSON.stringify({ global: { _id: 'global', users: {}, trees: {}, transactions: [], config: {} } }),
+  JSON.stringify({ config: { _id: 'config', version: 1 } }),
 );
 
 // ---- 模块（env 就位后再动态 import）----
@@ -671,8 +667,18 @@ const bodyOf = (res) => JSON.parse(res.body);
 const metaNow = () => JSON.parse(fs.readFileSync(META_FILE, 'utf8'));
 const spiritColMd5 = () => md5(path.join(COLS_DIR, 'jiazu_spirit.json'));
 const assetsColMd5 = () => md5(path.join(COLS_DIR, 'jiazu_assets.json'));
-/** 读集合 jiazu_spirit 的单文档（_id='global'；local 模式文件形状 = { global: doc }） */
-const spiritDocNow = () => JSON.parse(fs.readFileSync(path.join(COLS_DIR, 'jiazu_spirit.json'), 'utf8')).global;
+/** 读集合 jiazu_spirit 的**每树一档**视图 `{ trees: { <tree_id>: entry } }`（剥离 `_id`/`version`） */
+const spiritDocNow = () => {
+  const raw = JSON.parse(fs.readFileSync(path.join(COLS_DIR, 'jiazu_spirit.json'), 'utf8'));
+  const trees = {};
+  for (const [id, doc] of Object.entries(raw)) {
+    const rec = { ...(doc || {}) };
+    delete rec._id;
+    delete rec.version;
+    trees[id] = rec;
+  }
+  return { trees };
+};
 const expect400 = (e, re) => e && e.status === 400 && re.test(e.message);
 
 let NEW_TREE_ID = '';
@@ -1284,9 +1290,7 @@ test('§10-1-18 汇宗 · 目标树未镶嵌玉 → 200 且不并入：transferr
   assert.equal(spiritAfter.trees.cv_skip.status, 'expired', '源树记录仍置 expired');
 
   // 源树未镶嵌玉（无 jade）→ 同样不并入（另一条 skipped_reason）
-  const spiritDoc = spiritDocNow();
-  spiritDoc.trees.cv_nojade = { spirit_expires_at: isoPlus(10), status: 'inactive', buffer_until: null, logs: [] };
-  await store.colSet('jiazu_spirit', 'global', spiritDoc);
+  await store.colSet('jiazu_spirit', 'cv_nojade', { _id: 'cv_nojade', version: 1, spirit_expires_at: isoPlus(10), status: 'inactive', buffer_until: null, logs: [] });
   const applied = await bco.applySpiritTransfer({ sourceTreeId: 'cv_nojade', targetTreeId: 'cv_t6' });
   assert.equal(applied.transferred_days, 0);
   assert.match(applied.skipped_reason, /源树未镶嵌石榴籽玉/);

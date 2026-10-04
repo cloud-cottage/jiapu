@@ -36,8 +36,9 @@ import {
   getMeta,
   getTree,
   listTreeIds,
+  mutateTreeMeta,
+  removeTreeMeta,
   saveDetail,
-  saveMeta,
   updateTrees,
 } from './store.js';
 import {
@@ -60,7 +61,7 @@ import {
 import { idAllocator, reserveFamilyIds, reservePersonIds } from './id-seq.js';
 import { resolveNode } from './id-resolve.js';
 import { FEE } from './economy-fee.js';
-import { chargeBase, settle, withSpirit } from './economy-spirit.js';
+import { chargeBase, readSpiritEntry, settle, withSpirit } from './economy-spirit.js';
 
 // ---- 常量（§5-4 / §6-2-7；数值唯一真源见 lib/economy-fee.js 与 lib/wallet.js）----
 
@@ -417,43 +418,56 @@ export async function applySpiritTransfer({
   ratio = DEFAULT_CONVERGE_SPIRIT_RATIO,
   now = new Date(),
 }) {
-  return withSpirit(
-    sourceTreeId,
-    (entry, ctx) => {
-      const transfer = computeSpiritTransfer({ sourceExpiresAt: entry?.spirit_expires_at || null, now, ratio });
-      // 源树：记录保留、status 置 'expired'（jade / spirit_expires_at / logs 保留作留痕，§6-2-6）
-      if (entry) {
-        entry.status = 'expired';
-        ctx.dirty = true;
-      }
-      const tgt = ctx.doc.trees?.[targetTreeId] || null;
-      let targetExp = tgt ? tgt.spirit_expires_at || null : null;
-      let skippedReason = '';
-      if (!entry || !entry.jade) {
-        skippedReason = '源树未镶嵌石榴籽玉，无灵气可折损';
-      } else if (!tgt || !tgt.jade) {
-        skippedReason = '目标树尚未镶嵌石榴籽玉（无凹槽），源树灵气不并入';
-      } else if (transfer.transferred_days <= 0) {
-        skippedReason = '源树灵气剩余有效期为 0 天（已过缓冲期），无可并入天数';
-      }
-      if (!skippedReason) {
-        const base = chargeBase(tgt.spirit_expires_at, now); // max(now, 原值)；原值 null → now
-        tgt.spirit_expires_at = new Date(base + transfer.transferred_days * DAY_MS).toISOString();
-        tgt.buffer_until = null;
-        settle(tgt, now); // 并入后 = 'active'（惰性结算口径）
-        targetExp = tgt.spirit_expires_at;
-        ctx.dirty = true;
-      }
-      return {
-        ...transfer,
-        // 未并入时 transferred_days = 0（§10-1 用例 18：不并入 = 0 天，理由见 skipped_reason）
-        transferred_days: skippedReason ? 0 : transfer.transferred_days,
-        target_spirit_expires_at: targetExp,
-        skipped_reason: skippedReason,
-      };
-    },
-    now,
-  );
+  // 纯读前置（不建记录）：源 / 目标两侧档用于判定与出参
+  const source = await readSpiritEntry(sourceTreeId, now);
+  const target = await readSpiritEntry(targetTreeId, now);
+  const transfer = computeSpiritTransfer({ sourceExpiresAt: source?.spirit_expires_at || null, now, ratio });
+
+  let skippedReason = '';
+  if (!source || !source.jade) {
+    skippedReason = '源树未镶嵌石榴籽玉，无灵气可折损';
+  } else if (!target || !target.jade) {
+    skippedReason = '目标树尚未镶嵌石榴籽玉（无凹槽），源树灵气不并入';
+  } else if (transfer.transferred_days <= 0) {
+    skippedReason = '源树灵气剩余有效期为 0 天（已过缓冲期），无可并入天数';
+  }
+
+  // ① 源树：记录保留、status 置 'expired'（jade / spirit_expires_at / logs 保留作留痕，§6-2-6）
+  if (source) {
+    await withSpirit(
+      sourceTreeId,
+      (entry) => {
+        if (entry) entry.status = 'expired';
+        return null;
+      },
+      now,
+    );
+  }
+
+  // ② 目标树：已镶嵌玉时叠加顺延并入（`max(now, 原值) + 折损天数`，绝不覆盖；并入后 = active）
+  let targetExp = target ? target.spirit_expires_at || null : null;
+  if (!skippedReason && target) {
+    targetExp = await withSpirit(
+      targetTreeId,
+      (entry) => {
+        if (!entry) return null;
+        const base = chargeBase(entry.spirit_expires_at, now); // max(now, 原值)；原值 null → now
+        entry.spirit_expires_at = new Date(base + transfer.transferred_days * DAY_MS).toISOString();
+        entry.buffer_until = null;
+        settle(entry, now); // 并入后 = 'active'（惰性结算口径）
+        return entry.spirit_expires_at;
+      },
+      now,
+    );
+  }
+
+  return {
+    ...transfer,
+    // 未并入时 transferred_days = 0（§10-1 用例 18：不并入 = 0 天，理由见 skipped_reason）
+    transferred_days: skippedReason ? 0 : transfer.transferred_days,
+    target_spirit_expires_at: targetExp,
+    skipped_reason: skippedReason,
+  };
 }
 
 // ---- 跨树引用体检拒绝文案（§6-1-5 / §6-2-3；扫描本体复用 tree-write.scanExternalRefs）----
@@ -687,24 +701,26 @@ export async function establishBranch({
       /* best-effort */
     }
 
-    // ---- ⑦ 写 tree-meta（原树 founder_* + clan_handle；新树整条登记；saveMeta 走 store 护栏）----
+    // ---- ⑦ 写 tree-meta（原树 founder_* + clan_handle；新树整条登记）——定向写，只写对应树档 ----
     const m2 = await getMeta();
-    const trees = { ...(m2.trees || {}) };
     const srcKey = keyOf(m2, treeId) || keyOf(m, treeId);
     if (!srcKey) throw fail('tree-meta 中找不到原树条目', 500);
-    const srcEntry = {
-      ...trees[srcKey],
-      founder_handle: personHandle,
-      founder_gramps_id: String(person.gramps_id || ''),
-      founder_name: person.name || '',
-      clan_handle: registrations[0].handle, // §13-5：clan_handle = 该树在宗谱的落点
-    };
-    // R5（变体 A）：原树始祖 = **N 真身**（真实节点，非镜像）——只改 tree-meta 登记，
+    // 定向写 ①：原树条目。R5（变体 A）：原树始祖 = **N 真身**（真实节点，非镜像）——只改 tree-meta 登记，
     // **不给 N 写任何 external_\*、不强转镜像**；N 在原树内照旧可编辑（本树始祖可真身写）。
     // N 若原本已带祖先链镜像指针（历史数据），由 migrate 脚本另批处理，本操作不碰。
-    delete srcEntry.founder_state; // 回到「有始祖」态
-    trees[srcKey] = srcEntry;
-    trees[newTreeId] = {
+    await mutateTreeMeta(treeId, (entry) => {
+      const next = {
+        ...entry,
+        founder_handle: personHandle,
+        founder_gramps_id: String(person.gramps_id || ''),
+        founder_name: person.name || '',
+        clan_handle: registrations[0].handle, // §13-5：clan_handle = 该树在宗谱的落点
+      };
+      delete next.founder_state; // 回到「有始祖」态
+      return next;
+    });
+    // 定向写 ②：新树整条登记
+    await mutateTreeMeta(newTreeId, () => ({
       tree_id: newTreeId,
       kind: TREE_KIND.FAMILY,
       path_alias: `/${newTreeId}`,
@@ -726,8 +742,7 @@ export async function establishBranch({
       founder_name: person.name || '',
       clan_tree_id: clanTreeId,
       clan_handle: registrations[1].handle,
-    };
-    await saveMeta({ ...m2, trees });
+    }));
 
     const out = {
       ok: true,
@@ -904,11 +919,8 @@ export async function convergeClan({
     stageError = e;
   }
   try {
-    const m2 = await getMeta();
-    const trees = { ...(m2.trees || {}) };
-    const srcKey = keyOf(m2, treeId);
-    if (srcKey) delete trees[srcKey];
-    await saveMeta({ ...m2, trees });
+    // 定向删：只摘该树档（不再整份 saveMeta）
+    await removeTreeMeta(treeId);
   } catch (e) {
     stageError = stageError || e;
   }
@@ -953,17 +965,16 @@ export async function convergeClan({
 async function markShellSource(treeId, entrySnapshot, cause) {
   try {
     const m = await getMeta();
-    const trees = { ...(m.trees || {}) };
     const key = keyOf(m, treeId) || keyOf(m, entrySnapshot) || treeId;
-    const base = trees[key] || entrySnapshot || { tree_id: treeId };
-    trees[key] = {
+    const base = (m.trees && m.trees[key]) || entrySnapshot || { tree_id: treeId };
+    // 定向写：只写该树档
+    await mutateTreeMeta(treeId, () => ({
       ...base,
       kind: base.kind || TREE_KIND.FAMILY,
       reconcile_state: SHELL_RECONCILE_STATE,
       reconcile_note: `汇宗后清理失败（${cause?.message || cause}），该树已无真实节点，待 reconcile`,
       reconcile_at: new Date().toISOString(),
-    };
-    await saveMeta({ ...m, trees });
+    }));
   } catch {
     console.log(`[branch-clan-ops] 汇宗后源树 ${treeId} 登记 reconcile 失败（原始错误：${cause?.message || cause}）`);
   }

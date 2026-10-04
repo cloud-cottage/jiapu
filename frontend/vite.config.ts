@@ -33,6 +33,9 @@ function restoreVueSrcScopeId(): Plugin {
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // 部署基路径：默认 '/'（本地 dev 不受影响），部署到子路径时用 H5_BASE 覆盖，
+  // 例：H5_BASE=/jiazu/ npm run build:h5（同时驱动产物资源前缀与 uni 运行时 router.base）
+  base: process.env.H5_BASE || '/',
   plugins: [uni(), restoreVueSrcScopeId()],
   resolve: {
     alias: {

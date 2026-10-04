@@ -103,7 +103,7 @@ const FRIENDS_FILE = path.join(TMP, 'collections', 'jiazu_friends.json');
 const MSG_FILE = path.join(TMP, 'collections', 'jiazu_messages.json');
 const readFriends = () => (fs.existsSync(FRIENDS_FILE) ? JSON.parse(fs.readFileSync(FRIENDS_FILE, 'utf8')) : {});
 const readMsgs = () => (fs.existsSync(MSG_FILE) ? JSON.parse(fs.readFileSync(MSG_FILE, 'utf8')) : {});
-const msgItems = (phone) => readMsgs()?.global?.items?.[phone] || [];
+const msgItems = (phone) => readMsgs()?.[phone]?.items || [];
 const relDoc = (id) => readFriends()[id];
 const msgsOf = (phone) => msgItems(phone).map((m) => m.text);
 
@@ -846,22 +846,19 @@ test('F-A 只做编排：资产只经 ledger 的 withAssets/导出读写（无�
   assert.equal(SRC.includes('colAll('), true, 'sweepFriends / 句柄反查 需要全量遍历');
 });
 
-// ══ ⑯ 注册数 38 与磁盘一致 ══════════════════════════════════════════════════════
-// ⚠️ 本判据的基线必须跟随**磁盘真值**：新增第 37 个测试文件（anchors.test.js，批 A 锚点域：全站唯一 +
-//    force 例外 + 存在性 + approve-join 缺省 reference_handle）后，此处残留的旧基线 36 变成假红；
-//    批 C-1 又新增第 38 个测试文件（invite-codes.test.js，邀请码链路：签发 / 解析 / 定向读放行 /
-//    绑定 / 奖励 + force 覆盖清锚点审计）⇒ 定额同步为实得真值 38。
-//    基线口径 = 「package.json 注册数 = 磁盘 *.test.js 数 = 定额」，仍为**精确等值 + 双向零缺口 + 去重**
-//    （不放宽、不删除任何断言），只把定额改成实得真值 38。
-test('package.json 注册数 = 磁盘 *.test.js 数 = 38，且双向零缺口', async () => {
+// ══ ⑯ 注册数 39 与磁盘一致 ══════════════════════════════════════════════════════
+// ⚠️ 本判据的基线必须跟随**磁盘真值**：新增第 37 个测试文件（anchors.test.js，批 A 锚点域）后残留旧基线 36 变成假红；
+//    批 C-1 又新增第 38 个（invite-codes.test.js）；路 B 第 3 期新增第 39 个（wallet.test.js，¥ 钱包 v2：每手机号一档 +
+//    config 单档 + 平台流水单档 ⇒ 定额同步为实得真值 39）。口径 = 「注册数 = 磁盘数 = 定额」，仍为精确等值 + 双向零缺口 + 去重。
+test('package.json 注册数 = 磁盘 *.test.js 数 = 39，且双向零缺口', async () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));
   const registered = pkg.scripts.test
     .split(/\s+/)
     .filter((x) => x.endsWith('.test.js'))
     .map((x) => path.basename(x));
   const onDisk = fs.readdirSync(HERE).filter((f) => f.endsWith('.test.js')).sort();
-  assert.equal(registered.length, 38, `注册数应为 38，实得 ${registered.length}`);
-  assert.equal(onDisk.length, 38, `磁盘 *.test.js 应为 38，实得 ${onDisk.length}`);
+  assert.equal(registered.length, 39, `注册数应为 39，实得 ${registered.length}`);
+  assert.equal(onDisk.length, 39, `磁盘 *.test.js 应为 39，实得 ${onDisk.length}`);
   assert.equal(new Set(registered).size, registered.length, '注册项不得重复');
   const missingOnDisk = registered.filter((f) => !onDisk.includes(f));
   const unregistered = onDisk.filter((f) => !registered.includes(f));
@@ -874,6 +871,19 @@ test('package.json 注册数 = 磁盘 *.test.js 数 = 38，且双向零缺口', 
 });
 
 // ══ ⑰ 真源零写入 ════════════════════════════════════════════════════════════════
+// ⚠️ 本判据的**文件数定额**必须跟随真源集合真值：批 C 邀请码链路首次落盘新增集合文件
+//    migrate-output/collections/jiazu_invite_codes.json ⇒ 真源文件集合 +1，此处残留的旧定额 342
+//    变成假红 ⇒ 定额同步为实得真值 343。
+//    基线口径不变：`REAL_FP.digest` 与 `fp.digest` 跑测前后逐字节一致是**真不变量**；
+//    文件数定额只是「真源文件集变了就人工同步」的**绊线**。本次只同步定额（精确等值断言原样保留），
+//    **不放宽、不删除任何断言**。
+//    2026-10-03 变更续登记：又删 `ji_23395_01` 三个源侧孤立节点的 3 个详情档 ⇒ 文件集 −3
+//    ⇒ 定额同步为实得真值 340；基线口径不变（`REAL_FP.digest` vs `fp.digest` 跑测前后逐字节
+//    一致仍是**真不变量**），**不放宽、不删除任何断言**。
+//    2026-10-03（第二批 · 补始祖登记 + 清孤儿档）续登记：清理 `shen_27784_01` 的 1 个源侧孤儿
+//    详情档（handle `103f95b875d632a1f5c64098dc0d`，已不在任何树 / family 槽位 / external_* /
+//    tree-meta）⇒ 文件集 −1 ⇒ 定额同步为实得真值 339；基线口径不变（`REAL_FP.digest` vs
+//    `fp.digest` 跑测前后逐字节一致仍是**真不变量**），**不放宽、不删除任何断言**。
 test('真源零写入：config/tree-meta.json 与 migrate-output/ 全量 md5 与开工基线逐字节一致', async () => {
   assert.equal(md5(REAL_META), realMetaMd5, 'config/tree-meta.json 被改动');
   const nowTrees = dirBaseline(REAL_TREES);
@@ -886,9 +896,9 @@ test('真源零写入：config/tree-meta.json 与 migrate-output/ 全量 md5 与
   assert.deepEqual([...nowCols.keys()].sort(), [...realColBaseline.keys()].sort(), 'collections 文件集变化');
   for (const [f, h] of realColBaseline) assert.equal(nowCols.get(f), h, `collections/${f} 内容变化`);
   const fp = realSourceFingerprint();
-  assert.equal(fp.count, 342, `真源文件数应为 342，实得 ${fp.count}`);
+  assert.equal(fp.count, 339, `真源文件数应为 339，实得 ${fp.count}`);
   assert.equal(fp.digest, REAL_FP.digest, '真源全量指纹变化');
-  assert.equal(REAL_FP.count, 342);
+  assert.equal(REAL_FP.count, 339);
   // 沙箱自证：本测试全程只写 /tmp 副本
   assert.ok(TMP.startsWith(os.tmpdir()), '测试根必须是 /tmp 副本');
   assert.equal(store.PATHS.out, TMP);

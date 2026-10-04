@@ -1,5 +1,5 @@
 /**
- * 资产账本内核（P0）— 集合 jiazu_assets（单文档 _id='global'）
+ * 资产账本内核（P0）— 集合 jiazu_assets（**每手机号一文档**，`_id = 手机号明文`；R1 存储形态 v2）
  *
  * 唯一真源：docs/economy.spec.md
  *   §3 四类资产定义 / §4-1 存储契约 / §4-6 枚举
@@ -13,22 +13,32 @@
  * 残页**照收、不拒绝、不截断**（无上限校验）；`SCROLL_FRAGMENT_CAP` 语义降为**单格容纳上限 / 展示层口径**。
  * 历史 `source: 'scroll_synth'` 批次与历史流水一律保留、不改写、不删（**存量不迁移**）。
  *
- * **已知限制（总监 2026-09-16 拍板：暂不改，部署前重构）**：资产集合当前为**全体用户共用单文档**
- * `_id='global'`，并发保护**仅进程内锁**（下方 `assetsLocks`，同实例内已串行化）——**云端多实例并发会丢更新 / 双花**。
- * 部署前**必须**重构为「**每手机号一文档 + version 乐观锁（CAS）重试**」，本限制登记见 docs/PENDING_DEPLOY.md。
+ * **存储形态 v2（R1/R2，2026-10-03 Zang 裁定 · 路 B）**：`jiazu_assets` 由「全体用户共用单文档
+ * `_id='global'`」改为「**每手机号一文档**（`_id = 手机号明文`）」，每档带 `version`（非负整数，自 1 起）。
+ * 写入协议 = `store.mutateDoc` 的 **CAS**：读当前档 → 纯函数 mutator → `version+1` → 条件写 → **读回比对**；
+ * 冲突重读重放（上限 5 次 + 退避），耗尽抛错 ⇒ **云端多实例并发不再丢更新 / 双花**（原部署阻塞项 §7-7 解除）。
+ * 字段名一律沿用旧 `global.users[phone]` 记录字段；本批只改存储形态，不改业务语义 / 数值 / 计费口径。
  *
  * 分层（纯函数与 IO 分离，便于单测）：
  *   - 纯函数（只操作传入的 user 记录，无 IO）：sweep / addFragments / addScrollFragments / synthesizeScroll /
  *     decomposeScroll / chargeLots / addLot / sumLots / recordTx / nextLotId / beijingDate / summarize / expiringItems
- *   - IO 层：withAssets（colGet → mutator → colSet 整体回写；**同一手机号串行化**，模式同 store.js 的
- *     treeWriteLocks）/ mutateAssets / getAssets
+ *   - IO 层：withAssets（**同一手机号串行化** + `store.mutateDoc` CAS；mutator 见到的就是用户记录本身）/ 
+ *     mutateAssets / getAssets
+ *
+ * ⚠️ CAS 纪律：传给 `mutateDoc` 的 mutator 应是**纯函数**（同输入同输出、无 IO、不读 Date / 随机）；
+ * 现有调用方均为「在账本锁内对 user 记录就地读改写」，冲突重放时**从最新档重新校验 / 重新走 FIFO**
+ * （余额校验恒在 CAS 成功的那次读内完成，绝不基于陈旧快照扣减，§7-7 第 3 条）。
  *
  * **唯一写入路径（§5-7）**：任何路径（脚本 / 云函数旁路 / 前端）都不得直写 jiazu_assets，只经本模块。
  */
-import { colGet, colSet } from './store.js';
+import { colGet, mutateDoc } from './store.js';
 
 export const ASSETS_COL = 'jiazu_assets';
-export const ASSETS_ID = 'global';
+/**
+ * 资产档 `_id` = **手机号明文**（R1 存储形态 v2；旧「单文档 `_id='global'` + `users` 映射」已废弃）。
+ * 纯投影：只做 trim，空值返回 `''`（不抛错；手机号格式校验不属本函数）。
+ */
+export const assetIdOf = (phone) => String(phone == null ? '' : phone).trim();
 
 // ---- §5-3 / §3-1 常量（改动先改总纲） ----
 
@@ -210,26 +220,27 @@ function blankUser() {
   };
 }
 
-function ensureUser(doc, phone) {
-  doc.users = doc.users || {};
-  const cur = doc.users[phone];
-  if (!cur) {
-    doc.users[phone] = blankUser();
-    return doc.users[phone];
-  }
+/**
+ * 收口一份「用户资产档」（**per-手机号文档的文档体**；字段名与旧 `global.users[phone]` 记录一字不差）：
+ * 补齐缺省键 + 外部值收口（非负整数 / 数组 / 已签日期集），**就地改并返回同一对象**。
+ *
+ * 与旧 `ensureUser(doc, phone)` 的差异：旧版在容器文档上取 `doc.users[phone]`；新版直接作用于
+ * 文档体本身（`_id` / `version` 由 CAS 原语负责，不在记录语义内，调用方已剥离）。
+ */
+function normalizeUserRecord(rec) {
   // 外部值收口：`Number(x) || 0` 拦不住 Infinity ⇒ 一律走 toNonNegInt（显式判有限性）
-  cur.fragments = toNonNegInt(cur.fragments);
-  cur.scroll_fragments = toNonNegInt(cur.scroll_fragments);
-  cur.seeds = cur.seeds || [];
-  cur.bamboos = cur.bamboos || [];
-  cur.jades = cur.jades || [];
-  cur.scrolls = cur.scrolls || [];
-  cur.txs = cur.txs || [];
-  cur.signin_date = cur.signin_date || '';
+  rec.fragments = toNonNegInt(rec.fragments);
+  rec.scroll_fragments = toNonNegInt(rec.scroll_fragments);
+  rec.seeds = rec.seeds || [];
+  rec.bamboos = rec.bamboos || [];
+  rec.jades = rec.jades || [];
+  rec.scrolls = rec.scrolls || [];
+  rec.txs = rec.txs || [];
+  rec.signin_date = rec.signin_date || '';
   // 签到域收口（非法 / 缺失 → 默认值；`signin_days` 一律升序去重并裁到最近 30 天）
-  cur.signin_streak = toNonNegInt(cur.signin_streak);
-  cur.signin_days = normalizeSigninDays(cur.signin_days);
-  return cur;
+  rec.signin_streak = toNonNegInt(rec.signin_streak);
+  rec.signin_days = normalizeSigninDays(rec.signin_days);
+  return rec;
 }
 
 // ---- 错误：资产不足（409，整单拒绝） ----
@@ -691,32 +702,47 @@ export function summarize(user, now = new Date(), opts = {}) {
 const assetsLocks = new Map();
 
 /**
- * 资产读改写（唯一 IO 入口）：读单文档 → 深拷贝上执行 mutator → 整体回写一次 `colSet`。
- * - mutator 抛错 → **一字节都不回写**（整单拒绝语义：409 后资产不变）
- * - 同一手机号串行化：并发调用按到达顺序排队，绝不丢更新 / 不重复扣费（§5-7-4）
+ * 资产读改写（唯一 IO 入口）：**同一手机号**一档，经 `store.mutateDoc` 的 **CAS** 提交。
+ *
+ * - 档 `_id` = 手机号明文；档不存在 ⇒ 以 `{_id, version:0}` 起点，写入后 `version=1`。
+ * - mutator 见到的 `user` 就是**用户资产档本身**（字段名与旧 `global.users[phone]` 记录一字不差，
+ *   不含 `_id` / `version`）；就地改它即可，返回值作为本次业务结果透传。
+ * - mutator 抛错 → **一字节都不回写**（整单拒绝语义：409 后资产不变）。
+ * - 同一手机号串行化：并发调用按到达顺序排队（`assetsLocks`，减少本进程内无谓 CAS 冲突）；
+ *   跨实例并发由 CAS 的「条件写 + 读回比对 + 重试」兜底，绝不丢更新 / 不重复扣费（§5-7-4 / §7-7）。
+ * - 冲突重放：mutator 会在**最新档**上重跑 ⇒ 校验 / FIFO 重新执行，绝不基于陈旧快照扣减。
  * @param {string} phone
  * @param {(user:object)=>any} mutator
  */
 export async function withAssets(phone, mutator) {
-  const lock = assetsLocks.get(phone) || Promise.resolve();
+  const id = assetIdOf(phone);
+  const lock = assetsLocks.get(id) || Promise.resolve();
   const run = lock.then(async () => {
-    const base = await colGet(ASSETS_COL, ASSETS_ID);
-    const doc = base ? JSON.parse(JSON.stringify(base)) : { _id: ASSETS_ID, users: {} };
-    const user = ensureUser(doc, phone);
-    const result = await mutator(user);
-    await colSet(ASSETS_COL, ASSETS_ID, doc);
+    let result;
+    await mutateDoc(ASSETS_COL, id, async (doc) => {
+      // 剥离存储元字段：业务 mutator 只应看到「用户资产档」记录（对外 / 对内形状一致，便于快照回滚）
+      const rec = { ...doc };
+      delete rec._id;
+      delete rec.version;
+      const user = normalizeUserRecord(rec);
+      result = await mutator(user);
+      return user; // CAS 原语据其落盘，并强制覆写 _id / version
+    });
     return result;
   });
-  assetsLocks.set(phone, run.catch(() => {}));
+  assetsLocks.set(id, run.catch(() => {}));
   return run;
 }
 
-/** 写路径别名（语义化：一次 mutate = 一次整体回写） */
+/** 写路径别名（语义化：一次 mutate = 一次 CAS 条件提交） */
 export const mutateAssets = withAssets;
 
-/** 只读快照（不落盘；一切写入走 withAssets） */
+/** 只读快照（不落盘；一切写入走 withAssets）。返回**用户资产档**本身（不含 `_id` / `version`） */
 export async function getAssets(phone) {
-  const doc = await colGet(ASSETS_COL, ASSETS_ID);
-  const cur = doc?.users?.[phone];
-  return cur ? JSON.parse(JSON.stringify(cur)) : blankUser();
+  const doc = await colGet(ASSETS_COL, assetIdOf(phone));
+  if (!doc) return blankUser();
+  const rec = { ...doc };
+  delete rec._id;
+  delete rec.version;
+  return JSON.parse(JSON.stringify(rec));
 }

@@ -12,6 +12,9 @@
  *  ③ 子进程验证「漏配副本」或「把 COMPAT_META_FILE 指向真源」时**直接抛错**（宁可测试红，也不污染真源）；
  *  ④ 静态护栏：唯一允许出现 tree-meta 写路径的模块是 store.js。
  *
+ *  ⑥ 并发：两棵不同树并发改名 ⇒ 互不覆盖（`mutateTreeMeta` 定向写）；并以「整份写」反证丢更新
+ *     （学 assets.test.js ⑥-2 的写法：无条件写必红）。
+ *
  * 运行：node --test cloudfunctions/compat-api/lib/meta-guard.test.js
  */
 import test from 'node:test';
@@ -236,6 +239,58 @@ test('树 / 详情 / 集合写入也都落在副本（migrate-output 一个字�
   assert.ok(
     !fs.existsSync(path.join(REAL_OUT, 'collections', 'jiazu_guard_probe.json')),
     '真实 migrate-output 不得出现该集合',
+  );
+});
+
+// ---- ⑥ 并发：定向写（每树一档）互不覆盖；整份写反证 ----
+
+/**
+ * 事故根因（第 4 期）：tree-meta 原为「读整份 → 改 → 整份写」的全量覆盖文件/单档。
+ * 并发改**两棵不同树**时，后写者用陈旧快照整份回写 ⇒ 抹掉先写者对另一棵树的改动（丢更新）。
+ * 本组断言：
+ *   · `mutateTreeMeta`（每树定向写 + 单进程临界区）并发改不同树 ⇒ 两侧改动**都保留**；
+ *   · 反证：旧「整份写」同序并发 ⇒ 先写者被覆盖（证明定向写断言不是摆设）。
+ */
+test('⑥ 并发：两棵不同树并发定向改名 → 互不覆盖；反证：整份写必丢一路', async () => {
+  // 夹具：两棵独立树（各带合法 version，模拟迁移后形态）
+  writeMetaCopy({
+    _schema: '1.1',
+    trees: {
+      cc_a: { tree_id: 'cc_a', kind: 'family', display_title: 'A 前', version: 1 },
+      cc_b: { tree_id: 'cc_b', kind: 'family', display_title: 'B 前', version: 1 },
+    },
+  });
+
+  // 定向写：并发改两棵不同树（各自独立文档 / 临界区）
+  await Promise.all([
+    store.mutateTreeMeta('cc_a', (e) => ({ ...e, display_title: 'A 后' })),
+    store.mutateTreeMeta('cc_b', (e) => ({ ...e, display_title: 'B 后' })),
+  ]);
+  const after = readMetaCopy();
+  assert.equal(after.trees.cc_a.display_title, 'A 后', 'A 树定向改必达');
+  assert.equal(after.trees.cc_b.display_title, 'B 后', 'B 树定向改必达（互不覆盖）');
+  assert.ok(after.trees.cc_a.version >= 2 && after.trees.cc_b.version >= 2, 'version 自增');
+
+  // 反证：旧「读整份 → 改 → 整份写」并发 —— 后写者用陈旧快照覆盖，先写者改动丢失
+  writeMetaCopy({
+    _schema: '1.1',
+    trees: {
+      old_a: { tree_id: 'old_a', kind: 'family', display_title: 'A 前', version: 1 },
+      old_b: { tree_id: 'old_b', kind: 'family', display_title: 'B 前', version: 1 },
+    },
+  });
+  const snapA = readMetaCopy();
+  const snapB = readMetaCopy(); // B 拿到的是**未含 A 改动**的陈旧快照
+  snapA.trees.old_a.display_title = 'A 后';
+  snapB.trees.old_b.display_title = 'B 后';
+  await store.saveMeta(snapA); // A 整份写
+  await store.saveMeta(snapB); // B 整份写（陈旧快照 → 覆盖 A）
+  const bad = readMetaCopy();
+  assert.equal(bad.trees.old_b.display_title, 'B 后', 'B 的改动保留');
+  assert.equal(
+    bad.trees.old_a.display_title,
+    'A 前',
+    '★ 整份写：A 的改动被 B 的陈旧快照覆盖（回退旧值）—— 此即定向写并发断言要判负的坏结果',
   );
 });
 

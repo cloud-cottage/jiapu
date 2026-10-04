@@ -136,26 +136,55 @@ async function newBuyer({ seeds = [seedLot(9999, 365)] } = {}) {
   return phone;
 }
 
-// 市集文档读写（夹具）
-const marketDoc = () => store.colGet('jiazu_market', 'global');
+// 市集文档读写（夹具 · 存储形态 v2：挂单 / 成交每档一文档，official 单档 `_id='official'`）
+const MARKET_COL = 'jiazu_market';
+const OFFICIAL_ID = mk.OFFICIAL_ID;
+const stripMeta = (doc) => {
+  const r = { ...doc };
+  delete r._id;
+  delete r.version;
+  return r;
+};
+/** 夹具侧独立枚举集合档（按 `_id` 前缀判别，不借被测模块，避免自我印证） */
+const allMarketDocs = () => store.listAll(MARKET_COL);
+const listingsOf = async () =>
+  (await allMarketDocs()).filter((d) => typeof d._id === 'string' && d._id.startsWith('lst_')).map(stripMeta);
+const tradesOf = async () =>
+  (await allMarketDocs()).filter((d) => typeof d._id === 'string' && d._id.startsWith('trd_')).map(stripMeta);
+const officialDoc = () => store.colGet(MARKET_COL, OFFICIAL_ID);
+/** 重置市集集合（删全部挂单 / 成交档 + 覆盖官方档），再按 patch 写 official */
 async function setMarket(patch = {}) {
-  const base = mk.blankMarketDoc();
-  const doc = { ...base, ...patch, official: { ...base.official, ...(patch.official || {}) } };
-  await store.colSet('jiazu_market', 'global', doc);
-  return doc;
+  for (const d of await allMarketDocs()) {
+    if (d._id === OFFICIAL_ID) continue;
+    await store.colDelete(MARKET_COL, d._id);
+  }
+  const official = { ...mk.blankOfficial(), ...(patch.official || {}) };
+  await store.colSet(MARKET_COL, OFFICIAL_ID, { _id: OFFICIAL_ID, version: 1, ...official });
+  return { listings: [], trades: [], official };
 }
-const listingsOf = async () => (await marketDoc())?.listings || [];
-const tradesOf = async () => (await marketDoc())?.trades || [];
 const listingById = async (id) => (await listingsOf()).find((l) => l.id === id) || null;
-
-/** ¥ 钱包（jiazu_wallets，_id='global'）夹具 */
-async function setWallet(phone, balance_cents) {
-  const doc = (await store.colGet('jiazu_wallets', 'global')) || { users: {}, trees: {}, transactions: [], config: { tree_create_fee_cents: 990 } };
-  doc.users = doc.users || {};
-  doc.users[phone] = { balance_cents };
-  await store.colSet('jiazu_wallets', 'global', doc);
+/** 造态：把某挂单档的 `expires_at` 改到过去（每档一文档，直接改该档并回写） */
+async function expireListingFixture(id, expiresAt) {
+  const doc = await store.colGet(MARKET_COL, id);
+  await store.colSet(MARKET_COL, id, { ...doc, expires_at: expiresAt });
 }
-const walletTxs = async () => (await store.colGet('jiazu_wallets', 'global'))?.transactions || [];
+
+/** ¥ 钱包（jiazu_wallets，v2：每手机号一档 `_id=手机号`）夹具 */
+async function setWallet(phone, balance_cents) {
+  await store.mutateDoc('jiazu_wallets', phone, (doc) => {
+    const rec = { ...doc };
+    delete rec._id;
+    delete rec.version;
+    rec.balance_cents = balance_cents;
+    rec.txs = Array.isArray(rec.txs) ? rec.txs : [];
+    return rec;
+  });
+}
+/** 读某手机号档的 ¥ 钱包流水（v2：流水归本人档 `txs`） */
+const walletTxs = async (phone) => {
+  const doc = await store.colGet('jiazu_wallets', phone);
+  return Array.isArray(doc?.txs) ? doc.txs : [];
+};
 
 const expectError = async (promise, status, fragment) => {
   let err = null;
@@ -260,9 +289,10 @@ test('199 锚点逐字段：买方 −199 / 卖方 +198 / 销毁 1 / Trade.fee_s
   const net = (await seedsSum(buyer)) + (await seedsSum(seller));
   assert.equal(500 - net, 1, '买卖双方合计净减少 1 籽 = 销毁 1 籽');
 
-  // 手续费只作 `Trade.fee_seeds` 留痕：市集文档无任何手续费账户 / 平台收入字段
-  const doc = await marketDoc();
-  assert.equal(Object.keys(doc).filter((k) => /fee|platform|revenue|income/i.test(k)).length, 0, '不得有平台手续费账户');
+  // 手续费只作 `Trade.fee_seeds` 留痕：市集各档无任何手续费账户 / 平台收入字段
+  const marketKeys = (await allMarketDocs()).flatMap((d) => Object.keys(stripMeta(d)));
+  const feeAccountKeys = marketKeys.filter((k) => /platform|revenue|income/i.test(k) || (/fee/i.test(k) && k !== 'fee_seeds'));
+  assert.equal(feeAccountKeys.length, 0, `不得有平台手续费账户（发现 ${feeAccountKeys.join(',')}）`);
   assert.equal(mk.hasTreeField(trade), false);
 
   // 流水：买方 market_buy（出籽）/ 卖方 market_sell（入账籽），双方均带 fee_seeds
@@ -478,9 +508,7 @@ test('惰性下架：跨过 expires_at → status=expired（保留原行、sold_
   assert.equal(mk.availablePieces(phone, await assetsOf(phone), await listingsOf()), 0);
 
   // 造态：把 expires_at 改到 T0 之前（不睡时钟）
-  const doc = await marketDoc();
-  doc.listings[0].expires_at = new Date(T0.getTime() - 1000).toISOString();
-  await store.colSet('jiazu_market', 'global', doc);
+  await expireListingFixture(r.listing_id, new Date(T0.getTime() - 1000).toISOString());
 
   const view = await mk.marketListings(undefined, T0);
   assert.equal(view.listings.length, 0, '默认列表不展示 expired');
@@ -511,9 +539,7 @@ test('expired 不可买不可撤（409「挂单已过期」，资产不变、tra
   const seller = await newSeller({ bamboos: [bambooLot(100, 300)] });
   const buyer = await newBuyer();
   const r = await mk.listBamboo(seller, { bundles: 1, price_seeds: 7 }, T0);
-  const doc = await marketDoc();
-  doc.listings[0].expires_at = new Date(T0.getTime() - 1).toISOString();
-  await store.colSet('jiazu_market', 'global', doc);
+  await expireListingFixture(r.listing_id, new Date(T0.getTime() - 1).toISOString());
 
   const buyErr = await expectError(mk.buyListing(buyer, r.listing_id, T0), 409, '挂单已过期');
   assert.equal(buyErr.code, undefined, '域名错误只回业务文案');
@@ -623,11 +649,9 @@ test('成交守卫：籽不足 / 竹片已过期 → 409 整单拒绝（双方�
   assert.equal(await bamboosSum(seller), 100);
 
   // 卖方竹片过期（造态）→ 409「部分竹片已过期，请撤单后重挂」
-  const doc = await marketDoc();
   await el.withAssets(seller, (user) => {
     user.bamboos = [];
   });
-  await store.colSet('jiazu_market', 'global', doc);
   const rich = await newBuyer();
   const err2 = await expectError(mk.buyListing(rich, l.listing_id, T0), 409, '部分竹片已过期，请撤单后重挂');
   assert.equal(err2.need, 100);
@@ -669,6 +693,31 @@ test('并发买同一挂单：只 1 单成功（另 1 个 409），trades 只追
   assert.equal(await seedsSum(seller), 99);
 });
 
+// ⑧ 承重件用例（Neng 质检补）：**败者资产充足**版并发买同一挂单。
+// 旧用例里卖家只有 1 束竹片，稀缺性（败者 planTrade 竹片不足 409）会**过度决定**「只 1 单成功」，
+// 使 open→sold 认领守卫（`assertOpen`）不再是承重件。此处卖家 2 束、只挂 1 束 ⇒ 首单成交后仍余 1 束，
+// 第二单在 planTrade 侧**资产充足**（籽 9999 / 竹片 100 均够）⇒ 「只 1 单成功」**必须**由 `assertOpen` 承重。
+test('并发买同一挂单（败者资产充足）：open→sold 认领守卫承重 —— 只 1 单成功，另 1 个逐字 409「挂单已成交或已撤单」', async () => {
+  await setMarket();
+  // 卖家 2 束（200 片），仅挂 1 束（100 片）→ 首单成交后仍余 1 束，第二单资产不再稀缺
+  const seller = await newSeller({ bamboos: [bambooLot(200, 30)] });
+  const b1 = await newBuyer();
+  const b2 = await newBuyer();
+  const l = await mk.listBamboo(seller, { bundles: 1, price_seeds: 100 }, T0);
+  const results = await Promise.allSettled([mk.buyListing(b1, l.listing_id, T0), mk.buyListing(b2, l.listing_id, T0)]);
+  const ok = results.filter((r) => r.status === 'fulfilled');
+  const failed = results.filter((r) => r.status === 'rejected');
+  assert.equal(ok.length, 1, `应恰好 1 单成功（无稀缺性兜底，只能由 open 守卫拦住第二单），实际 ${ok.length}`);
+  assert.equal(failed.length, 1);
+  assert.equal(failed[0].reason.status, 409);
+  assert.equal(String(failed[0].reason.message), '挂单已成交或已撤单'); // 逐字：确由 assertOpen 抛出
+  assert.equal((await tradesOf()).length, 1, 'trades 只追加 1 条');
+  assert.equal((await listingById(l.listing_id)).status, 'sold');
+  const losers = [(await seedsSum(b1)), (await seedsSum(b2))].filter((s) => s === 9999);
+  assert.equal(losers.length, 1, '落败方资产不变（其籽 9999 未动）');
+  assert.equal(await bamboosSum(seller), 100, '卖方只交出 1 束，仍余 1 束（第二单确未成交）');
+  assert.equal(await seedsSum(seller), 99, '卖方只入账 1 单');
+});
 test('buyListing 404 不存在 / 400 缺 listing_id；成交后 Trade 与挂单同文档一次写', async () => {
   await setMarket();
   const buyer = await newBuyer();
@@ -720,16 +769,16 @@ test('市集入口惰性释放：21:00 前库存 0；21:00 后 50；跨日刷新
   await setMarket();
   const before = await mk.marketListings(undefined, T0);
   assert.deepEqual(before.official, { price_fen: 990, daily_stock: 50, stock_left_today: 0, release_at: '21:00', released: false });
-  assert.equal((await marketDoc()).official.last_release_date, '');
+  assert.equal((await officialDoc()).last_release_date, '');
 
   const after = await mk.marketListings(undefined, T21);
   assert.equal(after.official.stock_left_today, 50);
   assert.equal(after.official.released, true);
-  assert.equal((await marketDoc()).official.last_release_date, '2026-09-16');
+  assert.equal((await officialDoc()).last_release_date, '2026-09-16');
 
   const next = await mk.marketListings(undefined, T_NEXT21);
   assert.equal(next.official.stock_left_today, 50, '跨日重新释放 50');
-  assert.equal((await marketDoc()).official.stock['2026-09-17'], 50);
+  assert.equal((await officialDoc()).stock['2026-09-17'], 50);
 });
 
 test('官方发售时点闸门：21:00 前购买 → 409「未到发售时间」（不扣 ¥、不入竹片、库存不变）', async () => {
@@ -740,8 +789,8 @@ test('官方发售时点闸门：21:00 前购买 → 409「未到发售时间」
   await expectError(mk.officialPurchase(phone, { bundles: 1 }, T0), 409, '未到发售时间');
   assert.equal(await wallet.getUserBalance(phone), 9900, '不扣款');
   assert.equal(await bamboosSum(phone), 0, '不入竹片');
-  assert.equal((await marketDoc()).official.stock['2026-09-16'], 5, '库存不变');
-  assert.equal((await walletTxs()).filter((t) => t.user === phone).length, 0);
+  assert.equal((await officialDoc()).stock['2026-09-16'], 5, '库存不变');
+  assert.equal((await walletTxs(phone)).filter((t) => t.user === phone).length, 0);
 });
 
 test('官方购买：¥ 扣 990 分/束 → 得 100 片（365 天 · official_purchase）+ official_buy 流水 + 库存递减', async () => {
@@ -775,7 +824,7 @@ test('官方购买：¥ 扣 990 分/束 → 得 100 片（365 天 · official_pu
 
   // ¥ 钱包：扣 990 分 + 一条 official_bamboo 流水（¥ 流水类型，非 Tx.type）
   assert.equal(await wallet.getUserBalance(phone), 4010);
-  const wtx = (await walletTxs()).at(-1);
+  const wtx = (await walletTxs(phone)).at(-1);
   assert.equal(wtx.type, 'official_bamboo');
   assert.equal(wtx.amount_cents, -990);
   assert.equal(wtx.user, phone);
@@ -810,14 +859,14 @@ test('售罄即止：库存不足 → 409「今日已售罄」（不扣 ¥、不
   await expectError(mk.officialPurchase(p2, { bundles: 3 }, T21), 409, '今日已售罄');
   assert.equal(await wallet.getUserBalance(p2), 9900, '不扣款');
   assert.equal(await bamboosSum(p2), 0, '不入竹片');
-  assert.equal((await walletTxs()).filter((t) => t.user === p2).length, 0);
-  assert.equal((await marketDoc()).official.stock['2026-09-16'], 0);
+  assert.equal((await walletTxs(p2)).filter((t) => t.user === p2).length, 0);
+  assert.equal((await officialDoc()).stock['2026-09-16'], 0);
 
   // 当日未售完不结转：次日 21:00 释放 daily_stock（覆盖），不累加昨日余量
   await setMarket({ official: { daily_stock: 5, stock: { '2026-09-16': 4 }, last_release_date: '2026-09-16' } });
   const next = await mk.marketListings(undefined, T_NEXT21);
   assert.equal(next.official.stock_left_today, 5);
-  assert.equal((await marketDoc()).official.stock['2026-09-16'], 4);
+  assert.equal((await officialDoc()).stock['2026-09-16'], 4);
 });
 
 test('¥ 余额不足 → 409（引导充值）且不入竹片、无钱包流水；先校验全部前置再动账', async () => {
@@ -829,8 +878,8 @@ test('¥ 余额不足 → 409（引导充值）且不入竹片、无钱包流水
   assert.ok(String(err.message).includes('请先充值'), err.message);
   assert.equal(await wallet.getUserBalance(phone), 989);
   assert.equal(await bamboosSum(phone), 0);
-  assert.equal((await marketDoc()).official.stock['2026-09-16'], 5, '库存不减');
-  assert.equal((await walletTxs()).filter((t) => t.user === phone).length, 0, '无钱包流水');
+  assert.equal((await officialDoc()).stock['2026-09-16'], 5, '库存不减');
+  assert.equal((await walletTxs(phone)).filter((t) => t.user === phone).length, 0, '无钱包流水');
 
   // 2 束需 1980 分：余额 1979 → 409
   await setWallet(phone, 1979);
@@ -871,9 +920,7 @@ test('路由 · GET /market/listings：guest 可读；出参含 official 五字�
   assert.equal(row['tree_id'], undefined);
 
   // 造态：过期 → 默认列表不展示；显式 status=expired 才返回
-  const doc = await marketDoc();
-  doc.listings[0].expires_at = new Date(Date.now() - 1000).toISOString();
-  await store.colSet('jiazu_market', 'global', doc);
+  await expireListingFixture(created.listing_id, new Date(Date.now() - 1000).toISOString());
   assert.equal(jsonOf(await call('/market/listings', 'GET')).listings.length, 0, '默认不展示 expired');
   const explicit = jsonOf(await call('/market/listings', 'GET', {}, { status: 'expired' }));
   assert.equal(explicit.listings.length, 1);
@@ -1006,10 +1053,10 @@ test('路由 · PUT /admin/market/official-stock：仅 chief_editor（403）+ 40
   assert.equal(ok.ok, true);
   assert.equal(ok.daily_stock, 80);
   assert.equal(ok.price_fen, 1990);
-  const doc = await marketDoc();
-  assert.equal(doc.official.daily_stock, 80);
-  assert.equal(doc.official.price_fen, 1990);
-  assert.equal(doc.official.stock['2026-09-16'], 49, '后台改库存不追溯当日剩余');
+  const doc = await officialDoc();
+  assert.equal(doc.daily_stock, 80);
+  assert.equal(doc.price_fen, 1990);
+  assert.equal(doc.stock['2026-09-16'], 49, '后台改库存不追溯当日剩余');
   // 只传 daily_stock → price_fen 保持不变
   const only = jsonOf(await call('/admin/market/official-stock', 'PUT', bearer(chief), {}, { daily_stock: 20 }));
   assert.equal(only.price_fen, 1990);
@@ -1037,9 +1084,7 @@ test('注销前置（K10）：存在 open 挂单 → hasOpenListing true / guard
   assert.equal(await bamboosSum(phone), 100, '卖方余 1 束');
 
   const exp = await mk.listBamboo(phone, { bundles: 1, price_seeds: 10 }, T0);
-  const doc = await marketDoc();
-  doc.listings.find((x) => x.id === exp.listing_id).expires_at = new Date(T0.getTime() - 1).toISOString();
-  await store.colSet('jiazu_market', 'global', doc);
+  await expireListingFixture(exp.listing_id, new Date(T0.getTime() - 1).toISOString());
   assert.equal(await mk.hasOpenListing(phone, T0), false, 'expired 不阻碍注销（sweep 后已释放）');
   assert.equal((await listingById(exp.listing_id)).status, 'expired');
 });
@@ -1071,7 +1116,7 @@ test('官方发售出参：officialPayload 五字段（released 反映今日是�
 });
 
 test('空市集文档：marketListings / myMarket 在集合不存在时也能工作（默认 990 / 50）', async () => {
-  await store.colDelete('jiazu_market', 'global');
+  for (const d of await allMarketDocs()) await store.colDelete(MARKET_COL, d._id);
   const view = await mk.marketListings(undefined, T0);
   assert.deepEqual(view.listings, []);
   assert.equal(view.official.price_fen, mk.DEFAULT_PRICE_FEN);
@@ -1081,6 +1126,38 @@ test('空市集文档：marketListings / myMarket 在集合不存在时也能工
   assert.deepEqual(my.listings, []);
   assert.equal(my.assets.seeds_available, 0);
   assert.equal(my.assets.bamboo_available_pieces, 0);
+});
+
+// ==================== ⑯ 存储形态 v2（R1/R2 · 路 B 第 2 期·B 路） ====================
+
+test('存储形态 v2：挂单 / 成交每档一文档（_id=id、version≥1）+ official 单档；无 global 单文档、出参不泄漏元字段', async () => {
+  await setMarket();
+  const seller = await newSeller({ bamboos: [bambooLot(100, 30)] });
+  const buyer = await newBuyer();
+  const l = await mk.listBamboo(seller, { bundles: 1, price_seeds: 199 }, T0);
+  const r = await mk.buyListing(buyer, l.listing_id, T0);
+
+  const raw = JSON.parse(fs.readFileSync(path.join(TMP, 'collections', 'jiazu_market.json'), 'utf8'));
+  assert.equal('global' in raw, false, '旧单文档 _id=global 必须消失');
+  const listing = raw[l.listing_id];
+  const trade = raw[r.trade_id];
+  const official = raw[mk.OFFICIAL_ID];
+  assert.ok(listing && trade && official, '挂单 / 成交 / official 三档俱在');
+  assert.equal(listing._id, l.listing_id, '挂单档 _id = listing.id');
+  assert.equal(trade._id, r.trade_id, '成交档 _id = trade.id');
+  assert.equal(official._id, mk.OFFICIAL_ID, 'official 单档');
+  for (const d of [listing, trade, official]) {
+    assert.ok(Number.isInteger(d.version) && d.version >= 1, '每档必须带 version（非负整数，自 1 起）');
+  }
+  assert.equal(listing.seller_phone, seller, '业务字段名照旧');
+  assert.equal(listing.pieces, 100);
+  assert.equal(trade.price_seeds, 199);
+  assert.equal(trade.fee_seeds, 1);
+  // 对外读口不泄漏元字段
+  const row = (await mk.marketListings('sold', T0)).listings[0];
+  assert.equal(row.id, l.listing_id);
+  assert.equal('_id' in row, false, '出参不含 _id');
+  assert.equal('version' in row, false, '出参不含 version');
 });
 
 // ==================== ⑮ F3：store 公共层「先落盘、后更新缓存」 ====================
@@ -1099,13 +1176,19 @@ test('F3 落盘失败（0444/EACCES）→ 抛错、磁盘未变、colGet 与磁�
   const before = fs.readFileSync(colFile, 'utf8');
   assert.equal(await bamboosSum(phone), 100, '夹具基线：磁盘 + 缓存均 100 片');
 
-  // ---- ① colSet：整体回写一个「把竹片清空」的文档（模拟 F3 报告里的场景）----
+  // ---- ① colSet：整体回写一个「把竹片清空」的用户资产档（模拟 F3 报告里的场景）----
   fs.chmodSync(colFile, 0o444);
   let setErr = null;
   try {
-    await store.colSet(el.ASSETS_COL, el.ASSETS_ID, {
-      _id: el.ASSETS_ID,
-      users: { [phone]: { phone, fragments: 0, seeds: [], bamboos: [], jades: [], txs: [], signin_date: '' } },
+    await store.colSet(el.ASSETS_COL, phone, {
+      _id: phone,
+      version: 42,
+      fragments: 0,
+      seeds: [],
+      bamboos: [],
+      jades: [],
+      txs: [],
+      signin_date: '',
     });
   } catch (e) {
     setErr = e;
@@ -1116,22 +1199,22 @@ test('F3 落盘失败（0444/EACCES）→ 抛错、磁盘未变、colGet 与磁�
     // 磁盘逐字节未变
     assert.equal(fs.readFileSync(colFile, 'utf8'), before, '磁盘不得被改写');
     // 同进程读回 = 磁盘值（不是幻影新值）
-    const diskDoc = JSON.parse(fs.readFileSync(colFile, 'utf8'))[el.ASSETS_ID];
-    const cached = JSON.parse(JSON.stringify(await store.colGet(el.ASSETS_COL, el.ASSETS_ID)));
+    const diskDoc = JSON.parse(fs.readFileSync(colFile, 'utf8'))[phone];
+    const cached = JSON.parse(JSON.stringify(await store.colGet(el.ASSETS_COL, phone)));
     assert.deepEqual(cached, diskDoc, 'colGet 读回必须与磁盘一致');
     assert.equal(await bamboosSum(phone), 100, '资产读回仍是 100 片（缓存保持旧值，不是 0 片幻影）');
-    assert.deepEqual((await assetsOf(phone)).bamboos, diskDoc.users[phone].bamboos);
+    assert.deepEqual((await assetsOf(phone)).bamboos, diskDoc.bamboos);
 
     // ---- ② colDelete：同样先落盘后换缓存 ----
     let delErr = null;
     try {
-      await store.colDelete(el.ASSETS_COL, el.ASSETS_ID);
+      await store.colDelete(el.ASSETS_COL, phone);
     } catch (e) {
       delErr = e;
     }
     assert.ok(delErr, '删除落盘失败也必须抛错');
     assert.equal(fs.readFileSync(colFile, 'utf8'), before, '删除失败：磁盘未变');
-    assert.ok(await store.colGet(el.ASSETS_COL, el.ASSETS_ID), '删除失败：缓存不得提前丢掉文档');
+    assert.ok(await store.colGet(el.ASSETS_COL, phone), '删除失败：缓存不得提前丢掉文档');
 
     // ---- ③ colAtomicNext（计数器）：同序，失败不留幻影计数 ----
     await store.colSet('jiazu_f3_probe', 'seq', { _id: 'seq', next: 7 });
@@ -1157,9 +1240,9 @@ test('F3 落盘失败（0444/EACCES）→ 抛错、磁盘未变、colGet 与磁�
     user.bamboos = [bambooLot(100, 30)];
   });
   // 成功路径语义未变：colSet 仍整体回写并返回 undefined
-  const reread = await store.colGet(el.ASSETS_COL, el.ASSETS_ID);
-  assert.equal(await store.colSet(el.ASSETS_COL, el.ASSETS_ID, { ...reread, _id: el.ASSETS_ID }), undefined);
-  assert.equal((await store.colGet(el.ASSETS_COL, el.ASSETS_ID))._id, el.ASSETS_ID);
+  const reread = await store.colGet(el.ASSETS_COL, phone);
+  assert.equal(await store.colSet(el.ASSETS_COL, phone, { ...reread, _id: phone }), undefined);
+  assert.equal((await store.colGet(el.ASSETS_COL, phone))._id, phone);
   assert.equal(await bamboosSum(phone), 100, '恢复写权限后资产仍一致');
 });
 

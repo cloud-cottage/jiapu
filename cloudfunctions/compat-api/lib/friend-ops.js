@@ -13,7 +13,7 @@
  *     **唯一私有落盘点 `writeRelationDoc`**（version + 1，与 friends.js 的 `persistRelation` 同律）：
  *     friends.js 不提供「全量遍历」与「追加审计事件」两个导出，而裁定 2 明令补偿须在关系 history 留痕。
  *   · **通知一律复用站内信域**：实测本仓**不存在 `lib/messages.js`**（只有 `messages.test.js`），
- *     通知域的实现落点是 `lib/economy-ops.js`（`jiazu_messages` 单文档 + `withMessages` 串行锁 +
+ *     通知域的实现落点是 `lib/economy-ops.js`（`jiazu_messages` **每手机号一档** + `withMessages` CAS +
  *     `messageId` / `trimMessages`）。本模块复用其 `withMessages` 写同形 `Message`，
  *     **不另造第二套通知存储**、**不动 economy-ops.js**。
  *
@@ -293,19 +293,21 @@ async function notify(phone, kind, otherPhone, now) {
   const to = norm(phone);
   if (!to) return null;
   const name = await displayNameOf(otherPhone);
-  return withMessages((doc, ctx) => {
-    doc.items[to] = doc.items[to] || [];
-    const item = {
-      id: messageId(),
-      type: FRIEND_NOTICE_TYPE,
-      title: tpl.title,
-      text: tpl.text(name),
-      created_at: toIso(now),
-      read: false,
-    };
-    doc.items[to].push(item);
-    doc.items[to] = trimMessages(doc.items[to]);
-    ctx.dirty = true;
+  // 条目在 mutator 外构造并**按 id 幂等**：CAS 冲突重放不重复投递
+  const item = {
+    id: messageId(),
+    type: FRIEND_NOTICE_TYPE,
+    title: tpl.title,
+    text: tpl.text(name),
+    created_at: toIso(now),
+    read: false,
+  };
+  return withMessages(to, (rec) => {
+    rec.items = Array.isArray(rec.items) ? rec.items : [];
+    if (!rec.items.some((m) => m && m.id === item.id)) {
+      rec.items.push(item);
+      rec.items = trimMessages(rec.items);
+    }
     return item;
   });
 }

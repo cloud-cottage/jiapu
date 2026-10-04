@@ -144,9 +144,9 @@ const BLANK = {
   signin_days: [],
 };
 const resetUser = (phone) => seed(phone, JSON.parse(JSON.stringify(BLANK)));
-/** 后台配置复位（`jiazu_wallets.config` 清空 ⇒ 三键全部回落默认值） */
+/** 后台配置复位（`jiazu_wallets` 的 `_id='config'` 单档清空 ⇒ 三键全部回落默认值） */
 const resetSigninConfig = () =>
-  store.colSet('jiazu_wallets', 'global', { _id: 'global', users: {}, trees: {}, transactions: [], config: {} });
+  store.colSet('jiazu_wallets', 'config', { _id: 'config', version: 1 });
 
 // ══ ① 常量逐字 / 无新增枚举 / 随机源纪律 ═════════════════════════════════════════
 test('① 常量逐字：周期 7（写死不配）/ 可补 7 天 / 两条文案 / 默认池三件 / 默认值 2 与 10', () => {
@@ -372,16 +372,22 @@ test('⑥ 配置：载体 = jiazu_wallets.config、读侧默认回退、写侧�
   assert.equal(await W.getSigninDay7Fragments(), 10);
 
   // 非法存量 ⇒ 回退默认（同 getBranchFeeSeeds 体例）
-  await store.colSet('jiazu_wallets', 'global', {
-    _id: 'global',
-    config: { signin_pool: [], signin_makeup_cost_bamboos: 0, signin_day7_fragments: -5 },
+  await store.colSet('jiazu_wallets', 'config', {
+    _id: 'config',
+    version: 1,
+    signin_pool: [],
+    signin_makeup_cost_bamboos: 0,
+    signin_day7_fragments: -5,
   });
   assert.deepEqual(await W.getSigninPool(), W.DEFAULT_SIGNIN_POOL, '空数组 ⇒ 回退默认池');
   assert.equal(await W.getSigninMakeupCostBamboos(), 2, '0 ⇒ 回退默认 2');
   assert.equal(await W.getSigninDay7Fragments(), 10, '负数 ⇒ 回退默认 10');
-  await store.colSet('jiazu_wallets', 'global', {
-    _id: 'global',
-    config: { signin_pool: [{ kind: 'bogus', qty: 1, weight: 1 }], signin_makeup_cost_bamboos: 1.5, signin_day7_fragments: 'x' },
+  await store.colSet('jiazu_wallets', 'config', {
+    _id: 'config',
+    version: 1,
+    signin_pool: [{ kind: 'bogus', qty: 1, weight: 1 }],
+    signin_makeup_cost_bamboos: 1.5,
+    signin_day7_fragments: 'x',
   });
   assert.deepEqual(await W.getSigninPool(), W.DEFAULT_SIGNIN_POOL, '含非法项 ⇒ 回退默认池');
   assert.equal(await W.getSigninMakeupCostBamboos(), 2, '非整数 ⇒ 回退默认');
@@ -430,11 +436,11 @@ test('⑥ 配置：载体 = jiazu_wallets.config、读侧默认回退、写侧�
   ]);
   assert.equal(okBody.signin_makeup_cost_bamboos, 4);
   assert.equal(okBody.signin_day7_fragments, 20);
-  // 载体确认：确实落在 jiazu_wallets 的 config 上（**不新建集合**）
-  const wallets = await store.colGet('jiazu_wallets', 'global');
-  assert.deepEqual(wallets.config.signin_pool[0], { kind: 'scroll_fragment', qty: 2, weight: 1 });
-  assert.equal(wallets.config.signin_makeup_cost_bamboos, 4);
-  assert.equal(wallets.config.signin_day7_fragments, 20);
+  // 载体确认：确实落在 jiazu_wallets 的 `_id='config'` 单档上（**不新建集合**）
+  const wallets = await store.colGet('jiazu_wallets', 'config');
+  assert.deepEqual(wallets.signin_pool[0], { kind: 'scroll_fragment', qty: 2, weight: 1 });
+  assert.equal(wallets.signin_makeup_cost_bamboos, 4);
+  assert.equal(wallets.signin_day7_fragments, 20);
   assert.deepEqual(await W.getSigninPool(), okBody.signin_pool);
   // 配置生效：新池（weight 1 : 9）⇒ r=0.5 命中竹片 5 片；第 7 天 = 20
   await resetUser(U.calendar);

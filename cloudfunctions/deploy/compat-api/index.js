@@ -170,8 +170,8 @@ async function nextFamilyId() {
 }
 function idAllocator(ids = []) {
   let i = 0;
-  const list = [...ids];
-  return () => i < list.length ? list[i++] : "";
+  const list2 = [...ids];
+  return () => i < list2.length ? list2[i++] : "";
 }
 function withFallback(id, fallbackFn) {
   return id || (typeof fallbackFn === "function" ? fallbackFn() : "");
@@ -289,6 +289,111 @@ async function colDelete(col, id) {
   await sdkCall(() => getApp().database().collection(col).doc(id).remove());
   map2.delete(id);
 }
+async function readDocFresh(col, id) {
+  if (SOURCE === "local") {
+    try {
+      const raw = JSON.parse(import_fs2.default.readFileSync(colFilePath(col), "utf8"));
+      return raw[id] ? JSON.parse(JSON.stringify(raw[id])) : null;
+    } catch {
+      return null;
+    }
+  }
+  return sdkCall(async () => {
+    const r = await getApp().database().collection(col).doc(id).get();
+    const d = r?.data;
+    return (Array.isArray(d) ? d[0] : d) || null;
+  });
+}
+function commitLocalCas(col, id, curVersion, next) {
+  const target = colFilePath(col);
+  let raw = {};
+  try {
+    raw = JSON.parse(import_fs2.default.readFileSync(target, "utf8"));
+  } catch {
+    raw = {};
+  }
+  const diskVersion = raw[id] ? versionOf(raw[id].version) : 0;
+  if (diskVersion !== curVersion)
+    return null;
+  assertWriteAllowed(target);
+  import_fs2.default.mkdirSync(import_path2.default.dirname(target), { recursive: true });
+  raw[id] = next;
+  import_fs2.default.writeFileSync(target, JSON.stringify(raw, null, 2));
+  let back = null;
+  try {
+    back = JSON.parse(import_fs2.default.readFileSync(target, "utf8"))[id] || null;
+  } catch {
+    back = null;
+  }
+  return back && versionOf(back.version) === curVersion + 1 ? back : null;
+}
+async function commitCloudCas(col, id, curVersion, next) {
+  const db = getApp().database();
+  const { _id, ...rest } = next;
+  try {
+    if (curVersion === 0) {
+      await sdkCall(() => db.collection(col).add({ _id: id, ...rest }));
+    } else {
+      await sdkCall(() => db.collection(col).where({ _id: id, version: curVersion }).update({ ...rest }));
+    }
+  } catch {
+  }
+  const back = await readDocFresh(col, id);
+  return back && versionOf(back.version) === curVersion + 1 ? back : null;
+}
+async function mutateDoc(col, id, mutator) {
+  const docId = String(id);
+  for (let attempt = 0; attempt <= CAS_MAX_RETRIES; attempt += 1) {
+    const cur = await readDocFresh(col, docId);
+    const curVersion = cur ? versionOf(cur.version) : 0;
+    const base = cur || { _id: docId, version: 0 };
+    const next = await mutator(JSON.parse(JSON.stringify(base)));
+    if (!next || typeof next !== "object") {
+      throw new Error(`[store] CAS \u53D8\u66F4\u539F\u8BED\uFF1Amutator \u5FC5\u987B\u8FD4\u56DE\u6587\u6863\u5BF9\u8C61\uFF08${col}.${docId}\uFF09`);
+    }
+    next._id = docId;
+    next.version = curVersion + 1;
+    const written = SOURCE === "local" ? commitLocalCas(col, docId, curVersion, next) : await commitCloudCas(col, docId, curVersion, next);
+    if (written) {
+      const map2 = await loadCol(col);
+      map2.set(docId, written);
+      return written;
+    }
+    if (attempt < CAS_MAX_RETRIES) {
+      await sleep(CAS_BACKOFF_MS[Math.min(attempt, CAS_BACKOFF_MS.length - 1)]);
+    }
+  }
+  throw new Error(
+    `[store] CAS \u53D8\u66F4\u5931\u8D25\uFF08${col}.${docId}\uFF09\uFF1A\u5E76\u53D1\u51B2\u7A81\uFF0C\u91CD\u8BD5 ${CAS_MAX_RETRIES} \u6B21\u4ECD\u672A\u6210\u529F`
+  );
+}
+async function list(col, { limit = 100, cursor = 0 } = {}) {
+  const take = Math.max(1, Math.floor(Number(limit)) || 100);
+  const skip = Math.max(0, Math.floor(Number(cursor)) || 0);
+  if (SOURCE === "local") {
+    const map2 = await loadCol(col);
+    const all = [...map2.values()];
+    const items2 = all.slice(skip, skip + take);
+    return { items: items2, next_cursor: skip + items2.length < all.length ? skip + items2.length : null };
+  }
+  const r = await sdkCall(
+    () => getApp().database().collection(col).orderBy("_id", "asc").skip(skip).limit(take).get()
+  );
+  const items = r?.data || [];
+  return { items, next_cursor: items.length === take ? skip + take : null };
+}
+async function listAll(col, { limit = 100, max = 1e5 } = {}) {
+  const out = [];
+  let cursor = 0;
+  for (; ; ) {
+    const { items, next_cursor } = await list(col, { limit, cursor });
+    out.push(...items);
+    if (next_cursor === null || out.length >= max)
+      break;
+    cursor = next_cursor;
+  }
+  return out;
+}
 async function colAtomicNext(col, id, delta = 1, field = "next") {
   const step = Math.max(1, Math.floor(Number(delta) || 1));
   const map2 = await loadCol(col);
@@ -339,25 +444,218 @@ async function colWhere(col, predicate) {
   const map2 = await loadCol(col);
   return [...map2.values()].filter(predicate);
 }
+function statMetaFile() {
+  try {
+    const st = import_fs2.default.statSync(META_FILE);
+    return { mtimeMs: st.mtimeMs, size: st.size, ctimeMs: st.ctimeMs };
+  } catch {
+    return null;
+  }
+}
+function sameMetaStamp(a, b) {
+  return !!a && !!b && a.mtimeMs === b.mtimeMs && a.size === b.size && a.ctimeMs === b.ctimeMs;
+}
 async function getMeta() {
-  if (metaCache)
-    return metaCache;
-  if (SOURCE === "local") {
-    try {
-      metaCache = JSON.parse(import_fs2.default.readFileSync(META_FILE, "utf8"));
-    } catch (e) {
-      if (SANDBOX && !samePath(META_FILE, REAL_META_FILE) && import_fs2.default.existsSync(REAL_META_FILE)) {
-        metaCache = JSON.parse(import_fs2.default.readFileSync(REAL_META_FILE, "utf8"));
-      } else {
-        throw e;
-      }
+  if (SOURCE !== "local") {
+    if (metaCache)
+      return metaCache;
+    const metaRes = await sdkCall(() => getApp().database().collection(META_COL).doc(META_DOC_ID).get());
+    const md = metaRes?.data;
+    const metaDoc = (Array.isArray(md) ? md[0] : md) || null;
+    const treesRes = await sdkCall(() => getApp().database().collection(META_COL).limit(5e3).get());
+    const trees = {};
+    for (const d of treesRes?.data || []) {
+      if (!d || d._id === META_DOC_ID || !d.tree_id)
+        continue;
+      const { _id, ...entry } = d;
+      trees[d._id] = entry;
     }
-  } else {
-    const r = await sdkCall(() => getApp().database().collection("jiazu_tree_meta").doc("global").get());
-    const d = r?.data;
-    metaCache = Array.isArray(d) ? d[0] || null : d || null;
+    metaCache = {
+      _schema: metaDoc?._schema,
+      _description: metaDoc?._description,
+      storage_files: metaDoc?.storage_files || {},
+      trees
+    };
+    return metaCache;
+  }
+  if (metaCache) {
+    const stamp = statMetaFile();
+    if (!stamp || sameMetaStamp(stamp, metaStamp))
+      return metaCache;
+  }
+  try {
+    metaCache = JSON.parse(import_fs2.default.readFileSync(META_FILE, "utf8"));
+    metaStamp = statMetaFile();
+  } catch (e) {
+    if (metaCache) {
+      metaStamp = statMetaFile();
+      return metaCache;
+    }
+    if (SANDBOX && !samePath(META_FILE, REAL_META_FILE) && import_fs2.default.existsSync(REAL_META_FILE)) {
+      metaCache = JSON.parse(import_fs2.default.readFileSync(REAL_META_FILE, "utf8"));
+      metaStamp = statMetaFile();
+    } else {
+      throw e;
+    }
   }
   return metaCache;
+}
+function stripMetaDoc(doc) {
+  if (!doc || typeof doc !== "object")
+    return null;
+  const { _id, ...entry } = doc;
+  return entry;
+}
+function sameEntryContent(a, b) {
+  const canon = (o) => {
+    if (Array.isArray(o))
+      return `[${o.map(canon).join(",")}]`;
+    if (o && typeof o === "object") {
+      return `{${Object.keys(o).filter((k) => k !== "version").sort().map((k) => `${JSON.stringify(k)}:${canon(o[k])}`).join(",")}}`;
+    }
+    return JSON.stringify(o ?? null);
+  };
+  return canon(a) === canon(b);
+}
+function withMetaWriteLock(fn) {
+  const run = metaWriteLock.then(() => fn());
+  metaWriteLock = run.catch(() => {
+  });
+  return run;
+}
+function readMetaForWrite() {
+  if (import_fs2.default.existsSync(META_FILE))
+    return JSON.parse(import_fs2.default.readFileSync(META_FILE, "utf8"));
+  if (metaCache)
+    return JSON.parse(JSON.stringify(metaCache));
+  if (SANDBOX && !samePath(META_FILE, REAL_META_FILE) && import_fs2.default.existsSync(REAL_META_FILE)) {
+    return JSON.parse(import_fs2.default.readFileSync(REAL_META_FILE, "utf8"));
+  }
+  return { trees: {} };
+}
+function writeMetaFile(obj) {
+  const target = assertWriteAllowed(META_FILE);
+  import_fs2.default.mkdirSync(import_path2.default.dirname(target), { recursive: true });
+  import_fs2.default.writeFileSync(target, JSON.stringify(obj, null, 2) + "\n");
+  metaCache = obj;
+  metaStamp = statMetaFile();
+}
+function metaKeyOf(raw, treeId) {
+  const trees = raw?.trees || {};
+  return Object.keys(trees).find((k) => trees[k] && String(trees[k].tree_id) === String(treeId)) || null;
+}
+async function mutateTreeMeta(treeId, mutator) {
+  const id = String(treeId || "");
+  if (!id)
+    throw new Error("[store] mutateTreeMeta\uFF1A\u7F3A\u5C11 tree_id");
+  if (SOURCE !== "local") {
+    const cur = await readDocFresh(META_COL, id);
+    const curEntry = cur ? stripMetaDoc(cur) : null;
+    if (curEntry) {
+      const probe = await mutator({ ...curEntry });
+      if (probe && typeof probe === "object" && sameEntryContent(probe, curEntry)) {
+        if (metaCache)
+          metaCache.trees = { ...metaCache.trees || {}, [id]: curEntry };
+        return curEntry;
+      }
+    }
+    const written = await mutateDoc(META_COL, id, async (doc) => {
+      const entry = stripMetaDoc(doc) || { tree_id: id };
+      const next = await mutator(entry);
+      if (!next || typeof next !== "object") {
+        throw new Error(`[store] mutateTreeMeta\uFF1Amutator \u5FC5\u987B\u8FD4\u56DE\u6761\u76EE\u5BF9\u8C61\uFF08${id}\uFF09`);
+      }
+      return next;
+    });
+    if (metaCache)
+      metaCache.trees = { ...metaCache.trees || {}, [id]: stripMetaDoc(written) };
+    return stripMetaDoc(written);
+  }
+  return withMetaWriteLock(async () => {
+    const raw = readMetaForWrite();
+    const trees = { ...raw.trees || {} };
+    const key = metaKeyOf(raw, id) || id;
+    const cur = trees[key];
+    const curVersion = cur ? versionOf(cur.version) : 0;
+    const base = cur ? { ...cur } : { tree_id: id };
+    const next = await mutator(base);
+    if (!next || typeof next !== "object") {
+      throw new Error(`[store] mutateTreeMeta\uFF1Amutator \u5FC5\u987B\u8FD4\u56DE\u6761\u76EE\u5BF9\u8C61\uFF08${id}\uFF09`);
+    }
+    if (cur && sameEntryContent(next, cur))
+      return cur;
+    if (!next.tree_id)
+      next.tree_id = id;
+    next.version = curVersion + 1;
+    trees[key] = next;
+    const out = { ...raw, trees };
+    writeMetaFile(out);
+    const back = JSON.parse(import_fs2.default.readFileSync(META_FILE, "utf8"));
+    if (versionOf(back?.trees?.[key]?.version) !== curVersion + 1) {
+      throw new Error(`[store] mutateTreeMeta \u56DE\u8BFB\u6821\u9A8C\u5931\u8D25\uFF08${id}\uFF09`);
+    }
+    return next;
+  });
+}
+async function removeTreeMeta(treeId) {
+  const id = String(treeId || "");
+  if (!id)
+    return;
+  if (SOURCE !== "local") {
+    await colDelete(META_COL, id);
+    if (metaCache?.trees) {
+      const next = { ...metaCache.trees };
+      const key = metaKeyOf(metaCache, id);
+      if (key)
+        delete next[key];
+      metaCache.trees = next;
+    }
+    return;
+  }
+  return withMetaWriteLock(async () => {
+    const raw = readMetaForWrite();
+    const key = metaKeyOf(raw, id);
+    if (!key)
+      return;
+    const trees = { ...raw.trees || {} };
+    delete trees[key];
+    writeMetaFile({ ...raw, trees });
+  });
+}
+async function mutateMetaDoc(mutator) {
+  if (SOURCE !== "local") {
+    const written = await mutateDoc(META_COL, META_DOC_ID, async (doc) => {
+      const cfg = { _schema: doc?._schema, _description: doc?._description, storage_files: doc?.storage_files };
+      const next = await mutator(cfg);
+      if (!next || typeof next !== "object") {
+        throw new Error("[store] mutateMetaDoc\uFF1Amutator \u5FC5\u987B\u8FD4\u56DE\u914D\u7F6E\u5BF9\u8C61");
+      }
+      return {
+        _schema: next._schema,
+        _description: next._description,
+        storage_files: next.storage_files || {}
+      };
+    });
+    if (metaCache) {
+      metaCache._schema = written._schema;
+      metaCache._description = written._description;
+      metaCache.storage_files = written.storage_files || {};
+    }
+    return written;
+  }
+  return withMetaWriteLock(async () => {
+    const raw = readMetaForWrite();
+    const cfg = { _schema: raw._schema, _description: raw._description, storage_files: raw.storage_files };
+    const next = await mutator(cfg);
+    if (!next || typeof next !== "object") {
+      throw new Error("[store] mutateMetaDoc\uFF1Amutator \u5FC5\u987B\u8FD4\u56DE\u914D\u7F6E\u5BF9\u8C61");
+    }
+    const out = { ...raw, _schema: next._schema, _description: next._description };
+    if (next.storage_files !== void 0)
+      out.storage_files = next.storage_files;
+    writeMetaFile(out);
+    return next;
+  });
 }
 async function saveMeta(meta) {
   if (SOURCE === "local") {
@@ -365,9 +663,18 @@ async function saveMeta(meta) {
     import_fs2.default.mkdirSync(import_path2.default.dirname(target), { recursive: true });
     import_fs2.default.writeFileSync(target, JSON.stringify(meta, null, 2) + "\n");
     metaCache = meta;
+    metaStamp = statMetaFile();
     return;
   }
-  await sdkCall(() => getApp().database().collection("jiazu_tree_meta").doc("global").set(meta));
+  const { _schema, _description, storage_files, trees } = meta || {};
+  await sdkCall(
+    () => getApp().database().collection(META_COL).doc(META_DOC_ID).set({ _schema, _description, storage_files: storage_files || {} })
+  );
+  for (const [key, entry] of Object.entries(trees || {})) {
+    const id = String(entry?.tree_id || key);
+    const { _id, ...body } = entry || {};
+    await sdkCall(() => getApp().database().collection(META_COL).doc(id).set(body));
+  }
   metaCache = meta;
 }
 async function getTree(treeId) {
@@ -427,15 +734,15 @@ async function createTreeFile(tree) {
     import_fs2.default.mkdirSync(import_path2.default.dirname(p), { recursive: true });
     import_fs2.default.writeFileSync(p, JSON.stringify(tree, null, 2));
   } else {
-    const meta = await getMeta();
     const r = await sdkCall(
       () => getApp().uploadFile({ cloudPath: `trees/${tree.tree_id}.json`, fileContent: Buffer.from(JSON.stringify(tree)) })
     );
     if (!r?.fileID)
       throw new Error("\u4E91\u5B58\u50A8\u4E0A\u4F20\u672A\u8FD4\u56DE fileID");
-    meta.storage_files = meta.storage_files || {};
-    meta.storage_files[tree.tree_id] = r.fileID;
-    await saveMeta(meta);
+    await mutateMetaDoc((cfg) => ({
+      ...cfg,
+      storage_files: { ...cfg.storage_files || {}, [tree.tree_id]: r.fileID }
+    }));
   }
   treeCache.set(tree.tree_id, tree);
   return tree;
@@ -456,10 +763,11 @@ async function deleteTree(treeId) {
   const fileId = meta?.storage_files?.[id];
   if (fileId) {
     await sdkCall(() => getApp().deleteFile({ fileID: fileId }));
-    if (meta.storage_files && id in meta.storage_files) {
-      delete meta.storage_files[id];
-      await saveMeta(meta);
-    }
+    await mutateMetaDoc((cfg) => {
+      const sf = { ...cfg.storage_files || {} };
+      delete sf[id];
+      return { ...cfg, storage_files: sf };
+    });
   }
   treeCache.delete(id);
   eventIndexCache.delete(id);
@@ -606,7 +914,7 @@ async function getEventIndex(treeId) {
   eventIndexCache.set(treeId, index);
   return index;
 }
-var import_node_sdk, import_fs2, import_path2, import_url, import_meta, __dirname, REPO, OUT, COLS_DIR, REAL_META_FILE, SANDBOX_BY_ENV, SANDBOX, META_FILE, samePath, ENV, SOURCE, PATHS, app, metaCache, treeCache, eventIndexCache, colCache, sdkQueue, treeWriteLocks;
+var import_node_sdk, import_fs2, import_path2, import_url, import_meta, __dirname, REPO, OUT, COLS_DIR, REAL_META_FILE, SANDBOX_BY_ENV, SANDBOX, META_FILE, samePath, ENV, SOURCE, PATHS, app, metaCache, metaStamp, treeCache, eventIndexCache, colCache, sdkQueue, CAS_MAX_RETRIES, CAS_BACKOFF_MS, sleep, versionOf, META_DOC_ID, META_COL, metaWriteLock, treeWriteLocks;
 var init_store = __esm({
   "cloudfunctions/compat-api/lib/store.js"() {
     import_node_sdk = __toESM(require("@cloudbase/node-sdk"), 1);
@@ -653,10 +961,21 @@ var init_store = __esm({
     };
     app = null;
     metaCache = null;
+    metaStamp = null;
     treeCache = /* @__PURE__ */ new Map();
     eventIndexCache = /* @__PURE__ */ new Map();
     colCache = /* @__PURE__ */ new Map();
     sdkQueue = Promise.resolve();
+    CAS_MAX_RETRIES = 5;
+    CAS_BACKOFF_MS = [20, 50, 120, 300, 700];
+    sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    versionOf = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+    };
+    META_DOC_ID = "_meta";
+    META_COL = "jiazu_tree_meta";
+    metaWriteLock = Promise.resolve();
     treeWriteLocks = /* @__PURE__ */ new Map();
   }
 });
@@ -787,167 +1106,224 @@ var init_auth = __esm({
   }
 });
 
-// cloudfunctions/compat-api/index.js
-var compat_api_exports = {};
-__export(compat_api_exports, {
-  handleRequest: () => handleRequest,
-  main: () => main
-});
-module.exports = __toCommonJS(compat_api_exports);
-init_store();
-init_auth();
-
 // cloudfunctions/compat-api/lib/wallet.js
-init_store();
-var DEFAULT_FEE_CENTS = 990;
-var DEFAULT_BRANCH_FEE_SEEDS = 9999;
-var DEFAULT_CONVERGE_SPIRIT_RATIO = 0.5;
-async function load() {
-  const w = await colGet("jiazu_wallets", "global");
-  return w || {
-    users: {},
-    trees: {},
-    transactions: [],
-    config: { tree_create_fee_cents: DEFAULT_FEE_CENTS }
-  };
+function normalizeSigninPool(raw) {
+  if (!Array.isArray(raw) || raw.length === 0)
+    return { ok: false, message: "\u7B7E\u5230\u5956\u52B1\u6C60\u5FC5\u987B\u662F\u975E\u7A7A\u6570\u7EC4" };
+  const pool = [];
+  for (const [i, item] of raw.entries()) {
+    const kind = typeof item?.kind === "string" ? item.kind.trim() : "";
+    if (!SIGNIN_POOL_KINDS.includes(kind)) {
+      return { ok: false, message: `\u7B2C ${i + 1} \u9879\u5956\u52B1\u7C7B\u578B\u4E0D\u5408\u6CD5\uFF08\u53EF\u7528\uFF1Afragment / bamboo / scroll_fragment / scroll\uFF09` };
+    }
+    const qty = Number(item?.qty);
+    if (!Number.isInteger(qty) || qty <= 0)
+      return { ok: false, message: `\u7B2C ${i + 1} \u9879\u6570\u91CF\u5FC5\u987B\u4E3A\u6B63\u6574\u6570` };
+    const weight = Number(item?.weight);
+    if (!Number.isInteger(weight) || weight <= 0)
+      return { ok: false, message: `\u7B2C ${i + 1} \u9879\u6743\u91CD\u5FC5\u987B\u4E3A\u6B63\u6574\u6570` };
+    pool.push({ kind, qty, weight });
+  }
+  return { ok: true, pool };
 }
-async function persist(w) {
-  await colSet("jiazu_wallets", "global", w);
+function stripMeta(doc) {
+  const r = { ...doc || {} };
+  delete r._id;
+  delete r.version;
+  return r;
+}
+async function loadConfig() {
+  const doc = await colGet(WALLET_COL, CONFIG_ID);
+  return stripMeta(doc);
 }
 function txid() {
   return `tx_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
+function mergeTxs(userTxs, platformTxs) {
+  return [...userTxs || [], ...platformTxs || []].map((t, i) => ({ t, i })).sort((a, b) => {
+    const av = Date.parse(a.t?.ts);
+    const bv = Date.parse(b.t?.ts);
+    const an = Number.isFinite(av) ? av : 0;
+    const bn = Number.isFinite(bv) ? bv : 0;
+    return an - bn || a.i - b.i;
+  }).map((x) => x.t);
+}
 async function getUserBalance(phone) {
-  const w = await load();
-  return w.users[phone]?.balance_cents || 0;
+  const doc = await colGet(WALLET_COL, walletIdOf(phone));
+  return doc?.balance_cents || 0;
 }
 async function recharge(phone, amountCents) {
   if (amountCents <= 0)
     throw new Error("\u5145\u503C\u91D1\u989D\u5FC5\u987B\u5927\u4E8E 0");
-  const w = await load();
-  if (!w.users[phone])
-    w.users[phone] = { balance_cents: 0 };
-  w.users[phone].balance_cents += amountCents;
-  w.transactions.push({ id: txid(), type: "recharge", user: phone, amount_cents: amountCents, desc: "\u5145\u503C", ts: (/* @__PURE__ */ new Date()).toISOString() });
-  await persist(w);
-  return w.users[phone].balance_cents;
+  const id = walletIdOf(phone);
+  const tx = { id: txid(), type: "recharge", user: phone, amount_cents: amountCents, desc: "\u5145\u503C", ts: (/* @__PURE__ */ new Date()).toISOString() };
+  const written = await mutateDoc(WALLET_COL, id, (doc) => {
+    const rec = stripMeta(doc);
+    rec.balance_cents = (rec.balance_cents || 0) + amountCents;
+    rec.txs = Array.isArray(rec.txs) ? rec.txs : [];
+    rec.txs.push(tx);
+    return rec;
+  });
+  return written.balance_cents;
 }
 async function deductUserBalance(phone, amountCents, opts = {}) {
   const amount = Math.floor(Number(amountCents) || 0);
   if (amount <= 0)
     throw new Error("\u6263\u6B3E\u91D1\u989D\u5FC5\u987B\u5927\u4E8E 0");
-  const w = await load();
-  const balance = w.users[phone]?.balance_cents || 0;
-  if (balance < amount)
-    throw new Error(`\u4F59\u989D\u4E0D\u8DB3\uFF1A\u5F53\u524D \xA5${(balance / 100).toFixed(2)}`);
-  w.users[phone].balance_cents -= amount;
-  w.transactions.push({
+  const id = walletIdOf(phone);
+  const tx = {
     id: txid(),
     type: opts.type || "official_bamboo",
     user: phone,
     amount_cents: -amount,
     desc: opts.desc || "\u8D2D\u4E70\u5B98\u65B9\u7AF9\u7B80",
     ts: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  const written = await mutateDoc(WALLET_COL, id, (doc) => {
+    const rec = stripMeta(doc);
+    const balance = rec.balance_cents || 0;
+    if (balance < amount)
+      throw new Error(`\u4F59\u989D\u4E0D\u8DB3\uFF1A\u5F53\u524D \xA5${(balance / 100).toFixed(2)}`);
+    rec.balance_cents = balance - amount;
+    rec.txs = Array.isArray(rec.txs) ? rec.txs : [];
+    rec.txs.push(tx);
+    return rec;
   });
-  await persist(w);
-  return w.users[phone].balance_cents;
+  return written.balance_cents;
 }
 async function setTreeCreateFeeCents(amountCents) {
   if (amountCents <= 0)
     throw new Error("\u8D39\u7528\u5FC5\u987B\u5927\u4E8E 0");
-  const w = await load();
-  w.config.tree_create_fee_cents = amountCents;
-  await persist(w);
+  await mutateDoc(WALLET_COL, CONFIG_ID, (doc) => {
+    const rec = stripMeta(doc);
+    rec.tree_create_fee_cents = amountCents;
+    return rec;
+  });
   return amountCents;
 }
 async function getBranchFeeSeeds() {
-  const w = await load();
-  const raw = Number(w.config?.branch_fee_seeds);
+  const cfg = await loadConfig();
+  const raw = Number(cfg?.branch_fee_seeds);
   return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_BRANCH_FEE_SEEDS;
 }
 async function setBranchFeeSeeds(seeds) {
   const n = Number(seeds);
   if (!Number.isFinite(n) || n <= 0 || Math.floor(n) !== n)
     throw new Error("\u7ACB\u652F\u8D39\u5FC5\u987B\u4E3A\u6B63\u6574\u6570\uFF08\u9897\uFF09");
-  const w = await load();
-  w.config = w.config || {};
-  w.config.branch_fee_seeds = n;
-  await persist(w);
+  await mutateDoc(WALLET_COL, CONFIG_ID, (doc) => {
+    const rec = stripMeta(doc);
+    rec.branch_fee_seeds = n;
+    return rec;
+  });
   return n;
 }
 async function getConvergeSpiritRatio() {
-  const w = await load();
-  const raw = Number(w.config?.converge_spirit_ratio);
+  const cfg = await loadConfig();
+  const raw = Number(cfg?.converge_spirit_ratio);
   return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : DEFAULT_CONVERGE_SPIRIT_RATIO;
 }
 async function setConvergeSpiritRatio(ratio) {
   const n = Number(ratio);
   if (!Number.isFinite(n) || n < 0 || n > 1)
     throw new Error("\u6298\u635F\u6BD4\u4F8B\u5FC5\u987B\u4E3A 0\u20131 \u4E4B\u95F4\u7684\u6570");
-  const w = await load();
-  w.config = w.config || {};
-  w.config.converge_spirit_ratio = n;
-  await persist(w);
+  await mutateDoc(WALLET_COL, CONFIG_ID, (doc) => {
+    const rec = stripMeta(doc);
+    rec.converge_spirit_ratio = n;
+    return rec;
+  });
+  return n;
+}
+async function getSigninPool() {
+  const cfg = await loadConfig();
+  const checked = normalizeSigninPool(cfg?.signin_pool);
+  const src = checked.ok ? checked.pool : DEFAULT_SIGNIN_POOL;
+  return src.map((it) => ({ kind: it.kind, qty: it.qty, weight: it.weight }));
+}
+async function setSigninPool(pool) {
+  const checked = normalizeSigninPool(pool);
+  if (!checked.ok)
+    throw new Error(checked.message);
+  await mutateDoc(WALLET_COL, CONFIG_ID, (doc) => {
+    const rec = stripMeta(doc);
+    rec.signin_pool = checked.pool;
+    return rec;
+  });
+  return checked.pool;
+}
+async function getSigninMakeupCostBamboos() {
+  const cfg = await loadConfig();
+  const raw = Number(cfg?.signin_makeup_cost_bamboos);
+  return Number.isFinite(raw) && raw > 0 && Math.floor(raw) === raw ? raw : DEFAULT_SIGNIN_MAKEUP_COST_BAMBOOS;
+}
+async function setSigninMakeupCostBamboos(n0) {
+  const n = Number(n0);
+  if (!Number.isFinite(n) || n <= 0 || Math.floor(n) !== n)
+    throw new Error("\u8865\u7B7E\u8D39\u7528\u5FC5\u987B\u4E3A\u6B63\u6574\u6570\uFF08\u7247\u7AF9\u7247\uFF09");
+  await mutateDoc(WALLET_COL, CONFIG_ID, (doc) => {
+    const rec = stripMeta(doc);
+    rec.signin_makeup_cost_bamboos = n;
+    return rec;
+  });
+  return n;
+}
+async function getSigninDay7Fragments() {
+  const cfg = await loadConfig();
+  const raw = Number(cfg?.signin_day7_fragments);
+  return Number.isFinite(raw) && raw >= 0 && Math.floor(raw) === raw ? raw : DEFAULT_SIGNIN_DAY7_FRAGMENTS;
+}
+async function setSigninDay7Fragments(n0) {
+  const n = Number(n0);
+  if (!Number.isFinite(n) || n < 0 || Math.floor(n) !== n)
+    throw new Error("\u7B2C 7 \u5929\u5956\u52B1\u5FC5\u987B\u4E3A\u975E\u8D1F\u6574\u6570\uFF08\u4E2A\u77F3\u69B4\u7C7D\u788E\u7247\uFF09");
+  await mutateDoc(WALLET_COL, CONFIG_ID, (doc) => {
+    const rec = stripMeta(doc);
+    rec.signin_day7_fragments = n;
+    return rec;
+  });
   return n;
 }
 async function getWalletOverview(phone) {
-  const w = await load();
-  const transactions = w.transactions.filter((t) => !t.user || t.user === phone).slice(-50).reverse();
+  const id = walletIdOf(phone);
+  const [userDoc, platformDoc, cfg] = await Promise.all([
+    colGet(WALLET_COL, id),
+    colGet(WALLET_COL, PLATFORM_ID),
+    loadConfig()
+  ]);
+  const balanceCents = userDoc?.balance_cents || 0;
+  const transactions = mergeTxs(userDoc?.txs, platformDoc?.txs).slice(-50).reverse();
   return {
-    user_balance_yuan: ((w.users[phone]?.balance_cents || 0) / 100).toFixed(2),
-    tree_create_fee_yuan: ((w.config.tree_create_fee_cents ?? DEFAULT_FEE_CENTS) / 100).toFixed(2),
+    user_balance_yuan: (balanceCents / 100).toFixed(2),
+    tree_create_fee_yuan: ((cfg.tree_create_fee_cents ?? DEFAULT_FEE_CENTS) / 100).toFixed(2),
     transactions
   };
 }
+var WALLET_COL, walletIdOf, CONFIG_ID, PLATFORM_ID, DEFAULT_FEE_CENTS, DEFAULT_BRANCH_FEE_SEEDS, DEFAULT_CONVERGE_SPIRIT_RATIO, DEFAULT_SIGNIN_MAKEUP_COST_BAMBOOS, DEFAULT_SIGNIN_DAY7_FRAGMENTS, SIGNIN_POOL_KINDS, DEFAULT_SIGNIN_POOL;
+var init_wallet = __esm({
+  "cloudfunctions/compat-api/lib/wallet.js"() {
+    init_store();
+    WALLET_COL = "jiazu_wallets";
+    walletIdOf = (phone) => String(phone == null ? "" : phone).trim();
+    CONFIG_ID = "config";
+    PLATFORM_ID = "_platform";
+    DEFAULT_FEE_CENTS = 990;
+    DEFAULT_BRANCH_FEE_SEEDS = 9999;
+    DEFAULT_CONVERGE_SPIRIT_RATIO = 0.5;
+    DEFAULT_SIGNIN_MAKEUP_COST_BAMBOOS = 2;
+    DEFAULT_SIGNIN_DAY7_FRAGMENTS = 10;
+    SIGNIN_POOL_KINDS = ["fragment", "bamboo", "scroll_fragment", "scroll", "scrollFragment"];
+    DEFAULT_SIGNIN_POOL = [
+      { kind: "fragment", qty: 1, weight: 50 },
+      { kind: "bamboo", qty: 10, weight: 35 },
+      { kind: "scrollFragment", qty: 1, weight: 15 }
+    ];
+  }
+});
 
 // cloudfunctions/compat-api/lib/economy-ledger.js
-init_store();
-var ASSETS_COL = "jiazu_assets";
-var ASSETS_ID = "global";
-var SEED_TTL_DAYS = 365;
-var BAMBOO_TTL_DAYS = 365;
-var FRAGMENT_CAP = 9;
-var FRAGMENT_SYNTH_THRESHOLD = 10;
-var FRAGMENT_PER_SEED = 10;
-var EXPIRING_DEFAULT_DAYS = 30;
-var TX_TYPES = [
-  "signin",
-  "fragment_synth",
-  "expire",
-  "reward",
-  "admin_grant",
-  "account_clear",
-  "edit_fee",
-  "delete_fee",
-  "move_fee",
-  "tree_create",
-  "fee_refund",
-  "jade_synth",
-  "jade_decompose",
-  "jade_mount",
-  "spirit_charge",
-  // P3（docs/economy-market.spec.md §2-2 / 总册 §4-6）追加市集与官方发售取值：
-  //   `market_list`（挂单）、`market_cancel`（撤单）、`market_sell`（卖方入账籽）、
-  //   `market_buy`（买方出账籽）、`official_buy`（官方竹简购买）。
-  //   挂单到期下架 / 批次作废沿用既有 `expire`。
-  "market_list",
-  "market_cancel",
-  "market_sell",
-  "market_buy",
-  "official_buy"
-];
-var ASSET_INSUFFICIENT = "ASSET_INSUFFICIENT";
-var DAY_MS = 864e5;
-var ASSET_LABEL = { seed: "\u77F3\u69B4\u7C7D", bamboo: "\u7AF9\u7247", jade: "\u77F3\u69B4\u7C7D\u7389" };
-var ASSET_UNIT = { seed: "\u9897", bamboo: "\u7247", jade: "\u679A" };
-var LOT_KEY = { seed: "seeds", bamboo: "bamboos", jade: "jades" };
-var idSeq = 0;
 function nextLotId(prefix = "lot") {
   idSeq += 1;
   return `${prefix}_${Date.now().toString(36)}${idSeq.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
-var toIso = (d) => new Date(d).toISOString();
-var toMs = (d) => d instanceof Date ? d.getTime() : new Date(d).getTime();
 function isoPlusDays(from, days) {
   return new Date(toMs(from) + days * DAY_MS).toISOString();
 }
@@ -965,23 +1341,53 @@ function compareLotByExpiry(a, b) {
 function beijingDate(date = /* @__PURE__ */ new Date()) {
   return new Date(toMs(date) + 8 * 3600 * 1e3).toISOString().slice(0, 10);
 }
-function blankUser() {
-  return { fragments: 0, seeds: [], bamboos: [], jades: [], txs: [], signin_date: "" };
-}
-function ensureUser(doc, phone) {
-  doc.users = doc.users || {};
-  const cur = doc.users[phone];
-  if (!cur) {
-    doc.users[phone] = blankUser();
-    return doc.users[phone];
+function normalizeSigninDays(v) {
+  if (!Array.isArray(v))
+    return [];
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const raw of v) {
+    const s = typeof raw === "string" ? raw.trim() : "";
+    if (!SIGNIN_DAY_RE.test(s))
+      continue;
+    const ms = Date.parse(`${s}T00:00:00.000Z`);
+    if (!Number.isFinite(ms) || new Date(ms).toISOString().slice(0, 10) !== s)
+      continue;
+    if (seen.has(s))
+      continue;
+    seen.add(s);
+    out.push(s);
   }
-  cur.fragments = Number(cur.fragments) || 0;
-  cur.seeds = cur.seeds || [];
-  cur.bamboos = cur.bamboos || [];
-  cur.jades = cur.jades || [];
-  cur.txs = cur.txs || [];
-  cur.signin_date = cur.signin_date || "";
-  return cur;
+  out.sort();
+  return out.length > SIGNIN_DAYS_KEEP ? out.slice(-SIGNIN_DAYS_KEEP) : out;
+}
+function blankUser() {
+  return {
+    fragments: 0,
+    scroll_fragments: 0,
+    seeds: [],
+    bamboos: [],
+    jades: [],
+    scrolls: [],
+    txs: [],
+    signin_date: "",
+    // ---- 签到域（Zang 裁定 v1 · Kevin 2026-09-28 拍定）：连签天数 + 已签日期集（只增不删既有键）----
+    signin_streak: 0,
+    signin_days: []
+  };
+}
+function normalizeUserRecord(rec) {
+  rec.fragments = toNonNegInt(rec.fragments);
+  rec.scroll_fragments = toNonNegInt(rec.scroll_fragments);
+  rec.seeds = rec.seeds || [];
+  rec.bamboos = rec.bamboos || [];
+  rec.jades = rec.jades || [];
+  rec.scrolls = rec.scrolls || [];
+  rec.txs = rec.txs || [];
+  rec.signin_date = rec.signin_date || "";
+  rec.signin_streak = toNonNegInt(rec.signin_streak);
+  rec.signin_days = normalizeSigninDays(rec.signin_days);
+  return rec;
 }
 function assetInsufficient(need, current, unit = "seed") {
   const key = ASSET_LABEL[unit] ? unit : "seed";
@@ -996,10 +1402,16 @@ function assetInsufficient(need, current, unit = "seed") {
   e.unit = unit;
   return e;
 }
+function toNonNegInt(x) {
+  const n = Number(x);
+  if (!Number.isFinite(n))
+    return 0;
+  return n > 0 ? Math.floor(n) : 0;
+}
 function sumLots(lots) {
   let total = 0;
   for (const lot of lots || [])
-    total += Math.max(0, Math.floor(Number(lot?.qty) || 0));
+    total += toNonNegInt(lot?.qty);
   return total;
 }
 function addLot(user, kind, qty, opts = {}) {
@@ -1008,7 +1420,21 @@ function addLot(user, kind, qty, opts = {}) {
     throw new Error(`\u672A\u77E5\u8D44\u4EA7\u7C7B\u578B\uFF1A${kind}`);
   const now = opts.now ? new Date(opts.now) : /* @__PURE__ */ new Date();
   let lot;
-  if (kind === "jade") {
+  if (kind === "scroll") {
+    if (opts.expires_at === void 0) {
+      throw new Error("\u5170\u5E16\u6279\u6B21\u5FC5\u987B\u663E\u5F0F\u6307\u5B9A expires_at\uFF08\u6052\u4E3A null = \u6C38\u4E45\uFF0C\xA715-3\uFF09");
+    }
+    if (opts.expires_at !== null) {
+      throw new Error("\u5170\u5E16\u6279\u6B21 expires_at \u6052\u4E3A null\uFF08\u6C38\u4E45\uFF0C\xA715-3\uFF09\uFF1A\u4E0D\u63A5\u53D7\u6709\u671F\u9650\u503C");
+    }
+    lot = {
+      id: opts.id || nextLotId("sc"),
+      qty: toNonNegInt(qty),
+      expires_at: null,
+      source: opts.source || "",
+      created_at: toIso(now)
+    };
+  } else if (kind === "jade") {
     if (opts.expires_at === void 0) {
       throw new Error("\u7389\u6279\u6B21\u5FC5\u987B\u663E\u5F0F\u6307\u5B9A expires_at\uFF08null = \u6C38\u4E45\uFF0C\u4EC5\u9650\u5224\u5B9A\u4E3A\u6C38\u4E45\u65F6\u4F7F\u7528\uFF09");
     }
@@ -1022,7 +1448,7 @@ function addLot(user, kind, qty, opts = {}) {
     const ttl = opts.ttl_days ?? (kind === "bamboo" ? BAMBOO_TTL_DAYS : SEED_TTL_DAYS);
     lot = {
       id: opts.id || nextLotId(kind === "bamboo" ? "bl" : "sl"),
-      qty: Math.max(0, Math.floor(Number(qty) || 0)),
+      qty: toNonNegInt(qty),
       expires_at: opts.expires_at !== void 0 ? opts.expires_at : isoPlusDays(now, ttl),
       source: opts.source || "",
       created_at: toIso(now)
@@ -1055,7 +1481,7 @@ function sweep(user, now = /* @__PURE__ */ new Date()) {
     for (const lot of user[key] || []) {
       if (!lot)
         continue;
-      const qty = Math.max(0, Math.floor(Number(lot.qty) || 0));
+      const qty = toNonNegInt(lot.qty);
       if (qty <= 0)
         continue;
       lot.qty = qty;
@@ -1078,6 +1504,17 @@ function sweep(user, now = /* @__PURE__ */ new Date()) {
     jades.push(jade);
   }
   user.jades = jades;
+  const scrolls = [];
+  for (const lot of user.scrolls || []) {
+    if (!lot)
+      continue;
+    const qty = toNonNegInt(lot.qty);
+    if (qty <= 0)
+      continue;
+    lot.qty = qty;
+    scrolls.push(lot);
+  }
+  user.scrolls = scrolls;
   for (const r of removed) {
     recordTx(
       user,
@@ -1089,20 +1526,22 @@ function sweep(user, now = /* @__PURE__ */ new Date()) {
       now
     );
   }
-  user.fragments = Math.max(0, Math.floor(Number(user.fragments) || 0));
+  user.fragments = toNonNegInt(user.fragments);
   if (user.fragments >= FRAGMENT_SYNTH_THRESHOLD)
     addFragments(user, 0, now);
+  user.scroll_fragments = toNonNegInt(user.scroll_fragments);
   return removed;
 }
 function addFragments(user, n, now = /* @__PURE__ */ new Date()) {
-  const add = Math.max(0, Math.floor(Number(n) || 0));
-  user.fragments = Math.max(0, Math.floor(Number(user.fragments) || 0)) + add;
+  const add = toNonNegInt(n);
+  user.fragments = toNonNegInt(user.fragments) + add;
   const seed_lots = [];
-  while (user.fragments >= FRAGMENT_SYNTH_THRESHOLD) {
-    user.fragments -= FRAGMENT_PER_SEED;
-    seed_lots.push(addLot(user, "seed", 1, { source: "fragment_synth", now }));
-  }
-  if (seed_lots.length > 0) {
+  const times = Math.floor(user.fragments / FRAGMENT_SYNTH_THRESHOLD);
+  if (times > 0) {
+    user.fragments -= times * FRAGMENT_PER_SEED;
+    for (let i = 0; i < times; i += 1) {
+      seed_lots.push(addLot(user, "seed", 1, { source: "fragment_synth", now }));
+    }
     recordTx(
       user,
       {
@@ -1115,20 +1554,84 @@ function addFragments(user, n, now = /* @__PURE__ */ new Date()) {
   }
   return { fragments: user.fragments, synthesized: seed_lots.length, seed_lots };
 }
+function addScrollFragments(user, n, now = /* @__PURE__ */ new Date()) {
+  const add = toNonNegInt(n);
+  user.scroll_fragments = toNonNegInt(user.scroll_fragments) + add;
+  return { scroll_fragments: user.scroll_fragments, synthesized: 0, scroll_lots: [] };
+}
+function synthesizeScroll(user, count = 1, now = /* @__PURE__ */ new Date()) {
+  const n = toNonNegInt(count);
+  const pieces = n * SCROLL_PIECES_PER_SCROLL;
+  const current = toNonNegInt(user.scroll_fragments);
+  if (n <= 0 || current < pieces) {
+    const e = assetInsufficient(pieces, current, "scroll_fragment");
+    e.message = `\u8D44\u4EA7\u4E0D\u8DB3\uFF0C\u9700 ${pieces} \u7247\u5170\u5E16\u6B8B\u9875\uFF0C\u5F53\u524D ${current} \u7247`;
+    e.unit = "scroll_fragments";
+    throw e;
+  }
+  user.scroll_fragments = current - pieces;
+  const scroll_lots = [];
+  for (let i = 0; i < n; i += 1) {
+    scroll_lots.push(
+      addLot(user, "scroll", SCROLL_PIECES_PER_SCROLL, {
+        source: SCROLL_SOURCE_SYNTH,
+        expires_at: null,
+        // §15-3：永久必须显式传入，绝无「默认永久」
+        now
+      })
+    );
+  }
+  recordTx(
+    user,
+    {
+      type: "scroll_synth",
+      delta: { scroll_fragments: -pieces, scrolls: pieces },
+      desc: `\u624B\u52A8\u5408\u6210 ${n} \u5F20${ASSET_LABEL.scroll}\uFF08\u6D88\u8017 ${pieces} \u7247\u5170\u5E16\u6B8B\u9875\uFF09`
+    },
+    now
+  );
+  return { synthesized: n, pieces, scroll_fragments: user.scroll_fragments, scroll_lots };
+}
+function decomposeScroll(user, n = 1, now = /* @__PURE__ */ new Date()) {
+  const count = toNonNegInt(n);
+  const pieces = count * SCROLL_PIECES_PER_SCROLL;
+  const charged = chargeLots(user.scrolls || [], pieces, "scroll");
+  const refunded = count * SCROLL_DECOMPOSE_REFUND;
+  if (count > 0) {
+    recordTx(
+      user,
+      {
+        type: "scroll_decompose",
+        delta: { scroll_fragments: refunded, scrolls: -pieces },
+        desc: `\u5206\u89E3 ${count} \u5F20\u5170\u5E16\uFF08${pieces} \u7247\uFF09\uFF0C\u8FD4\u8FD8 ${refunded} \u7247\u5170\u5E16\u6B8B\u9875\uFF08\u635F\u8017 ${count} \u7247\uFF09`
+      },
+      now
+    );
+  }
+  const after = addScrollFragments(user, refunded, now);
+  return {
+    decomposed: count,
+    pieces,
+    refunded,
+    scroll_fragments: after.scroll_fragments,
+    synthesized: after.synthesized,
+    taken: charged.taken
+  };
+}
 function chargeLots(lots, n, unit = "seed") {
-  const list = lots || [];
-  const need = Math.max(0, Math.floor(Number(n) || 0));
-  const current = sumLots(list);
+  const list2 = lots || [];
+  const need = toNonNegInt(n);
+  const current = sumLots(list2);
   if (need === 0)
     return { ok: true, taken: [], need, current };
   if (current < need)
     throw assetInsufficient(need, current, unit);
   const taken = [];
   let left = need;
-  for (const lot of [...list].sort(compareLotByExpiry)) {
+  for (const lot of [...list2].sort(compareLotByExpiry)) {
     if (left <= 0)
       break;
-    const take = Math.min(Math.max(0, Math.floor(Number(lot.qty) || 0)), left);
+    const take = Math.min(toNonNegInt(lot.qty), left);
     if (take <= 0)
       continue;
     lot.qty -= take;
@@ -1144,7 +1647,8 @@ function expiringItems(user, now = /* @__PURE__ */ new Date(), days = EXPIRING_D
   const items = [];
   for (const asset of ["seed", "bamboo"]) {
     for (const lot of user[LOT_KEY[asset]] || []) {
-      if (!lot || !lot.expires_at || Number(lot.qty) <= 0)
+      const qty = toNonNegInt(lot?.qty);
+      if (!lot || !lot.expires_at || qty <= 0)
         continue;
       const expMs = Date.parse(lot.expires_at);
       if (!Number.isFinite(expMs) || expMs > limit)
@@ -1152,7 +1656,7 @@ function expiringItems(user, now = /* @__PURE__ */ new Date(), days = EXPIRING_D
       items.push({
         asset,
         lot_id: lot.id,
-        qty: Math.floor(Number(lot.qty)),
+        qty,
         expires_at: lot.expires_at,
         days_left: Math.max(0, Math.ceil((expMs - nowMs) / DAY_MS))
       });
@@ -1160,11 +1664,14 @@ function expiringItems(user, now = /* @__PURE__ */ new Date(), days = EXPIRING_D
   }
   return items.sort((a, b) => Date.parse(a.expires_at) - Date.parse(b.expires_at));
 }
-function summarize(user, now = /* @__PURE__ */ new Date()) {
+function summarize(user, now = /* @__PURE__ */ new Date(), opts = {}) {
   const seeds_total = sumLots(user.seeds);
   const bamboos_total_pieces = sumLots(user.bamboos);
+  const scroll_lots = user.scrolls || [];
+  const scrolls_total_pieces = sumLots(scroll_lots);
+  const jades = (user.jades || []).filter((j) => j && (opts.include_mounted || !j.mounted_tree_id));
   return {
-    fragments: Math.max(0, Math.floor(Number(user.fragments) || 0)),
+    fragments: toNonNegInt(user.fragments),
     fragment_cap: FRAGMENT_CAP,
     seeds_total,
     seed_lot_count: (user.seeds || []).length,
@@ -1173,34 +1680,4272 @@ function summarize(user, now = /* @__PURE__ */ new Date()) {
     bamboo_bundles: Math.floor(bamboos_total_pieces / 100),
     bamboo_lot_count: (user.bamboos || []).length,
     bamboo_lots: user.bamboos || [],
-    jades_total: (user.jades || []).length,
-    jades: (user.jades || []).map((j) => ({ ...j, permanent: j.expires_at === null })),
+    // ---- §15-2 / §15-3 / §15-6② 兰帖域新增出参（R-11；既有出参字段名与形状一字未改） ----
+    scroll_fragments: toNonNegInt(user.scroll_fragments),
+    scroll_fragment_cap: SCROLL_FRAGMENT_CAP,
+    scrolls_total_pieces,
+    // 行囊整格数 = 向下取整（每 100 片 = 1 格；余数不占整格，展示层单行呈现）
+    scrolls_item_count: Math.floor(scrolls_total_pieces / SCROLL_PIECES_PER_SCROLL),
+    scroll_lot_count: scroll_lots.length,
+    scroll_lots,
+    jades_total: jades.length,
+    jades: jades.map((j) => ({ ...j, permanent: j.expires_at === null })),
     signin_date: user.signin_date || "",
+    // ---- 签到域新增出参（Zang 裁定 v1；既有键名与形状一字未改）----
+    signin_streak: toNonNegInt(user.signin_streak),
+    signin_days: normalizeSigninDays(user.signin_days),
     expiring: expiringItems(user, now),
     txs: (user.txs || []).slice(-50).reverse()
   };
 }
-var assetsLocks = /* @__PURE__ */ new Map();
 async function withAssets(phone, mutator) {
-  const lock = assetsLocks.get(phone) || Promise.resolve();
+  const id = assetIdOf(phone);
+  const lock = assetsLocks.get(id) || Promise.resolve();
   const run = lock.then(async () => {
-    const base = await colGet(ASSETS_COL, ASSETS_ID);
-    const doc = base ? JSON.parse(JSON.stringify(base)) : { _id: ASSETS_ID, users: {} };
-    const user = ensureUser(doc, phone);
-    const result = await mutator(user);
-    await colSet(ASSETS_COL, ASSETS_ID, doc);
+    let result;
+    await mutateDoc(ASSETS_COL, id, async (doc) => {
+      const rec = { ...doc };
+      delete rec._id;
+      delete rec.version;
+      const user = normalizeUserRecord(rec);
+      result = await mutator(user);
+      return user;
+    });
     return result;
   });
-  assetsLocks.set(phone, run.catch(() => {
+  assetsLocks.set(id, run.catch(() => {
   }));
   return run;
 }
-var mutateAssets = withAssets;
 async function getAssets(phone) {
-  const doc = await colGet(ASSETS_COL, ASSETS_ID);
-  const cur = doc?.users?.[phone];
-  return cur ? JSON.parse(JSON.stringify(cur)) : blankUser();
+  const doc = await colGet(ASSETS_COL, assetIdOf(phone));
+  if (!doc)
+    return blankUser();
+  const rec = { ...doc };
+  delete rec._id;
+  delete rec.version;
+  return JSON.parse(JSON.stringify(rec));
 }
+var ASSETS_COL, assetIdOf, SEED_TTL_DAYS, BAMBOO_TTL_DAYS, FRAGMENT_CAP, FRAGMENT_SYNTH_THRESHOLD, FRAGMENT_PER_SEED, SCROLL_FRAGMENT_CAP, SCROLL_PIECES_PER_SCROLL, SCROLL_DECOMPOSE_REFUND, SOURCE_FRIEND_REWARD, SCROLL_SOURCE_SYNTH, EXPIRING_DEFAULT_DAYS, SIGNIN_DAYS_KEEP, TX_TYPES, ASSET_INSUFFICIENT, DAY_MS, ASSET_LABEL, ASSET_UNIT, LOT_KEY, idSeq, toIso, toMs, SIGNIN_DAY_RE, assetsLocks, mutateAssets;
+var init_economy_ledger = __esm({
+  "cloudfunctions/compat-api/lib/economy-ledger.js"() {
+    init_store();
+    ASSETS_COL = "jiazu_assets";
+    assetIdOf = (phone) => String(phone == null ? "" : phone).trim();
+    SEED_TTL_DAYS = 365;
+    BAMBOO_TTL_DAYS = 365;
+    FRAGMENT_CAP = 9;
+    FRAGMENT_SYNTH_THRESHOLD = 10;
+    FRAGMENT_PER_SEED = 10;
+    SCROLL_FRAGMENT_CAP = 999;
+    SCROLL_PIECES_PER_SCROLL = 100;
+    SCROLL_DECOMPOSE_REFUND = 99;
+    SOURCE_FRIEND_REWARD = "friend_reward";
+    SCROLL_SOURCE_SYNTH = "scroll_synth";
+    EXPIRING_DEFAULT_DAYS = 30;
+    SIGNIN_DAYS_KEEP = 30;
+    TX_TYPES = [
+      "signin",
+      "fragment_synth",
+      "expire",
+      "reward",
+      "admin_grant",
+      "account_clear",
+      "edit_fee",
+      "delete_fee",
+      "move_fee",
+      "tree_create",
+      "fee_refund",
+      "jade_synth",
+      "jade_decompose",
+      "jade_mount",
+      "spirit_charge",
+      // P3（docs/economy-market.spec.md §2-2 / 总册 §4-6）追加市集与官方发售取值：
+      //   `market_list`（挂单）、`market_cancel`（撤单）、`market_sell`（卖方入账籽）、
+      //   `market_buy`（买方出账籽）、`official_buy`（官方竹简购买）。
+      //   挂单到期下架 / 批次作废沿用既有 `expire`。
+      "market_list",
+      "market_cancel",
+      "market_sell",
+      "market_buy",
+      "official_buy",
+      // P4（docs/economy.spec.md §15-5⑥ · R-10）追加兰帖物品域取值（命名不与既有 19 项重名）：
+      //   `scroll_synth`（兰帖残页手动合成 1 张成品兰帖；2026-09-26 前为「满 100 自动合成」，字面沿用）、
+      //   `scroll_decompose`（兰帖分解返还 99 碎片）。冲正仍只用既有 `fee_refund`。
+      "scroll_synth",
+      "scroll_decompose",
+      // 好友域（裁定 1 · `lib/friend-ops.js` 续约双边扣减）：`scroll_consume`（兰帖消耗留痕）。
+      // 冲正复用既有 `fee_refund`（唯一允许的冲正类型），本项**只此一处字面登记**（无运行期追加）。
+      "scroll_consume"
+    ];
+    ASSET_INSUFFICIENT = "ASSET_INSUFFICIENT";
+    DAY_MS = 864e5;
+    ASSET_LABEL = { seed: "\u77F3\u69B4\u7C7D", bamboo: "\u7AF9\u7247", jade: "\u77F3\u69B4\u7C7D\u7389", scroll: "\u5170\u5E16" };
+    ASSET_UNIT = { seed: "\u9897", bamboo: "\u7247", jade: "\u679A", scroll: "\u7247" };
+    LOT_KEY = { seed: "seeds", bamboo: "bamboos", jade: "jades", scroll: "scrolls" };
+    idSeq = 0;
+    toIso = (d) => new Date(d).toISOString();
+    toMs = (d) => d instanceof Date ? d.getTime() : new Date(d).getTime();
+    SIGNIN_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+    assetsLocks = /* @__PURE__ */ new Map();
+    mutateAssets = withAssets;
+  }
+});
+
+// cloudfunctions/compat-api/lib/economy-market.js
+function httpError(status, message) {
+  const e = new Error(message);
+  e.status = status;
+  return e;
+}
+function seedsInsufficient(need, current, message) {
+  const e = assetInsufficient(need, current, "seed");
+  if (message)
+    e.message = message;
+  return e;
+}
+function bambooInsufficient(need, current, message) {
+  const e = assetInsufficient(need, current, "bamboo");
+  if (message)
+    e.message = message;
+  return e;
+}
+function listingId() {
+  return `lst_${Date.now()}_${rand6()}`;
+}
+function tradeId() {
+  return `trd_${Date.now()}_${rand6()}`;
+}
+function feeOf2(priceSeeds) {
+  const price = toNonNegInt(priceSeeds);
+  return Math.floor(price * FEE_RATE_PERCENT / FEE_RATE_DENOMINATOR);
+}
+function feeBreakdown(priceSeeds) {
+  const price_seeds = toNonNegInt(priceSeeds);
+  const fee_seeds = feeOf2(price_seeds);
+  return {
+    price_seeds,
+    fee_seeds,
+    buyer_paid: price_seeds,
+    seller_got: price_seeds - fee_seeds,
+    destroyed: fee_seeds,
+    waived: fee_seeds === 0
+  };
+}
+function lockedPieces(phone, listings) {
+  let sum = 0;
+  for (const l of listings || []) {
+    if (!l || l.status !== "open" || l.seller_phone !== phone)
+      continue;
+    sum += toNonNegInt(l.pieces);
+  }
+  return sum;
+}
+function availablePieces(phone, user, listings) {
+  return Math.max(0, sumLots(user?.bamboos) - lockedPieces(phone, listings));
+}
+function sellablePieces(phone, user, listings) {
+  return Math.floor(availablePieces(phone, user, listings) / PIECES_PER_BUNDLE) * PIECES_PER_BUNDLE;
+}
+function ensureOfficial(official) {
+  const o = official && typeof official === "object" ? official : {};
+  o.stock = o.stock && typeof o.stock === "object" ? o.stock : {};
+  o.price_fen = Number.isFinite(Number(o.price_fen)) && Number(o.price_fen) > 0 ? Math.floor(Number(o.price_fen)) : DEFAULT_PRICE_FEN;
+  o.daily_stock = Number.isFinite(Number(o.daily_stock)) && Number(o.daily_stock) >= 0 ? Math.floor(Number(o.daily_stock)) : DEFAULT_DAILY_STOCK;
+  o.last_release_date = typeof o.last_release_date === "string" ? o.last_release_date : "";
+  return o;
+}
+function releaseAtMs(now = /* @__PURE__ */ new Date()) {
+  return Date.parse(`${beijingDate(now)}T${String(RELEASE_HOUR).padStart(2, "0")}:00:00+08:00`);
+}
+function releaseOfficial(official, now = /* @__PURE__ */ new Date()) {
+  const o = official || {};
+  o.stock = o.stock && typeof o.stock === "object" ? o.stock : {};
+  const today = beijingDate(now);
+  const openMs = releaseAtMs(now);
+  const isOpen = toMs2(now) >= openMs;
+  const last = typeof o.last_release_date === "string" ? o.last_release_date : "";
+  const released = isOpen && last < today;
+  if (released) {
+    o.stock[today] = toNonNegInt(o.daily_stock);
+    o.last_release_date = today;
+  }
+  return {
+    released,
+    released_today: (typeof o.last_release_date === "string" ? o.last_release_date : "") === today,
+    today,
+    is_open: isOpen,
+    open_at: `${today}T${RELEASE_AT}:00+08:00`,
+    open_at_ms: openMs,
+    release_at: RELEASE_AT,
+    stock_left_today: toNonNegInt(o.stock[today])
+  };
+}
+function byExpiryAsc(a, b) {
+  const av = a?.expires_at ? Date.parse(a.expires_at) : Number.POSITIVE_INFINITY;
+  const bv = b?.expires_at ? Date.parse(b.expires_at) : Number.POSITIVE_INFINITY;
+  const an = Number.isFinite(av) ? av : Number.POSITIVE_INFINITY;
+  const bn = Number.isFinite(bv) ? bv : Number.POSITIVE_INFINITY;
+  return an - bn;
+}
+function bambooSlices(sellerUser, pieces, now = /* @__PURE__ */ new Date()) {
+  const need = toNonNegInt(pieces);
+  const available = sumLots(sellerUser?.bamboos);
+  if (available < need)
+    throw bambooInsufficient(need, available, ERR_BAMBOO_EXPIRED);
+  const taken = [];
+  let left = need;
+  for (const lot of [...sellerUser.bamboos || []].sort(byExpiryAsc)) {
+    if (left <= 0)
+      break;
+    const qty = toNonNegInt(lot.qty);
+    if (qty <= 0)
+      continue;
+    const take = Math.min(qty, left);
+    taken.push({ lot_id: lot.id, qty: take, expires_at: lot.expires_at ?? null });
+    left -= take;
+  }
+  if (left > 0)
+    throw bambooInsufficient(need, need - left, ERR_BAMBOO_EXPIRED);
+  const merged = [];
+  const index = /* @__PURE__ */ new Map();
+  for (const t of taken) {
+    const key = t.expires_at ?? "";
+    if (index.has(key))
+      index.get(key).qty += t.qty;
+    else {
+      const row = { qty: t.qty, expires_at: t.expires_at ?? null, source: "market" };
+      index.set(key, row);
+      merged.push(row);
+    }
+  }
+  return { slices: taken, receive: merged, pieces: need, expires_at_inherited: merged.map((m) => m.expires_at) };
+}
+function planTrade({ listing, sellerUser, buyerUser, listings = [], now = /* @__PURE__ */ new Date() } = {}) {
+  const price_seeds = toNonNegInt(listing?.price_seeds);
+  const pieces = toNonNegInt(listing?.pieces);
+  const { fee_seeds, seller_got, destroyed, waived } = feeBreakdown(price_seeds);
+  const lockedOthers = lockedPieces(listing?.seller_phone, listings);
+  const sellerAvailable = Math.max(0, sumLots(sellerUser?.bamboos) - lockedOthers);
+  if (sellerAvailable < pieces)
+    throw bambooInsufficient(pieces, sellerAvailable, ERR_BAMBOO_EXPIRED);
+  const buyerAvailable = sumLots(buyerUser?.seeds);
+  if (buyerAvailable < price_seeds) {
+    throw seedsInsufficient(price_seeds, buyerAvailable, `\u77F3\u69B4\u7C7D\u4E0D\u8DB3\uFF1A\u672C\u6B21\u9700 ${price_seeds} \u9897\uFF0C\u5F53\u524D\u53EF\u7528 ${buyerAvailable} \u9897`);
+  }
+  const { slices, receive } = bambooSlices(sellerUser, pieces, now);
+  return { price_seeds, pieces, fee_seeds, seller_got, destroyed, waived, slices, receive, buyer_seeds_available: buyerAvailable };
+}
+function applyBuyerSide(buyerUser, plan, trade_id, now = /* @__PURE__ */ new Date(), listing = {}) {
+  const charge = chargeLots(buyerUser.seeds, plan.price_seeds, "seed");
+  buyerUser.seeds = (buyerUser.seeds || []).filter((l) => toNonNegInt(l.qty) > 0);
+  const lots = [];
+  for (const g of plan.receive || []) {
+    lots.push(
+      addLot(buyerUser, "bamboo", g.qty, {
+        expires_at: g.expires_at ?? void 0,
+        // **继承卖方原值**（缺省才回落 365 天）
+        source: "market",
+        now
+      })
+    );
+  }
+  recordTx(
+    buyerUser,
+    {
+      type: "market_buy",
+      delta: { seeds: -plan.price_seeds, bamboos: plan.pieces },
+      fee_seeds: plan.fee_seeds,
+      ref: { listing_id: listing.id, trade_id },
+      desc: `\u5E02\u96C6\u4E70\u5165\u7AF9\u7B80 ${plan.pieces} \u7247\uFF08${plan.pieces / PIECES_PER_BUNDLE} \u675F\uFF09`
+    },
+    now
+  );
+  return { lot_ids: lots.map((l) => l.id), seeds_used: charge.taken.map((t) => ({ lot_id: t.id, qty: t.qty })) };
+}
+function applySellerSide(sellerUser, plan, trade_id, now = /* @__PURE__ */ new Date(), listing = {}) {
+  const byId = new Map((sellerUser.bamboos || []).map((l) => [l.id, l]));
+  let left = plan.pieces;
+  for (const s of plan.slices || []) {
+    const lot = byId.get(s.lot_id);
+    const qty = toNonNegInt(lot?.qty);
+    if (!lot || qty < s.qty)
+      throw bambooInsufficient(plan.pieces, sumLots(sellerUser.bamboos), ERR_BAMBOO_EXPIRED);
+    lot.qty = qty - s.qty;
+    left -= s.qty;
+  }
+  if (left > 0)
+    throw bambooInsufficient(plan.pieces, sumLots(sellerUser.bamboos), ERR_BAMBOO_EXPIRED);
+  sellerUser.bamboos = (sellerUser.bamboos || []).filter((l) => toNonNegInt(l.qty) > 0);
+  let seed_lot = null;
+  if (plan.seller_got > 0)
+    seed_lot = addLot(sellerUser, "seed", plan.seller_got, { source: "market", now });
+  recordTx(
+    sellerUser,
+    {
+      type: "market_sell",
+      delta: { seeds: plan.seller_got, bamboos: -plan.pieces },
+      fee_seeds: plan.fee_seeds,
+      ref: { listing_id: listing.id, trade_id },
+      desc: `\u5E02\u96C6\u5356\u51FA\u7AF9\u7B80 ${plan.pieces} \u7247\uFF08${plan.pieces / PIECES_PER_BUNDLE} \u675F\uFF09\uFF0C\u624B\u7EED\u8D39 ${plan.fee_seeds} \u9897\u9500\u6BC1`
+    },
+    now
+  );
+  return { seed_lot_id: seed_lot ? seed_lot.id : null, seed_expires_at: seed_lot ? seed_lot.expires_at : null };
+}
+function applyOfficialPurchase(user, { bundles, now = /* @__PURE__ */ new Date() } = {}) {
+  const n = Math.max(1, Math.floor(Number(bundles) || 1));
+  const pieces = n * PIECES_PER_BUNDLE;
+  const lot = addLot(user, "bamboo", pieces, { ttl_days: OFFICIAL_BAMBOO_TTL_DAYS, source: "official_purchase", now });
+  recordTx(
+    user,
+    {
+      type: "official_buy",
+      delta: { bamboos: pieces },
+      ref: {},
+      desc: `\u5B98\u65B9\u7AF9\u7B80\u8D2D\u4E70 ${n} \u675F\uFF08${pieces} \u7247\uFF09`
+    },
+    now
+  );
+  return { lot, pieces, bundles: n };
+}
+function listingPayload(listing, now = /* @__PURE__ */ new Date()) {
+  const expMs = listing?.expires_at ? Date.parse(listing.expires_at) : NaN;
+  const days_left = Number.isFinite(expMs) ? Math.max(0, Math.ceil((expMs - toMs2(now)) / DAY_MS2)) : 0;
+  return { ...listing, days_left };
+}
+function officialPayload(official, release, now = /* @__PURE__ */ new Date()) {
+  const o = official || {};
+  const rel = release || releaseOfficial({ stock: {}, daily_stock: o.daily_stock, last_release_date: "" }, now);
+  return {
+    price_fen: Math.floor(Number(o.price_fen) || DEFAULT_PRICE_FEN),
+    daily_stock: toNonNegInt(o.daily_stock),
+    stock_left_today: rel.stock_left_today,
+    release_at: RELEASE_AT,
+    released: rel.released_today
+  };
+}
+function stripMeta2(doc) {
+  const r = { ...doc };
+  delete r._id;
+  delete r.version;
+  return r;
+}
+async function loadListings() {
+  return (await listAll(MARKET_COL)).filter(isListingDoc).map(stripMeta2);
+}
+async function loadOfficial() {
+  const doc = await colGet(MARKET_COL, OFFICIAL_ID);
+  return ensureOfficial(doc ? stripMeta2(doc) : {});
+}
+async function loadMarketSnapshot() {
+  const listings = [];
+  const trades = [];
+  let official = null;
+  for (const d of await listAll(MARKET_COL)) {
+    if (!d || typeof d._id !== "string")
+      continue;
+    if (d._id === OFFICIAL_ID)
+      official = stripMeta2(d);
+    else if (isListingDoc(d))
+      listings.push(stripMeta2(d));
+    else if (isTradeDoc(d))
+      trades.push(stripMeta2(d));
+  }
+  return { listings, trades, official: ensureOfficial(official || {}) };
+}
+async function getListingOr404(listingIdValue) {
+  const doc = await colGet(MARKET_COL, listingIdValue);
+  if (!isListingDoc(doc))
+    throw httpError(404, ERR_LISTING_NOT_FOUND);
+  return stripMeta2(doc);
+}
+function assertOpen(l) {
+  if (l.status === "expired")
+    throw httpError(409, ERR_LISTING_EXPIRED);
+  if (l.status !== "open")
+    throw httpError(409, ERR_LISTING_CLOSED);
+}
+async function recordListingExpiryTx(expired, now) {
+  for (const l of expired) {
+    try {
+      await withAssets(
+        l.seller_phone,
+        (user) => {
+          sweep(user, now);
+          recordTx(
+            user,
+            {
+              type: "expire",
+              delta: {},
+              ref: { listing_id: l.id },
+              desc: `\u6302\u5355\u5230\u671F\u4E0B\u67B6 ${l.id}\uFF08\u91CA\u653E\u9501\u5B9A ${l.pieces} \u7247\uFF09`
+            },
+            now
+          );
+        }
+      );
+    } catch {
+    }
+  }
+}
+async function sweepExpiredListings(now = /* @__PURE__ */ new Date()) {
+  const nowMs = toMs2(now);
+  const expired = [];
+  for (const l of await loadListings()) {
+    if (!l || l.status !== "open")
+      continue;
+    const expMs = l.expires_at ? Date.parse(l.expires_at) : NaN;
+    if (!Number.isFinite(expMs) || expMs > nowMs)
+      continue;
+    try {
+      const written = await mutateDoc(MARKET_COL, l.id, (doc) => {
+        if (doc.status === "open")
+          doc.status = "expired";
+        return doc;
+      });
+      const rec = stripMeta2(written);
+      if (rec.status === "expired")
+        expired.push(rec);
+    } catch {
+    }
+  }
+  return expired;
+}
+async function settleOfficial(now = /* @__PURE__ */ new Date()) {
+  const official = await loadOfficial();
+  const release = releaseOfficial(official, now);
+  if (release.released) {
+    const written = await mutateDoc(MARKET_COL, OFFICIAL_ID, () => official);
+    return { official: ensureOfficial(stripMeta2(written)), release };
+  }
+  return { official, release };
+}
+async function withMarket(mutator, now = /* @__PURE__ */ new Date()) {
+  const lock = marketLocks.get(MARKET_LOCK_KEY) || Promise.resolve();
+  const run = lock.then(async () => {
+    const expired = await sweepExpiredListings(now);
+    const { official, release } = await settleOfficial(now);
+    if (expired.length > 0)
+      await recordListingExpiryTx(expired, now);
+    return mutator({ now, expired, release, official });
+  });
+  marketLocks.set(MARKET_LOCK_KEY, run.catch(() => {
+  }));
+  return run;
+}
+async function marketListings(status, now = /* @__PURE__ */ new Date()) {
+  let filter = "open";
+  if (status !== void 0 && status !== null && String(status).trim() !== "") {
+    filter = String(status).trim();
+    if (!LISTING_STATUSES.includes(filter))
+      throw httpError(400, ERR_STATUS_INVALID);
+  }
+  return withMarket(async (ctx) => {
+    const { listings } = await loadMarketSnapshot();
+    const rows = listings.filter((l) => l && l.status === filter).map((l) => listingPayload(l, now));
+    return { listings: rows, official: officialPayload(ctx.official, ctx.release, now) };
+  }, now);
+}
+async function myMarket(phone, status, now = /* @__PURE__ */ new Date()) {
+  let filter = null;
+  if (status !== void 0 && status !== null && String(status).trim() !== "") {
+    filter = String(status).trim();
+    if (!LISTING_STATUSES.includes(filter))
+      throw httpError(400, ERR_STATUS_INVALID);
+  }
+  return withMarket(async (ctx) => {
+    const { listings } = await loadMarketSnapshot();
+    const rows = listings.filter((l) => l && l.seller_phone === phone && (filter ? l.status === filter : l.status !== "expired")).map((l) => listingPayload(l, now));
+    const locked = lockedPieces(phone, listings);
+    const assets = await withAssets(phone, (user) => {
+      sweep(user, now);
+      const total = sumLots(user.bamboos);
+      return {
+        seeds_available: sumLots(user.seeds),
+        bamboo_total_pieces: total,
+        bamboo_locked_pieces: locked,
+        bamboo_available_pieces: Math.max(0, total - locked),
+        bamboo_available_bundles: Math.floor(Math.max(0, total - locked) / PIECES_PER_BUNDLE),
+        lots: (user.bamboos || []).map((l) => ({ ...l }))
+      };
+    });
+    return { listings: rows, assets };
+  }, now);
+}
+async function listBamboo(phone, input = {}, now = /* @__PURE__ */ new Date()) {
+  const { bundles, price_seeds, pieces } = validateListingInput(input);
+  return withMarket(async (ctx) => {
+    const snap = await withAssets(phone, (user) => {
+      sweep(user, now);
+      return { bamboos: (user.bamboos || []).map((l) => ({ ...l })) };
+    });
+    const { listings } = await loadMarketSnapshot();
+    const sellable = sellablePieces(phone, snap, listings);
+    if (pieces > sellable) {
+      const available = availablePieces(phone, snap, listings);
+      throw bambooInsufficient(
+        pieces,
+        available,
+        `\u53EF\u7528\u7AF9\u7247\u4E0D\u8DB3\uFF1A\u672C\u6B21\u6302\u5355\u9700 ${pieces} \u7247\uFF0C\u5F53\u524D\u53EF\u7528 ${available} \u7247\uFF08\u6574\u675F\u6302\u5355\uFF0C\u65E0\u53EF\u62FC\u675F\uFF09`
+      );
+    }
+    const listing = {
+      id: listingId(),
+      seller_phone: phone,
+      bundles,
+      pieces,
+      price_seeds,
+      status: "open",
+      created_at: isoOf(now),
+      expires_at: isoOf(new Date(toMs2(now) + LISTING_TTL_DAYS * DAY_MS2))
+    };
+    await withAssets(phone, (user) => {
+      sweep(user, now);
+      recordTx(
+        user,
+        {
+          type: "market_list",
+          delta: {},
+          ref: { listing_id: listing.id },
+          desc: `\u5E02\u96C6\u6302\u5355 ${bundles} \u675F\uFF08${pieces} \u7247\uFF09\uFF0C\u6807\u4EF7 ${price_seeds} \u9897\u77F3\u69B4\u7C7D\uFF0C${LISTING_TTL_DAYS} \u5929\u672A\u6210\u4EA4\u81EA\u52A8\u4E0B\u67B6`
+        },
+        now
+      );
+    });
+    await mutateDoc(MARKET_COL, listing.id, () => ({ ...listing }));
+    return {
+      ok: true,
+      listing_id: listing.id,
+      bundles,
+      pieces,
+      price_seeds,
+      fee_seeds: feeOf2(price_seeds),
+      created_at: listing.created_at,
+      expires_at: listing.expires_at,
+      days_left: LISTING_TTL_DAYS
+    };
+  }, now);
+}
+function validateListingInput(input = {}) {
+  const bundles = Number(input.bundles);
+  if (!Number.isInteger(bundles) || bundles < 1)
+    throw httpError(400, ERR_BUNDLES_INVALID);
+  const price_seeds = Number(input.price_seeds);
+  if (!Number.isInteger(price_seeds) || price_seeds < 1)
+    throw httpError(400, ERR_PRICE_INVALID);
+  return { bundles, price_seeds, pieces: bundles * PIECES_PER_BUNDLE };
+}
+async function cancelListing(phone, listingIdValue, now = /* @__PURE__ */ new Date()) {
+  if (!listingIdValue)
+    throw httpError(400, ERR_LISTING_ID_MISSING);
+  return withMarket(async (ctx) => {
+    const existing = await getListingOr404(listingIdValue);
+    if (existing.seller_phone !== phone)
+      throw httpError(403, ERR_NOT_OWNER);
+    const written = await mutateDoc(MARKET_COL, listingIdValue, (doc) => {
+      if (doc.seller_phone !== phone)
+        throw httpError(403, ERR_NOT_OWNER);
+      assertOpen(doc);
+      doc.status = "cancelled";
+      doc.cancelled_at = isoOf(now);
+      return doc;
+    });
+    const rec = stripMeta2(written);
+    await withAssets(phone, (user) => {
+      sweep(user, now);
+      recordTx(user, { type: "market_cancel", delta: {}, ref: { listing_id: rec.id }, desc: `\u64A4\u9500\u5E02\u96C6\u6302\u5355 ${rec.id}\uFF08\u91CA\u653E\u9501\u5B9A ${rec.pieces} \u7247\uFF09` }, now);
+    });
+    return { ok: true, listing_id: rec.id, status: "cancelled" };
+  }, now);
+}
+async function buyListing(phone, listingIdValue, now = /* @__PURE__ */ new Date()) {
+  if (!listingIdValue)
+    throw httpError(400, ERR_LISTING_ID_MISSING);
+  return withMarket(async (ctx) => {
+    const l = await getListingOr404(listingIdValue);
+    if (l.seller_phone === phone)
+      throw httpError(400, ERR_SELF_TRADE);
+    assertOpen(l);
+    const trade_id = tradeId();
+    await mutateDoc(MARKET_COL, listingIdValue, (doc) => {
+      if (doc.seller_phone === phone)
+        throw httpError(400, ERR_SELF_TRADE);
+      assertOpen(doc);
+      doc.status = "sold";
+      doc.sold_at = isoOf(now);
+      doc.buyer_phone = phone;
+      return doc;
+    });
+    const releaseClaim = async () => {
+      try {
+        await mutateDoc(MARKET_COL, listingIdValue, (doc) => {
+          if (doc.status === "sold" && doc.buyer_phone === phone) {
+            doc.status = "open";
+            delete doc.sold_at;
+            delete doc.buyer_phone;
+          }
+          return doc;
+        });
+      } catch {
+      }
+    };
+    const sellerSnapshot = await withAssets(l.seller_phone, (user) => {
+      sweep(user, now);
+      return JSON.parse(JSON.stringify(user));
+    });
+    const buyerSnapshot = await withAssets(phone, (user) => {
+      sweep(user, now);
+      return JSON.parse(JSON.stringify(user));
+    });
+    let plan;
+    try {
+      const { listings } = await loadMarketSnapshot();
+      plan = planTrade({
+        listing: { ...l, seller_phone: l.seller_phone },
+        sellerUser: sellerSnapshot,
+        buyerUser: buyerSnapshot,
+        listings: listings.filter((x) => x.id !== l.id),
+        // 本挂单自身占量不参与可用量
+        now
+      });
+    } catch (e) {
+      await releaseClaim();
+      throw e;
+    }
+    try {
+      await withAssets(phone, (user) => {
+        sweep(user, now);
+        applyBuyerSide(user, plan, trade_id, now, l);
+      });
+    } catch (e) {
+      await releaseClaim();
+      throw e;
+    }
+    try {
+      await withAssets(l.seller_phone, (user) => {
+        sweep(user, now);
+        applySellerSide(user, plan, trade_id, now, l);
+      });
+    } catch (e) {
+      await withAssets(phone, (user) => Object.assign(user, buyerSnapshot)).catch(() => {
+      });
+      await releaseClaim();
+      throw e;
+    }
+    const trade = {
+      id: trade_id,
+      listing_id: l.id,
+      buyer_phone: phone,
+      seller_phone: l.seller_phone,
+      pieces: plan.pieces,
+      price_seeds: plan.price_seeds,
+      fee_seeds: plan.fee_seeds,
+      ts: isoOf(now)
+    };
+    await mutateDoc(MARKET_COL, trade_id, () => ({ ...trade }));
+    return {
+      ok: true,
+      trade_id,
+      listing_id: l.id,
+      pieces: plan.pieces,
+      bundles: plan.pieces / PIECES_PER_BUNDLE,
+      price_seeds: plan.price_seeds,
+      fee_seeds: plan.fee_seeds,
+      fee_waived: plan.waived,
+      seller_got: plan.seller_got,
+      destroyed: plan.destroyed,
+      buyer_receive: plan.receive,
+      status: "sold"
+    };
+  }, now);
+}
+async function officialPurchase(phone, input = {}, now = /* @__PURE__ */ new Date()) {
+  const raw = input.bundles === void 0 || input.bundles === null || String(input.bundles).trim() === "" ? 1 : Number(input.bundles);
+  if (!Number.isInteger(raw) || raw < 1)
+    throw httpError(400, ERR_BUNDLES_INVALID);
+  const bundles = raw;
+  return withMarket(async (ctx) => {
+    const o = ctx.official;
+    const rel = ctx.release;
+    if (!rel.is_open)
+      throw httpError(409, ERR_NOT_OPEN_YET);
+    if (rel.stock_left_today < bundles)
+      throw httpError(409, ERR_SOLD_OUT);
+    const amount_cents = o.price_fen * bundles;
+    const balance = await getUserBalance(phone);
+    if (balance < amount_cents) {
+      throw httpError(
+        409,
+        `\u4EBA\u6C11\u5E01\u4F59\u989D\u4E0D\u8DB3\uFF1A\u5B98\u65B9\u7AF9\u7B80\u9700 \xA5${(amount_cents / 100).toFixed(2)}\uFF0C\u5F53\u524D\u4F59\u989D \xA5${(balance / 100).toFixed(2)}\uFF0C\u8BF7\u5148\u5145\u503C`
+      );
+    }
+    const snapshot = await getAssets(phone);
+    let granted = false;
+    let lot = null;
+    try {
+      const r = await withAssets(phone, (user) => {
+        sweep(user, now);
+        return applyOfficialPurchase(user, { bundles, now });
+      });
+      granted = true;
+      lot = r.lot;
+      const balance_cents = await deductUserBalance(phone, amount_cents, {
+        type: WALLET_TX_TYPE,
+        desc: `\u5B98\u65B9\u7AF9\u7B80 ${bundles} \u675F\uFF08${r.pieces} \u7247\uFF09\xA5${(amount_cents / 100).toFixed(2)}`
+      });
+      const updated = await mutateDoc(MARKET_COL, OFFICIAL_ID, (doc) => {
+        const rec = ensureOfficial(stripMeta2(doc));
+        const left = toNonNegInt(rec.stock ? rec.stock[rel.today] : 0);
+        if (left < bundles)
+          throw httpError(409, ERR_SOLD_OUT);
+        rec.stock[rel.today] = left - bundles;
+        return rec;
+      });
+      const o2 = ensureOfficial(stripMeta2(updated));
+      return {
+        ok: true,
+        bundles,
+        pieces: r.pieces,
+        price_fen: o.price_fen,
+        amount_cents,
+        balance_cents,
+        stock_left_today: toNonNegInt(o2.stock[rel.today]),
+        lot_id: lot.id,
+        expires_at: lot.expires_at,
+        released: rel.released
+      };
+    } catch (e) {
+      if (granted) {
+        await withAssets(phone, (user) => Object.assign(user, JSON.parse(JSON.stringify(snapshot)))).catch(() => {
+        });
+      }
+      throw e;
+    }
+  }, now);
+}
+async function setOfficialStock(dailyStock, priceFen, now = /* @__PURE__ */ new Date()) {
+  const stock = Number(dailyStock);
+  if (!Number.isInteger(stock) || stock < 0)
+    throw httpError(400, ERR_DAILY_STOCK_INVALID);
+  const hasPrice = !(priceFen === void 0 || priceFen === null || String(priceFen).trim() === "");
+  const price = hasPrice ? Number(priceFen) : null;
+  if (hasPrice && (!Number.isInteger(price) || price < 1))
+    throw httpError(400, ERR_PRICE_FEN_INVALID);
+  return withMarket(async () => {
+    const written = await mutateDoc(MARKET_COL, OFFICIAL_ID, (doc) => {
+      const o2 = ensureOfficial(stripMeta2(doc));
+      o2.daily_stock = stock;
+      if (hasPrice)
+        o2.price_fen = price;
+      return o2;
+    });
+    const o = ensureOfficial(stripMeta2(written));
+    return { ok: true, daily_stock: o.daily_stock, price_fen: o.price_fen };
+  }, now);
+}
+async function hasOpenListing(phone, now = /* @__PURE__ */ new Date()) {
+  return withMarket(async () => {
+    const { listings } = await loadMarketSnapshot();
+    return listings.some((l) => l && l.status === "open" && l.seller_phone === phone);
+  }, now);
+}
+async function openListingGuard(phone, now = /* @__PURE__ */ new Date()) {
+  if (await hasOpenListing(phone, now))
+    throw httpError(409, ERR_OPEN_LISTING_BLOCK_LOGOUT);
+  return { ok: true };
+}
+var MARKET_COL, OFFICIAL_ID, LISTING_PREFIX, TRADE_PREFIX, LISTING_TTL_DAYS, PIECES_PER_BUNDLE, FEE_RATE_PERCENT, FEE_RATE_DENOMINATOR, LISTING_STATUSES, DEFAULT_PRICE_FEN, DEFAULT_DAILY_STOCK, RELEASE_HOUR, RELEASE_AT, OFFICIAL_BAMBOO_TTL_DAYS, WALLET_TX_TYPE, DAY_MS2, toMs2, isoOf, ERR_LISTING_ID_MISSING, ERR_BUNDLES_INVALID, ERR_PRICE_INVALID, ERR_PRICE_FEN_INVALID, ERR_DAILY_STOCK_INVALID, ERR_STATUS_INVALID, ERR_LISTING_NOT_FOUND, ERR_LISTING_CLOSED, ERR_LISTING_EXPIRED, ERR_NOT_OWNER, ERR_SELF_TRADE, ERR_BAMBOO_EXPIRED, ERR_NOT_OPEN_YET, ERR_SOLD_OUT, ERR_OPEN_LISTING_BLOCK_LOGOUT, rand6, marketLocks, MARKET_LOCK_KEY, isListingDoc, isTradeDoc;
+var init_economy_market = __esm({
+  "cloudfunctions/compat-api/lib/economy-market.js"() {
+    init_store();
+    init_economy_ledger();
+    init_wallet();
+    MARKET_COL = "jiazu_market";
+    OFFICIAL_ID = "official";
+    LISTING_PREFIX = "lst_";
+    TRADE_PREFIX = "trd_";
+    LISTING_TTL_DAYS = 7;
+    PIECES_PER_BUNDLE = 100;
+    FEE_RATE_PERCENT = 1;
+    FEE_RATE_DENOMINATOR = 100;
+    LISTING_STATUSES = ["open", "sold", "cancelled", "expired"];
+    DEFAULT_PRICE_FEN = 990;
+    DEFAULT_DAILY_STOCK = 50;
+    RELEASE_HOUR = 21;
+    RELEASE_AT = "21:00";
+    OFFICIAL_BAMBOO_TTL_DAYS = BAMBOO_TTL_DAYS;
+    WALLET_TX_TYPE = "official_bamboo";
+    DAY_MS2 = 864e5;
+    toMs2 = (d) => d instanceof Date ? d.getTime() : new Date(d).getTime();
+    isoOf = (d) => new Date(toMs2(d)).toISOString();
+    ERR_LISTING_ID_MISSING = "\u7F3A\u5C11 listing_id";
+    ERR_BUNDLES_INVALID = "\u675F\u6570\u5FC5\u987B\u4E3A\u4E0D\u5C0F\u4E8E 1 \u7684\u6574\u6570\uFF081 \u675F = 100 \u7247\uFF09";
+    ERR_PRICE_INVALID = "\u6807\u4EF7\u5FC5\u987B\u4E3A\u4E0D\u5C0F\u4E8E 1 \u7684\u6574\u6570\u77F3\u69B4\u7C7D";
+    ERR_PRICE_FEN_INVALID = "\u4EF7\u683C\u5FC5\u987B\u4E3A\u4E0D\u5C0F\u4E8E 1 \u5206\u7684\u6574\u6570";
+    ERR_DAILY_STOCK_INVALID = "\u6BCF\u65E5\u5E93\u5B58\u5FC5\u987B\u4E3A\u4E0D\u5C0F\u4E8E 0 \u7684\u6574\u6570";
+    ERR_STATUS_INVALID = "\u4E0D\u652F\u6301\u7684\u6302\u5355\u72B6\u6001";
+    ERR_LISTING_NOT_FOUND = "\u6302\u5355\u4E0D\u5B58\u5728";
+    ERR_LISTING_CLOSED = "\u6302\u5355\u5DF2\u6210\u4EA4\u6216\u5DF2\u64A4\u5355";
+    ERR_LISTING_EXPIRED = "\u6302\u5355\u5DF2\u8FC7\u671F";
+    ERR_NOT_OWNER = "\u53EA\u80FD\u64A4\u9500\u672C\u4EBA\u7684\u6302\u5355";
+    ERR_SELF_TRADE = "\u4E0D\u53EF\u8D2D\u4E70\u81EA\u5DF1\u7684\u6302\u5355";
+    ERR_BAMBOO_EXPIRED = "\u90E8\u5206\u7AF9\u7247\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u64A4\u5355\u540E\u91CD\u6302";
+    ERR_NOT_OPEN_YET = "\u672A\u5230\u53D1\u552E\u65F6\u95F4";
+    ERR_SOLD_OUT = "\u4ECA\u65E5\u5DF2\u552E\u7F44";
+    ERR_OPEN_LISTING_BLOCK_LOGOUT = "\u8BF7\u5148\u64A4\u9500\u672A\u6210\u4EA4\u6302\u5355";
+    rand6 = () => Math.random().toString(36).slice(2, 8).padEnd(6, "0").slice(0, 6);
+    marketLocks = /* @__PURE__ */ new Map();
+    MARKET_LOCK_KEY = "market";
+    isListingDoc = (d) => !!d && typeof d._id === "string" && d._id.startsWith(LISTING_PREFIX);
+    isTradeDoc = (d) => !!d && typeof d._id === "string" && d._id.startsWith(TRADE_PREFIX);
+  }
+});
+
+// cloudfunctions/compat-api/lib/economy-ops.js
+function httpError2(status, message) {
+  const e = new Error(message);
+  e.status = status;
+  return e;
+}
+function m1Text(kind, days) {
+  const label = ASSET_TEXT_LABEL[kind] || ASSET_TEXT_LABEL.seed;
+  const d = Number(days) === WARN_DAYS_7 ? WARN_DAYS_7 : WARN_DAYS_30;
+  return M1_TEMPLATE.replace("\u3010\u77F3\u69B4\u7C7D/\u7AF9\u7247\u3011", `\u3010${label}\u3011`).replace("\u5373\u5C06\u4E8EX\u65E5\u540E", `\u5373\u5C06\u4E8E${d}\u65E5\u540E`);
+}
+function daysLeftUntil(expires_at, now = /* @__PURE__ */ new Date()) {
+  if (!expires_at)
+    return NaN;
+  const t = Date.parse(expires_at);
+  if (!Number.isFinite(t))
+    return NaN;
+  return Math.ceil((t - toMs3(now)) / DAY_MS3);
+}
+function messageId() {
+  return `msg_${Date.now()}_${rand62()}`;
+}
+function opsLogId() {
+  return `op_${Date.now()}_${rand62()}`;
+}
+function expiringCandidates(phone, user, now = /* @__PURE__ */ new Date()) {
+  const out = [];
+  for (const [kind, bucket] of [
+    ["seed", "seeds"],
+    ["bamboo", "bamboos"]
+  ]) {
+    for (const lot of user?.[bucket] || []) {
+      if (!lot || !lot.id)
+        continue;
+      if (toNonNegInt(lot.qty) <= 0)
+        continue;
+      const d = daysLeftUntil(lot.expires_at, now);
+      if (!Number.isFinite(d) || d <= 0)
+        continue;
+      if (d <= WARN_DAYS_30) {
+        out.push({ key: warnKey.expiring30(phone, lot.id), type: "expiring", title: MESSAGE_TITLES.m1, text: m1Text(kind, WARN_DAYS_30) });
+      }
+      if (d <= WARN_DAYS_7) {
+        out.push({ key: warnKey.expiring7(phone, lot.id), type: "expiring", title: MESSAGE_TITLES.m1, text: m1Text(kind, WARN_DAYS_7) });
+      }
+    }
+  }
+  return out;
+}
+function spiritCandidates(phone, treeId, entry, now = /* @__PURE__ */ new Date()) {
+  const out = [];
+  if (!phone || !treeId || !entry || !entry.jade)
+    return out;
+  if (entry.status === "active") {
+    const d = daysLeftUntil(entry.spirit_expires_at, now);
+    if (Number.isFinite(d) && d > 0 && d <= WARN_DAYS_30) {
+      out.push({
+        key: warnKey.spirit30(phone, treeId, entry.spirit_expires_at),
+        type: "spirit",
+        title: MESSAGE_TITLES.m2,
+        text: M2_TEXT
+      });
+    }
+  }
+  if (entry.status === "buffer") {
+    out.push({
+      key: warnKey.spiritBuffer(phone, treeId, entry.spirit_expires_at),
+      type: "spirit",
+      title: MESSAGE_TITLES.m3,
+      text: M3_TEXT
+    });
+    const d = daysLeftUntil(entry.buffer_until, now);
+    if (Number.isFinite(d) && d > 0 && d <= WARN_DAYS_7) {
+      out.push({
+        key: warnKey.spirit7(phone, treeId, entry.buffer_until),
+        type: "spirit",
+        title: MESSAGE_TITLES.m4,
+        text: M4_TEXT
+      });
+    }
+  }
+  return out;
+}
+function trimMessages(items, limit = MESSAGE_KEEP_LIMIT) {
+  const list2 = (items || []).slice();
+  while (list2.length > limit) {
+    const idx = list2.findIndex((m) => m && m.read === true);
+    if (idx < 0)
+      break;
+    list2.splice(idx, 1);
+  }
+  return list2;
+}
+async function withMessages(phone, mutator) {
+  const id = String(phone == null ? "" : phone).trim();
+  const lock = messageLocks.get(id) || Promise.resolve();
+  const run = lock.then(async () => {
+    let result;
+    await mutateDoc(MESSAGES_COL, id, async (doc) => {
+      const rec = { ...doc };
+      delete rec._id;
+      delete rec.version;
+      rec.items = Array.isArray(rec.items) ? rec.items : [];
+      rec.warned = rec.warned && typeof rec.warned === "object" ? rec.warned : {};
+      const ctx = { dirty: false };
+      result = await mutator(rec, ctx);
+      return rec;
+    });
+    return result;
+  });
+  messageLocks.set(id, run.catch(() => {
+  }));
+  return run;
+}
+async function ensureWarnings(viewer, now = /* @__PURE__ */ new Date()) {
+  const phone = typeof viewer === "string" ? viewer : viewer?.phone || "";
+  const role = typeof viewer === "string" ? "" : viewer?.role || "";
+  if (!phone)
+    return { created: [], keys: [] };
+  const candidates = await withAssets(phone, (user) => {
+    sweep(user, now);
+    return expiringCandidates(phone, user, now);
+  });
+  await settleAllTrees(now);
+  const spiritDocs = await listAll(SPIRIT_COL);
+  const entries = new Map(spiritDocs.map((d) => [String(d._id), d]));
+  for (const treeId of await recipientTreeIds(phone, role, entries)) {
+    candidates.push(...spiritCandidates(phone, treeId, entries.get(treeId), now));
+  }
+  return putWarnings(phone, candidates, now);
+}
+async function recipientTreeIds(phone, role, entries) {
+  const treeIds = [...entries.keys()];
+  if (treeIds.length === 0)
+    return [];
+  if (role === "chief_editor")
+    return treeIds;
+  const anchor = await getAnchor(phone);
+  const tid = anchor?.tree_id;
+  return tid && treeIds.includes(tid) ? [tid] : [];
+}
+async function putWarnings(phone, candidates, now) {
+  const fresh = (candidates || []).filter(Boolean);
+  if (fresh.length === 0)
+    return { created: [], keys: [] };
+  return withMessages(phone, (rec) => {
+    const created = [];
+    const keys = [];
+    for (const c of fresh) {
+      if (rec.warned[c.key])
+        continue;
+      const item = {
+        id: messageId(),
+        type: c.type,
+        title: c.title,
+        text: c.text,
+        created_at: isoOf2(now),
+        read: false
+      };
+      rec.items.push(item);
+      rec.warned[c.key] = true;
+      created.push(item);
+      keys.push(c.key);
+    }
+    if (created.length > 0)
+      rec.items = trimMessages(rec.items);
+    return { created, keys };
+  });
+}
+async function messagesOf(viewer, now = /* @__PURE__ */ new Date(), opts = {}) {
+  const phone = typeof viewer === "string" ? viewer : viewer?.phone || "";
+  if (!phone)
+    throw httpError2(401, ERR_NOT_LOGGED_IN);
+  await ensureWarnings(viewer, now);
+  const doc = await colGet(MESSAGES_COL, phone);
+  const mine = (Array.isArray(doc?.items) ? doc.items : []).slice();
+  const unread = mine.filter((m) => !m.read).length;
+  const list2 = opts.unreadOnly ? mine.filter((m) => !m.read) : mine;
+  const ts = (m) => {
+    const t = Date.parse(m?.created_at || "");
+    return Number.isFinite(t) ? t : 0;
+  };
+  const items = list2.slice().map((m, index) => ({ m, index, ts: ts(m) })).sort((x, y) => y.ts - x.ts || y.index - x.index).map((entry) => entry.m);
+  return { items, unread };
+}
+async function readMessages(phone, ids, now = /* @__PURE__ */ new Date()) {
+  if (!phone)
+    throw httpError2(401, ERR_NOT_LOGGED_IN);
+  const want = Array.isArray(ids) && ids.length > 0 ? new Set(ids.map((x) => String(x))) : null;
+  return withMessages(phone, (rec) => {
+    const mine = rec.items;
+    let marked = 0;
+    for (const m of mine) {
+      if (!m || want && !want.has(String(m.id)))
+        continue;
+      if (!m.read) {
+        m.read = true;
+        marked += 1;
+      }
+    }
+    return { ok: true, unread: mine.filter((m) => !m.read).length, marked };
+  });
+}
+function normalizeDelta(raw) {
+  const src = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : null;
+  if (!src)
+    throw httpError2(400, ERR_DELTA_ZERO);
+  const delta = {};
+  let provided = 0;
+  for (const k of DELTA_KEYS) {
+    if (src[k] === void 0 || src[k] === null)
+      continue;
+    provided += 1;
+    const v = src[k];
+    if (typeof v !== "number" || !Number.isInteger(v))
+      throw httpError2(400, ERR_DELTA_INT);
+    delta[k] = v;
+  }
+  if (provided === 0)
+    throw httpError2(400, ERR_DELTA_ZERO);
+  if (DELTA_KEYS.every((k) => !delta[k]))
+    throw httpError2(400, ERR_DELTA_ZERO);
+  return delta;
+}
+function fragmentsInsufficient(need, current) {
+  const e = assetInsufficient(need, current, "fragment");
+  e.message = `\u8D44\u4EA7\u4E0D\u8DB3\uFF0C\u9700 ${need} \u7247\u788E\u7247\uFF0C\u5F53\u524D ${current} \u7247`;
+  e.unit = "fragments";
+  return e;
+}
+function scrollFragmentsInsufficient(need, current) {
+  const e = assetInsufficient(need, current, "scroll_fragment");
+  e.message = `\u8D44\u4EA7\u4E0D\u8DB3\uFF0C\u9700 ${need} \u7247\u5170\u5E16\u6B8B\u9875\uFF0C\u5F53\u524D ${current} \u7247`;
+  e.unit = "scroll_fragments";
+  return e;
+}
+function scrollsInsufficient(needPieces, currentPieces) {
+  const currentItems = Math.floor(currentPieces / SCROLL_PIECES_PER_SCROLL);
+  const e = assetInsufficient(needPieces, currentPieces, "scroll");
+  e.message = needPieces % SCROLL_PIECES_PER_SCROLL === 0 ? `\u8D44\u4EA7\u4E0D\u8DB3\uFF0C\u9700 ${needPieces / SCROLL_PIECES_PER_SCROLL} \u5F20\u5170\u5E16\uFF0C\u5F53\u524D ${currentItems} \u5F20\uFF08${currentPieces} \u7247\uFF09` : `\u8D44\u4EA7\u4E0D\u8DB3\uFF0C\u9700 ${needPieces} \u7247\u5170\u5E16\uFF0C\u5F53\u524D ${currentItems} \u5F20\uFF08${currentPieces} \u7247\uFF09`;
+  e.unit = "scrolls";
+  return e;
+}
+async function grantAssets(operator, input = {}, now = /* @__PURE__ */ new Date()) {
+  const targetPhone = trimmed(input?.target_phone);
+  if (!PHONE_RE.test(targetPhone))
+    throw httpError2(400, ERR_PHONE_FORMAT);
+  const target = await colGet(USERS_COL, targetPhone);
+  if (!target)
+    throw httpError2(404, `${ERR_USER_NOT_FOUND}: ${targetPhone}`);
+  const rawReason = trimmed(input?.reason);
+  if (!rawReason)
+    throw httpError2(400, ERR_REASON_REQUIRED);
+  const evidence = trimmed(input?.evidence);
+  const reason = evidence ? `${rawReason}\uFF5C\u4F9D\u636E\uFF1A${evidence}` : rawReason;
+  const delta = normalizeDelta(input?.delta);
+  const log = { id: opsLogId(), ts: isoOf2(now), operator, target_phone: targetPhone, delta: { ...delta }, reason };
+  const details = await withAssets(targetPhone, (user) => {
+    sweep(user, now);
+    if (delta.fragments < 0) {
+      const need = -delta.fragments;
+      const current = toNonNegInt(user.fragments);
+      if (current < need)
+        throw fragmentsInsufficient(need, current);
+    }
+    let jadeTaken = null;
+    if (delta.jades < 0) {
+      const need = -delta.jades;
+      const chargeable = (user.jades || []).filter((j) => j && !j.mounted_tree_id);
+      const current = chargeable.length;
+      if (current < need)
+        throw assetInsufficient(need, current, "jade");
+      jadeTaken = chargeable.slice().sort((a, b) => (a.expires_at ? Date.parse(a.expires_at) : Number.POSITIVE_INFINITY) - (b.expires_at ? Date.parse(b.expires_at) : Number.POSITIVE_INFINITY)).slice(0, need).map((j) => j.id);
+    }
+    let seedsTaken = null;
+    if (delta.seeds < 0)
+      seedsTaken = chargeLots(user.seeds, -delta.seeds, "seed").taken;
+    let bamboosTaken = null;
+    if (delta.bamboos < 0)
+      bamboosTaken = chargeLots(user.bamboos, -delta.bamboos, "bamboo").taken;
+    let scrollsTaken = null;
+    if (delta.scrolls < 0) {
+      const needPieces = -delta.scrolls;
+      const currentPieces = sumLots(user.scrolls);
+      if (currentPieces < needPieces)
+        throw scrollsInsufficient(needPieces, currentPieces);
+      scrollsTaken = chargeLots(user.scrolls, needPieces, "scroll").taken;
+    }
+    if (delta.scroll_fragments < 0) {
+      const need = -delta.scroll_fragments;
+      const current = toNonNegInt(user.scroll_fragments);
+      if (current < need)
+        throw scrollFragmentsInsufficient(need, current);
+    }
+    if (delta.seeds > 0)
+      addLot(user, "seed", delta.seeds, { ttl_days: SEED_TTL_DAYS, source: "admin", now });
+    if (delta.bamboos > 0)
+      addLot(user, "bamboo", delta.bamboos, { ttl_days: BAMBOO_TTL_DAYS, source: "admin", now });
+    if (delta.jades > 0) {
+      for (let i = 0; i < delta.jades; i += 1)
+        addLot(user, "jade", 1, { expires_at: null, source: "admin", now });
+    }
+    if (delta.scrolls > 0) {
+      addLot(user, "scroll", delta.scrolls, { expires_at: null, source: "admin", now });
+    }
+    let synthesized = 0;
+    if (delta.fragments > 0)
+      synthesized = addFragments(user, delta.fragments, now).synthesized;
+    if (delta.scroll_fragments > 0)
+      addScrollFragments(user, delta.scroll_fragments, now);
+    if (delta.fragments < 0)
+      user.fragments = Math.max(0, toNonNegInt(user.fragments) + delta.fragments);
+    if (delta.scroll_fragments < 0) {
+      user.scroll_fragments = Math.max(0, toNonNegInt(user.scroll_fragments) + delta.scroll_fragments);
+    }
+    if (jadeTaken) {
+      const drop = new Set(jadeTaken);
+      user.jades = (user.jades || []).filter((j) => !drop.has(j.id));
+    }
+    if (seedsTaken || bamboosTaken || scrollsTaken) {
+      user.seeds = (user.seeds || []).filter((l) => toNonNegInt(l.qty) > 0);
+      user.bamboos = (user.bamboos || []).filter((l) => toNonNegInt(l.qty) > 0);
+      user.scrolls = (user.scrolls || []).filter((l) => toNonNegInt(l.qty) > 0);
+    }
+    if (Math.floor(Number(user.fragments) || 0) >= FRAGMENT_SYNTH_THRESHOLD) {
+      synthesized += addFragments(user, 0, now).synthesized;
+    }
+    const tx = recordTx(
+      user,
+      {
+        type: TX_ADMIN_GRANT,
+        delta,
+        ref: {},
+        desc: `\u8FD0\u8425\u53D1\u653E\uFF1A${reason}\uFF08log ${log.id}\uFF09`,
+        operator
+      },
+      now
+    );
+    return {
+      summary: {
+        phone: targetPhone,
+        fragments: toNonNegInt(user.fragments),
+        seeds_total: sumLots(user.seeds),
+        bamboos_total_pieces: sumLots(user.bamboos),
+        jades: (user.jades || []).length,
+        // §A3：兰帖域追加出参（字段名逐字取自账本 summarize 口径；既有字段一字未改）
+        scroll_fragments: toNonNegInt(user.scroll_fragments),
+        scrolls_total_pieces: sumLots(user.scrolls),
+        synthesized,
+        signin_date: user.signin_date || "",
+        log_id: log.id,
+        tx_id: tx.id
+      },
+      seed_lots: (user.seeds || []).length,
+      bamboo_lots: (user.bamboos || []).length,
+      jade_ids_granted: delta.jades > 0 ? (user.jades || []).slice(-delta.jades).map((j) => j.id) : []
+    };
+  });
+  await appendOpsLog(log);
+  return { ok: true, summary: details.summary };
+}
+async function appendOpsLog(log) {
+  const tsMs = Date.parse(log?.ts ?? "");
+  const fallbackId = `${Number.isFinite(tsMs) ? tsMs : Date.now()}-${rand62()}`;
+  const id = String(log?.id || fallbackId);
+  const entry = {
+    id,
+    ts: log.ts,
+    operator: log.operator,
+    target_phone: log.target_phone,
+    delta: { ...log.delta || {} },
+    reason: log.reason
+  };
+  if (log.ref && typeof log.ref === "object")
+    entry.ref = { ...log.ref };
+  await mutateDoc(OPS_LOGS_COL, id, () => entry);
+  return entry;
+}
+async function opsLogs(filters = {}) {
+  const operator = trimmed(filters.operator);
+  const phone = trimmed(filters.phone);
+  const raw = Number(filters.limit);
+  const limit = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), LOGS_LIMIT_MAX) : LOGS_LIMIT_DEFAULT;
+  const docs = await listAll(OPS_LOGS_COL);
+  let logs = docs.map((d) => {
+    const rec = { ...d };
+    delete rec._id;
+    delete rec.version;
+    return rec;
+  });
+  if (operator)
+    logs = logs.filter((l) => l?.operator === operator);
+  if (phone)
+    logs = logs.filter((l) => l?.target_phone === phone);
+  const tsOf = (entry) => {
+    const parsed = Date.parse(entry?.ts || 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  logs = logs.map((log, index) => ({ log, index, ts: tsOf(log) })).sort((x, y) => y.ts - x.ts || y.index - x.index).map((entry) => entry.log);
+  return { logs: logs.slice(0, limit) };
+}
+async function adminUserAssets(phone, now = /* @__PURE__ */ new Date()) {
+  const target = trimmed(phone);
+  if (!target)
+    throw httpError2(400, ERR_MISSING_PHONE);
+  const user = await colGet(USERS_COL, target);
+  if (!user)
+    throw httpError2(404, `${ERR_USER_NOT_FOUND}: ${target}`);
+  return withAssets(target, (assets) => {
+    sweep(assets, now);
+    const s = summarize(assets, now, { include_mounted: true });
+    return {
+      phone: target,
+      fragments: s.fragments,
+      seeds_total: s.seeds_total,
+      bamboos_total_pieces: s.bamboos_total_pieces,
+      jades: s.jades_total,
+      seed_lots: s.seed_lots,
+      bamboo_lots: s.bamboo_lots,
+      jade_list: s.jades,
+      // §A4：兰帖域追加 5 个出参（字段名**逐字**取自账本 `summarize()`，**不得另起名**）
+      scroll_fragments: s.scroll_fragments,
+      scroll_fragment_cap: s.scroll_fragment_cap,
+      scrolls_total_pieces: s.scrolls_total_pieces,
+      scrolls_item_count: s.scrolls_item_count,
+      scroll_lots: s.scroll_lots,
+      signin_date: s.signin_date
+    };
+  });
+}
+async function deleteAccount(phone, now = /* @__PURE__ */ new Date()) {
+  if (!phone)
+    throw httpError2(401, ERR_NOT_LOGGED_IN);
+  await openListingGuard(phone, now);
+  return withAssets(phone, (user) => {
+    sweep(user, now);
+    const cleared = {
+      fragments: toNonNegInt(user.fragments),
+      seeds: sumLots(user.seeds),
+      bamboos: sumLots(user.bamboos),
+      jades: (user.jades || []).length,
+      // 兰帖域（六类）：`scrolls` 以**片**计（`sumLots` 直取，无 ×100 换算）；残页同口径取非负整数
+      scrolls: sumLots(user.scrolls),
+      scroll_fragments: toNonNegInt(user.scroll_fragments)
+    };
+    const tx = recordTx(
+      user,
+      {
+        type: TX_ACCOUNT_CLEAR,
+        delta: {
+          fragments: -cleared.fragments,
+          seeds: -cleared.seeds,
+          bamboos: -cleared.bamboos,
+          jades: -cleared.jades,
+          scrolls: -cleared.scrolls,
+          scroll_fragments: -cleared.scroll_fragments
+        },
+        ref: {},
+        desc: "\u8D26\u53F7\u6CE8\u9500\uFF1A\u6E05\u7A7A\u4E2A\u4EBA\u8D44\u4EA7\uFF08\u4E0D\u53EF\u6062\u590D\uFF09"
+      },
+      now
+    );
+    user.fragments = 0;
+    user.seeds = [];
+    user.bamboos = [];
+    user.jades = [];
+    user.scrolls = [];
+    user.scroll_fragments = 0;
+    user.signin_date = "";
+    return { ok: true, phone, cleared, tx_id: tx.id, txs_kept: (user.txs || []).length };
+  });
+}
+var MESSAGES_COL, OPS_LOGS_COL, USERS_COL, MESSAGE_KEEP_LIMIT, WARN_DAYS_30, WARN_DAYS_7, LOGS_LIMIT_DEFAULT, LOGS_LIMIT_MAX, DAY_MS3, TX_ADMIN_GRANT, TX_ACCOUNT_CLEAR, ERR_PHONE_FORMAT, ERR_USER_NOT_FOUND, ERR_REASON_REQUIRED, ERR_DELTA_ZERO, ERR_DELTA_INT, ERR_MISSING_PHONE, ERR_NOT_LOGGED_IN, ERR_CHIEF_ONLY, PHONE_RE, M1_TEMPLATE, M2_TEXT, M3_TEXT, M4_TEXT, MESSAGE_TITLES, ASSET_TEXT_LABEL, toMs3, isoOf2, rand62, trimmed, warnKey, messageLocks, DELTA_KEYS;
+var init_economy_ops = __esm({
+  "cloudfunctions/compat-api/lib/economy-ops.js"() {
+    init_store();
+    init_economy_ledger();
+    init_economy_spirit();
+    init_economy_market();
+    init_scope();
+    MESSAGES_COL = "jiazu_messages";
+    OPS_LOGS_COL = "jiazu_ops_logs";
+    USERS_COL = "jiazu_users";
+    MESSAGE_KEEP_LIMIT = 200;
+    WARN_DAYS_30 = 30;
+    WARN_DAYS_7 = 7;
+    LOGS_LIMIT_DEFAULT = 50;
+    LOGS_LIMIT_MAX = 200;
+    DAY_MS3 = 864e5;
+    TX_ADMIN_GRANT = "admin_grant";
+    TX_ACCOUNT_CLEAR = "account_clear";
+    ERR_PHONE_FORMAT = "\u624B\u673A\u53F7\u683C\u5F0F\u4E0D\u6B63\u786E";
+    ERR_USER_NOT_FOUND = "\u7528\u6237\u4E0D\u5B58\u5728";
+    ERR_REASON_REQUIRED = "\u8BF7\u586B\u5199\u64CD\u4F5C\u539F\u56E0";
+    ERR_DELTA_ZERO = "\u8D44\u4EA7\u6570\u91CF\u4E0D\u80FD\u5168\u4E3A 0";
+    ERR_DELTA_INT = "\u8D44\u4EA7\u6570\u91CF\u5FC5\u987B\u4E3A\u6574\u6570";
+    ERR_MISSING_PHONE = "\u7F3A\u5C11 phone";
+    ERR_NOT_LOGGED_IN = "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F";
+    ERR_CHIEF_ONLY = "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650";
+    PHONE_RE = /^1\d{10}$/;
+    M1_TEMPLATE = "\u3010\u8D44\u4EA7\u5230\u671F\u63D0\u9192\u3011\u60A8\u7684\u3010\u77F3\u69B4\u7C7D/\u7AF9\u7247\u3011\u5373\u5C06\u4E8EX\u65E5\u540E\u5230\u671F\u5931\u6548\uFF0C\u8BF7\u5C3D\u5FEB\u4F7F\u7528\u907F\u514D\u635F\u8017\u3002";
+    M2_TEXT = "\u3010\u5BB6\u65CF\u7075\u6C14\u9884\u8B66\u3011\u672C\u5BB6\u65CF\u3010\u65F6\u6D41\u5B50\u57DF\u3011\u7075\u6C14\u5269\u4F5930\u5929\uFF0C\u5373\u5C06\u5230\u671F\u3002\u8BF7\u53CA\u65F6\u704C\u6CE8\u7389\u9732\u7075\u6CFD\u7EED\u671F\uFF0C\u907F\u514D\u5B50\u57DF\u540D\u505C\u7528\u3002";
+    M3_TEXT = "\u3010\u5BB6\u65CF\u7F13\u51B2\u671F\u901A\u77E5\u3011\u672C\u5BB6\u65CF\u7075\u6C14\u5DF2\u8017\u5C3D\uFF0C\u73B0\u5DF2\u8FDB\u516530\u5929\u7F13\u51B2\u671F\u3002\u82E5\u672A\u53CA\u65F6\u7EED\u671F\uFF0C\u7F13\u51B2\u671F\u7ED3\u675F\u540E\u5B50\u57DF\u540D\u5C06\u81EA\u52A8\u5931\u6548\u3002";
+    M4_TEXT = "\u3010\u7D27\u6025\u901A\u77E5\u3011\u672C\u5BB6\u65CF\u3010\u65F6\u6D41\u5B50\u57DF\u3011\u7F13\u51B2\u671F\u4EC5\u52697\u5929\uFF0C\u672A\u704C\u6CE8\u7389\u9732\u7075\u6CFD\u7EED\u671F\u5C06\u6C38\u4E45\u505C\u7528\u5B50\u57DF\u540D\uFF0C\u8BF7\u5C3D\u5FEB\u64CD\u4F5C\uFF01";
+    MESSAGE_TITLES = {
+      m1: "\u8D44\u4EA7\u5230\u671F\u63D0\u9192",
+      m2: "\u5BB6\u65CF\u7075\u6C14\u9884\u8B66",
+      m3: "\u5BB6\u65CF\u7F13\u51B2\u671F\u901A\u77E5",
+      m4: "\u7D27\u6025\u901A\u77E5"
+    };
+    ASSET_TEXT_LABEL = { seed: "\u77F3\u69B4\u7C7D", bamboo: "\u7AF9\u7247" };
+    toMs3 = (d) => d instanceof Date ? d.getTime() : new Date(d).getTime();
+    isoOf2 = (d) => new Date(toMs3(d)).toISOString();
+    rand62 = () => Math.random().toString(36).slice(2, 8).padEnd(6, "0").slice(0, 6);
+    trimmed = (v) => String(v === void 0 || v === null ? "" : v).trim();
+    warnKey = {
+      expiring30: (phone, lotId) => `expiring:${phone}:${lotId}@30`,
+      expiring7: (phone, lotId) => `expiring:${phone}:${lotId}@7`,
+      spirit30: (phone, treeId, spiritExpiresAt) => `spirit:${phone}:${treeId}@30@${spiritExpiresAt}`,
+      spiritBuffer: (phone, treeId, spiritExpiresAt) => `spirit:${phone}:${treeId}@buffer@${spiritExpiresAt}`,
+      spirit7: (phone, treeId, bufferUntil) => `spirit:${phone}:${treeId}@7@${bufferUntil}`
+    };
+    messageLocks = /* @__PURE__ */ new Map();
+    DELTA_KEYS = ["fragments", "seeds", "bamboos", "jades", "scrolls", "scroll_fragments"];
+  }
+});
+
+// cloudfunctions/compat-api/lib/scope.js
+function maskPhone(phone) {
+  const s = String(phone || "");
+  if (!s)
+    return "";
+  return s.length >= 7 ? `${s.slice(0, 3)}****${s.slice(-4)}` : `${s.slice(0, 3)}****`;
+}
+function anchorError(status, message) {
+  const e = new Error(message);
+  e.status = status;
+  return e;
+}
+async function allAnchors() {
+  return colAll("jiazu_anchors");
+}
+async function anchorHolderPhone(personHandle, excludePhone = "") {
+  const handle = String(personHandle || "").trim();
+  if (!handle)
+    return null;
+  const exclude = String(excludePhone || "").trim();
+  const hit = (await allAnchors()).find(
+    (a) => a && String(a.person_handle || "").trim() === handle && String(a._id || a.phone || "").trim() !== exclude
+  );
+  return hit ? String(hit._id || hit.phone || "").trim() : null;
+}
+async function isPersonHandleTaken(personHandle) {
+  return await anchorHolderPhone(personHandle, "") !== null;
+}
+async function assertAnchorBindable(personHandle, forPhone, opts = {}) {
+  const handle = String(personHandle || "").trim();
+  const phone = String(forPhone || "").trim();
+  const treeId = String(opts.treeId || "").trim();
+  if (!handle)
+    throw anchorError(400, "\u53C2\u6570\u9519\u8BEF\uFF1Aperson_handle \u5FC5\u586B");
+  const tree = opts.tree || (treeId ? await getTree(treeId) : null);
+  if (!tree)
+    throw anchorError(404, `\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728: ${treeId || "(\u672A\u6307\u5B9A tree_id)"}`);
+  if (!tree.people || !tree.people[handle]) {
+    throw anchorError(404, `\u8BE5\u5BB6\u65CF\u6811\u4E2D\u627E\u4E0D\u5230\u6B64\u8282\u70B9: ${handle}\uFF08tree_id=${treeId || tree.tree_id || ""}\uFF09`);
+  }
+  const occupierPhone = await anchorHolderPhone(handle, phone);
+  if (!occupierPhone)
+    return { ok: true, overridden: false, reassigned_from: null };
+  const force = opts.force === true && opts.role === "chief_editor";
+  if (!force)
+    throw anchorError(409, "\u8BE5\u4EBA\u7269\u8282\u70B9\u5DF2\u88AB\u5176\u4ED6\u7528\u6237\u7ED1\u5B9A\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458\u5904\u7406");
+  await clearAnchor(occupierPhone);
+  await appendOpsLog({
+    id: opsLogId(),
+    ts: (/* @__PURE__ */ new Date()).toISOString(),
+    operator: String(opts.operator || "").trim(),
+    // `target_phone` = **被移除的手机号**（内部审计字段；接口一律只回 `reassigned_from` 脱敏串）
+    target_phone: occupierPhone,
+    delta: {},
+    reason: "anchor_force_reassign",
+    ref: {
+      tree_id: treeId || tree.tree_id || "",
+      person_handle: handle,
+      reassigned_from: maskPhone(occupierPhone),
+      reassigned_to: maskPhone(phone)
+    }
+  });
+  return { ok: true, overridden: true, reassigned_from: maskPhone(occupierPhone) };
+}
+async function setAnchor(phone, treeId, personHandle, extra = null) {
+  const doc = {
+    tree_id: treeId,
+    person_handle: personHandle,
+    updated_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  if (extra && typeof extra === "object")
+    Object.assign(doc, extra);
+  await colSet("jiazu_anchors", phone, doc);
+}
+async function clearAnchor(phone) {
+  await colDelete("jiazu_anchors", phone);
+}
+async function getAnchor(phone) {
+  return colGet("jiazu_anchors", phone);
+}
+async function buildScope(families, phone, role) {
+  if (role === "tree_steward" || role === "chief_editor") {
+    return { person: null, family: null, unrestricted: true };
+  }
+  const anchor = await getAnchor(phone);
+  if (!anchor)
+    return { person: /* @__PURE__ */ new Set(), family: /* @__PURE__ */ new Set(), unrestricted: false };
+  const personScope = /* @__PURE__ */ new Set([anchor.person_handle]);
+  const familyScope = /* @__PURE__ */ new Set();
+  const parentOf = /* @__PURE__ */ new Map();
+  const childOf = /* @__PURE__ */ new Map();
+  for (const f of families) {
+    for (const p of [f.father_handle, f.mother_handle]) {
+      if (!p)
+        continue;
+      if (!parentOf.has(p))
+        parentOf.set(p, []);
+      parentOf.get(p).push(f.handle);
+    }
+    for (const ch of f.child_handles || []) {
+      if (!childOf.has(ch))
+        childOf.set(ch, []);
+      childOf.get(ch).push(f.handle);
+    }
+  }
+  const descend = (start, limit) => {
+    const queue = [start];
+    const depth = /* @__PURE__ */ new Map([[start, 0]]);
+    while (queue.length) {
+      const h = queue.shift();
+      const d = depth.get(h) || 0;
+      if (limit !== null && d >= limit)
+        continue;
+      for (const famHandle of parentOf.get(h) || []) {
+        familyScope.add(famHandle);
+        const fam = families.find((x) => x.handle === famHandle);
+        for (const ch of fam?.child_handles || []) {
+          if (!depth.has(ch)) {
+            depth.set(ch, d + 1);
+            personScope.add(ch);
+            queue.push(ch);
+          }
+        }
+        if (fam?.father_handle && fam?.mother_handle) {
+          const spouse = fam.father_handle === h ? fam.mother_handle : fam.father_handle;
+          if (!depth.has(spouse)) {
+            depth.set(spouse, d + 1);
+            personScope.add(spouse);
+          }
+        }
+      }
+    }
+  };
+  if (role === "branch_curator") {
+    descend(anchor.person_handle, 3);
+    let cur = anchor.person_handle;
+    for (let i = 0; i < 3; i++) {
+      const fams = childOf.get(cur) || [];
+      if (!fams.length)
+        break;
+      const fam = families.find((x) => x.handle === fams[0]);
+      if (!fam)
+        break;
+      familyScope.add(fam.handle);
+      const parent = fam.father_handle || fam.mother_handle;
+      if (!parent)
+        break;
+      personScope.add(parent);
+      cur = parent;
+    }
+  } else {
+    descend(anchor.person_handle, null);
+  }
+  return { person: personScope, family: familyScope, unrestricted: false };
+}
+async function canEditPerson(families, phone, role, personHandle) {
+  const scope = await buildScope(families, phone, role);
+  if (scope.unrestricted)
+    return true;
+  return scope.person.has(personHandle);
+}
+var init_scope = __esm({
+  "cloudfunctions/compat-api/lib/scope.js"() {
+    init_store();
+    init_economy_ops();
+  }
+});
+
+// cloudfunctions/compat-api/lib/economy-spirit.js
+function planOf(plan) {
+  return SPIRIT_PLANS.find((p) => p.plan === plan) || null;
+}
+function giftEnabledPlans(env) {
+  const src = env === void 0 ? process.env : env || {};
+  const raw = src[SPIRIT_GIFT_ACTIVITY_ENV];
+  return String(raw === void 0 || raw === null ? "" : raw).split(",").map((s) => s.trim()).filter(Boolean);
+}
+function giftBundlesOf(plan, env) {
+  const P = planOf(plan);
+  if (!P)
+    return 0;
+  let bundles = P.gift_bundles;
+  if (P.activity_bundles > 0 && giftEnabledPlans(env).includes(plan))
+    bundles += P.activity_bundles;
+  return bundles;
+}
+function giftPiecesOf(plan, env) {
+  return giftBundlesOf(plan, env) * BAMBOO_PER_BUNDLE;
+}
+function plansPayload(env) {
+  const enabled = giftEnabledPlans(env);
+  return SPIRIT_PLANS.map((P) => {
+    const bundles = giftBundlesOf(P.plan, env);
+    return {
+      plan: P.plan,
+      label: P.label,
+      seeds: P.seeds,
+      days: P.days,
+      gift_bundles: bundles,
+      gift_pieces: bundles * BAMBOO_PER_BUNDLE,
+      discount: P.discount,
+      activity_min_discount: P.activity_min_discount,
+      activity: enabled.includes(P.plan)
+    };
+  });
+}
+function activityPayload(env) {
+  return { gift_enabled_plans: giftEnabledPlans(env) };
+}
+function httpError3(status, message) {
+  const e = new Error(message);
+  e.status = status;
+  return e;
+}
+function seedsInsufficient2(need, current, message) {
+  const e = assetInsufficient(need, current, "seed");
+  if (message)
+    e.message = message;
+  return e;
+}
+function spiritLogId() {
+  const rand = Math.random().toString(36).slice(2, 8).padEnd(6, "0").slice(0, 6);
+  return `spl_${Date.now()}_${rand}`;
+}
+function stripEntry(doc) {
+  const rec = { ...doc || {} };
+  delete rec._id;
+  delete rec.version;
+  return rec;
+}
+function jadeExpired(jade, now) {
+  if (!jade || jade.expires_at === null || jade.expires_at === void 0 || jade.expires_at === "")
+    return false;
+  const t = Date.parse(jade.expires_at);
+  return Number.isFinite(t) && t <= toMs4(now);
+}
+function settle(entry, now = /* @__PURE__ */ new Date()) {
+  if (!entry || !entry.jade)
+    return false;
+  const nowMs = toMs4(now);
+  const expMs = entry.spirit_expires_at ? Date.parse(entry.spirit_expires_at) : NaN;
+  let status;
+  let buffer_until;
+  if (!Number.isFinite(expMs)) {
+    status = "inactive";
+    buffer_until = null;
+  } else {
+    const bufMs = expMs + BUFFER_DAYS * DAY_MS4;
+    if (nowMs < expMs) {
+      status = "active";
+      buffer_until = null;
+    } else if (nowMs < bufMs) {
+      status = "buffer";
+      buffer_until = new Date(bufMs).toISOString();
+    } else {
+      status = "expired";
+      buffer_until = new Date(bufMs).toISOString();
+    }
+  }
+  const changed = entry.status !== status || (entry.buffer_until || null) !== buffer_until;
+  entry.status = status;
+  entry.buffer_until = buffer_until;
+  return changed;
+}
+function stateTextOf(status, opts = {}) {
+  const daysLeft = toNonNegInt(opts.days_left);
+  const bufferDaysLeft = toNonNegInt(opts.buffer_days_left);
+  switch (status) {
+    case "inactive":
+      return { primary: "\u65F6\u6D41\u5B50\u57DF \xB7 \u672A\u6FC0\u6D3B", secondary: "\u704C\u6CE8\u7389\u9732\u7075\u6CFD\u5373\u53EF\u5F00\u542F" };
+    case "active":
+      return { primary: `\u7075\u6C14\u5145\u76C8 \xB7 \u5269\u4F59 ${daysLeft} \u5929`, secondary: `\u7075\u6C14\u5230\u671F\u65E5 ${opts.expires_date || ""}` };
+    case "buffer":
+      return { primary: `\u7075\u6C14\u5DF2\u5C3D \xB7 \u7F13\u51B2\u671F\u5269\u4F59 ${bufferDaysLeft} \u5929`, secondary: `\u7F13\u51B2\u671F\u81F3 ${opts.buffer_date || ""}\uFF0C\u7EED\u671F\u53EF\u6062\u590D` };
+    case "expired":
+      return { primary: "\u65F6\u6D41\u5B50\u57DF\u5DF2\u505C\u7528", secondary: "\u704C\u6CE8\u7389\u9732\u7075\u6CFD\u53EF\u91CD\u65B0\u6FC0\u6D3B\uFF08\u6570\u636E\u4FDD\u7559\uFF09" };
+    default:
+      return { primary: "\u672A\u5F00\u542F\u65F6\u6D41\u5B50\u57DF", secondary: "\u9576\u5D4C\u77F3\u69B4\u7C7D\u7389\uFF0C\u89E3\u9501\u672C\u5BB6\u65CF\u4E13\u5C5E\u7A7A\u95F4" };
+  }
+}
+function chargeBase(spiritExpiresAt, now = /* @__PURE__ */ new Date()) {
+  const nowMs = toMs4(now);
+  const expMs = spiritExpiresAt ? Date.parse(spiritExpiresAt) : NaN;
+  return Number.isFinite(expMs) && expMs > nowMs ? expMs : nowMs;
+}
+function chargeNextExpiry(spiritExpiresAt, days, now = /* @__PURE__ */ new Date()) {
+  const d = Math.max(0, Number(days) || 0);
+  return new Date(chargeBase(spiritExpiresAt, now) + d * DAY_MS4).toISOString();
+}
+async function isTreeMember(treeId, viewer) {
+  const v = viewer || {};
+  if (v.role === "chief_editor")
+    return true;
+  if (!v.phone)
+    return false;
+  const anchor = await getAnchor(v.phone);
+  return !!(anchor && anchor.tree_id === treeId);
+}
+async function viewerPolicy(treeId, viewer) {
+  const v = viewer || {};
+  const logged = !!v.phone;
+  const member = logged ? await isTreeMember(treeId, v) : false;
+  const logsVisible = member;
+  return {
+    logged,
+    member,
+    logs_visible: logsVisible,
+    can_charge: logged,
+    logs_notice: logsVisible ? "" : logged ? NOTICE_MEMBER_ONLY : NOTICE_LOGIN_REQUIRED
+  };
+}
+async function treeMetaOf(treeId) {
+  if (!treeId)
+    throw httpError3(400, ERR_MISSING_TREE_ID);
+  const meta = await getMeta();
+  const t = meta?.trees?.[treeId];
+  if (!t)
+    throw httpError3(404, ERR_TREE_NOT_FOUND);
+  return t;
+}
+function mountableKind(tree) {
+  const kind = tree?.kind || "";
+  return kind === "family" || kind === "clan";
+}
+async function withSpirit(treeId, mutator, now = /* @__PURE__ */ new Date()) {
+  const id = String(treeId);
+  const lock = spiritLocks.get(id) || Promise.resolve();
+  const run = lock.then(async () => {
+    let result;
+    await mutateDoc(SPIRIT_COL, id, async (doc) => {
+      const rec = stripEntry(doc);
+      const entry = hasEntryBody(rec) ? rec : null;
+      settle(entry, now);
+      const ctx = { entry, now, treeId: id, dirty: false };
+      result = await mutator(entry, ctx);
+      return ctx.entry && hasEntryBody(ctx.entry) ? ctx.entry : entry || {};
+    });
+    return result;
+  });
+  spiritLocks.set(id, run.catch(() => {
+  }));
+  return run;
+}
+async function readSpiritEntry(treeId, now = /* @__PURE__ */ new Date()) {
+  const id = String(treeId);
+  const doc = await colGet(SPIRIT_COL, id);
+  if (!doc)
+    return null;
+  const entry = stripEntry(doc);
+  if (!settle(entry, now))
+    return JSON.parse(JSON.stringify(entry));
+  return withSpirit(id, (e) => e ? JSON.parse(JSON.stringify(e)) : null, now);
+}
+async function settleAllTrees(now = /* @__PURE__ */ new Date()) {
+  const docs = await listAll(SPIRIT_COL);
+  const changed = [];
+  for (const doc of docs) {
+    const entry = stripEntry(doc);
+    if (!hasEntryBody(entry))
+      continue;
+    const probe = JSON.parse(JSON.stringify(entry));
+    if (settle(probe, now))
+      changed.push(String(doc._id));
+  }
+  for (const id of changed) {
+    await withSpirit(
+      id,
+      (e) => {
+        if (e)
+          settle(e, now);
+        return null;
+      },
+      now
+    );
+  }
+  return changed;
+}
+async function deleteSpiritEntry(treeId) {
+  await colDelete(SPIRIT_COL, String(treeId));
+}
+async function synthesizeJade(phone, now = /* @__PURE__ */ new Date()) {
+  return withAssets(phone, async (user) => {
+    sweep(user, now);
+    let charge;
+    try {
+      charge = chargeLots(user.seeds, JADE_SYNTH_SEEDS, "seed");
+    } catch (err) {
+      throw seedsInsufficient2(
+        JADE_SYNTH_SEEDS,
+        err.current,
+        `\u77F3\u69B4\u7C7D\u4E0D\u8DB3\uFF1A\u5408\u6210\u77F3\u69B4\u7C7D\u7389\u9700 ${JADE_SYNTH_SEEDS} \u9897\u5B8C\u6574\u77F3\u69B4\u7C7D\uFF0C\u5F53\u524D\u53EF\u7528 ${err.current} \u9897`
+      );
+    }
+    const seeds_used = charge.taken.map((t) => ({ lot_id: t.id, qty: t.qty, expires_at: t.expires_at ?? null }));
+    user.seeds = (user.seeds || []).filter((l) => toNonNegInt(l.qty) > 0);
+    const earliestMs = seeds_used.reduce((min, t) => {
+      const ms = t.expires_at ? Date.parse(t.expires_at) : Number.POSITIVE_INFINITY;
+      return ms < min ? ms : min;
+    }, Number.POSITIVE_INFINITY);
+    const permanent = Number.isFinite(earliestMs) && toMs4(now) + PERMANENT_THRESHOLD_DAYS * DAY_MS4 <= earliestMs;
+    const jade = addLot(user, "jade", 1, {
+      expires_at: permanent ? null : new Date(earliestMs).toISOString(),
+      source: "synthesis",
+      now
+    });
+    recordTx(
+      user,
+      {
+        type: "jade_synth",
+        delta: { seeds: -JADE_SYNTH_SEEDS, jades: 1 },
+        ref: {},
+        desc: "\u5408\u6210\u77F3\u69B4\u7C7D\u7389"
+      },
+      now
+    );
+    return {
+      ok: true,
+      jade_id: jade.id,
+      seeds_deducted: JADE_SYNTH_SEEDS,
+      expires_at: jade.expires_at,
+      permanent,
+      seeds_used
+    };
+  });
+}
+async function decomposeJade(phone, jadeId, now = /* @__PURE__ */ new Date()) {
+  if (!jadeId)
+    throw httpError3(400, ERR_MISSING_JADE_ID);
+  return withAssets(phone, async (user) => {
+    sweep(user, now);
+    const jade = (user.jades || []).find((j) => j.id === jadeId);
+    if (!jade || jadeExpired(jade, now))
+      throw httpError3(404, ERR_JADE_NOT_FOUND);
+    if (jade.mounted_tree_id)
+      throw httpError3(409, ERR_JADE_MOUNTED_DECOMPOSE);
+    user.jades = (user.jades || []).filter((j) => j.id !== jadeId);
+    const lot = addLot(user, "seed", JADE_DECOMPOSE_SEEDS, { ttl_days: SEED_TTL_DAYS, source: "jade_decompose", now });
+    recordTx(
+      user,
+      {
+        type: "jade_decompose",
+        delta: { jades: -1, seeds: JADE_DECOMPOSE_SEEDS },
+        ref: { jade_id: jadeId },
+        desc: "\u5206\u89E3\u77F3\u69B4\u7C7D\u7389"
+      },
+      now
+    );
+    return {
+      ok: true,
+      seeds_returned: JADE_DECOMPOSE_SEEDS,
+      seed_expires_at: lot.expires_at,
+      seed_lot_id: lot.id,
+      jade_id: jadeId
+    };
+  });
+}
+async function mountJade(phone, treeId, jadeId, now = /* @__PURE__ */ new Date()) {
+  if (!treeId)
+    throw httpError3(400, ERR_MISSING_TREE_ID);
+  if (!jadeId)
+    throw httpError3(400, ERR_MISSING_JADE_ID);
+  const tree = await treeMetaOf(treeId);
+  if (!mountableKind(tree) || treeId === MASTER_TREE_ID)
+    throw httpError3(400, ERR_MASTER_NO_SLOT);
+  const assets = await getAssets(phone);
+  const mine = (assets.jades || []).find((j) => j.id === jadeId);
+  if (!mine || jadeExpired(mine, now))
+    throw httpError3(404, ERR_JADE_NOT_FOUND);
+  if (mine.mounted_tree_id)
+    throw httpError3(409, ERR_JADE_MOUNTED);
+  const mountedAt = isoOf3(now);
+  const slot = { jade_id: jadeId, mounted_at: mountedAt, expires_at: mine.expires_at ?? null };
+  const spiritDocs = await listAll(SPIRIT_COL);
+  for (const d of spiritDocs) {
+    if (String(d._id) === String(treeId))
+      continue;
+    if (d && d.jade && d.jade.jade_id === jadeId)
+      throw httpError3(409, ERR_JADE_MOUNTED);
+  }
+  const mounted = await withSpirit(
+    treeId,
+    (entry, ctx) => {
+      if (entry && entry.jade)
+        throw httpError3(409, ERR_SLOT_TAKEN);
+      ctx.entry = {
+        jade: { jade_id: slot.jade_id, mounted_at: slot.mounted_at, expires_at: slot.expires_at },
+        spirit_expires_at: null,
+        buffer_until: null,
+        status: "inactive",
+        logs: []
+      };
+      return { mounted_at: slot.mounted_at };
+    },
+    now
+  );
+  try {
+    await withAssets(phone, (user) => {
+      const j = (user.jades || []).find((x) => x.id === jadeId);
+      if (!j)
+        throw httpError3(404, ERR_JADE_NOT_FOUND);
+      j.mounted_tree_id = treeId;
+      recordTx(
+        user,
+        {
+          type: "jade_mount",
+          delta: { jades: 0 },
+          ref: { tree_id: treeId, jade_id: jadeId },
+          desc: "\u9576\u5D4C\u77F3\u69B4\u7C7D\u7389\uFF0C\u89E3\u9501\u65F6\u6D41\u5B50\u57DF"
+        },
+        now
+      );
+    });
+  } catch (e) {
+    await deleteSpiritEntry(treeId).catch(() => {
+    });
+    throw e;
+  }
+  return {
+    ok: true,
+    tree_id: treeId,
+    jade_id: jadeId,
+    mounted_at: mounted.mounted_at,
+    jade_expires_at: slot.expires_at,
+    status: "inactive",
+    spirit_expires_at: null
+  };
+}
+async function chargeSpirit(phone, treeId, plan, now = /* @__PURE__ */ new Date(), opts = {}) {
+  if (!treeId)
+    throw httpError3(400, ERR_MISSING_TREE_ID);
+  const P = planOf(plan);
+  if (!P)
+    throw httpError3(400, ERR_PLAN_INVALID);
+  await treeMetaOf(treeId);
+  const giftPieces = giftPiecesOf(plan, opts.env);
+  const entry0 = await readSpiritEntry(treeId, now);
+  if (!entry0 || !entry0.jade)
+    throw httpError3(409, ERR_NO_JADE_ON_TREE);
+  const assetsSnapshot = await getAssets(phone);
+  let assetsWritten = false;
+  try {
+    const details = await withAssets(phone, async (user) => {
+      sweep(user, now);
+      let charge;
+      try {
+        charge = chargeLots(user.seeds, P.seeds, "seed");
+      } catch (err) {
+        throw seedsInsufficient2(P.seeds, err.current, `\u77F3\u69B4\u7C7D\u4E0D\u8DB3\uFF1A\u672C\u6B21\u9700 ${P.seeds} \u9897\uFF0C\u5F53\u524D\u53EF\u7528 ${err.current} \u9897`);
+      }
+      user.seeds = (user.seeds || []).filter((l) => toNonNegInt(l.qty) > 0);
+      let gift_lot_id = null;
+      if (giftPieces > 0) {
+        gift_lot_id = addLot(user, "bamboo", giftPieces, { source: "spirit_gift", now }).id;
+      }
+      recordTx(
+        user,
+        {
+          type: "spirit_charge",
+          delta: giftPieces > 0 ? { seeds: -P.seeds, bamboos: giftPieces } : { seeds: -P.seeds },
+          ref: { tree_id: treeId, plan },
+          desc: `\u704C\u6CE8\u7389\u9732\u7075\u6CFD\uFF08${plan}\uFF09`
+        },
+        now
+      );
+      return {
+        seeds_used: charge.taken.map((t) => ({ lot_id: t.id, qty: t.qty, expires_at: t.expires_at ?? null })),
+        seeds_balance_after: sumLots(user.seeds),
+        gift_lot_id
+      };
+    });
+    assetsWritten = true;
+    const logId = spiritLogId();
+    return await withSpirit(
+      treeId,
+      (entry) => {
+        if (!entry || !entry.jade)
+          throw httpError3(409, ERR_NO_JADE_ON_TREE);
+        const before = entry.spirit_expires_at || null;
+        const newExp = chargeNextExpiry(before, P.days, now);
+        entry.spirit_expires_at = newExp;
+        entry.buffer_until = null;
+        entry.status = "active";
+        entry.logs = entry.logs || [];
+        entry.logs.push({
+          id: logId,
+          ts: isoOf3(now),
+          phone,
+          plan,
+          seeds: P.seeds,
+          days: P.days,
+          gift_bamboos: giftPieces,
+          spirit_expires_at_after: newExp
+        });
+        return {
+          ok: true,
+          tree_id: treeId,
+          plan,
+          seeds_deducted: P.seeds,
+          days: P.days,
+          spirit_expires_at: newExp,
+          spirit_expires_at_before: before,
+          buffer_until_preview: isoPlusDays2(newExp, BUFFER_DAYS),
+          status: "active",
+          gift_bamboos: giftPieces,
+          gift_bundles: Math.floor(giftPieces / BAMBOO_PER_BUNDLE),
+          gift_lot_id: details.gift_lot_id,
+          seeds_used: details.seeds_used,
+          seeds_balance_after: details.seeds_balance_after,
+          log_id: logId,
+          message: "\u704C\u6CE8\u6210\u529F"
+        };
+      },
+      now
+    );
+  } catch (e) {
+    if (assetsWritten) {
+      await withAssets(phone, (user) => Object.assign(user, JSON.parse(JSON.stringify(assetsSnapshot)))).catch(() => {
+      });
+    }
+    throw e;
+  }
+}
+function maskPhone2(phone) {
+  const s = String(phone || "");
+  if (!s)
+    return "";
+  return s.length >= 7 ? `${s.slice(0, 3)}****${s.slice(-4)}` : `${s.slice(0, 3)}****`;
+}
+async function injectorOf(treeId) {
+  if (!treeId)
+    return null;
+  const docs = await listAll(ASSETS_COL);
+  let phone = "";
+  for (const rec of docs) {
+    if ((rec?.jades || []).some((j) => j && j.mounted_tree_id === treeId)) {
+      phone = String(rec._id || "");
+      break;
+    }
+  }
+  if (!phone)
+    return null;
+  const account = await colGet(USERS_COL2, phone);
+  const nickname = String(account?.nickname || "").trim() || maskPhone2(phone);
+  const anchor = await colGet(ANCHORS_COL, phone);
+  const personHandle = anchor && anchor.tree_id === treeId && anchor.person_handle ? anchor.person_handle : null;
+  return { nickname, person_handle: personHandle };
+}
+async function spiritInfo(treeId, viewer = null, now = /* @__PURE__ */ new Date(), opts = {}) {
+  const tree = await treeMetaOf(treeId);
+  const entry = await readSpiritEntry(treeId, now);
+  const mounted = !!(entry && entry.jade);
+  const status = mounted ? entry.status : null;
+  const spiritExpiresAt = mounted ? entry.spirit_expires_at || null : null;
+  const bufferUntil = mounted ? entry.buffer_until || null : null;
+  const nowMs = toMs4(now);
+  const daysLeft = spiritExpiresAt ? Math.max(0, Math.ceil((Date.parse(spiritExpiresAt) - nowMs) / DAY_MS4)) : 0;
+  const bufferDaysLeft = bufferUntil ? Math.max(0, Math.ceil((Date.parse(bufferUntil) - nowMs) / DAY_MS4)) : 0;
+  const policy = await viewerPolicy(treeId, viewer);
+  const allLogs = mounted ? entry.logs || [] : [];
+  const logs = policy.logs_visible ? [...allLogs].sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts)).slice(0, SPIRIT_LOG_LIMIT) : [];
+  const state = stateTextOf(status, {
+    days_left: daysLeft,
+    buffer_days_left: bufferDaysLeft,
+    expires_date: spiritExpiresAt ? beijingDate(spiritExpiresAt) : "",
+    buffer_date: bufferUntil ? beijingDate(bufferUntil) : ""
+  });
+  return {
+    tree_id: treeId,
+    kind: tree.kind || null,
+    mounted,
+    status,
+    spirit_expires_at: spiritExpiresAt,
+    buffer_until: bufferUntil,
+    buffer_until_preview: spiritExpiresAt ? isoPlusDays2(spiritExpiresAt, BUFFER_DAYS) : null,
+    days_left: daysLeft,
+    buffer_days_left: bufferDaysLeft,
+    jade: mounted ? { ...entry.jade } : null,
+    // 注入者（已镶玉区块展示口径）：未镶嵌 → null；已镶嵌 → 读侧反查（三态见 injectorOf）
+    injector: mounted ? await injectorOf(treeId) : null,
+    logs,
+    logs_total: allLogs.length,
+    logs_visible: policy.logs_visible,
+    logs_notice: policy.logs_notice,
+    state_text: state,
+    can_charge: policy.can_charge,
+    activity: activityPayload(opts.env),
+    plans: plansPayload(opts.env)
+  };
+}
+var SPIRIT_COL, USERS_COL2, ANCHORS_COL, MASTER_TREE_ID, BUFFER_DAYS, PERMANENT_THRESHOLD_DAYS, JADE_SYNTH_SEEDS, JADE_DECOMPOSE_SEEDS, BAMBOO_PER_BUNDLE, SPIRIT_LOG_LIMIT, SPIRIT_GIFT_ACTIVITY_ENV, DAY_MS4, ERR_MISSING_TREE_ID, ERR_MISSING_JADE_ID, ERR_TREE_NOT_FOUND, ERR_MASTER_NO_SLOT, ERR_JADE_NOT_FOUND, ERR_JADE_MOUNTED, ERR_SLOT_TAKEN, ERR_NO_JADE_ON_TREE, ERR_JADE_MOUNTED_DECOMPOSE, ERR_PLAN_INVALID, NOTICE_LOGIN_REQUIRED, NOTICE_MEMBER_ONLY, SPIRIT_PLANS, toMs4, isoOf3, isoPlusDays2, hasEntryBody, spiritLocks;
+var init_economy_spirit = __esm({
+  "cloudfunctions/compat-api/lib/economy-spirit.js"() {
+    init_store();
+    init_economy_ledger();
+    init_scope();
+    SPIRIT_COL = "jiazu_spirit";
+    USERS_COL2 = "jiazu_users";
+    ANCHORS_COL = "jiazu_anchors";
+    MASTER_TREE_ID = process.env.MASTER_TREE_ID || "zhonghua";
+    BUFFER_DAYS = 30;
+    PERMANENT_THRESHOLD_DAYS = 360;
+    JADE_SYNTH_SEEDS = 999;
+    JADE_DECOMPOSE_SEEDS = 990;
+    BAMBOO_PER_BUNDLE = 100;
+    SPIRIT_LOG_LIMIT = 100;
+    SPIRIT_GIFT_ACTIVITY_ENV = "SPIRIT_GIFT_ACTIVITY";
+    DAY_MS4 = 864e5;
+    ERR_MISSING_TREE_ID = "\u7F3A\u5C11 tree_id";
+    ERR_MISSING_JADE_ID = "\u7F3A\u5C11 jade_id";
+    ERR_TREE_NOT_FOUND = "\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728";
+    ERR_MASTER_NO_SLOT = "\u4E2D\u534E\u4E16\u672C\u65E0\u65F6\u6D41\u5B50\u57DF\u51F9\u69FD";
+    ERR_JADE_NOT_FOUND = "\u672A\u627E\u5230\u8BE5\u77F3\u69B4\u7C7D\u7389";
+    ERR_JADE_MOUNTED = "\u8BE5\u77F3\u69B4\u7C7D\u7389\u5DF2\u9576\u5D4C\uFF0C\u4E0D\u53EF\u91CD\u590D\u4F7F\u7528";
+    ERR_SLOT_TAKEN = "\u8BE5\u5BB6\u65CF\u6811\u51F9\u69FD\u5DF2\u9576\u5D4C\u77F3\u69B4\u7C7D\u7389";
+    ERR_NO_JADE_ON_TREE = "\u8BE5\u5BB6\u65CF\u6811\u5C1A\u672A\u9576\u5D4C\u77F3\u69B4\u7C7D\u7389\uFF0C\u65E0\u6CD5\u704C\u6CE8\u7389\u9732\u7075\u6CFD";
+    ERR_JADE_MOUNTED_DECOMPOSE = "\u5DF2\u9576\u5D4C\u7684\u77F3\u69B4\u7C7D\u7389\u4E0D\u53EF\u5206\u89E3";
+    ERR_PLAN_INVALID = "\u4E0D\u652F\u6301\u7684\u84C4\u80FD\u6863\u4F4D";
+    NOTICE_LOGIN_REQUIRED = "\u8BF7\u5148\u767B\u5F55\u540E\u67E5\u770B\u7075\u6CFD\u84C4\u80FD\u6D41\u6C34";
+    NOTICE_MEMBER_ONLY = "\u7075\u6CFD\u84C4\u80FD\u6D41\u6C34\u4EC5\u5BB6\u65CF\u6210\u5458\u53EF\u67E5\u770B";
+    SPIRIT_PLANS = [
+      { plan: "daily", label: "\u5355\u65E5", seeds: 1, days: 1, gift_bundles: 0, activity_bundles: 0, discount: "100%", activity_min_discount: null },
+      { plan: "monthly", label: "\u6708\u5EA6", seeds: 29, days: 30, gift_bundles: 0, activity_bundles: 0, discount: "97%", activity_min_discount: null },
+      { plan: "quarterly", label: "\u5B63\u5EA6", seeds: 109, days: 90, gift_bundles: 0, activity_bundles: 1, discount: "91%", activity_min_discount: "83%" },
+      { plan: "half_year", label: "\u534A\u5E74\u5EA6", seeds: 149, days: 180, gift_bundles: 2, activity_bundles: 0, discount: "83%", activity_min_discount: "72%" },
+      { plan: "yearly", label: "\u5E74\u5EA6", seeds: 299, days: 365, gift_bundles: 8, activity_bundles: 0, discount: "82%", activity_min_discount: "60%" }
+    ];
+    toMs4 = (d) => d instanceof Date ? d.getTime() : new Date(d).getTime();
+    isoOf3 = (d) => new Date(toMs4(d)).toISOString();
+    isoPlusDays2 = (from, days) => new Date(toMs4(from) + days * DAY_MS4).toISOString();
+    hasEntryBody = (rec) => Object.keys(rec).length > 0;
+    spiritLocks = /* @__PURE__ */ new Map();
+  }
+});
+
+// cloudfunctions/compat-api/lib/invite.js
+function inviteDocId(inviteePhone) {
+  return String(inviteePhone || "").trim();
+}
+function maskPhone3(phone) {
+  const p = String(phone || "");
+  return p.length === 11 ? `${p.slice(0, 3)}****${p.slice(7)}` : p;
+}
+function countInviteRewardsToday(user, now = /* @__PURE__ */ new Date()) {
+  const today = beijingDate(now);
+  const txs = Array.isArray(user?.txs) ? user.txs : [];
+  return txs.filter(
+    (t) => t && t.type === INVITE_TX_TYPE && t.ref && t.ref.kind === INVITE_TX_REF_KIND && t.ts && beijingDate(t.ts) === today
+  ).length;
+}
+async function resolveInvite(rawCode, inviteePhone, required = false) {
+  const code = String(rawCode ?? "").trim();
+  const invitee = String(inviteePhone || "").trim();
+  if (!code)
+    return required ? fail2(ERR_INVITE_CODE_REQUIRED, MSG_INVITE_CODE_REQUIRED) : { ok: true, kind: "none" };
+  if (!PHONE_RE2.test(code))
+    return fail2(ERR_INVITE_CODE_FORMAT, MSG_INVITE_CODE_FORMAT);
+  if (code === invitee)
+    return fail2(ERR_FRIEND_SELF_INVITE, MSG_FRIEND_SELF_INVITE);
+  const inviter = await colGet(USERS_COL3, code);
+  if (!inviter)
+    return fail2(ERR_INVITE_CODE_UNKNOWN, MSG_INVITE_CODE_UNKNOWN);
+  const existing = await colGet(INVITES_COL, invitee);
+  if (existing)
+    return { ok: true, kind: "already", inviter_phone: existing.inviter_phone || code };
+  return { ok: true, kind: "pending", invite_code: code, inviter_phone: code };
+}
+async function grantInviteReward(inviterPhone, inviteePhone, now = /* @__PURE__ */ new Date()) {
+  const inviter = String(inviterPhone || "").trim();
+  const snapshot = await getAssets(inviter);
+  if (countInviteRewardsToday(snapshot, now) >= INVITE_DAILY_LIMIT) {
+    return { rewarded: false, reason: "daily_limit", tx_id: null };
+  }
+  return withAssets(inviter, (user) => {
+    sweep(user, now);
+    if (countInviteRewardsToday(user, now) >= INVITE_DAILY_LIMIT) {
+      return { rewarded: false, reason: "daily_limit", tx_id: null };
+    }
+    addFragments(user, INVITE_REWARD_FRAGMENTS, now);
+    addScrollFragments(user, INVITE_REWARD_SCROLL_FRAGMENTS, now);
+    const tx = recordTx(
+      user,
+      {
+        type: INVITE_TX_TYPE,
+        delta: { fragments: INVITE_REWARD_FRAGMENTS, scroll_fragments: INVITE_REWARD_SCROLL_FRAGMENTS },
+        ref: { kind: INVITE_TX_REF_KIND, invitee: String(inviteePhone || "").trim() },
+        desc: `\u9080\u8BF7\u5956\u52B1\uFF1A\u597D\u53CB ${maskPhone3(inviteePhone)} \u586B\u5199\u4E86\u60A8\u7684\u9080\u8BF7\u7801`,
+        operator: inviter
+      },
+      now
+    );
+    return {
+      rewarded: true,
+      reason: "rewarded",
+      tx_id: tx.id,
+      fragments: toNonNegInt(user.fragments),
+      scroll_fragments: toNonNegInt(user.scroll_fragments)
+    };
+  });
+}
+async function recordInvite(inviterPhone, inviteePhone, reward, now = /* @__PURE__ */ new Date()) {
+  const doc = {
+    inviter_phone: String(inviterPhone || "").trim(),
+    created_at: new Date(now).toISOString(),
+    rewarded: !!(reward && reward.rewarded)
+  };
+  if (reward && reward.tx_id)
+    doc.reward_tx_id = reward.tx_id;
+  await colSet(INVITES_COL, inviteDocId(inviteePhone), doc);
+  return doc;
+}
+async function applyInvite(inviteePhone, rawCode, opts = {}) {
+  const now = opts.now || /* @__PURE__ */ new Date();
+  const required = !!opts.required;
+  const invitee = String(inviteePhone || "").trim();
+  const v = await resolveInvite(rawCode, invitee, required);
+  if (!v.ok)
+    return v;
+  if (v.kind === "none") {
+    return { ok: true, applied: false, reason: "no_code", inviter_phone: null, rewarded: false, reward_tx_id: null };
+  }
+  if (v.kind === "already") {
+    return {
+      ok: true,
+      applied: false,
+      reason: "already_invited",
+      inviter_phone: v.inviter_phone,
+      rewarded: false,
+      reward_tx_id: null
+    };
+  }
+  const reward = await grantInviteReward(v.inviter_phone, invitee, now);
+  await recordInvite(v.inviter_phone, invitee, reward, now);
+  return {
+    ok: true,
+    applied: true,
+    reason: reward.rewarded ? "rewarded" : "daily_limit",
+    inviter_phone: v.inviter_phone,
+    rewarded: !!reward.rewarded,
+    reward_tx_id: reward.tx_id || null
+  };
+}
+async function inviteStats(phone, now = /* @__PURE__ */ new Date()) {
+  const me = String(phone || "").trim();
+  const user = await getAssets(me);
+  const today_invited = countInviteRewardsToday(user, now);
+  const all = await colAll(INVITES_COL);
+  const total_invited = all.filter((d) => d && d.inviter_phone === me).length;
+  return {
+    invite_code: me,
+    today_invited,
+    total_invited,
+    remaining_today: Math.max(0, INVITE_DAILY_LIMIT - today_invited),
+    daily_limit: INVITE_DAILY_LIMIT
+  };
+}
+var INVITES_COL, USERS_COL3, PHONE_RE2, INVITE_REWARD_FRAGMENTS, INVITE_REWARD_SCROLL_FRAGMENTS, INVITE_DAILY_LIMIT, INVITE_TX_TYPE, INVITE_TX_REF_KIND, ERR_INVITE_CODE_FORMAT, ERR_FRIEND_SELF_INVITE, ERR_INVITE_CODE_UNKNOWN, ERR_INVITE_CODE_REQUIRED, MSG_INVITE_CODE_FORMAT, MSG_FRIEND_SELF_INVITE, MSG_INVITE_CODE_UNKNOWN, MSG_INVITE_CODE_REQUIRED, fail2;
+var init_invite = __esm({
+  "cloudfunctions/compat-api/lib/invite.js"() {
+    init_store();
+    init_economy_ledger();
+    INVITES_COL = "jiazu_invites";
+    USERS_COL3 = "jiazu_users";
+    PHONE_RE2 = /^1\d{10}$/;
+    INVITE_REWARD_FRAGMENTS = 9;
+    INVITE_REWARD_SCROLL_FRAGMENTS = 11;
+    INVITE_DAILY_LIMIT = 3;
+    INVITE_TX_TYPE = "reward";
+    INVITE_TX_REF_KIND = "invite";
+    ERR_INVITE_CODE_FORMAT = "INVITE_CODE_FORMAT";
+    ERR_FRIEND_SELF_INVITE = "FRIEND_SELF_INVITE";
+    ERR_INVITE_CODE_UNKNOWN = "INVITE_CODE_UNKNOWN";
+    ERR_INVITE_CODE_REQUIRED = "INVITE_CODE_REQUIRED";
+    MSG_INVITE_CODE_FORMAT = "\u9080\u8BF7\u7801\u683C\u5F0F\u4E0D\u6B63\u786E\uFF08\u5E94\u4E3A 11 \u4F4D\u624B\u673A\u53F7\uFF09";
+    MSG_FRIEND_SELF_INVITE = "\u4E0D\u80FD\u586B\u5199\u81EA\u5DF1\u7684\u9080\u8BF7\u7801";
+    MSG_INVITE_CODE_UNKNOWN = "\u9080\u8BF7\u7801\u65E0\u6548\uFF1A\u8BE5\u624B\u673A\u53F7\u5C1A\u672A\u6CE8\u518C";
+    MSG_INVITE_CODE_REQUIRED = "\u8BF7\u586B\u5199\u9080\u8BF7\u7801";
+    fail2 = (code, error) => ({ ok: false, status: 400, code, error });
+  }
+});
+
+// cloudfunctions/compat-api/lib/friends.js
+function normPhone(v) {
+  return String(v ?? "").trim();
+}
+function friendError(code, patch = {}) {
+  const spec = FRIEND_ERRORS[code];
+  if (!spec)
+    throw new Error(`\u672A\u77E5\u597D\u53CB\u57DF\u9519\u8BEF\u7801\uFF1A${code}`);
+  const e = new Error(patch.message || spec.message);
+  e.status = spec.status;
+  e.code = code;
+  if (patch.reason !== void 0)
+    e.reason = patch.reason;
+  if (patch.detail !== void 0)
+    e.detail = patch.detail;
+  return e;
+}
+function relationIdOf(phoneA, phoneB) {
+  const x = normPhone(phoneA);
+  const y = normPhone(phoneB);
+  if (!x || !y)
+    return "";
+  return x <= y ? `${x}:${y}` : `${y}:${x}`;
+}
+function otherPhoneOf(doc, phone) {
+  const p = normPhone(phone);
+  if (!doc || !p)
+    return "";
+  if (doc.a_phone === p)
+    return doc.b_phone || "";
+  if (doc.b_phone === p)
+    return doc.a_phone || "";
+  return "";
+}
+function isParty(doc, phone) {
+  return !!doc && (doc.a_phone === phone || doc.b_phone === phone);
+}
+function baseExpiresAt(createdAt, rewardMonths = 0) {
+  const r = Math.trunc(Number(rewardMonths) || 0);
+  return isoPlusDays4(createdAt, BASE_DAYS + RENEWAL_REWARD_DAYS * r);
+}
+function windowOpenAt(doc) {
+  if (!doc || !doc.expires_at)
+    return "";
+  return new Date(toMs6(doc.expires_at) - RENEW_WINDOW_DAYS * DAY_MS7).toISOString();
+}
+function lockOf(pending) {
+  if (!pending || pending.kind !== "renew")
+    return null;
+  return {
+    by: pending.locked_by || "",
+    pieces: Number(pending.locked_pieces) || 0,
+    lot_id: pending.locked_lot_id || "",
+    at: pending.locked_at || ""
+  };
+}
+function pushEvent(doc, event) {
+  const e = {
+    at: event.at,
+    type: event.type,
+    from_status: event.from_status || "",
+    to_status: event.to_status || "",
+    by: event.by || "",
+    reason: event.reason || ""
+  };
+  doc.history = doc.history || [];
+  doc.history.push(e);
+  return e;
+}
+function sweepRelation(doc, now = /* @__PURE__ */ new Date()) {
+  const events = [];
+  if (!doc || typeof doc !== "object")
+    return { relation: null, events, changed: false };
+  const relation = JSON.parse(JSON.stringify(doc));
+  const at = toIso2(now);
+  const nowMs = toMs6(now);
+  const status = relation.status;
+  if (status === RELATION_STATUS.PENDING) {
+    const deadline = toMs6(relation.pending?.expires_at ?? "") || toMs6(relation.created_at) + INVITE_TTL_DAYS * DAY_MS7;
+    if (nowMs >= deadline) {
+      relation.status = RELATION_STATUS.DISSOLVED;
+      relation.pending = null;
+      relation.reason = "invite_timeout";
+      events.push(
+        pushEvent(relation, {
+          at,
+          type: "invite_timeout",
+          from_status: RELATION_STATUS.PENDING,
+          to_status: RELATION_STATUS.DISSOLVED,
+          reason: "invite_timeout"
+        })
+      );
+    }
+  } else if (status === RELATION_STATUS.ACTIVE || status === RELATION_STATUS.GRACE) {
+    if (relation.pending && relation.pending.kind === "renew") {
+      const deadline = toMs6(relation.pending.expires_at ?? "") || toMs6(relation.pending.requested_at) + RENEW_TTL_DAYS * DAY_MS7;
+      if (nowMs >= deadline) {
+        relation.pending = null;
+        events.push(
+          pushEvent(relation, {
+            at,
+            type: "renew_timeout",
+            from_status: status,
+            to_status: status,
+            reason: "renew_timeout"
+          })
+        );
+      }
+    }
+    if (status === RELATION_STATUS.ACTIVE && relation.expires_at && nowMs >= toMs6(relation.expires_at)) {
+      relation.status = RELATION_STATUS.GRACE;
+      relation.grace_until = isoPlusDays4(relation.expires_at, GRACE_DAYS);
+      events.push(
+        pushEvent(relation, {
+          at,
+          type: "grace_entered",
+          from_status: RELATION_STATUS.ACTIVE,
+          to_status: RELATION_STATUS.GRACE,
+          reason: "expired"
+        })
+      );
+    } else if (status === RELATION_STATUS.GRACE && relation.grace_until && nowMs >= toMs6(relation.grace_until)) {
+      relation.status = RELATION_STATUS.DISSOLVED;
+      relation.pending = null;
+      relation.reason = "grace_expired";
+      events.push(
+        pushEvent(relation, {
+          at,
+          type: "grace_expired",
+          from_status: RELATION_STATUS.GRACE,
+          to_status: RELATION_STATUS.DISSOLVED,
+          reason: "grace_expired"
+        })
+      );
+    }
+  }
+  return { relation, events, changed: events.length > 0 };
+}
+function isActiveAt(doc, now = /* @__PURE__ */ new Date()) {
+  if (!doc || doc.status !== RELATION_STATUS.ACTIVE)
+    return false;
+  if (!doc.expires_at)
+    return false;
+  return toMs6(now) < toMs6(doc.expires_at);
+}
+function withRelationLock(id, fn) {
+  const lock = relationLocks.get(id) || Promise.resolve();
+  const run = lock.then(fn);
+  relationLocks.set(id, run.catch(() => {
+  }));
+  return run;
+}
+async function persistRelation(id, doc) {
+  const next = { ...doc, version: (Number(doc.version) || 0) + 1 };
+  await colSet(FRIENDS_COL, id, next);
+  return next;
+}
+async function createInvite(fromPhone, toPhone, opts = {}) {
+  const from = normPhone(fromPhone);
+  const to = normPhone(toPhone);
+  if (!from || !to)
+    throw friendError("FRIEND_INVALID_PHONE");
+  if (from === to)
+    throw friendError("FRIEND_SELF_INVITE");
+  const id = relationIdOf(from, to);
+  return withRelationLock(id, async () => {
+    const now = resolveNow(opts);
+    const at = toIso2(now);
+    const base = await colGet(FRIENDS_COL, id);
+    if (base) {
+      const { relation: swept } = sweepRelation(base, now);
+      if (swept.status !== RELATION_STATUS.DISSOLVED)
+        throw friendError("FRIEND_DUPLICATE");
+    }
+    const a = from <= to ? from : to;
+    const b = from <= to ? to : from;
+    const doc = {
+      _id: id,
+      version: 0,
+      // 落盘时自增为 1（全新文档）
+      a_phone: a,
+      b_phone: b,
+      status: RELATION_STATUS.PENDING,
+      created_at: at,
+      // 待邀请阶段 = 发起时刻；接受时改写为 T0（接受时刻）
+      expires_at: null,
+      // 待邀请阶段无有效期
+      reward_months: 0,
+      // v4：建立时累计成功续约数 = 0
+      renewals: 0,
+      pending: {
+        kind: "invite",
+        from_phone: from,
+        // 发起人
+        to_phone: to,
+        // 被邀请人
+        requested_at: at,
+        // 发起时刻
+        expires_at: isoPlusDays4(at, INVITE_TTL_DAYS)
+      },
+      grace_until: null,
+      reason: "",
+      history: []
+    };
+    const event = pushEvent(doc, {
+      at,
+      type: "invite_created",
+      from_status: "",
+      to_status: RELATION_STATUS.PENDING,
+      by: from
+    });
+    const relation = await persistRelation(id, doc);
+    return { ok: true, relation_id: id, relation, events: [event] };
+  });
+}
+async function loadRelation(id) {
+  const doc = await colGet(FRIENDS_COL, id);
+  if (!doc)
+    throw friendError("FRIEND_NOT_FOUND");
+  return doc;
+}
+async function acceptInvite(relationId, byPhone, opts = {}) {
+  const id = requireId(relationId);
+  const by = normPhone(byPhone);
+  if (!by)
+    throw friendError("FRIEND_INVALID_PHONE");
+  return withRelationLock(id, async () => {
+    const now = resolveNow(opts);
+    const at = toIso2(now);
+    const base = await loadRelation(id);
+    const { relation, events } = sweepRelation(base, now);
+    if (relation.status === RELATION_STATUS.DISSOLVED)
+      throw terminalReject("\u63A5\u53D7\u9080\u8BF7");
+    if (relation.status !== RELATION_STATUS.PENDING)
+      throw stateReject(relation);
+    const inv = relation.pending;
+    if (!inv || inv.kind !== "invite")
+      throw stateReject(relation);
+    if (inv.to_phone !== by)
+      throw friendError("FRIEND_NOT_PARTY", { message: "\u53EA\u6709\u88AB\u9080\u8BF7\u4EBA\u672C\u4EBA\u53EF\u4EE5\u63A5\u53D7\u9080\u8BF7" });
+    relation.status = RELATION_STATUS.ACTIVE;
+    relation.created_at = at;
+    relation.expires_at = baseExpiresAt(at, relation.reward_months);
+    relation.pending = null;
+    relation.grace_until = null;
+    relation.reason = "";
+    const event = pushEvent(relation, {
+      at,
+      type: "invite_accepted",
+      from_status: RELATION_STATUS.PENDING,
+      to_status: RELATION_STATUS.ACTIVE,
+      by
+    });
+    const saved = await persistRelation(id, relation);
+    return { ok: true, relation_id: id, relation: saved, events: [...events, event] };
+  });
+}
+async function rejectInvite(relationId, byPhone, opts = {}) {
+  const id = requireId(relationId);
+  const by = normPhone(byPhone);
+  if (!by)
+    throw friendError("FRIEND_INVALID_PHONE");
+  return withRelationLock(id, async () => {
+    const now = resolveNow(opts);
+    const at = toIso2(now);
+    const base = await loadRelation(id);
+    const { relation, events } = sweepRelation(base, now);
+    if (relation.status !== RELATION_STATUS.PENDING)
+      throw stateReject(relation);
+    const inv = relation.pending;
+    if (!inv || inv.kind !== "invite")
+      throw stateReject(relation);
+    if (inv.to_phone !== by)
+      throw friendError("FRIEND_NOT_PARTY", { message: "\u53EA\u6709\u88AB\u9080\u8BF7\u4EBA\u672C\u4EBA\u53EF\u4EE5\u62D2\u7EDD\u9080\u8BF7" });
+    relation.status = RELATION_STATUS.DISSOLVED;
+    relation.pending = null;
+    relation.reason = "invite_rejected";
+    const event = pushEvent(relation, {
+      at,
+      type: "invite_rejected",
+      from_status: RELATION_STATUS.PENDING,
+      to_status: RELATION_STATUS.DISSOLVED,
+      by,
+      reason: "invite_rejected"
+    });
+    const saved = await persistRelation(id, relation);
+    return { ok: true, relation_id: id, relation: saved, events: [...events, event] };
+  });
+}
+async function cancelInvite(relationId, byPhone, opts = {}) {
+  const id = requireId(relationId);
+  const by = normPhone(byPhone);
+  if (!by)
+    throw friendError("FRIEND_INVALID_PHONE");
+  return withRelationLock(id, async () => {
+    const now = resolveNow(opts);
+    const at = toIso2(now);
+    const base = await loadRelation(id);
+    const { relation, events } = sweepRelation(base, now);
+    if (relation.status !== RELATION_STATUS.PENDING)
+      throw stateReject(relation);
+    const inv = relation.pending;
+    if (!inv || inv.kind !== "invite")
+      throw stateReject(relation);
+    if (inv.from_phone !== by)
+      throw friendError("FRIEND_NOT_PARTY", { message: "\u53EA\u6709\u53D1\u8D77\u65B9\u672C\u4EBA\u53EF\u4EE5\u64A4\u56DE\u9080\u8BF7" });
+    relation.status = RELATION_STATUS.DISSOLVED;
+    relation.pending = null;
+    relation.reason = "invite_cancelled";
+    const event = pushEvent(relation, {
+      at,
+      type: "invite_cancelled",
+      from_status: RELATION_STATUS.PENDING,
+      to_status: RELATION_STATUS.DISSOLVED,
+      by,
+      reason: "invite_cancelled"
+    });
+    const saved = await persistRelation(id, relation);
+    return { ok: true, relation_id: id, relation: saved, events: [...events, event] };
+  });
+}
+async function renewRequest(relationId, byPhone, opts = {}) {
+  const id = requireId(relationId);
+  const by = normPhone(byPhone);
+  if (!by)
+    throw friendError("FRIEND_INVALID_PHONE");
+  return withRelationLock(id, async () => {
+    const now = resolveNow(opts);
+    const at = toIso2(now);
+    const base = await loadRelation(id);
+    const { relation, events } = sweepRelation(base, now);
+    if (relation.status === RELATION_STATUS.DISSOLVED)
+      throw terminalReject("\u53D1\u8D77\u7EED\u7EA6");
+    if (relation.status !== RELATION_STATUS.ACTIVE)
+      throw stateReject(relation);
+    if (!isParty(relation, by))
+      throw friendError("FRIEND_NOT_PARTY");
+    if (relation.pending && relation.pending.kind === "renew")
+      throw friendError("RENEW_ALREADY_PENDING");
+    if (relation.pending)
+      throw friendError("FRIEND_STATE_INVALID", { message: "\u5DF2\u6709\u5F85\u786E\u8BA4\u7684\u9080\u8BF7\u7533\u8BF7" });
+    const openAt = windowOpenAt(relation);
+    if (toMs6(now) < toMs6(openAt)) {
+      const daysLeft = Math.ceil((toMs6(relation.expires_at) - toMs6(now)) / DAY_MS7);
+      throw friendError("NOT_IN_RENEW_WINDOW", {
+        message: `\u8DDD\u5230\u671F\u8FD8\u6709 ${daysLeft} \u5929\uFF0C\u5230\u671F\u524D ${RENEW_WINDOW_DAYS} \u5929\u5185\u624D\u53EF\u53D1\u8D77\u7EED\u7EA6`
+      });
+    }
+    if (opts.has_self_scroll === false)
+      throw friendError("SCROLL_INSUFFICIENT");
+    const locked = {
+      by,
+      pieces: LOCKED_PIECES,
+      lot_id: normPhone(opts.locked_lot_id),
+      at
+    };
+    relation.pending = {
+      kind: "renew",
+      from_phone: by,
+      // 申请方（锁定方）
+      to_phone: otherPhoneOf(relation, by),
+      // 待确认方
+      requested_at: at,
+      expires_at: isoPlusDays4(at, RENEW_TTL_DAYS),
+      locked_by: locked.by,
+      locked_pieces: locked.pieces,
+      locked_lot_id: locked.lot_id,
+      locked_at: locked.at
+    };
+    const event = pushEvent(relation, {
+      at,
+      type: "renew_requested",
+      from_status: RELATION_STATUS.ACTIVE,
+      to_status: RELATION_STATUS.ACTIVE,
+      by
+    });
+    const saved = await persistRelation(id, relation);
+    return {
+      ok: true,
+      relation_id: id,
+      relation: saved,
+      events: [...events, event],
+      window_open_at: openAt,
+      locked
+    };
+  });
+}
+async function renewConfirm(relationId, byPhone, opts = {}) {
+  const id = requireId(relationId);
+  const by = normPhone(byPhone);
+  if (!by)
+    throw friendError("FRIEND_INVALID_PHONE");
+  return withRelationLock(id, async () => {
+    const now = resolveNow(opts);
+    const at = toIso2(now);
+    const base = await loadRelation(id);
+    const { relation, events } = sweepRelation(base, now);
+    if (relation.status === RELATION_STATUS.DISSOLVED)
+      throw terminalReject("\u786E\u8BA4\u7EED\u7EA6");
+    if (relation.status !== RELATION_STATUS.ACTIVE)
+      throw stateReject(relation);
+    const req = relation.pending;
+    if (!req || req.kind !== "renew")
+      throw friendError("FRIEND_STATE_INVALID", { message: "\u6CA1\u6709\u5F85\u786E\u8BA4\u7684\u7EED\u7EA6\u7533\u8BF7" });
+    if (req.from_phone === by)
+      throw friendError("RENEW_SELF_CONFIRM");
+    if (req.to_phone !== by)
+      throw friendError("FRIEND_NOT_PARTY", { message: "\u53EA\u6709\u88AB\u7533\u8BF7\u7684\u5BF9\u65B9\u53EF\u4EE5\u786E\u8BA4\u7EED\u7EA6" });
+    if (opts.has_self_scroll === false || opts.has_initiator_scroll === false) {
+      throw friendError("SCROLL_INSUFFICIENT");
+    }
+    const locked = lockOf(req);
+    relation.renewals = (Number(relation.renewals) || 0) + 1;
+    relation.reward_months = (Number(relation.reward_months) || 0) + 1;
+    relation.expires_at = baseExpiresAt(relation.created_at, relation.reward_months);
+    relation.pending = null;
+    const event = pushEvent(relation, {
+      at,
+      type: "renew_confirmed",
+      from_status: RELATION_STATUS.ACTIVE,
+      to_status: RELATION_STATUS.ACTIVE,
+      by
+    });
+    const saved = await persistRelation(id, relation);
+    return {
+      ok: true,
+      relation_id: id,
+      relation: saved,
+      events: [...events, event],
+      // 调用方在资产事务内扣减：双边各 amount_each 片，其中 locked.by（发起方）那 1 片 = 本次锁定项
+      deduct: { phones: [saved.a_phone, saved.b_phone], amount_each: 1, locked }
+    };
+  });
+}
+async function renewCancel(relationId, byPhone, opts = {}) {
+  const id = requireId(relationId);
+  const by = normPhone(byPhone);
+  if (!by)
+    throw friendError("FRIEND_INVALID_PHONE");
+  return withRelationLock(id, async () => {
+    const now = resolveNow(opts);
+    const at = toIso2(now);
+    const base = await loadRelation(id);
+    const { relation, events } = sweepRelation(base, now);
+    if (relation.status === RELATION_STATUS.DISSOLVED)
+      throw stateReject(relation);
+    if (relation.status !== RELATION_STATUS.ACTIVE && relation.status !== RELATION_STATUS.GRACE) {
+      throw stateReject(relation);
+    }
+    if (!isParty(relation, by))
+      throw friendError("FRIEND_NOT_PARTY");
+    const req = relation.pending;
+    if (!req || req.kind !== "renew")
+      throw friendError("FRIEND_STATE_INVALID", { message: "\u6CA1\u6709\u5F85\u786E\u8BA4\u7684\u7EED\u7EA6\u7533\u8BF7" });
+    const unlocked = lockOf(req);
+    const isInitiator = req.from_phone === by;
+    const reason = isInitiator ? "renew_cancelled" : "renew_rejected";
+    const before = relation.expires_at;
+    relation.pending = null;
+    relation.expires_at = before;
+    const event = pushEvent(relation, {
+      at,
+      type: "renew_cancelled",
+      from_status: relation.status,
+      to_status: relation.status,
+      by,
+      reason
+    });
+    const saved = await persistRelation(id, relation);
+    return { ok: true, relation_id: id, relation: saved, events: [...events, event], unlocked };
+  });
+}
+async function dissolve(relationId, byPhone, opts = {}) {
+  const id = requireId(relationId);
+  const by = normPhone(byPhone);
+  if (!by)
+    throw friendError("FRIEND_INVALID_PHONE");
+  return withRelationLock(id, async () => {
+    const now = resolveNow(opts);
+    const at = toIso2(now);
+    const base = await loadRelation(id);
+    const { relation, events } = sweepRelation(base, now);
+    if (relation.status === RELATION_STATUS.DISSOLVED)
+      throw stateReject(relation);
+    if (!isParty(relation, by))
+      throw friendError("FRIEND_NOT_PARTY");
+    const fromStatus = relation.status;
+    relation.status = RELATION_STATUS.DISSOLVED;
+    relation.pending = null;
+    relation.reason = String(opts.reason || "dissolved_by_party");
+    const event = pushEvent(relation, {
+      at,
+      type: "dissolved",
+      from_status: fromStatus,
+      to_status: RELATION_STATUS.DISSOLVED,
+      by,
+      reason: relation.reason
+    });
+    const saved = await persistRelation(id, relation);
+    return { ok: true, relation_id: id, relation: saved, events: [...events, event] };
+  });
+}
+async function listRelations(phone, opts = {}) {
+  const p = normPhone(phone);
+  if (!p)
+    throw friendError("FRIEND_INVALID_PHONE");
+  const now = resolveNow(opts);
+  const rows = await colWhere(FRIENDS_COL, (d) => !!d && (d.a_phone === p || d.b_phone === p));
+  const out = [];
+  for (const row of rows) {
+    const { relation } = sweepRelation(row, now);
+    if (!relation)
+      continue;
+    if (relation.status === RELATION_STATUS.DISSOLVED && !opts.include_dissolved)
+      continue;
+    out.push(relation);
+  }
+  return out.sort((x, y) => toMs6(x.created_at) - toMs6(y.created_at));
+}
+var FRIENDS_COL, RELATION_STATUS, INVITE_TTL_DAYS, RENEW_TTL_DAYS, RENEW_WINDOW_DAYS, GRACE_DAYS, BASE_DAYS, RENEWAL_REWARD_DAYS, LOCKED_PIECES, FRIEND_ERRORS, FRIEND_ERROR_CODES, DAY_MS7, toIso2, toMs6, isoPlusDays4, relationLocks, resolveNow, requireId, STATE_TEXT, stateReject, terminalReject;
+var init_friends = __esm({
+  "cloudfunctions/compat-api/lib/friends.js"() {
+    init_store();
+    FRIENDS_COL = "jiazu_friends";
+    RELATION_STATUS = {
+      /** 待邀请 */
+      PENDING: "pending",
+      /** 生效中 */
+      ACTIVE: "active",
+      /** 缓冲中 */
+      GRACE: "grace",
+      /** 已解除（终态，链不可逆） */
+      DISSOLVED: "dissolved"
+    };
+    INVITE_TTL_DAYS = 7;
+    RENEW_TTL_DAYS = 7;
+    RENEW_WINDOW_DAYS = 30;
+    GRACE_DAYS = 30;
+    BASE_DAYS = 365;
+    RENEWAL_REWARD_DAYS = 30;
+    LOCKED_PIECES = 1;
+    FRIEND_ERRORS = {
+      FRIEND_INVALID_PHONE: { status: 400, message: "\u624B\u673A\u53F7\u4E0D\u80FD\u4E3A\u7A7A" },
+      FRIEND_NOT_FOUND: { status: 404, message: "\u597D\u53CB\u5173\u7CFB\u4E0D\u5B58\u5728" },
+      FRIEND_SELF_INVITE: { status: 409, message: "\u4E0D\u80FD\u9080\u8BF7\u81EA\u5DF1" },
+      FRIEND_DUPLICATE: { status: 409, message: "\u8BE5\u597D\u53CB\u5173\u7CFB\u5DF2\u5B58\u5728" },
+      FRIEND_NOT_PARTY: { status: 409, message: "\u4F60\u4E0D\u662F\u8BE5\u597D\u53CB\u5173\u7CFB\u7684\u5F53\u4E8B\u4EBA" },
+      FRIEND_STATE_INVALID: { status: 409, message: "\u5F53\u524D\u72B6\u6001\u4E0D\u5141\u8BB8\u8BE5\u64CD\u4F5C" },
+      NOT_IN_RENEW_WINDOW: { status: 409, message: "\u672A\u8FDB\u5165\u7EED\u7EA6\u7A97\u53E3\uFF08\u5230\u671F\u524D 30 \u5929\u5185\u624D\u53EF\u53D1\u8D77\u7EED\u7EA6\uFF09" },
+      SCROLL_INSUFFICIENT: { status: 409, message: "\u5170\u5E16\u4E0D\u8DB3\uFF0C\u7EED\u7EA6\u9700\u53CC\u65B9\u5404 1 \u5F20\u6210\u54C1\u5170\u5E16" },
+      RENEW_ALREADY_PENDING: {
+        status: 409,
+        message: "\u5DF2\u6709\u5F85\u786E\u8BA4\u7684\u7EED\u7EA6\u7533\u8BF7\uFF08\u53D1\u8D77\u65B9 1 \u5F20\u5170\u5E16\u5DF2\u9501\u5B9A\uFF09\uFF0C\u4E0D\u53EF\u91CD\u590D\u53D1\u8D77"
+      },
+      RENEW_SELF_CONFIRM: { status: 409, message: "\u7EED\u7EA6\u987B\u7531\u5173\u7CFB\u53E6\u4E00\u65B9\u786E\u8BA4\uFF0C\u53D1\u8D77\u65B9\u4E0D\u80FD\u81EA\u5DF1\u786E\u8BA4" }
+    };
+    FRIEND_ERROR_CODES = Object.keys(FRIEND_ERRORS);
+    DAY_MS7 = 864e5;
+    toIso2 = (d) => new Date(d).toISOString();
+    toMs6 = (d) => d instanceof Date ? d.getTime() : new Date(d).getTime();
+    isoPlusDays4 = (from, days) => new Date(toMs6(from) + days * DAY_MS7).toISOString();
+    relationLocks = /* @__PURE__ */ new Map();
+    resolveNow = (opts) => opts?.now ? new Date(opts.now) : /* @__PURE__ */ new Date();
+    requireId = (relationId) => {
+      const id = normPhone(relationId);
+      if (!id)
+        throw friendError("FRIEND_NOT_FOUND");
+      return id;
+    };
+    STATE_TEXT = {
+      [RELATION_STATUS.PENDING]: "\u9080\u8BF7\u5C1A\u672A\u63A5\u53D7",
+      [RELATION_STATUS.ACTIVE]: "\u5173\u7CFB\u5DF2\u751F\u6548",
+      [RELATION_STATUS.GRACE]: "\u5173\u7CFB\u5904\u4E8E\u7F13\u51B2\u671F",
+      [RELATION_STATUS.DISSOLVED]: "\u5173\u7CFB\u5DF2\u89E3\u9664"
+    };
+    stateReject = (relation) => friendError("FRIEND_STATE_INVALID", { message: `\u5F53\u524D\u72B6\u6001\u4E0D\u5141\u8BB8\u8BE5\u64CD\u4F5C\uFF08${STATE_TEXT[relation.status] || relation.status}\uFF09` });
+    terminalReject = (what) => friendError("FRIEND_STATE_INVALID", {
+      message: `\u5173\u7CFB\u5DF2\u89E3\u9664\uFF08\u7EC8\u6001\u4E0D\u53EF\u9006\uFF09\uFF0C\u4E0D\u80FD${what}`,
+      reason: "dissolved_terminal"
+    });
+  }
+});
+
+// cloudfunctions/compat-api/lib/friend-ops.js
+var friend_ops_exports = {};
+__export(friend_ops_exports, {
+  FRIEND_ERRORS: () => FRIEND_ERRORS,
+  FRIEND_NOTICE: () => FRIEND_NOTICE,
+  FRIEND_NOTICE_TYPE: () => FRIEND_NOTICE_TYPE,
+  FRIEND_OPS_ERRORS: () => FRIEND_OPS_ERRORS,
+  RELATION_AUDIT_ROLLBACK: () => RELATION_AUDIT_ROLLBACK,
+  RELATION_TOKEN_PREFIX: () => RELATION_TOKEN_PREFIX,
+  REWARD_GRANT_KEY: () => REWARD_GRANT_KEY,
+  SOURCE_FRIEND_RENEW: () => SOURCE_FRIEND_RENEW,
+  SOURCE_FRIEND_RENEW_ROLLBACK: () => SOURCE_FRIEND_RENEW_ROLLBACK,
+  TEST_ONLY_HOOK: () => TEST_ONLY_HOOK,
+  TX_TYPE_ROLLBACK: () => TX_TYPE_ROLLBACK,
+  TX_TYPE_SCROLL_CONSUME: () => TX_TYPE_SCROLL_CONSUME,
+  acceptFriendInvite: () => acceptFriendInvite,
+  cancelFriendInvite: () => cancelFriendInvite,
+  cancelRenewal: () => cancelRenewal,
+  confirmRenewal: () => confirmRenewal,
+  dissolveFriend: () => dissolveFriend,
+  distributeFriendRewards: () => distributeFriendRewards,
+  grantRewardBase: () => grantRewardBase,
+  listFriends: () => listFriends,
+  lockedScrollPieces: () => lockedScrollPieces,
+  maskPhone: () => maskPhone4,
+  opsError: () => opsError,
+  rejectFriendInvite: () => rejectFriendInvite,
+  relationTokenOf: () => relationTokenOf,
+  requestRenewal: () => requestRenewal,
+  resolveRelationToken: () => resolveRelationToken,
+  sendFriendInvite: () => sendFriendInvite,
+  sweepFriends: () => sweepFriends
+});
+function opsError(code, patch = {}) {
+  const spec = FRIEND_OPS_ERRORS[code];
+  if (!spec)
+    throw new Error(`\u672A\u77E5\u597D\u53CB\u7F16\u6392\u57DF\u9519\u8BEF\u7801\uFF1A${code}`);
+  const e = new Error(patch.message || spec.message);
+  e.status = patch.status || spec.status;
+  e.code = code;
+  if (patch.reason !== void 0)
+    e.reason = patch.reason;
+  if (patch.detail !== void 0)
+    e.detail = patch.detail;
+  return e;
+}
+function safeReason(e) {
+  const code = norm3(e?.code) || "ASSET_INSUFFICIENT";
+  const raw = norm3(e?.message);
+  const unsafe = SYS_ERRNO_RE.test(norm3(e?.name) || code) || LOCAL_PATH_RE.test(raw) || SYS_ERRNO_RE.test(raw);
+  return { code, message: unsafe ? "\u8D44\u4EA7\u6263\u51CF\u6216\u56DE\u5199\u5931\u8D25\uFF08\u7CFB\u7EDF\u7EA7\uFF0C\u8BE6\u89C1\u670D\u52A1\u7AEF\u65E5\u5FD7\uFF09" : raw };
+}
+async function runOp(fn, okMessage) {
+  try {
+    const data = await fn();
+    return { ok: true, message: okMessage, ...data || {} };
+  } catch (e) {
+    const error = {
+      code: e?.code || "FRIEND_OPS_FAILED",
+      status: Number(e?.status) || 409,
+      message: e?.message || "\u597D\u53CB\u57DF\u64CD\u4F5C\u5931\u8D25"
+    };
+    if (e?.reason !== void 0)
+      error.reason = e.reason;
+    if (e?.detail !== void 0)
+      error.detail = e.detail;
+    return { ok: false, error, message: error.message };
+  }
+}
+function maskPhone4(phone) {
+  const p = norm3(phone);
+  if (!p)
+    return "";
+  if (p.length >= 7)
+    return `${p.slice(0, 3)}****${p.slice(-4)}`;
+  return `${p.slice(0, 1)}****`;
+}
+async function nicknameOf(phone) {
+  const p = norm3(phone);
+  if (!p)
+    return "";
+  const doc = await colGet(USERS_COL, p);
+  return norm3(doc?.nickname);
+}
+async function displayNameOf(phone) {
+  const nickname = await nicknameOf(phone);
+  return nickname || maskPhone4(phone);
+}
+async function notify(phone, kind, otherPhone, now) {
+  const tpl = FRIEND_NOTICE[kind];
+  if (!tpl)
+    return null;
+  const to = norm3(phone);
+  if (!to)
+    return null;
+  const name = await displayNameOf(otherPhone);
+  const item = {
+    id: messageId(),
+    type: FRIEND_NOTICE_TYPE,
+    title: tpl.title,
+    text: tpl.text(name),
+    created_at: toIso3(now),
+    read: false
+  };
+  return withMessages(to, (rec) => {
+    rec.items = Array.isArray(rec.items) ? rec.items : [];
+    if (!rec.items.some((m) => m && m.id === item.id)) {
+      rec.items.push(item);
+      rec.items = trimMessages(rec.items);
+    }
+    return item;
+  });
+}
+function pairOf(relationId) {
+  const id = norm3(relationId);
+  const parts = id.split(":").map((x) => x.trim()).filter(Boolean);
+  if (parts.length !== 2)
+    throw friendError("FRIEND_NOT_FOUND");
+  return parts;
+}
+function relationTokenOf(relationId) {
+  const id = norm3(relationId);
+  return RELATION_TOKEN_PREFIX + import_node_crypto9.default.createHash("sha256").update(id, "utf8").digest("hex").slice(0, 16);
+}
+async function resolveRelationToken(relationToken) {
+  const token = norm3(relationToken);
+  if (!RELATION_TOKEN_RE.test(token))
+    throw friendError("FRIEND_NOT_FOUND");
+  const docs = await colAll(FRIENDS_COL);
+  for (const doc of docs) {
+    if (doc && typeof doc === "object" && norm3(doc._id) && relationTokenOf(doc._id) === token)
+      return norm3(doc._id);
+  }
+  throw friendError("FRIEND_NOT_FOUND");
+}
+function projectRelation(relation, me) {
+  if (!relation || typeof relation !== "object")
+    return null;
+  const out = { ...relation };
+  out.relation_token = relationTokenOf(relation._id);
+  delete out._id;
+  out.a_phone_masked = maskPhone4(relation.a_phone);
+  out.b_phone_masked = maskPhone4(relation.b_phone);
+  delete out.a_phone;
+  delete out.b_phone;
+  if (out.pending !== void 0)
+    out.pending = projectPending(relation.pending, me);
+  out.history = (Array.isArray(relation.history) ? relation.history : []).map((e) => ({ ...e, by: maskPhone4(e?.by) }));
+  return out;
+}
+function projectEvents(events) {
+  return (Array.isArray(events) ? events : []).map((e) => ({
+    at: norm3(e?.at),
+    type: norm3(e?.type),
+    from_status: norm3(e?.from_status),
+    to_status: norm3(e?.to_status),
+    by_masked: maskPhone4(e?.by),
+    reason: norm3(e?.reason)
+  }));
+}
+function projectLock(locked, me) {
+  if (!locked || typeof locked !== "object")
+    return null;
+  return {
+    pieces: toNonNegInt(locked.pieces),
+    lot_id: norm3(locked.lot_id),
+    at: norm3(locked.at),
+    by_masked: maskPhone4(locked.by),
+    by_me: norm3(locked.by) === norm3(me)
+  };
+}
+async function writeRelationDoc(relation, opts = {}) {
+  const bump = opts.bump_version !== false;
+  const next = bump ? { ...relation, version: (Number(relation.version) || 0) + 1 } : { ...relation };
+  await colSet(FRIENDS_COL, next._id, next);
+  return next;
+}
+async function appendRelationAudit(relationId, event, opts = {}) {
+  const doc = await colGet(FRIENDS_COL, relationId);
+  if (!doc || typeof doc !== "object" || !norm3(doc._id))
+    return null;
+  const next = JSON.parse(JSON.stringify(doc));
+  next.history = Array.isArray(next.history) ? next.history : [];
+  const e = {
+    at: event.at,
+    type: event.type,
+    from_status: event.from_status || "",
+    to_status: event.to_status || "",
+    by: event.by || "",
+    reason: event.reason || ""
+  };
+  if (event.detail !== void 0)
+    e.detail = event.detail;
+  next.history.push(e);
+  await writeRelationDoc(next, opts);
+  return e;
+}
+function projectPending(pending, me) {
+  if (!pending || typeof pending !== "object")
+    return null;
+  const out = {
+    kind: norm3(pending.kind),
+    requested_at: norm3(pending.requested_at),
+    expires_at: norm3(pending.expires_at),
+    initiated_by_me: norm3(pending.from_phone) === me
+  };
+  if (pending.kind === "renew") {
+    out.locked = {
+      pieces: toNonNegInt(pending.locked_pieces),
+      at: norm3(pending.locked_at),
+      by_me: norm3(pending.locked_by) === me
+    };
+  }
+  return out;
+}
+async function listFriends(phone, now = /* @__PURE__ */ new Date()) {
+  return runOp(async () => {
+    const me = norm3(phone);
+    if (!me)
+      throw friendError("FRIEND_INVALID_PHONE");
+    const nowMs = toMs7(now);
+    const relations = await listRelations(me, { now });
+    const friends = [];
+    for (const r of relations) {
+      const other = otherPhoneOf(r, me);
+      const nickname = await nicknameOf(other);
+      const masked = maskPhone4(other);
+      const active = isActiveAt(r, now);
+      friends.push({
+        // 裁定 3：对外唯一标识 = 不透明句柄（**不下发** 关系文档 `_id`）
+        relation_token: relationTokenOf(r._id),
+        status: r.status,
+        active,
+        created_at: norm3(r.created_at),
+        expires_at: norm3(r.expires_at),
+        grace_until: norm3(r.grace_until),
+        reward_months: toNonNegInt(r.reward_months),
+        renewals: toNonNegInt(r.renewals),
+        window_open_at: r.status === RELATION_STATUS.ACTIVE ? windowOpenAt(r) : "",
+        days_left: r.expires_at ? Math.ceil((toMs7(r.expires_at) - nowMs) / DAY_MS8) : null,
+        pending: projectPending(r.pending, me),
+        friend: { nickname, phone_masked: masked, display_name: nickname || masked }
+      });
+    }
+    return { friends, count: friends.length };
+  }, "\u597D\u53CB\u5217\u8868\u83B7\u53D6\u6210\u529F");
+}
+async function sendFriendInvite(from, to, now = /* @__PURE__ */ new Date()) {
+  return runOp(async () => {
+    const res = await createInvite(from, to, { now });
+    const notice = await notify(res.relation.pending?.to_phone, "invite_sent", res.relation.pending?.from_phone, now);
+    return {
+      relation_token: relationTokenOf(res.relation_id),
+      relation: projectRelation(res.relation, norm3(from)),
+      events: projectEvents(res.events),
+      invite: {
+        to_masked: maskPhone4(res.relation.pending?.to_phone),
+        expires_at: norm3(res.relation.pending?.expires_at)
+      },
+      notice_id: notice?.id || ""
+    };
+  }, "\u597D\u53CB\u9080\u8BF7\u5DF2\u53D1\u51FA");
+}
+async function acceptFriendInvite(relationToken, by, now = /* @__PURE__ */ new Date()) {
+  return runOp(async () => {
+    const me = norm3(by);
+    const relationId = await resolveRelationToken(relationToken);
+    const res = await acceptInvite(relationId, me, { now });
+    const notice = await notify(otherPhoneOf(res.relation, me), "invite_accepted", me, now);
+    return {
+      relation_token: relationTokenOf(res.relation_id),
+      relation: projectRelation(res.relation, me),
+      events: projectEvents(res.events),
+      notice_id: notice?.id || ""
+    };
+  }, "\u597D\u53CB\u9080\u8BF7\u5DF2\u63A5\u53D7");
+}
+async function rejectFriendInvite(relationToken, by, now = /* @__PURE__ */ new Date()) {
+  return runOp(async () => {
+    const me = norm3(by);
+    const relationId = await resolveRelationToken(relationToken);
+    const res = await rejectInvite(relationId, me, { now });
+    return {
+      relation_token: relationTokenOf(res.relation_id),
+      relation: projectRelation(res.relation, me),
+      events: projectEvents(res.events),
+      notice_id: ""
+    };
+  }, "\u597D\u53CB\u9080\u8BF7\u5DF2\u62D2\u7EDD");
+}
+async function cancelFriendInvite(relationToken, by, now = /* @__PURE__ */ new Date()) {
+  return runOp(async () => {
+    const me = norm3(by);
+    const relationId = await resolveRelationToken(relationToken);
+    const res = await cancelInvite(relationId, me, { now });
+    return {
+      relation_token: relationTokenOf(res.relation_id),
+      relation: projectRelation(res.relation, me),
+      events: projectEvents(res.events),
+      notice_id: ""
+    };
+  }, "\u597D\u53CB\u9080\u8BF7\u5DF2\u64A4\u56DE");
+}
+async function requestRenewal(relationToken, by, now = /* @__PURE__ */ new Date()) {
+  return runOp(async () => {
+    const me = norm3(by);
+    if (!me)
+      throw friendError("FRIEND_INVALID_PHONE");
+    const relationId = await resolveRelationToken(relationToken);
+    const out = await withAssets(me, async (user) => {
+      const total = sumLots(user.scrolls);
+      if (total < SCROLL_PIECES_PER_SCROLL) {
+        throw friendError("SCROLL_INSUFFICIENT", {
+          message: `\u5170\u5E16\u4E0D\u8DB3\uFF0C\u7EED\u7EA6\u9700\u81EA\u6301 ${LOCKED_PIECES} \u5F20\u6210\u54C1\u5170\u5E16\uFF08\u5F53\u524D ${Math.floor(total / SCROLL_PIECES_PER_SCROLL)} \u5F20\uFF09`
+        });
+      }
+      const lot = (user.scrolls || []).find((l) => l && toNonNegInt(l.qty) > 0);
+      const held2 = { lot_id: lot ? norm3(lot.id) : "", avail_pieces: total };
+      const locked = await renewRequest(relationId, me, {
+        now,
+        has_self_scroll: true,
+        locked_lot_id: held2.lot_id
+      });
+      return { held: held2, locked };
+    });
+    const held = out.held;
+    const res = out.locked;
+    const notice = await notify(otherPhoneOf(res.relation, me), "renew_pending", me, now);
+    return {
+      relation_token: relationTokenOf(res.relation_id),
+      relation: projectRelation(res.relation, me),
+      events: projectEvents(res.events),
+      locked: projectLock(res.locked, me),
+      window_open_at: res.window_open_at,
+      avail_pieces: held.avail_pieces,
+      notice_id: notice?.id || ""
+    };
+  }, "\u7EED\u7EA6\u7533\u8BF7\u5DF2\u53D1\u51FA\uFF08\u5DF2\u9501\u5B9A 1 \u5F20\u5170\u5E16\uFF0C\u672A\u6263\u9664\uFF09");
+}
+async function rollbackCharged(entry, ctx) {
+  const { now, token, peerMasked, reason } = ctx;
+  try {
+    return await withAssets(entry.phone, (user) => {
+      const restored = [];
+      for (const t of entry.taken) {
+        const lot = (user.scrolls || []).find((l) => l && norm3(l.id) === norm3(t.id));
+        if (lot) {
+          lot.qty = toNonNegInt(lot.qty) + toNonNegInt(t.qty);
+          restored.push({ lot_id: norm3(t.id), qty: toNonNegInt(t.qty), recreated: false });
+        } else {
+          user.scrolls = user.scrolls || [];
+          user.scrolls.push({
+            id: t.id,
+            qty: toNonNegInt(t.qty),
+            expires_at: t.expires_at ?? null,
+            source: SOURCE_FRIEND_RENEW_ROLLBACK,
+            created_at: toIso3(now)
+          });
+          restored.push({ lot_id: norm3(t.id), qty: toNonNegInt(t.qty), recreated: true });
+        }
+      }
+      const tx = recordTx(
+        user,
+        {
+          type: TX_TYPE_ROLLBACK,
+          delta: { scrolls: entry.pieces },
+          ref: {
+            source: SOURCE_FRIEND_RENEW_ROLLBACK,
+            relation_token: token,
+            peer_masked: peerMasked,
+            reason,
+            reversed_tx: entry.tx_id
+          },
+          desc: `\u7EED\u7EA6\u6263\u51CF\u8865\u507F\uFF1A\u8FD8\u539F ${entry.pieces} \u7247\u6210\u54C1\u5170\u5E16\uFF08\u539F\u6263\u6D41\u6C34 ${entry.tx_id}\uFF09`
+        },
+        now
+      );
+      return { ok: true, restored, total: sumLots(user.scrolls || []), refund_tx_id: tx.id };
+    });
+  } catch (e) {
+    const s = safeReason(e);
+    return { ok: false, restored: [], error: { code: s.code, message: s.message } };
+  }
+}
+async function renewPlanOf(relationId, me, now) {
+  const rows = await listRelations(me, { now, include_dissolved: true });
+  const rel = rows.find((r) => r && norm3(r._id) === norm3(relationId));
+  if (!rel)
+    throw friendError("FRIEND_NOT_FOUND");
+  if (rel.status === RELATION_STATUS.DISSOLVED) {
+    throw friendError("FRIEND_STATE_INVALID", { message: "\u5173\u7CFB\u5DF2\u89E3\u9664\uFF08\u7EC8\u6001\u4E0D\u53EF\u9006\uFF09\uFF0C\u4E0D\u80FD\u786E\u8BA4\u7EED\u7EA6", reason: "dissolved_terminal" });
+  }
+  if (rel.status !== RELATION_STATUS.ACTIVE)
+    throw friendError("FRIEND_STATE_INVALID");
+  const req = rel.pending;
+  if (!req || req.kind !== "renew")
+    throw friendError("FRIEND_STATE_INVALID", { message: "\u6CA1\u6709\u5F85\u786E\u8BA4\u7684\u7EED\u7EA6\u7533\u8BF7" });
+  if (norm3(req.from_phone) === me)
+    throw friendError("RENEW_SELF_CONFIRM");
+  if (norm3(req.to_phone) !== me)
+    throw friendError("FRIEND_NOT_PARTY", { message: "\u53EA\u6709\u88AB\u7533\u8BF7\u7684\u5BF9\u65B9\u53EF\u4EE5\u786E\u8BA4\u7EED\u7EA6" });
+  return {
+    initiator: norm3(req.from_phone),
+    amount_each: LOCKED_PIECES,
+    locked: {
+      by: norm3(req.from_phone),
+      pieces: toNonNegInt(req.locked_pieces),
+      lot_id: norm3(req.locked_lot_id),
+      at: norm3(req.locked_at)
+    },
+    status: rel.status
+  };
+}
+async function confirmRenewal(relationToken, by, now = /* @__PURE__ */ new Date()) {
+  return runOp(async () => {
+    const me = norm3(by);
+    if (!me)
+      throw friendError("FRIEND_INVALID_PHONE");
+    const relationId = await resolveRelationToken(relationToken);
+    const token = relationTokenOf(relationId);
+    const pair = pairOf(relationId);
+    for (const p of pair) {
+      const snap = await getAssets(p);
+      const total = sumLots(snap.scrolls);
+      if (total < SCROLL_PIECES_PER_SCROLL) {
+        throw friendError("SCROLL_INSUFFICIENT", {
+          message: `\u5170\u5E16\u4E0D\u8DB3\uFF0C\u7EED\u7EA6\u9700\u53CC\u65B9\u5404 ${LOCKED_PIECES} \u5F20\u6210\u54C1\u5170\u5E16\uFF08${maskPhone4(p)} \u5F53\u524D ${Math.floor(total / SCROLL_PIECES_PER_SCROLL)} \u5F20\uFF09`
+        });
+      }
+    }
+    const plan = await renewPlanOf(relationId, me, now);
+    const deduct = { phones: pair, amount_each: plan.amount_each, locked: plan.locked };
+    const pieces = toNonNegInt(deduct.amount_each) * SCROLL_PIECES_PER_SCROLL;
+    const initiator = plan.initiator;
+    const order = [initiator, ...pair.filter((p) => p !== initiator)].filter(Boolean);
+    const applied = [];
+    for (const [index, p] of order.entries()) {
+      const role = p === initiator ? "initiator" : "confirmer";
+      const peer = pair.find((x) => x !== p) || "";
+      try {
+        if (typeof TEST_ONLY_HOOK.beforeCharge === "function") {
+          await TEST_ONLY_HOOK.beforeCharge(p, { role, index, relation_token: token });
+        }
+        const one = await withAssets(p, (user) => {
+          const c = chargeLots(user.scrolls || [], pieces, "scroll");
+          const tx = recordTx(
+            user,
+            {
+              type: TX_TYPE_SCROLL_CONSUME,
+              delta: { scrolls: -pieces },
+              ref: { source: SOURCE_FRIEND_RENEW, relation_token: token, peer_masked: maskPhone4(peer), role },
+              desc: `\u597D\u53CB\u7EED\u7EA6\u6D88\u8017\uFF1A${role === "initiator" ? "\u53D1\u8D77\u65B9" : "\u786E\u8BA4\u65B9"}\u81EA\u6301 ${toNonNegInt(deduct.amount_each)} \u5F20\u6210\u54C1\u5170\u5E16\uFF08${pieces} \u7247\uFF09`
+            },
+            now
+          );
+          return { taken: c.taken, left: c.current, tx_id: tx.id };
+        });
+        applied.push({
+          phone: p,
+          // 内部专用（脱敏投影时剔除，绝不进任何出参）
+          phone_masked: maskPhone4(p),
+          role,
+          pieces,
+          taken: one.taken,
+          left: one.left,
+          tx_id: one.tx_id
+        });
+      } catch (e) {
+        if (applied.length === 0)
+          throw e;
+        const reason = safeReason(e);
+        const first = applied[0];
+        const undone = await rollbackCharged(first, {
+          now,
+          token,
+          peerMasked: first.phone_masked,
+          reason: reason.code
+        });
+        const audit = await appendRelationAudit(
+          relationId,
+          {
+            at: toIso3(now),
+            type: RELATION_AUDIT_ROLLBACK,
+            from_status: plan.status,
+            to_status: plan.status,
+            // ③ 未执行 ⇒ 关系状态**未变**（不得填「推进后」的状态）
+            by: me,
+            reason: reason.code,
+            detail: {
+              relation_token: token,
+              compensated_masked: first.phone_masked,
+              failed_masked: maskPhone4(p),
+              pieces,
+              restored: undone.ok ? undone.restored : [],
+              refund_tx_id: undone.ok ? undone.refund_tx_id : "",
+              rollback_ok: !!undone.ok
+            }
+          },
+          { bump_version: false }
+          // 硬口径：关系文档 version 零变更（唯一写入 = history 追加审计）
+        );
+        if (!undone.ok) {
+          throw opsError("RENEW_DEDUCT_PARTIAL", {
+            message: `\u7EED\u7EA6\u6263\u51CF\u4EC5\u5B8C\u6210\u4E00\u65B9\u4E14\u8865\u507F\u5931\u8D25\uFF08\u5DF2\u6263\uFF1A${first.phone_masked}\uFF1B\u5931\u8D25\u65B9\uFF1A${maskPhone4(p)}\uFF1B\u8865\u507F\u5931\u8D25\uFF1A${undone.error.code}\uFF09\uFF0C\u9700\u4EBA\u5DE5\u6838\u5BF9`,
+            reason: reason.code,
+            detail: {
+              relation_token: token,
+              charged: applied.map((c) => ({ phone_masked: c.phone_masked, role: c.role, pieces: c.pieces, tx_id: c.tx_id })),
+              failed_masked: maskPhone4(p),
+              rollback_error: undone.error,
+              audit_at: norm3(audit?.at)
+            }
+          });
+        }
+        throw opsError("RENEW_DEDUCT_ROLLED_BACK", {
+          message: `\u7EED\u7EA6\u6263\u51CF\u672A\u5B8C\u6210\uFF08\u5DF2\u6263\u65B9 ${first.phone_masked} \u5DF2\u5168\u989D\u8865\u507F\u56DE\u6EDA ${pieces} \u7247\uFF1B\u5931\u8D25\u65B9 ${maskPhone4(p)}\uFF1A${reason.message || reason.code}\uFF09`,
+          reason: reason.code,
+          detail: {
+            relation_token: token,
+            compensated: { phone_masked: first.phone_masked, pieces, restored: undone.restored, refund_tx_id: undone.refund_tx_id },
+            failed_masked: maskPhone4(p),
+            audit_at: norm3(audit?.at)
+          }
+        });
+      }
+    }
+    const charged = applied.map(({ phone, ...rest }) => rest);
+    let res;
+    try {
+      res = await renewConfirm(relationId, me, {
+        now,
+        has_self_scroll: true,
+        has_initiator_scroll: true
+      });
+    } catch (e) {
+      const undone = [];
+      for (const c of applied) {
+        undone.push(
+          await rollbackCharged(c, { now, token, peerMasked: c.phone_masked, reason: norm3(e?.code) || "RENEW_CONFIRM_FAILED" })
+        );
+      }
+      const failed = undone.filter((u) => !u.ok);
+      if (failed.length > 0) {
+        throw opsError("RENEW_DEDUCT_PARTIAL", {
+          message: `\u7EED\u7EA6\u5173\u7CFB\u63A8\u8FDB\u5931\u8D25\u4E14\u53CC\u8FB9\u8865\u507F\u5931\u8D25\uFF08\u5DF2\u6263 ${applied.length} \u65B9\uFF0C\u5176\u4E2D ${failed.length} \u65B9\u8865\u507F\u5931\u8D25\uFF09\uFF0C\u9700\u4EBA\u5DE5\u6838\u5BF9`,
+          reason: norm3(e?.code) || "",
+          detail: {
+            relation_token: token,
+            charged: applied.map((c) => ({ phone_masked: c.phone_masked, role: c.role, pieces: c.pieces, tx_id: c.tx_id })),
+            rollback_errors: failed.map((u) => u.error),
+            confirm_error: norm3(e?.code) || ""
+          }
+        });
+      }
+      throw e;
+    }
+    const plan2 = res.deduct || deduct;
+    const others = pair.filter((p) => p !== me);
+    const noticeIds = [];
+    for (const p of [me, ...others]) {
+      const peer = pair.find((x) => x !== p) || "";
+      const n = await notify(p, "renew_confirmed", peer, now);
+      if (n?.id)
+        noticeIds.push(n.id);
+    }
+    return {
+      relation_token: relationTokenOf(res.relation_id),
+      relation: projectRelation(res.relation, me),
+      events: projectEvents(res.events),
+      deduct: {
+        phones_masked: (plan2.phones || []).map((p) => maskPhone4(p)),
+        amount_each: toNonNegInt(plan2.amount_each),
+        locked: projectLock(plan2.locked, me)
+      },
+      charged,
+      notice_ids: noticeIds
+    };
+  }, "\u7EED\u7EA6\u6210\u529F\uFF08\u53CC\u8FB9\u5404\u6263 1 \u5F20\u5170\u5E16\uFF09");
+}
+async function cancelRenewal(relationToken, by, now = /* @__PURE__ */ new Date(), reason = "") {
+  return runOp(async () => {
+    const me = norm3(by);
+    const relationId = await resolveRelationToken(relationToken);
+    const res = await renewCancel(relationId, me, { now, reason: String(reason || "") });
+    return {
+      relation_token: relationTokenOf(res.relation_id),
+      relation: projectRelation(res.relation, me),
+      events: projectEvents(res.events),
+      unlocked: { pieces: toNonNegInt(res.unlocked?.pieces), lot_id: norm3(res.unlocked?.lot_id), at: norm3(res.unlocked?.at), by_masked: maskPhone4(res.unlocked?.by) },
+      reason: norm3(res.relation?.history?.[res.relation.history.length - 1]?.reason),
+      unlocked_hint: maskPhone4(res.unlocked?.by)
+    };
+  }, "\u7EED\u7EA6\u7533\u8BF7\u5DF2\u53D6\u6D88\uFF08\u9501\u5B9A\u5DF2\u89E3\u9664\uFF0C\u65E0\u6D41\u6C34\uFF09");
+}
+async function dissolveFriend(relationToken, by, now = /* @__PURE__ */ new Date(), reason = "") {
+  return runOp(async () => {
+    const me = norm3(by);
+    if (!me)
+      throw friendError("FRIEND_INVALID_PHONE");
+    const relationId = await resolveRelationToken(relationToken);
+    const res = await dissolve(relationId, me, { now, ...reason ? { reason: String(reason) } : {} });
+    const pair = pairOf(relationId);
+    const noticeIds = [];
+    for (const p of pair) {
+      const peer = pair.find((x) => x !== p) || "";
+      const n = await notify(p, "dissolved", peer, now);
+      if (n?.id)
+        noticeIds.push(n.id);
+    }
+    return {
+      relation_token: relationTokenOf(res.relation_id),
+      relation: projectRelation(res.relation, me),
+      events: projectEvents(res.events),
+      reason: norm3(res.relation?.reason),
+      notice_ids: noticeIds
+    };
+  }, "\u597D\u53CB\u5173\u7CFB\u5DF2\u89E3\u9664");
+}
+function normalizeAmounts(raw) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const out = {};
+  for (const k of GRANT_KEYS)
+    out[k] = toNonNegInt(src[k]);
+  return out;
+}
+function grantTo(user, per, now, ref, desc) {
+  const delta = {};
+  for (const k of GRANT_KEYS) {
+    const n = toNonNegInt(per[k]);
+    delta[GRANT[k].delta] = n;
+    if (n > 0)
+      GRANT[k].add(user, n, now);
+  }
+  const tx = recordTx(user, { type: "reward", delta, ref, desc }, now);
+  return tx;
+}
+function grantRewardBase(user, amounts, now, triggerPhone) {
+  const baseAmt = normalizeAmounts(amounts);
+  const triggerMasked = maskPhone4(triggerPhone);
+  return grantTo(
+    user,
+    baseAmt,
+    now,
+    { source: SOURCE_FRIEND_REWARD, scope: "base", trigger_masked: triggerMasked },
+    `\u597D\u53CB\u5956\u52B1\uFF08\u57FA\u7840\uFF09\uFF1A\u89E6\u53D1\u8005\u672C\u4EBA +${baseAmt.seed_fragments} \u77F3\u69B4\u7C7D\u788E\u7247 / +${baseAmt.bamboo_pieces} \u7AF9\u7247`
+  );
+}
+async function distributeFriendRewards(triggerPhone, amounts = {}, now = /* @__PURE__ */ new Date(), opts = {}) {
+  return runOp(async () => {
+    const trigger = norm3(triggerPhone);
+    if (!trigger)
+      throw friendError("FRIEND_INVALID_PHONE");
+    const skipBase = amounts?.base === null;
+    const baseAmt = skipBase ? normalizeAmounts({}) : normalizeAmounts(amounts?.base);
+    const poolAmt = normalizeAmounts(amounts?.pool);
+    const triggerMasked = maskPhone4(trigger);
+    const grantKey = norm3(opts?.idempotency_key);
+    const baseTx = skipBase ? null : await withAssets(trigger, (user) => grantRewardBase(user, baseAmt, now, trigger));
+    const relations = await listRelations(trigger, { now });
+    const actives = [];
+    for (const r of relations) {
+      if (!isActiveAt(r, now))
+        continue;
+      const peer = otherPhoneOf(r, trigger);
+      if (!peer || peer === trigger)
+        continue;
+      actives.push({ relation_id: r._id, phone: peer });
+    }
+    const seen = /* @__PURE__ */ new Set();
+    const recipients = actives.filter((x) => seen.has(x.phone) ? false : (seen.add(x.phone), true));
+    const denominator = recipients.length;
+    if (denominator === 0) {
+      return {
+        denominator: 0,
+        recipients: 0,
+        base: baseAmt,
+        pool_per_friend: normalizeAmounts({}),
+        remainder: poolAmt,
+        distributed: [],
+        pooled: false,
+        base_tx_id: baseTx?.id || "",
+        notice_ids: []
+      };
+    }
+    const per = {};
+    const remainder = {};
+    for (const k of GRANT_KEYS) {
+      const total = poolAmt[k];
+      per[k] = Math.floor(total / denominator);
+      remainder[k] = total - per[k] * denominator;
+    }
+    const distributed = [];
+    for (const [index, { phone, relation_id }] of recipients.entries()) {
+      if (typeof TEST_ONLY_HOOK.beforeRewardGrant === "function") {
+        await TEST_ONLY_HOOK.beforeRewardGrant(phone, {
+          index,
+          relation_id,
+          relation_token: relationTokenOf(relation_id),
+          trigger_masked: triggerMasked,
+          idempotency_key: grantKey
+        });
+      }
+      const ref = {
+        source: SOURCE_FRIEND_REWARD,
+        scope: "pool",
+        relation_id,
+        trigger_masked: triggerMasked,
+        denominator,
+        pool_total: { ...poolAmt },
+        remainder: { ...remainder },
+        // 幂等键：**只在调用方给出时**追加 ⇒ 未给键时池流水 ref 仍是原七键（形状冻结不变）
+        ...grantKey ? { [REWARD_GRANT_KEY]: grantKey } : {}
+      };
+      const one = await withAssets(phone, (user) => {
+        if (grantKey) {
+          const seen2 = (Array.isArray(user.txs) ? user.txs : []).find(
+            (t) => t && norm3(t.type) === "reward" && norm3(t.ref?.scope) === "pool" && norm3(t.ref?.[REWARD_GRANT_KEY]) === grantKey && norm3(t.ref?.relation_id) === norm3(relation_id)
+          );
+          if (seen2)
+            return { tx: null, replayed: true, existing_id: norm3(seen2.id) };
+        }
+        const tx = grantTo(
+          user,
+          per,
+          now,
+          ref,
+          `\u597D\u53CB\u5956\u52B1\uFF08\u6C60\uFF09\uFF1A\u751F\u6548\u4E2D\u597D\u53CB ${denominator} \u4EBA\u5747\u5206\uFF0C\u672C\u6B21 +${per.seed_fragments} \u77F3\u69B4\u7C7D\u788E\u7247 / +${per.scroll_fragments} \u5170\u5E16\u6B8B\u9875`
+        );
+        return { tx, replayed: false, existing_id: norm3(tx?.id) };
+      });
+      distributed.push({
+        phone_masked: maskPhone4(phone),
+        // 裁定 3：出参侧只给不透明句柄
+        relation_token: relationTokenOf(relation_id),
+        granted: { ...per },
+        tx_id: one.existing_id,
+        // 重试跳过（本次分发的幂等键已在账上）⇒ true；正常入账 ⇒ false
+        replayed: one.replayed
+      });
+    }
+    return {
+      denominator,
+      recipients: denominator,
+      base: baseAmt,
+      pool_per_friend: per,
+      remainder,
+      distributed,
+      pooled: true,
+      base_tx_id: baseTx?.id || "",
+      notice_ids: []
+    };
+  }, "\u597D\u53CB\u5956\u52B1\u5DF2\u5206\u53D1");
+}
+async function lockedScrollPieces(phone, now = /* @__PURE__ */ new Date()) {
+  const me = norm3(phone);
+  if (!me)
+    throw friendError("FRIEND_INVALID_PHONE");
+  const at = now instanceof Date ? now : new Date(now);
+  return withAssets(me, async () => {
+    const rows = await listRelations(me, { now: at });
+    let pieces = 0;
+    const locks = [];
+    for (const r of rows) {
+      const p = r?.pending;
+      if (!p || p.kind !== "renew")
+        continue;
+      if (norm3(p.locked_by) !== me)
+        continue;
+      const n = toNonNegInt(p.locked_pieces);
+      if (n <= 0)
+        continue;
+      pieces += n;
+      locks.push({ relation_token: relationTokenOf(r._id), pieces: n });
+    }
+    return { pieces, locks };
+  });
+}
+async function sweepFriends(now = /* @__PURE__ */ new Date()) {
+  return runOp(async () => {
+    const docs = await colAll(FRIENDS_COL);
+    const changed = [];
+    for (const doc of docs) {
+      const { relation, events, changed: moved } = sweepRelation(doc, now);
+      if (!moved || !relation)
+        continue;
+      const saved = await writeRelationDoc(relation);
+      changed.push({
+        relation_id: saved._id,
+        status: saved.status,
+        from_status: norm3(events?.[0]?.from_status),
+        events: events || []
+      });
+    }
+    return { total: docs.length, changed_count: changed.length, changed };
+  }, "\u597D\u53CB\u5173\u7CFB\u60F0\u6027\u7ED3\u7B97\u5B8C\u6210");
+}
+var import_node_crypto9, DAY_MS8, norm3, toIso3, toMs7, TX_TYPE_SCROLL_CONSUME, SOURCE_FRIEND_RENEW, SOURCE_FRIEND_RENEW_ROLLBACK, TX_TYPE_ROLLBACK, RELATION_AUDIT_ROLLBACK, TEST_ONLY_HOOK, FRIEND_OPS_ERRORS, SYS_ERRNO_RE, LOCAL_PATH_RE, FRIEND_NOTICE_TYPE, FRIEND_NOTICE, RELATION_TOKEN_PREFIX, RELATION_TOKEN_RE, GRANT, GRANT_KEYS, REWARD_GRANT_KEY;
+var init_friend_ops = __esm({
+  "cloudfunctions/compat-api/lib/friend-ops.js"() {
+    import_node_crypto9 = __toESM(require("node:crypto"), 1);
+    init_store();
+    init_friends();
+    init_economy_ledger();
+    init_economy_ops();
+    DAY_MS8 = 864e5;
+    norm3 = (v) => String(v ?? "").trim();
+    toIso3 = (d) => new Date(d).toISOString();
+    toMs7 = (d) => d instanceof Date ? d.getTime() : new Date(d).getTime();
+    TX_TYPE_SCROLL_CONSUME = "scroll_consume";
+    SOURCE_FRIEND_RENEW = "friend_renew";
+    SOURCE_FRIEND_RENEW_ROLLBACK = "friend_renew_rollback";
+    TX_TYPE_ROLLBACK = "fee_refund";
+    RELATION_AUDIT_ROLLBACK = "renew_deduct_rollback";
+    TEST_ONLY_HOOK = { beforeCharge: null, beforeRewardGrant: null };
+    FRIEND_OPS_ERRORS = {
+      /** 入参不合法（amounts / 手机号缺失等编排层前置校验） */
+      FRIEND_OPS_INVALID_INPUT: { status: 400, message: "\u53C2\u6570\u4E0D\u5408\u6CD5" },
+      /**
+       * 裁定 2：双边扣减只完成一方且**补偿也失败** —— 这才是需人工介入的单向扣减。
+       * 补偿成功的情形一律返回 `RENEW_DEDUCT_ROLLED_BACK`（下方），**不得**用本码。
+       */
+      RENEW_DEDUCT_PARTIAL: { status: 409, message: "\u7EED\u7EA6\u6263\u51CF\u4EC5\u5B8C\u6210\u4E00\u65B9\u4E14\u8865\u507F\u5931\u8D25\uFF0C\u9700\u4EBA\u5DE5\u6838\u5BF9" },
+      /** 裁定 2：双边扣减第二笔失败，已对第一笔**全额补偿回写** ⇒ 无单向扣减（保留 409 语义） */
+      RENEW_DEDUCT_ROLLED_BACK: { status: 409, message: "\u7EED\u7EA6\u6263\u51CF\u5931\u8D25\uFF0C\u5DF2\u8865\u507F\u56DE\u6EDA\uFF08\u65E0\u5355\u5411\u6263\u51CF\uFF09" }
+    };
+    SYS_ERRNO_RE = /(?:EACCES|EPERM|ENOENT|EEXIST|EISDIR|ENOTDIR|EROFS|EIO|ENOSPC|ENOTEMPTY|EBUSY|ELOOP|EMFILE|ENFILE|ENAMETOOLONG)/;
+    LOCAL_PATH_RE = /\/(?:Users|tmp|var|private|home|opt|etc|usr)\//;
+    FRIEND_NOTICE_TYPE = "system";
+    FRIEND_NOTICE = {
+      invite_sent: {
+        title: "\u597D\u53CB\u9080\u8BF7",
+        text: (name) => `\u3010\u597D\u53CB\u9080\u8BF7\u3011${name} \u9080\u8BF7\u4F60\u6210\u4E3A\u597D\u53CB\uFF0C\u8BF7\u4E8E 7 \u5929\u5185\u5230\u597D\u53CB\u5217\u8868\u786E\u8BA4\u3002`
+      },
+      invite_accepted: {
+        title: "\u597D\u53CB\u9080\u8BF7\u5DF2\u63A5\u53D7",
+        text: (name) => `\u3010\u597D\u53CB\u9080\u8BF7\u3011${name} \u5DF2\u63A5\u53D7\u4F60\u7684\u597D\u53CB\u9080\u8BF7\uFF0C\u5173\u7CFB\u81EA\u63A5\u53D7\u4E4B\u65E5\u8D77\u751F\u6548 ${BASE_DAYS} \u5929\u3002`
+      },
+      renew_pending: {
+        title: "\u597D\u53CB\u7EED\u7EA6\u5F85\u786E\u8BA4",
+        text: (name) => `\u3010\u597D\u53CB\u7EED\u7EA6\u3011${name} \u53D1\u8D77\u7EED\u7EA6\u7533\u8BF7\uFF08\u5DF2\u9501\u5B9A ${LOCKED_PIECES} \u5F20\u5170\u5E16\uFF09\uFF0C\u8BF7\u4E8E 7 \u5929\u5185\u786E\u8BA4\u3002`
+      },
+      renew_confirmed: {
+        title: "\u597D\u53CB\u7EED\u7EA6\u6210\u529F",
+        text: (name) => `\u3010\u597D\u53CB\u7EED\u7EA6\u3011\u4F60\u4E0E ${name} \u7684\u7EED\u7EA6\u5DF2\u751F\u6548\uFF0C\u6709\u6548\u671F\u5EF6\u957F ${RENEWAL_REWARD_DAYS} \u5929\uFF08\u53CC\u65B9\u5404\u6D88\u8017 ${LOCKED_PIECES} \u5F20\u5170\u5E16\uFF09\u3002`
+      },
+      dissolved: {
+        title: "\u597D\u53CB\u5173\u7CFB\u5DF2\u89E3\u9664",
+        text: (name) => `\u3010\u597D\u53CB\u89E3\u9664\u3011\u4F60\u4E0E ${name} \u7684\u597D\u53CB\u5173\u7CFB\u5DF2\u89E3\u9664\u3002`
+      }
+    };
+    RELATION_TOKEN_PREFIX = "fr_";
+    RELATION_TOKEN_RE = /^fr_[0-9a-f]{16}$/;
+    GRANT = {
+      seed_fragments: { delta: "fragments", label: "\u77F3\u69B4\u7C7D\u788E\u7247", add: (user, n, now) => addFragments(user, n, now) },
+      bamboo_pieces: {
+        delta: "bamboos",
+        label: "\u7AF9\u7247",
+        add: (user, n, now) => addLot(user, "bamboo", n, { source: SOURCE_FRIEND_REWARD, now })
+      },
+      scroll_fragments: { delta: "scroll_fragments", label: "\u5170\u5E16\u6B8B\u9875", add: (user, n, now) => addScrollFragments(user, n, now) }
+    };
+    GRANT_KEYS = Object.keys(GRANT);
+    REWARD_GRANT_KEY = "grant_key";
+  }
+});
+
+// cloudfunctions/compat-api/lib/task-center.js
+var task_center_exports = {};
+__export(task_center_exports, {
+  CLAIMS_FIELD: () => CLAIMS_FIELD,
+  DAILY_TASK_REWARD: () => DAILY_TASK_REWARD,
+  SIGNIN_BASE_ITEMS: () => SIGNIN_BASE_ITEMS,
+  SIGNIN_CYCLE_DAYS: () => SIGNIN_CYCLE_DAYS,
+  SIGNIN_KIND_TO_GRANT: () => SIGNIN_KIND_TO_GRANT,
+  SIGNIN_MAKEUP_MAX_BACK_DAYS: () => SIGNIN_MAKEUP_MAX_BACK_DAYS,
+  SIGNIN_MAKEUP_MESSAGES: () => SIGNIN_MAKEUP_MESSAGES,
+  SIGNIN_MAKEUP_SOURCE: () => SIGNIN_MAKEUP_SOURCE,
+  SIGNIN_REWARD_SOURCE: () => SIGNIN_REWARD_SOURCE,
+  TASK_DEFS: () => TASK_DEFS,
+  TASK_ERRORS: () => TASK_ERRORS,
+  TASK_IDS: () => TASK_IDS,
+  TASK_STATE: () => TASK_STATE,
+  TASK_STATE_TEXT: () => TASK_STATE_TEXT,
+  WRITE_TX_TYPES: () => WRITE_TX_TYPES,
+  achievedToday: () => achievedToday,
+  claimTask: () => claimTask,
+  claimedDayOf: () => claimedDayOf,
+  claimedToday: () => claimedToday,
+  countWritesToday: () => countWritesToday,
+  cycleDayOf: () => cycleDayOf,
+  grantSigninItems: () => grantSigninItems,
+  isSigninDayString: () => isSigninDayString,
+  makeupGateOf: () => makeupGateOf,
+  mergeSigninDays: () => mergeSigninDays,
+  pickSigninPoolItem: () => pickSigninPoolItem,
+  shiftSigninDay: () => shiftSigninDay,
+  signinCalendarOf: () => signinCalendarOf,
+  signinItemsOf: () => signinItemsOf,
+  signinMakeup: () => signinMakeup,
+  streakFromSigninDays: () => streakFromSigninDays,
+  taskError: () => taskError,
+  taskViewOf: () => taskViewOf,
+  taskViewsOf: () => taskViewsOf,
+  tasksToday: () => tasksToday
+});
+function taskError(code, patch = {}) {
+  const spec = TASK_ERRORS[code] || { status: 409, message: "\u4EFB\u52A1\u4E2D\u5FC3\u64CD\u4F5C\u5931\u8D25" };
+  const e = new Error(patch.message || spec.message);
+  e.status = Number(patch.status) || spec.status;
+  e.code = patch.code || code;
+  if (patch.reason !== void 0)
+    e.reason = patch.reason;
+  if (patch.detail !== void 0)
+    e.detail = patch.detail;
+  return e;
+}
+function isSigninDayString(v) {
+  const s = typeof v === "string" ? v.trim() : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s))
+    return false;
+  const ms = Date.parse(`${s}T00:00:00.000Z`);
+  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === s;
+}
+function shiftSigninDay(day, n) {
+  const s = norm4(day);
+  if (!isSigninDayString(s))
+    return "";
+  const step = Math.trunc(Number(n) || 0);
+  return new Date(Date.parse(`${s}T00:00:00.000Z`) + step * DAY_MS9).toISOString().slice(0, 10);
+}
+function cycleDayOf(streak) {
+  const s = toNonNegInt(streak);
+  return s <= 0 ? 1 : (s - 1) % SIGNIN_CYCLE_DAYS + 1;
+}
+function streakFromSigninDays(days, today) {
+  const day = norm4(today);
+  if (!isSigninDayString(day))
+    return 0;
+  const set = new Set(normalizeSigninDays(days));
+  let cursor = set.has(day) ? day : shiftSigninDay(day, -1);
+  let n = 0;
+  while (set.has(cursor)) {
+    n += 1;
+    cursor = shiftSigninDay(cursor, -1);
+  }
+  return n;
+}
+function mergeSigninDays(days, add) {
+  const extra = Array.isArray(add) ? add : [add];
+  return normalizeSigninDays([...Array.isArray(days) ? days : [], ...extra]);
+}
+function pickSigninPoolItem(pool, random = Math.random) {
+  const list2 = (Array.isArray(pool) ? pool : []).filter(
+    (it) => it && Number.isFinite(Number(it.weight)) && Number(it.weight) > 0 && Number.isFinite(Number(it.qty)) && Number(it.qty) > 0
+  );
+  const total = list2.reduce((s, it) => s + Math.floor(Number(it.weight)), 0);
+  if (list2.length === 0 || total <= 0)
+    return null;
+  let r = Number(typeof random === "function" ? random() : random);
+  if (!Number.isFinite(r))
+    r = 0;
+  if (r < 0)
+    r = 0;
+  if (r >= 1)
+    r = 0.9999999999999999;
+  let acc = r * total;
+  for (const it of list2) {
+    acc -= Math.floor(Number(it.weight));
+    if (acc < 0)
+      return { kind: norm4(it.kind), qty: toNonNegInt(it.qty) };
+  }
+  const last = list2[list2.length - 1];
+  return { kind: norm4(last.kind), qty: toNonNegInt(last.qty) };
+}
+function signinCalendarOf(user, now = /* @__PURE__ */ new Date(), opts = {}) {
+  const day = beijingDate(now);
+  const days = new Set(normalizeSigninDays(user?.signin_days));
+  const cycle = cycleDayOf(user?.signin_streak);
+  const start = shiftSigninDay(day, -(cycle - 1));
+  const day7 = opts.day7_fragments === void 0 ? DEFAULT_SIGNIN_DAY7_FRAGMENTS : toNonNegInt(opts.day7_fragments);
+  const cells = [];
+  for (let i = 1; i <= SIGNIN_CYCLE_DAYS; i += 1) {
+    const date = shiftSigninDay(start, i - 1);
+    const is_bonus = i === SIGNIN_CYCLE_DAYS;
+    const state = days.has(date) ? "signed" : date === day ? "today" : date < day ? "missed" : "future";
+    cells.push({
+      cycle_day: i,
+      kind: "fragment",
+      qty: is_bonus ? day7 : DAILY_TASK_REWARD.base.seed_fragments,
+      is_bonus,
+      state,
+      date,
+      // ---- 本单新增三键（**只增不删**；既有六键一字未改）----
+      base: SIGNIN_BASE_ITEMS.map((it) => ({ kind: it.kind, qty: it.qty })),
+      // 逐字 [{kind:'fragment',qty:1},{kind:'bamboo',qty:1}]（由常量投影）
+      random: true,
+      // 当日必含随机追加一件
+      bonus: is_bonus ? { kind: "fragment", qty: day7 } : null
+      // 仅第 7 格；与 is_bonus 恒一致
+    });
+  }
+  return cells;
+}
+function makeupGateOf(days, date, today) {
+  const target = norm4(date);
+  const back = isSigninDayString(target) && isSigninDayString(today) ? Math.round((Date.parse(`${today}T00:00:00.000Z`) - Date.parse(`${target}T00:00:00.000Z`)) / DAY_MS9) : NaN;
+  if (!Number.isFinite(back) || back < 1 || back > SIGNIN_MAKEUP_MAX_BACK_DAYS) {
+    return { ok: false, code: "SIGNIN_MAKEUP_OUT_OF_RANGE", message: SIGNIN_MAKEUP_MESSAGES.OUT_OF_RANGE };
+  }
+  if (normalizeSigninDays(days).includes(target)) {
+    return { ok: false, code: "SIGNIN_MAKEUP_ALREADY", message: SIGNIN_MAKEUP_MESSAGES.ALREADY_SIGNED };
+  }
+  return { ok: true };
+}
+function signinItemsOf(cycle_day, picked, day7_fragments) {
+  const items = SIGNIN_BASE_ITEMS.map((it) => ({ ...it }));
+  if (picked)
+    items.push({ kind: picked.kind, qty: toNonNegInt(picked.qty) });
+  if (toNonNegInt(cycle_day) === SIGNIN_CYCLE_DAYS && toNonNegInt(day7_fragments) > 0) {
+    items.push({ kind: "fragment", qty: toNonNegInt(day7_fragments) });
+  }
+  return items;
+}
+function grantSigninItems(user, items, now, me) {
+  const amounts = { seed_fragments: 0, bamboo_pieces: 0, scroll_fragments: 0 };
+  let scrollPieces = 0;
+  for (const it of Array.isArray(items) ? items : []) {
+    const kind = norm4(it?.kind);
+    const qty = toNonNegInt(it?.qty);
+    if (qty <= 0)
+      continue;
+    const key = SIGNIN_KIND_TO_GRANT[kind];
+    if (key)
+      amounts[key] += qty;
+    else if (kind === "scroll")
+      scrollPieces += qty;
+  }
+  const tx = grantRewardBase(user, amounts, now, me);
+  let scrollTxId = "";
+  if (scrollPieces > 0) {
+    addLot(user, "scroll", scrollPieces, { expires_at: null, source: SOURCE_FRIEND_REWARD, now });
+    const stx = recordTx(
+      user,
+      {
+        type: "reward",
+        delta: { scrolls: scrollPieces },
+        ref: { source: SOURCE_FRIEND_REWARD, scope: "base", trigger_masked: maskPhone4(me) },
+        desc: `\u7B7E\u5230\u5956\u52B1\uFF08\u968F\u673A\uFF09\uFF1A+${scrollPieces} \u7247\u6210\u54C1\u5170\u5E16`
+      },
+      now
+    );
+    scrollTxId = norm4(stx?.id);
+  }
+  return { amounts, scroll_pieces: scrollPieces, tx_id: norm4(tx?.id), scroll_tx_id: scrollTxId };
+}
+function countWritesToday(user, now = /* @__PURE__ */ new Date()) {
+  const today = beijingDate(now);
+  const txs = Array.isArray(user?.txs) ? user.txs : [];
+  let n = 0;
+  for (const t of txs) {
+    if (!t || !WRITE_TX_TYPES.includes(norm4(t.type)))
+      continue;
+    if (!t.ts)
+      continue;
+    if (beijingDate(t.ts) === today)
+      n += 1;
+  }
+  return n;
+}
+function achievedToday(user, task, now = /* @__PURE__ */ new Date()) {
+  const id = norm4(task);
+  if (id === TASK_IDS.SIGNIN)
+    return norm4(user?.signin_date) === beijingDate(now);
+  if (id === TASK_IDS.INVITE)
+    return countInviteRewardsToday(user, now) > 0;
+  if (id === TASK_IDS.WRITE)
+    return countWritesToday(user, now) > 0;
+  return false;
+}
+function claimedDayOf(user, task) {
+  const id = norm4(task);
+  if (id === TASK_IDS.SIGNIN)
+    return norm4(user?.signin_date);
+  return norm4(user && user[CLAIMS_FIELD] && user[CLAIMS_FIELD][id] || "");
+}
+function claimedToday(user, task, now = /* @__PURE__ */ new Date()) {
+  return claimedDayOf(user, task) === beijingDate(now);
+}
+function taskViewOf(user, def, now = /* @__PURE__ */ new Date()) {
+  const day = beijingDate(now);
+  const achieved = achievedToday(user, def.id, now);
+  const claimed = claimedToday(user, def.id, now);
+  const claimable = !claimed && (def.id === TASK_IDS.SIGNIN ? true : achieved);
+  const state = claimed ? TASK_STATE.CLAIMED : claimable ? TASK_STATE.CLAIMABLE : TASK_STATE.NOT_ACHIEVED;
+  return {
+    task: def.id,
+    title: def.title,
+    rule: def.rule,
+    day,
+    achieved,
+    claimed,
+    claimed_day: claimedDayOf(user, def.id),
+    claimable,
+    state,
+    state_text: TASK_STATE_TEXT[state],
+    blocked_reason: state === TASK_STATE.CLAIMED ? TASK_STATE_TEXT.claimed : state === TASK_STATE.NOT_ACHIEVED ? `${TASK_STATE_TEXT.not_achieved}\uFF1A${def.title}\u5C1A\u672A\u5B8C\u6210\uFF08\u5317\u4EAC\u65F6\u95F4\u81EA\u7136\u65E5 ${day}\uFF09` : ""
+  };
+}
+function taskViewsOf(user, now = /* @__PURE__ */ new Date()) {
+  return TASK_DEFS.map((def) => taskViewOf(user, def, now));
+}
+async function tasksToday(phone, now = /* @__PURE__ */ new Date()) {
+  const me = norm4(phone);
+  if (!me)
+    throw taskError("TASK_INVALID_PHONE");
+  const at = asDate(now);
+  const user = await getAssets(me);
+  return { day: beijingDate(at), tasks: taskViewsOf(user, at), reward: { ...DAILY_TASK_REWARD } };
+}
+function claimGateOf(user, task, now) {
+  if (claimedToday(user, task, now)) {
+    return { ok: false, code: "TASK_ALREADY_CLAIMED", message: `\u4ECA\u65E5\u300C${TASK_BY_ID.get(task)?.title || task}\u300D\u5956\u52B1\u5DF2\u9886\u53D6\uFF08\u5317\u4EAC\u65F6\u95F4\u81EA\u7136\u65E5 ${beijingDate(now)} \u6BCF\u9879\u4EFB\u52A1\u53EA\u80FD\u9886\u4E00\u6B21\uFF09` };
+  }
+  if (task === TASK_IDS.SIGNIN)
+    return { ok: true };
+  if (!achievedToday(user, task, now)) {
+    return { ok: false, code: "TASK_NOT_ACHIEVED", message: `\u4ECA\u65E5\u300C${TASK_BY_ID.get(task)?.title || task}\u300D\u5C1A\u672A\u8FBE\u6807\uFF08${TASK_BY_ID.get(task)?.rule || ""}\uFF09` };
+  }
+  return { ok: true };
+}
+async function claimTask(phone, task, now = /* @__PURE__ */ new Date(), opts = {}) {
+  const me = norm4(phone);
+  if (!me)
+    throw taskError("TASK_INVALID_PHONE");
+  const id = norm4(task);
+  const def = TASK_BY_ID.get(id);
+  if (!def) {
+    throw taskError("TASK_UNKNOWN", {
+      message: `\u672A\u77E5\u4EFB\u52A1\uFF1A${id || "(\u7A7A)"}\uFF08\u53EF\u7528\uFF1A${TASK_DEFS.map((d) => d.id).join(" / ")}\uFF09`
+    });
+  }
+  const at = asDate(now);
+  const day = beijingDate(at);
+  const random = typeof opts?.random === "function" ? opts.random : Math.random;
+  let signinPool = DEFAULT_SIGNIN_POOL;
+  let day7Fragments = DEFAULT_SIGNIN_DAY7_FRAGMENTS;
+  if (id === TASK_IDS.SIGNIN) {
+    signinPool = await getSigninPool();
+    day7Fragments = await getSigninDay7Fragments();
+  }
+  const preGate = claimGateOf(await getAssets(me), id, at);
+  if (!preGate.ok)
+    throw taskError(preGate.code, { message: preGate.message, detail: { task: id, day } });
+  let pool = null;
+  let failure = null;
+  try {
+    const res = await distributeFriendRewards(
+      me,
+      // `base: null` ⇒ friend-ops 只发池：本人基础奖励在 ② 与打标**同一事务**内入账（见下）
+      { base: null, pool: { ...DAILY_TASK_REWARD.pool } },
+      at,
+      { idempotency_key: `${me}:${day}:${id}` }
+    );
+    if (!res || res.ok === false) {
+      failure = res?.error || { code: "TASK_REWARD_FAILED", message: TASK_ERRORS.TASK_REWARD_FAILED.message };
+    } else {
+      pool = res;
+    }
+  } catch (e) {
+    failure = { code: norm4(e?.code) || "TASK_REWARD_FAILED", message: norm4(e?.message) || TASK_ERRORS.TASK_REWARD_FAILED.message };
+  }
+  if (failure) {
+    throw taskError("TASK_REWARD_FAILED", {
+      message: `\u4EFB\u52A1\u5956\u52B1\u53D1\u653E\u5931\u8D25\uFF08${failure.code || "REWARD_FAILED"}\uFF09\uFF1A${failure.message || "\u597D\u53CB\u5956\u52B1\u6C60\u5206\u53D1\u672A\u6210\u529F"}\uFF1B\u672C\u6B21\u9886\u53D6**\u672A\u843D\u4EFB\u4F55\u6807\u8BB0\u3001\u96F6\u5199\u5165**\uFF0C\u53EF\u76F4\u63A5\u91CD\u8BD5`,
+      reason: failure.code || "TASK_REWARD_FAILED",
+      detail: { task: id, day, rolled_back: true, stage: "pool" }
+    });
+  }
+  let before = null;
+  let baseTxId = "";
+  let claimedItems = SIGNIN_BASE_ITEMS.map((it) => ({ ...it }));
+  let claimedStreak = 0;
+  let claimedCycle = 1;
+  try {
+    const out = await withAssets(me, (user) => {
+      const gate = claimGateOf(user, id, at);
+      if (!gate.ok)
+        throw taskError(gate.code, { message: gate.message, detail: { task: id, day } });
+      const snap = {
+        signin_date: norm4(user.signin_date),
+        claims: { ...user && user[CLAIMS_FIELD] || {} },
+        fragments: toNonNegInt(user.fragments),
+        seed_ids: (Array.isArray(user.seeds) ? user.seeds : []).map((l) => norm4(l?.id))
+      };
+      let items = SIGNIN_BASE_ITEMS.map((it) => ({ ...it }));
+      let txId = "";
+      if (id === TASK_IDS.SIGNIN) {
+        const prev = norm4(user.signin_date);
+        const streak = prev === shiftSigninDay(day, -1) ? toNonNegInt(user.signin_streak) + 1 : 1;
+        const cycle = cycleDayOf(streak);
+        const picked = pickSigninPoolItem(signinPool, random);
+        items = signinItemsOf(cycle, picked, day7Fragments);
+        user.signin_date = day;
+        user.signin_streak = streak;
+        user.signin_days = mergeSigninDays(user.signin_days, day);
+        recordSigninAudit(user, at);
+        txId = grantSigninItems(user, items, at, me).tx_id;
+        claimedItems = items;
+        claimedStreak = streak;
+        claimedCycle = cycle;
+      } else {
+        user[CLAIMS_FIELD] = { ...user && user[CLAIMS_FIELD] || {}, [id]: day };
+        txId = norm4(grantRewardBase(user, { ...DAILY_TASK_REWARD.base }, at, me)?.id);
+        claimedItems = items;
+      }
+      return { snap, tx_id: txId };
+    });
+    before = out.snap;
+    baseTxId = out.tx_id;
+  } catch (e) {
+    if (e?.code === "TASK_ALREADY_CLAIMED" || e?.code === "TASK_NOT_ACHIEVED")
+      throw e;
+    throw taskError("TASK_REWARD_FAILED", {
+      message: `\u4EFB\u52A1\u5956\u52B1\u53D1\u653E\u5931\u8D25\uFF08${norm4(e?.code) || "REWARD_FAILED"}\uFF09\uFF1A\u57FA\u7840\u5956\u52B1\u5165\u8D26\u672A\u5B8C\u6210\uFF08\u672C\u4E8B\u52A1\u5DF2\u6574\u4F53\u56DE\u6EDA\uFF0C\u96F6\u5199\u5165\uFF09`,
+      reason: norm4(e?.code) || "TASK_REWARD_FAILED",
+      detail: { task: id, day, rolled_back: true, stage: "claim_and_base" }
+    });
+  }
+  const after = await getAssets(me);
+  return {
+    task: id,
+    title: def.title,
+    day,
+    state: TASK_STATE.CLAIMED,
+    state_text: TASK_STATE_TEXT.claimed,
+    claimed_at: at.toISOString(),
+    achieved: achievedToday(after, id, at),
+    signin_date: norm4(after.signin_date),
+    reward: summaryOfReward(pool, baseTxId),
+    detail: detailOf(before, after),
+    tasks: taskViewsOf(after, at),
+    // ---- 签到域新增出参（**只增不删**；既有键名与形状一字未改）----
+    streak: toNonNegInt(after.signin_streak),
+    cycle_day: cycleDayOf(after.signin_streak),
+    items: claimedItems,
+    calendar: signinCalendarOf(after, at, { day7_fragments: day7Fragments }),
+    signin_streak: toNonNegInt(after.signin_streak),
+    signin_days: normalizeSigninDays(after.signin_days),
+    // 本次连签推进的读数（供路由 / 报告逐字引用；与 after 读数同值 —— 领取即今日已签）
+    streak_before_claim: claimedStreak,
+    cycle_day_before_claim: claimedCycle
+  };
+}
+async function signinMakeup(phone, date, now = /* @__PURE__ */ new Date()) {
+  const me = norm4(phone);
+  if (!me)
+    throw taskError("TASK_INVALID_PHONE");
+  const at = asDate(now);
+  const today = beijingDate(at);
+  const target = norm4(date);
+  const cost = await getSigninMakeupCostBamboos();
+  const day7Fragments = await getSigninDay7Fragments();
+  const pre = makeupGateOf(normalizeSigninDays((await getAssets(me)).signin_days), target, today);
+  if (!pre.ok)
+    throw taskError(pre.code, { message: pre.message, detail: { date: target, day: today } });
+  let charged = null;
+  try {
+    charged = await withAssets(me, (user) => {
+      const gate = makeupGateOf(normalizeSigninDays(user.signin_days), target, today);
+      if (!gate.ok)
+        throw taskError(gate.code, { message: gate.message, detail: { date: target, day: today } });
+      const c = chargeLots(user.bamboos, cost, "bamboo");
+      const tx = recordTx(
+        user,
+        {
+          type: "edit_fee",
+          delta: { bamboos: -cost },
+          ref: { source: SIGNIN_MAKEUP_SOURCE, op: SIGNIN_MAKEUP_SOURCE, date: target },
+          desc: `\u8865\u7B7E ${target}\uFF08\u6263 ${cost} \u7247\u7AF9\u7247\uFF09`,
+          operator: me
+        },
+        at
+      );
+      user.signin_days = mergeSigninDays(user.signin_days, target);
+      user.signin_streak = streakFromSigninDays(user.signin_days, today);
+      return { taken: c.taken, left: c.current, tx_id: norm4(tx?.id), streak: toNonNegInt(user.signin_streak) };
+    });
+  } catch (e) {
+    const code = norm4(e?.code);
+    if (code === ASSET_INSUFFICIENT || code === "SIGNIN_MAKEUP_OUT_OF_RANGE" || code === "SIGNIN_MAKEUP_ALREADY")
+      throw e;
+    if (Number.isFinite(Number(e?.status)))
+      throw e;
+    throw taskError("SIGNIN_MAKEUP_FAILED", {
+      message: `\u8865\u7B7E\u5931\u8D25\uFF08${code || "MAKEUP_FAILED"}\uFF09\uFF1A\u672C\u4E8B\u52A1\u5DF2\u6574\u4F53\u56DE\u6EDA\uFF0C\u96F6\u5199\u5165\u3001\u672A\u6263\u8D39\uFF0C\u53EF\u76F4\u63A5\u91CD\u8BD5`,
+      reason: code || "SIGNIN_MAKEUP_FAILED",
+      detail: { date: target, day: today, rolled_back: true }
+    });
+  }
+  const after = await getAssets(me);
+  return {
+    date: target,
+    day: today,
+    // ---- 补签后读数（新增字段；不改任何既有出参）----
+    streak: toNonNegInt(after.signin_streak),
+    signin_streak: toNonNegInt(after.signin_streak),
+    cycle_day: cycleDayOf(after.signin_streak),
+    cost_bamboos: cost,
+    bamboos_taken: charged.taken,
+    // FIFO 明细（批次 id / 片数 / 到期），供前端与审计核对
+    bamboos_total_pieces: sumLots(after.bamboos),
+    tx_id: charged.tx_id,
+    signin_date: norm4(after.signin_date),
+    // **未变**：补签不改「最近一次签到日」
+    signin_days: normalizeSigninDays(after.signin_days),
+    calendar: signinCalendarOf(after, at, { day7_fragments: day7Fragments })
+  };
+}
+function recordSigninAudit(user, now) {
+  return recordTx(
+    user,
+    {
+      type: "signin",
+      delta: {},
+      ref: { source: "task_center", task: "signin" },
+      desc: "\u6BCF\u65E5\u7B7E\u5230\uFF08\u5317\u4EAC\u65F6\u95F4\u81EA\u7136\u65E5\uFF1B\u5956\u52B1\u7ECF\u4EFB\u52A1\u4E2D\u5FC3\u9886\u53D6\uFF1A\u77F3\u69B4\u7C7D\u788E\u7247 1 + \u7AF9\u7247 1\uFF0C\u597D\u53CB\u6C60\u53E6\u8BA1\uFF09"
+    },
+    now
+  );
+}
+function summaryOfReward(pool, baseTxId) {
+  return {
+    base: { seed_fragments: 0, bamboo_pieces: 0, scroll_fragments: 0, ...DAILY_TASK_REWARD.base },
+    pooled: !!pool?.pooled,
+    denominator: toNonNegInt(pool?.denominator),
+    pool_per_friend: pool?.pool_per_friend || {},
+    remainder: pool?.remainder || {},
+    distributed: Array.isArray(pool?.distributed) ? pool.distributed : [],
+    base_tx_id: norm4(baseTxId)
+  };
+}
+function detailOf(before, after) {
+  const seedIds = new Set(before?.seed_ids || []);
+  const fresh = (Array.isArray(after?.seeds) ? after.seeds : []).filter(
+    (l) => l && !seedIds.has(norm4(l.id)) && norm4(l.source) === "fragment_synth"
+  );
+  return {
+    fragments: toNonNegInt(after?.fragments),
+    synthesized: fresh.length,
+    seed_lot: fresh[0] || null,
+    signin_date: norm4(after?.signin_date),
+    scroll_fragments: toNonNegInt(after?.scroll_fragments),
+    bamboos_total_pieces: (Array.isArray(after?.bamboos) ? after.bamboos : []).reduce((s, l) => s + toNonNegInt(l?.qty), 0),
+    fragments_before: toNonNegInt(before?.fragments)
+  };
+}
+var norm4, asDate, DAY_MS9, TASK_IDS, TASK_STATE, TASK_STATE_TEXT, CLAIMS_FIELD, WRITE_TX_TYPES, DAILY_TASK_REWARD, TASK_DEFS, TASK_BY_ID, TASK_ERRORS, SIGNIN_CYCLE_DAYS, SIGNIN_MAKEUP_MAX_BACK_DAYS, SIGNIN_MAKEUP_MESSAGES, SIGNIN_REWARD_SOURCE, SIGNIN_MAKEUP_SOURCE, SIGNIN_KIND_TO_GRANT, SIGNIN_BASE_ITEMS;
+var init_task_center = __esm({
+  "cloudfunctions/compat-api/lib/task-center.js"() {
+    init_economy_ledger();
+    init_invite();
+    init_friend_ops();
+    init_wallet();
+    norm4 = (v) => String(v ?? "").trim();
+    asDate = (d) => d instanceof Date ? d : new Date(d);
+    DAY_MS9 = 864e5;
+    TASK_IDS = {
+      /** 每日签到（与签到卡共用 `signin_date` 判定） */
+      SIGNIN: "signin",
+      /** 邀请新用户注册（口径 = 当日邀请奖励流水） */
+      INVITE: "invite",
+      /** 平台写操作（口径 = 当日成功计费写流水） */
+      WRITE: "write"
+    };
+    TASK_STATE = {
+      NOT_ACHIEVED: "not_achieved",
+      CLAIMABLE: "claimable",
+      CLAIMED: "claimed"
+    };
+    TASK_STATE_TEXT = {
+      not_achieved: "\u672A\u8FBE\u6807",
+      claimable: "\u53EF\u9886\u53D6",
+      claimed: "\u5DF2\u9886\u53D6"
+    };
+    CLAIMS_FIELD = "task_claims";
+    WRITE_TX_TYPES = ["edit_fee", "delete_fee", "move_fee", "tree_create"];
+    DAILY_TASK_REWARD = {
+      base: { seed_fragments: 1, bamboo_pieces: 1 },
+      pool: { seed_fragments: 1, scroll_fragments: 1 }
+    };
+    TASK_DEFS = [
+      {
+        id: TASK_IDS.SIGNIN,
+        title: "\u6BCF\u65E5\u7B7E\u5230",
+        rule: "\u5F53\u65E5\uFF08\u5317\u4EAC\u65F6\u95F4\u81EA\u7136\u65E5\uFF09\u5DF2\u7B7E\u5230\uFF1A`signin_date` = \u5F53\u65E5\u65E5\u671F\u4E32\uFF08\u4E0E\u7B7E\u5230\u5361\u540C\u4E00\u5B57\u6BB5\u3001\u540C\u4E00\u5224\u5B9A\uFF09"
+      },
+      {
+        id: TASK_IDS.INVITE,
+        title: "\u9080\u8BF7\u65B0\u7528\u6237\u6CE8\u518C",
+        rule: "\u5F53\u65E5\u6709\u4E00\u6761\u6210\u529F\u9080\u8BF7\u5956\u52B1\u6D41\u6C34\uFF08`Tx.type='reward'` \u4E14 `ref.kind='invite'`\uFF0C\u4E0E /invite \u94FE\u8DEF\u540C\u4E00\u53E3\u5F84\uFF09"
+      },
+      {
+        id: TASK_IDS.WRITE,
+        title: "\u5E73\u53F0\u5199\u64CD\u4F5C",
+        rule: "\u5F53\u65E5\u6709\u4E00\u6761\u6210\u529F\u5199\u6D41\u6C34\uFF08`Tx.type \u2208 edit_fee/delete_fee/move_fee/tree_create`\uFF1B\u5931\u8D25\u3001\u88AB\u62D2\u3001no-op \u5747\u65E0\u6D41\u6C34 \u21D2 \u4E0D\u8BA1\uFF09"
+      }
+    ];
+    TASK_BY_ID = new Map(TASK_DEFS.map((d) => [d.id, d]));
+    TASK_ERRORS = {
+      TASK_INVALID_PHONE: { status: 400, message: "\u624B\u673A\u53F7\u4E0D\u5408\u6CD5" },
+      TASK_UNKNOWN: { status: 400, message: "\u672A\u77E5\u4EFB\u52A1" },
+      TASK_NOT_ACHIEVED: { status: 409, message: "\u4ECA\u65E5\u4EFB\u52A1\u5C1A\u672A\u8FBE\u6807\uFF0C\u8BF7\u5148\u5B8C\u6210\u540E\u518D\u9886\u53D6" },
+      TASK_ALREADY_CLAIMED: { status: 409, message: "\u4ECA\u65E5\u8BE5\u4EFB\u52A1\u5956\u52B1\u5DF2\u9886\u53D6\uFF08\u540C\u4E00\u81EA\u7136\u65E5\u6BCF\u9879\u4EFB\u52A1\u53EA\u80FD\u9886\u4E00\u6B21\uFF09" },
+      TASK_REWARD_FAILED: { status: 409, message: "\u4EFB\u52A1\u5956\u52B1\u53D1\u653E\u5931\u8D25\uFF0C\u672C\u6B21\u9886\u53D6\u5DF2\u64A4\u9500\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5" },
+      // ---- 签到补签（Zang 裁定 v1；两条 400 文案**逐字**，绝不静默失败）----
+      SIGNIN_MAKEUP_OUT_OF_RANGE: { status: 400, message: "\u8865\u7B7E\u65E5\u671F\u4E0D\u5728\u53EF\u8865\u8303\u56F4\u5185" },
+      SIGNIN_MAKEUP_ALREADY: { status: 400, message: "\u8BE5\u65E5\u5DF2\u7B7E\u5230\uFF0C\u65E0\u9700\u8865\u7B7E" },
+      SIGNIN_MAKEUP_FAILED: { status: 409, message: "\u8865\u7B7E\u5931\u8D25\uFF0C\u672C\u6B21\u672A\u6263\u8D39\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5" }
+    };
+    SIGNIN_CYCLE_DAYS = 7;
+    SIGNIN_MAKEUP_MAX_BACK_DAYS = 7;
+    SIGNIN_MAKEUP_MESSAGES = {
+      OUT_OF_RANGE: "\u8865\u7B7E\u65E5\u671F\u4E0D\u5728\u53EF\u8865\u8303\u56F4\u5185",
+      ALREADY_SIGNED: "\u8BE5\u65E5\u5DF2\u7B7E\u5230\uFF0C\u65E0\u9700\u8865\u7B7E"
+    };
+    SIGNIN_REWARD_SOURCE = SOURCE_FRIEND_REWARD;
+    SIGNIN_MAKEUP_SOURCE = "signin_makeup";
+    SIGNIN_KIND_TO_GRANT = {
+      fragment: "seed_fragments",
+      bamboo: "bamboo_pieces",
+      scroll_fragment: "scroll_fragments",
+      scrollFragment: "scroll_fragments"
+    };
+    SIGNIN_BASE_ITEMS = [
+      { kind: "fragment", qty: 1 },
+      { kind: "bamboo", qty: 1 }
+    ];
+  }
+});
+
+// cloudfunctions/compat-api/index.js
+var compat_api_exports = {};
+__export(compat_api_exports, {
+  handleRequest: () => handleRequest,
+  main: () => main
+});
+module.exports = __toCommonJS(compat_api_exports);
+init_store();
+init_auth();
+init_wallet();
+init_economy_ledger();
+
+// cloudfunctions/compat-api/lib/economy-fee.js
+init_economy_ledger();
 
 // cloudfunctions/compat-api/lib/tree-write.js
 var import_node_crypto3 = __toESM(require("node:crypto"), 1);
@@ -1224,21 +5969,21 @@ var Priority = {
 };
 
 // node_modules/pinyin-pro/dist/esm/common/utils.mjs
-function stringLength(text) {
+function stringLength(text2) {
   var _a;
-  return text.length - (((_a = text.match(DoubleUnicodeReg)) === null || _a === void 0 ? void 0 : _a.length) || 0);
+  return text2.length - (((_a = text2.match(DoubleUnicodeReg)) === null || _a === void 0 ? void 0 : _a.length) || 0);
 }
-function splitString(text) {
+function splitString(text2) {
   DoubleUnicodeReg.lastIndex = 0;
-  if (!DoubleUnicodeReg.test(text)) {
-    return text.split("");
+  if (!DoubleUnicodeReg.test(text2)) {
+    return text2.split("");
   }
   const result = [];
   let i = 0;
-  while (i < text.length) {
-    const char = text[i];
-    if (DoubleUnicodePrefixReg.test(char) && DoubleUnicodeSuffixReg.test(text[i + 1])) {
-      result.push(text.substring(i, i + 2));
+  while (i < text2.length) {
+    const char = text2[i];
+    if (DoubleUnicodePrefixReg.test(char) && DoubleUnicodeSuffixReg.test(text2[i + 1])) {
+      result.push(text2.substring(i, i + 2));
       i += 2;
     } else {
       result.push(char);
@@ -25035,7 +29780,7 @@ var AC = class {
     }
   }
   // 搜索字符串返回匹配的模式串
-  match(text, surname, zhChars = splitString(text)) {
+  match(text2, surname, zhChars = splitString(text2)) {
     let cur = this.root;
     let result = [];
     for (let i = 0; i < zhChars.length; i++) {
@@ -25083,8 +29828,8 @@ var AC = class {
     }
     return result;
   }
-  search(text, surname, algorithm = 2, zhChars = splitString(text)) {
-    const patterns = this.match(text, surname, zhChars);
+  search(text2, surname, algorithm = 2, zhChars = splitString(text2)) {
+    const patterns = this.match(text2, surname, zhChars);
     if (algorithm === 1) {
       return reverseMaxMatch(patterns);
     } else if (algorithm === 3) {
@@ -25139,7 +29884,7 @@ var getTraditionalWords = (word) => {
   }
   return traditionalWords.join("");
 };
-var getPinyin = (word, list, surname, segmentit, traditional, zhChars = splitString(word)) => {
+var getPinyin = (word, list2, surname, segmentit, traditional, zhChars = splitString(word)) => {
   ensureAcBuilt();
   const searchWord = traditional ? getTraditionalWords(word) : word;
   const searchChars = traditional ? splitString(searchWord) : zhChars;
@@ -25154,7 +29899,7 @@ var getPinyin = (word, list, surname, segmentit, traditional, zhChars = splitStr
         match.zh = char;
         let pinyin2 = "";
         pinyin2 = processSepecialPinyin(char, zhChars[i - 1], zhChars[i + 1], processFuncs);
-        list[i] = {
+        list2[i] = {
           origin: char,
           result: pinyin2,
           isZh: pinyin2 !== char,
@@ -25170,7 +29915,7 @@ var getPinyin = (word, list, surname, segmentit, traditional, zhChars = splitStr
         match.zh = zhChars.slice(match.index, match.index + match.length).join("");
       }
       for (let j = 0; j < match.length; j++) {
-        list[i + j] = {
+        list2[i + j] = {
           origin: zhChars[j + match.index],
           result: pinyins[pinyinIndex] || "",
           isZh: true,
@@ -25184,7 +29929,7 @@ var getPinyin = (word, list, surname, segmentit, traditional, zhChars = splitStr
       const char = zhChars[i];
       let pinyin2 = "";
       pinyin2 = processSepecialPinyin(char, zhChars[i - 1], zhChars[i + 1], processFuncs);
-      list[i] = {
+      list2[i] = {
         origin: char,
         result: pinyin2,
         isZh: pinyin2 !== char,
@@ -25193,7 +29938,7 @@ var getPinyin = (word, list, surname, segmentit, traditional, zhChars = splitStr
       i++;
     }
   }
-  return { list, matches };
+  return { list: list2, matches };
 };
 var getPinyinWithoutTone = (pinyin2) => {
   return pinyin2.replace(/(ā|á|ǎ|à)/g, "a").replace(/(ō|ó|ǒ|ò)/g, "o").replace(/(ē|é|ě|è)/g, "e").replace(/(ī|í|ǐ|ì)/g, "i").replace(/(ū|ú|ǔ|ù)/g, "u").replace(/(ǖ|ǘ|ǚ|ǜ)/g, "\xFC").replace(/(n̄|ń|ň|ǹ)/g, "n").replace(/(m̄|ḿ|m̌|m̀)/g, "m").replace(/(ê̄|ế|ê̌|ề)/g, "\xEA");
@@ -25344,9 +30089,9 @@ function processReduplicationChar(cur, pre, _) {
     }
   }
 }
-function getProcessFuncs(text) {
+function getProcessFuncs(text2) {
   const processes = [];
-  if (text.includes("\u3005")) {
+  if (text2.includes("\u3005")) {
     processes.push(processReduplicationChar);
   }
   processes.push(processToneSandhiLiao);
@@ -25381,23 +30126,23 @@ function isNonZhScope(char, scope) {
   }
   return true;
 }
-var middleWareNonZh = (list, options) => {
+var middleWareNonZh = (list2, options) => {
   let nonZh = options.nonZh;
   if (nonZh === "removed") {
-    return list.filter((item) => item.isZh || !isNonZhScope(item.origin, options.nonZhScope));
+    return list2.filter((item) => item.isZh || !isNonZhScope(item.origin, options.nonZhScope));
   } else if (nonZh === "consecutive") {
-    for (let i = list.length - 2; i >= 0; i--) {
-      const cur = list[i];
-      const pre = list[i + 1];
+    for (let i = list2.length - 2; i >= 0; i--) {
+      const cur = list2[i];
+      const pre = list2[i + 1];
       if (!cur.isZh && !pre.isZh && isNonZhScope(cur.origin, options.nonZhScope) && isNonZhScope(pre.origin, options.nonZhScope)) {
         cur.origin += pre.origin;
         cur.result += pre.result;
         pre.delete = true;
       }
     }
-    return list.filter((item) => !item.delete);
+    return list2.filter((item) => !item.delete);
   } else {
-    return list;
+    return list2;
   }
 };
 var middlewareMultiple = (word, options) => {
@@ -25407,60 +30152,60 @@ var middlewareMultiple = (word, options) => {
     return false;
   }
 };
-var middlewarePattern = (list, options) => {
+var middlewarePattern = (list2, options) => {
   switch (options.pattern) {
     case "pinyin":
       break;
     case "num":
-      list.forEach((item) => {
+      list2.forEach((item) => {
         item.result = item.isZh ? getNumOfTone(item.result) : "";
       });
       break;
     case "initial":
-      list.forEach((item) => {
+      list2.forEach((item) => {
         item.result = item.isZh ? getInitialAndFinal(item.result, options.initialPattern).initial : "";
       });
       break;
     case "final":
-      list.forEach((item) => {
+      list2.forEach((item) => {
         item.result = item.isZh ? getInitialAndFinal(item.result, options.initialPattern).final : "";
       });
       break;
     case "first":
-      list.forEach((item) => {
+      list2.forEach((item) => {
         item.result = getFirstLetter(item.result, item.isZh);
       });
       break;
     case "finalHead":
-      list.forEach((item) => {
+      list2.forEach((item) => {
         item.result = item.isZh ? getFinalParts(item.result).head : "";
       });
       break;
     case "finalBody":
-      list.forEach((item) => {
+      list2.forEach((item) => {
         item.result = item.isZh ? getFinalParts(item.result).body : "";
       });
       break;
     case "finalTail":
-      list.forEach((item) => {
+      list2.forEach((item) => {
         item.result = item.isZh ? getFinalParts(item.result).tail : "";
       });
       break;
   }
 };
-var middlewareToneType = (list, options) => {
+var middlewareToneType = (list2, options) => {
   switch (options.toneType) {
     case "symbol":
       break;
     case "none":
-      list.forEach((item) => {
+      list2.forEach((item) => {
         if (item.isZh) {
           item.result = getPinyinWithoutTone(item.result);
         }
       });
       break;
     case "num": {
-      list.forEach((item) => {
+      list2.forEach((item) => {
         if (item.isZh) {
           item.result = getPinyinWithNum(item.result, item.originPinyin);
         }
@@ -25469,29 +30214,29 @@ var middlewareToneType = (list, options) => {
     }
   }
 };
-var middlewareV = (list, options) => {
+var middlewareV = (list2, options) => {
   if (options.v) {
-    list.forEach((item) => {
+    list2.forEach((item) => {
       if (item.isZh) {
         item.result = item.result.replace(/ü/g, typeof options.v === "string" ? options.v : "v");
       }
     });
   }
 };
-var middlewareType = (list, options, word) => {
+var middlewareType = (list2, options, word) => {
   if (options.multiple && stringLength(word) === 1) {
     let last = "";
-    list = list.filter((item) => {
+    list2 = list2.filter((item) => {
       const res = item.result !== last;
       last = item.result;
       return res;
     });
   }
   if (options.type === "array") {
-    return list.map((item) => item.result);
+    return list2.map((item) => item.result);
   }
   if (options.type === "all") {
-    return list.map((item) => {
+    return list2.map((item) => {
       const pinyin2 = item.isZh ? item.result : "";
       const { initial, final } = getInitialAndFinal(pinyin2, options.initialPattern);
       const { head, body, tail } = getFinalPartsFromFinal(final);
@@ -25516,11 +30261,11 @@ var middlewareType = (list, options, word) => {
       };
     });
   }
-  return list.map((item) => item.result).join(options.separator);
+  return list2.map((item) => item.result).join(options.separator);
 };
-var middlewareToneSandhi = (list, toneSandhi) => {
+var middlewareToneSandhi = (list2, toneSandhi) => {
   if (toneSandhi === false) {
-    list.forEach((item) => {
+    list2.forEach((item) => {
       if (item.origin === "\u4E00") {
         item.result = item.originPinyin = "y\u012B";
       } else if (item.origin === "\u4E0D") {
@@ -25528,7 +30273,7 @@ var middlewareToneSandhi = (list, toneSandhi) => {
       }
     });
   }
-  return list;
+  return list2;
 };
 
 // node_modules/pinyin-pro/dist/esm/core/pinyin/index.mjs
@@ -25572,17 +30317,17 @@ function pinyin(word, options) {
   }
   const zhChars = splitString(word);
   let _list = Array(zhChars.length);
-  let { list } = getPinyin(word, _list, options.surname, options.segmentit, options.traditional, zhChars);
-  list = middlewareToneSandhi(list, options.toneSandhi);
-  list = middleWareNonZh(list, options);
+  let { list: list2 } = getPinyin(word, _list, options.surname, options.segmentit, options.traditional, zhChars);
+  list2 = middlewareToneSandhi(list2, options.toneSandhi);
+  list2 = middleWareNonZh(list2, options);
   const multipleList = middlewareMultiple(word, options);
   if (multipleList) {
-    list = multipleList;
+    list2 = multipleList;
   }
-  middlewarePattern(list, options);
-  middlewareToneType(list, options);
-  middlewareV(list, options);
-  return middlewareType(list, options, word);
+  middlewarePattern(list2, options);
+  middlewareToneType(list2, options);
+  middlewareV(list2, options);
+  return middlewareType(list2, options, word);
 }
 
 // cloudfunctions/compat-api/lib/tree-write.js
@@ -25591,6 +30336,167 @@ init_store();
 // cloudfunctions/compat-api/lib/founder-attach.js
 var import_node_crypto2 = __toESM(require("node:crypto"), 1);
 init_store();
+
+// cloudfunctions/compat-api/lib/geo/divisions.json
+var divisions_default = { _meta: { schema: "1.0", source: "Administrative-divisions-of-China\uFF08npm china-division v2.7.0\uFF09\xB7 \u56FD\u5BB6\u7EDF\u8BA1\u5C40\u300A2023\u5E74\u7EDF\u8BA1\u7528\u533A\u5212\u4EE3\u7801\u548C\u57CE\u4E61\u5212\u5206\u4EE3\u7801\u300B\uFF08\u622A\u6B62 2023-06-30\uFF09\uFF1B\u6570\u636E\u6587\u4EF6 dist/pca-code.json @ dc3a1d7acd85ca1b0979543e9259604142c52e8e \u4E0E dist/HK-MO-TW.json @ 30104e31ebbaf90dd7285b9aab08cfc067216ca3\uFF0C\u4ED3\u5E93 https://raw.githubusercontent.com/modood/Administrative-divisions-of-China \uFF0C\u8BB8\u53EF\u8BC1 WTFPL-2.0", source_sha256: "9114c1454e8cf3e35af5223c99df281e2266fb73287d96b1ef589db1bb0392d7", fetched_at: "2026-09-20T00:38:54.974Z", note: "\u9879\u76EE\u81EA\u5EFA\u6269\u5C55\u7801\u767B\u8BB0\uFF08**\u4E0D\u5F97\u58F0\u79F0\u6C11\u653F\u90E8 / \u56FD\u5BB6\u7EDF\u8BA1\u5C40\u7801**\uFF1B\u6C11\u653F\u90E8\u4E0E\u56FD\u5BB6\u7EDF\u8BA1\u5C40\u81EA 2024-10 \u8D77\u4E0D\u518D\u516C\u5F00\u5177\u4F53\u533A\u5212\u4EE3\u7801\uFF09\uFF1A\n\u2460\u300C\u6D77\u5916\u300D=999999\uFF1A\u9879\u76EE\u81EA\u5EFA\u54E8\u5175\u7801\uFF0C\u4E00\u7EA7\u552F\u4E00\u9879\u3001\u65E0\u4E0B\u7EA7\uFF0C\u4E0D\u5360\u7528\u771F\u5B9E\u7801\u6BB5\u3002\n\u2461 \u53F0\u6E7E\u7701\uFF1A\u4EC5 710000\uFF08\u7701\u7EA7\uFF0C\u4E0E\u516C\u5F00\u8D44\u6599\u4E00\u81F4\uFF09\u53EF\u6838\u9A8C\uFF1B\u5730\u7EA7 710100\u2013712200 \u4E0E\u53BF\u7EA7 7101xx\u20137122xx \u5168\u4E3A\u9879\u76EE\u81EA\u5EFA\u6269\u5C55\u7801\uFF08\u4E0A\u6E38\u6570\u636E\u96C6\u4E0D\u542B\u53F0\u6E7E\u4EFB\u4F55\u7801\u503C\uFF09\u3002\n   \xB7 \u5730\u7EA7\u89C4\u5219\uFF1A71NN00\uFF0CNN = \u5951\u7EA6\u5E8F [\u53F0\u5317/\u65B0\u5317/\u6843\u56ED/\u53F0\u4E2D/\u53F0\u5357/\u9AD8\u96C4 6 \u5E02 \u2192 \u57FA\u9686/\u65B0\u7AF9/\u5609\u4E49 3 \u7701\u8F96\u5E02 \u2192 13 \u53BF] \u7684\u9879\u5E8F\u3002\n   \xB7 \u53BF\u7EA7\u89C4\u5219\uFF1A\u5730\u7EA7\u7801\u524D 4 \u4F4D + 2 \u4F4D\u9879\u5E8F\uFF1B\u9879\u5E8F\u9ED8\u8BA4\u6CBF\u7528\u4E0A\u6E38 HK-MO-TW.json \u7684\u9879\u5E8F\u3002\n   \xB7 \u4F8B\u5916\uFF1A\u53F0\u5317\u5E02 12 \u533A\u6309\u9879\u76EE\u81EA\u5EFA\u5E8F [\u677E\u5C71/\u4FE1\u4E49/\u5927\u5B89/\u4E2D\u6B63/\u5927\u540C/\u4E2D\u5C71/\u4E07\u534E/\u6587\u5C71/\u5357\u6E2F/\u5185\u6E56/\u58EB\u6797/\u5317\u6295]\uFF0C\u4EE5\u6EE1\u8DB3\u5951\u7EA6\u951A\u70B9 710104=\u53F0\u5317\u5E02\u4E2D\u6B63\u533A\u3002\n   \xB7 \u91D1\u95E8\u53BF\uFF083\u95473\u4E61\uFF09\u3001\u8FDE\u6C5F\u53BF\uFF08\u9A6C\u7956\uFF0C4\u4E61\uFF09\u4E0A\u6E38 HK-MO-TW.json \u672A\u542B\uFF0C\u7531\u9879\u76EE\u6309\u884C\u653F\u533A\u5212\u901A\u540D\u8865\u5168\uFF08\u7EF4\u57FA\u767E\u79D1\u300C\u91D1\u9580\u7E23\u300D\u300C\u9023\u6C5F\u7E23 (\u4E2D\u83EF\u6C11\u570B)\u300D\u6761\u76EE\uFF09\uFF0C\u7801\u503C\u540C\u4E3A\u9879\u76EE\u81EA\u5EFA\u3002\n   \xB7 \u53E3\u5F84\u58F0\u660E\uFF1A\u91D1\u95E8\u53BF / \u8FDE\u6C5F\u53BF \u5927\u9646\u4EA6\u4E3B\u5F20\u5C5E\u798F\u5EFA\u7701\uFF0C\u672C\u8868\u6309\u5951\u7EA6\u53E3\u5F84\u7F6E\u4E8E\u53F0\u6E7E\u7701\u4E0B\u3002\n\u2462 \u6E2F\u6FB3\uFF1A810000 / 820000 \u4E3A\u7701\u7EA7\u516C\u5F00\u7801\uFF1B\u5176\u4E0B\u5730\u7EA7\uFF08\u9999\u6E2F\u5C9B/\u4E5D\u9F99/\u65B0\u754C\u3001\u6FB3\u95E8\u534A\u5C9B/\u6FB3\u95E8\u5916\u5C9B\uFF09\u4E0E\u53BF\u7EA7\uFF08\u5404\u533A/\u5404\u5802\u533A\uFF09\u5747\u4E3A\u9879\u76EE\u81EA\u5EFA\u6269\u5C55\u7801\uFF08\u53EA\u6CBF\u7528\u4E0A\u6E38 HK-MO-TW.json \u7684\u5730\u540D\uFF0C\u4E0D\u6CBF\u7528\u5176\u65E0\u7801\u7ED3\u6784\uFF09\u3002\n\u2463 \u53F0\u6E7E\u7701\u6309\u5951\u7EA6\u5FFD\u7565\u300C\u76F4\u8F96\u5E02\u300D\u5EFA\u5236\uFF1A\u53F0\u5317/\u65B0\u5317/\u6843\u56ED/\u53F0\u4E2D/\u53F0\u5357/\u9AD8\u96C4 6 \u5E02\u89C6\u4F5C\u5730\u7EA7\u5E02\uFF0C\u5F52\u5C5E\u53F0\u6E7E\u7701\u3002\n\u2464 \u76F4\u7B52\u5B50\u5E02\u5254\u9664\uFF082026-09-20 \u88C1\u5B9A\uFF0CKong \u5B9E\u65BD\uFF09\uFF1A\u5E7F\u4E1C\u7701\u4E1C\u839E\u5E02\uFF0836 \u9879\uFF09/ \u5E7F\u4E1C\u7701\u4E2D\u5C71\u5E02\uFF0823 \u9879\uFF09/ \u6D77\u5357\u7701\u510B\u5DDE\u5E02\uFF0818 \u9879\uFF09/ \u7518\u8083\u7701\u5609\u5CEA\u5173\u5E02\uFF085 \u9879\uFF09\u5171 82 \u4E2A\u4E0A\u6E38\u7B2C\u4E09\u7EA7\u9879\u662F**\u8857\u9053 / \u9547**\uFF089 \u4F4D\u7801\uFF09\uFF0C\u4E0D\u6EE1\u8DB3 ^\\d{6}$ \u21D2 isKnownOriginCode \u6052 false\uFF08\u9009\u4E2D\u5373 400\uFF09\uFF0C\u6545\u6574\u6279\u5254\u9664\u3001**\u4E0D\u7F16\u9020 6 \u4F4D\u7801**\uFF1B\u8FD9 4 \u4E2A\u5730\u7EA7\u5E02 counties \u6052\u4E3A\u7A7A\u6570\u7EC4 \u21D2 \u9009\u62E9\u5668\u6B62\u4E8E\u7B2C\u4E8C\u7EA7\uFF08\u9009\u5230\u5E02\u5373\u7EC8\u70B9\uFF09\u3002" }, provinces: [{ code: "110000", name: "\u5317\u4EAC\u5E02", cities: [{ code: "110100", name: "\u5E02\u8F96\u533A", counties: [{ code: "110101", name: "\u4E1C\u57CE\u533A" }, { code: "110102", name: "\u897F\u57CE\u533A" }, { code: "110105", name: "\u671D\u9633\u533A" }, { code: "110106", name: "\u4E30\u53F0\u533A" }, { code: "110107", name: "\u77F3\u666F\u5C71\u533A" }, { code: "110108", name: "\u6D77\u6DC0\u533A" }, { code: "110109", name: "\u95E8\u5934\u6C9F\u533A" }, { code: "110111", name: "\u623F\u5C71\u533A" }, { code: "110112", name: "\u901A\u5DDE\u533A" }, { code: "110113", name: "\u987A\u4E49\u533A" }, { code: "110114", name: "\u660C\u5E73\u533A" }, { code: "110115", name: "\u5927\u5174\u533A" }, { code: "110116", name: "\u6000\u67D4\u533A" }, { code: "110117", name: "\u5E73\u8C37\u533A" }, { code: "110118", name: "\u5BC6\u4E91\u533A" }, { code: "110119", name: "\u5EF6\u5E86\u533A" }] }] }, { code: "120000", name: "\u5929\u6D25\u5E02", cities: [{ code: "120100", name: "\u5E02\u8F96\u533A", counties: [{ code: "120101", name: "\u548C\u5E73\u533A" }, { code: "120102", name: "\u6CB3\u4E1C\u533A" }, { code: "120103", name: "\u6CB3\u897F\u533A" }, { code: "120104", name: "\u5357\u5F00\u533A" }, { code: "120105", name: "\u6CB3\u5317\u533A" }, { code: "120106", name: "\u7EA2\u6865\u533A" }, { code: "120110", name: "\u4E1C\u4E3D\u533A" }, { code: "120111", name: "\u897F\u9752\u533A" }, { code: "120112", name: "\u6D25\u5357\u533A" }, { code: "120113", name: "\u5317\u8FB0\u533A" }, { code: "120114", name: "\u6B66\u6E05\u533A" }, { code: "120115", name: "\u5B9D\u577B\u533A" }, { code: "120116", name: "\u6EE8\u6D77\u65B0\u533A" }, { code: "120117", name: "\u5B81\u6CB3\u533A" }, { code: "120118", name: "\u9759\u6D77\u533A" }, { code: "120119", name: "\u84DF\u5DDE\u533A" }] }] }, { code: "130000", name: "\u6CB3\u5317\u7701", cities: [{ code: "130100", name: "\u77F3\u5BB6\u5E84\u5E02", counties: [{ code: "130102", name: "\u957F\u5B89\u533A" }, { code: "130104", name: "\u6865\u897F\u533A" }, { code: "130105", name: "\u65B0\u534E\u533A" }, { code: "130107", name: "\u4E95\u9649\u77FF\u533A" }, { code: "130108", name: "\u88D5\u534E\u533A" }, { code: "130109", name: "\u85C1\u57CE\u533A" }, { code: "130110", name: "\u9E7F\u6CC9\u533A" }, { code: "130111", name: "\u683E\u57CE\u533A" }, { code: "130121", name: "\u4E95\u9649\u53BF" }, { code: "130123", name: "\u6B63\u5B9A\u53BF" }, { code: "130125", name: "\u884C\u5510\u53BF" }, { code: "130126", name: "\u7075\u5BFF\u53BF" }, { code: "130127", name: "\u9AD8\u9091\u53BF" }, { code: "130128", name: "\u6DF1\u6CFD\u53BF" }, { code: "130129", name: "\u8D5E\u7687\u53BF" }, { code: "130130", name: "\u65E0\u6781\u53BF" }, { code: "130131", name: "\u5E73\u5C71\u53BF" }, { code: "130132", name: "\u5143\u6C0F\u53BF" }, { code: "130133", name: "\u8D75\u53BF" }, { code: "130171", name: "\u77F3\u5BB6\u5E84\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "130172", name: "\u77F3\u5BB6\u5E84\u5FAA\u73AF\u5316\u5DE5\u56ED\u533A" }, { code: "130181", name: "\u8F9B\u96C6\u5E02" }, { code: "130183", name: "\u664B\u5DDE\u5E02" }, { code: "130184", name: "\u65B0\u4E50\u5E02" }] }, { code: "130200", name: "\u5510\u5C71\u5E02", counties: [{ code: "130202", name: "\u8DEF\u5357\u533A" }, { code: "130203", name: "\u8DEF\u5317\u533A" }, { code: "130204", name: "\u53E4\u51B6\u533A" }, { code: "130205", name: "\u5F00\u5E73\u533A" }, { code: "130207", name: "\u4E30\u5357\u533A" }, { code: "130208", name: "\u4E30\u6DA6\u533A" }, { code: "130209", name: "\u66F9\u5983\u7538\u533A" }, { code: "130224", name: "\u6EE6\u5357\u53BF" }, { code: "130225", name: "\u4E50\u4EAD\u53BF" }, { code: "130227", name: "\u8FC1\u897F\u53BF" }, { code: "130229", name: "\u7389\u7530\u53BF" }, { code: "130271", name: "\u6CB3\u5317\u5510\u5C71\u82A6\u53F0\u7ECF\u6D4E\u5F00\u53D1\u533A" }, { code: "130272", name: "\u5510\u5C71\u5E02\u6C49\u6CBD\u7BA1\u7406\u533A" }, { code: "130273", name: "\u5510\u5C71\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "130274", name: "\u6CB3\u5317\u5510\u5C71\u6D77\u6E2F\u7ECF\u6D4E\u5F00\u53D1\u533A" }, { code: "130281", name: "\u9075\u5316\u5E02" }, { code: "130283", name: "\u8FC1\u5B89\u5E02" }, { code: "130284", name: "\u6EE6\u5DDE\u5E02" }] }, { code: "130300", name: "\u79E6\u7687\u5C9B\u5E02", counties: [{ code: "130302", name: "\u6D77\u6E2F\u533A" }, { code: "130303", name: "\u5C71\u6D77\u5173\u533A" }, { code: "130304", name: "\u5317\u6234\u6CB3\u533A" }, { code: "130306", name: "\u629A\u5B81\u533A" }, { code: "130321", name: "\u9752\u9F99\u6EE1\u65CF\u81EA\u6CBB\u53BF" }, { code: "130322", name: "\u660C\u9ECE\u53BF" }, { code: "130324", name: "\u5362\u9F99\u53BF" }, { code: "130371", name: "\u79E6\u7687\u5C9B\u5E02\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "130372", name: "\u5317\u6234\u6CB3\u65B0\u533A" }] }, { code: "130400", name: "\u90AF\u90F8\u5E02", counties: [{ code: "130402", name: "\u90AF\u5C71\u533A" }, { code: "130403", name: "\u4E1B\u53F0\u533A" }, { code: "130404", name: "\u590D\u5174\u533A" }, { code: "130406", name: "\u5CF0\u5CF0\u77FF\u533A" }, { code: "130407", name: "\u80A5\u4E61\u533A" }, { code: "130408", name: "\u6C38\u5E74\u533A" }, { code: "130423", name: "\u4E34\u6F33\u53BF" }, { code: "130424", name: "\u6210\u5B89\u53BF" }, { code: "130425", name: "\u5927\u540D\u53BF" }, { code: "130426", name: "\u6D89\u53BF" }, { code: "130427", name: "\u78C1\u53BF" }, { code: "130430", name: "\u90B1\u53BF" }, { code: "130431", name: "\u9E21\u6CFD\u53BF" }, { code: "130432", name: "\u5E7F\u5E73\u53BF" }, { code: "130433", name: "\u9986\u9676\u53BF" }, { code: "130434", name: "\u9B4F\u53BF" }, { code: "130435", name: "\u66F2\u5468\u53BF" }, { code: "130471", name: "\u90AF\u90F8\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "130473", name: "\u90AF\u90F8\u5180\u5357\u65B0\u533A" }, { code: "130481", name: "\u6B66\u5B89\u5E02" }] }, { code: "130500", name: "\u90A2\u53F0\u5E02", counties: [{ code: "130502", name: "\u8944\u90FD\u533A" }, { code: "130503", name: "\u4FE1\u90FD\u533A" }, { code: "130505", name: "\u4EFB\u6CFD\u533A" }, { code: "130506", name: "\u5357\u548C\u533A" }, { code: "130522", name: "\u4E34\u57CE\u53BF" }, { code: "130523", name: "\u5185\u4E18\u53BF" }, { code: "130524", name: "\u67CF\u4E61\u53BF" }, { code: "130525", name: "\u9686\u5C27\u53BF" }, { code: "130528", name: "\u5B81\u664B\u53BF" }, { code: "130529", name: "\u5DE8\u9E7F\u53BF" }, { code: "130530", name: "\u65B0\u6CB3\u53BF" }, { code: "130531", name: "\u5E7F\u5B97\u53BF" }, { code: "130532", name: "\u5E73\u4E61\u53BF" }, { code: "130533", name: "\u5A01\u53BF" }, { code: "130534", name: "\u6E05\u6CB3\u53BF" }, { code: "130535", name: "\u4E34\u897F\u53BF" }, { code: "130571", name: "\u6CB3\u5317\u90A2\u53F0\u7ECF\u6D4E\u5F00\u53D1\u533A" }, { code: "130581", name: "\u5357\u5BAB\u5E02" }, { code: "130582", name: "\u6C99\u6CB3\u5E02" }] }, { code: "130600", name: "\u4FDD\u5B9A\u5E02", counties: [{ code: "130602", name: "\u7ADE\u79C0\u533A" }, { code: "130606", name: "\u83B2\u6C60\u533A" }, { code: "130607", name: "\u6EE1\u57CE\u533A" }, { code: "130608", name: "\u6E05\u82D1\u533A" }, { code: "130609", name: "\u5F90\u6C34\u533A" }, { code: "130623", name: "\u6D9E\u6C34\u53BF" }, { code: "130624", name: "\u961C\u5E73\u53BF" }, { code: "130626", name: "\u5B9A\u5174\u53BF" }, { code: "130627", name: "\u5510\u53BF" }, { code: "130628", name: "\u9AD8\u9633\u53BF" }, { code: "130629", name: "\u5BB9\u57CE\u53BF" }, { code: "130630", name: "\u6D9E\u6E90\u53BF" }, { code: "130631", name: "\u671B\u90FD\u53BF" }, { code: "130632", name: "\u5B89\u65B0\u53BF" }, { code: "130633", name: "\u6613\u53BF" }, { code: "130634", name: "\u66F2\u9633\u53BF" }, { code: "130635", name: "\u8821\u53BF" }, { code: "130636", name: "\u987A\u5E73\u53BF" }, { code: "130637", name: "\u535A\u91CE\u53BF" }, { code: "130638", name: "\u96C4\u53BF" }, { code: "130671", name: "\u4FDD\u5B9A\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "130672", name: "\u4FDD\u5B9A\u767D\u6C9F\u65B0\u57CE" }, { code: "130681", name: "\u6DBF\u5DDE\u5E02" }, { code: "130682", name: "\u5B9A\u5DDE\u5E02" }, { code: "130683", name: "\u5B89\u56FD\u5E02" }, { code: "130684", name: "\u9AD8\u7891\u5E97\u5E02" }] }, { code: "130700", name: "\u5F20\u5BB6\u53E3\u5E02", counties: [{ code: "130702", name: "\u6865\u4E1C\u533A" }, { code: "130703", name: "\u6865\u897F\u533A" }, { code: "130705", name: "\u5BA3\u5316\u533A" }, { code: "130706", name: "\u4E0B\u82B1\u56ED\u533A" }, { code: "130708", name: "\u4E07\u5168\u533A" }, { code: "130709", name: "\u5D07\u793C\u533A" }, { code: "130722", name: "\u5F20\u5317\u53BF" }, { code: "130723", name: "\u5EB7\u4FDD\u53BF" }, { code: "130724", name: "\u6CBD\u6E90\u53BF" }, { code: "130725", name: "\u5C1A\u4E49\u53BF" }, { code: "130726", name: "\u851A\u53BF" }, { code: "130727", name: "\u9633\u539F\u53BF" }, { code: "130728", name: "\u6000\u5B89\u53BF" }, { code: "130730", name: "\u6000\u6765\u53BF" }, { code: "130731", name: "\u6DBF\u9E7F\u53BF" }, { code: "130732", name: "\u8D64\u57CE\u53BF" }, { code: "130771", name: "\u5F20\u5BB6\u53E3\u7ECF\u6D4E\u5F00\u53D1\u533A" }, { code: "130772", name: "\u5F20\u5BB6\u53E3\u5E02\u5BDF\u5317\u7BA1\u7406\u533A" }, { code: "130773", name: "\u5F20\u5BB6\u53E3\u5E02\u585E\u5317\u7BA1\u7406\u533A" }] }, { code: "130800", name: "\u627F\u5FB7\u5E02", counties: [{ code: "130802", name: "\u53CC\u6865\u533A" }, { code: "130803", name: "\u53CC\u6EE6\u533A" }, { code: "130804", name: "\u9E70\u624B\u8425\u5B50\u77FF\u533A" }, { code: "130821", name: "\u627F\u5FB7\u53BF" }, { code: "130822", name: "\u5174\u9686\u53BF" }, { code: "130824", name: "\u6EE6\u5E73\u53BF" }, { code: "130825", name: "\u9686\u5316\u53BF" }, { code: "130826", name: "\u4E30\u5B81\u6EE1\u65CF\u81EA\u6CBB\u53BF" }, { code: "130827", name: "\u5BBD\u57CE\u6EE1\u65CF\u81EA\u6CBB\u53BF" }, { code: "130828", name: "\u56F4\u573A\u6EE1\u65CF\u8499\u53E4\u65CF\u81EA\u6CBB\u53BF" }, { code: "130871", name: "\u627F\u5FB7\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "130881", name: "\u5E73\u6CC9\u5E02" }] }, { code: "130900", name: "\u6CA7\u5DDE\u5E02", counties: [{ code: "130902", name: "\u65B0\u534E\u533A" }, { code: "130903", name: "\u8FD0\u6CB3\u533A" }, { code: "130921", name: "\u6CA7\u53BF" }, { code: "130922", name: "\u9752\u53BF" }, { code: "130923", name: "\u4E1C\u5149\u53BF" }, { code: "130924", name: "\u6D77\u5174\u53BF" }, { code: "130925", name: "\u76D0\u5C71\u53BF" }, { code: "130926", name: "\u8083\u5B81\u53BF" }, { code: "130927", name: "\u5357\u76AE\u53BF" }, { code: "130928", name: "\u5434\u6865\u53BF" }, { code: "130929", name: "\u732E\u53BF" }, { code: "130930", name: "\u5B5F\u6751\u56DE\u65CF\u81EA\u6CBB\u53BF" }, { code: "130971", name: "\u6CB3\u5317\u6CA7\u5DDE\u7ECF\u6D4E\u5F00\u53D1\u533A" }, { code: "130972", name: "\u6CA7\u5DDE\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "130973", name: "\u6CA7\u5DDE\u6E24\u6D77\u65B0\u533A" }, { code: "130981", name: "\u6CCA\u5934\u5E02" }, { code: "130982", name: "\u4EFB\u4E18\u5E02" }, { code: "130983", name: "\u9EC4\u9A85\u5E02" }, { code: "130984", name: "\u6CB3\u95F4\u5E02" }] }, { code: "131000", name: "\u5ECA\u574A\u5E02", counties: [{ code: "131002", name: "\u5B89\u6B21\u533A" }, { code: "131003", name: "\u5E7F\u9633\u533A" }, { code: "131022", name: "\u56FA\u5B89\u53BF" }, { code: "131023", name: "\u6C38\u6E05\u53BF" }, { code: "131024", name: "\u9999\u6CB3\u53BF" }, { code: "131025", name: "\u5927\u57CE\u53BF" }, { code: "131026", name: "\u6587\u5B89\u53BF" }, { code: "131028", name: "\u5927\u5382\u56DE\u65CF\u81EA\u6CBB\u53BF" }, { code: "131071", name: "\u5ECA\u574A\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "131081", name: "\u9738\u5DDE\u5E02" }, { code: "131082", name: "\u4E09\u6CB3\u5E02" }] }, { code: "131100", name: "\u8861\u6C34\u5E02", counties: [{ code: "131102", name: "\u6843\u57CE\u533A" }, { code: "131103", name: "\u5180\u5DDE\u533A" }, { code: "131121", name: "\u67A3\u5F3A\u53BF" }, { code: "131122", name: "\u6B66\u9091\u53BF" }, { code: "131123", name: "\u6B66\u5F3A\u53BF" }, { code: "131124", name: "\u9976\u9633\u53BF" }, { code: "131125", name: "\u5B89\u5E73\u53BF" }, { code: "131126", name: "\u6545\u57CE\u53BF" }, { code: "131127", name: "\u666F\u53BF" }, { code: "131128", name: "\u961C\u57CE\u53BF" }, { code: "131171", name: "\u6CB3\u5317\u8861\u6C34\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "131172", name: "\u8861\u6C34\u6EE8\u6E56\u65B0\u533A" }, { code: "131182", name: "\u6DF1\u5DDE\u5E02" }] }] }, { code: "140000", name: "\u5C71\u897F\u7701", cities: [{ code: "140100", name: "\u592A\u539F\u5E02", counties: [{ code: "140105", name: "\u5C0F\u5E97\u533A" }, { code: "140106", name: "\u8FCE\u6CFD\u533A" }, { code: "140107", name: "\u674F\u82B1\u5CAD\u533A" }, { code: "140108", name: "\u5C16\u8349\u576A\u533A" }, { code: "140109", name: "\u4E07\u67CF\u6797\u533A" }, { code: "140110", name: "\u664B\u6E90\u533A" }, { code: "140121", name: "\u6E05\u5F90\u53BF" }, { code: "140122", name: "\u9633\u66F2\u53BF" }, { code: "140123", name: "\u5A04\u70E6\u53BF" }, { code: "140171", name: "\u5C71\u897F\u8F6C\u578B\u7EFC\u5408\u6539\u9769\u793A\u8303\u533A" }, { code: "140181", name: "\u53E4\u4EA4\u5E02" }] }, { code: "140200", name: "\u5927\u540C\u5E02", counties: [{ code: "140212", name: "\u65B0\u8363\u533A" }, { code: "140213", name: "\u5E73\u57CE\u533A" }, { code: "140214", name: "\u4E91\u5188\u533A" }, { code: "140215", name: "\u4E91\u5DDE\u533A" }, { code: "140221", name: "\u9633\u9AD8\u53BF" }, { code: "140222", name: "\u5929\u9547\u53BF" }, { code: "140223", name: "\u5E7F\u7075\u53BF" }, { code: "140224", name: "\u7075\u4E18\u53BF" }, { code: "140225", name: "\u6D51\u6E90\u53BF" }, { code: "140226", name: "\u5DE6\u4E91\u53BF" }, { code: "140271", name: "\u5C71\u897F\u5927\u540C\u7ECF\u6D4E\u5F00\u53D1\u533A" }] }, { code: "140300", name: "\u9633\u6CC9\u5E02", counties: [{ code: "140302", name: "\u57CE\u533A" }, { code: "140303", name: "\u77FF\u533A" }, { code: "140311", name: "\u90CA\u533A" }, { code: "140321", name: "\u5E73\u5B9A\u53BF" }, { code: "140322", name: "\u76C2\u53BF" }] }, { code: "140400", name: "\u957F\u6CBB\u5E02", counties: [{ code: "140403", name: "\u6F5E\u5DDE\u533A" }, { code: "140404", name: "\u4E0A\u515A\u533A" }, { code: "140405", name: "\u5C6F\u7559\u533A" }, { code: "140406", name: "\u6F5E\u57CE\u533A" }, { code: "140423", name: "\u8944\u57A3\u53BF" }, { code: "140425", name: "\u5E73\u987A\u53BF" }, { code: "140426", name: "\u9ECE\u57CE\u53BF" }, { code: "140427", name: "\u58F6\u5173\u53BF" }, { code: "140428", name: "\u957F\u5B50\u53BF" }, { code: "140429", name: "\u6B66\u4E61\u53BF" }, { code: "140430", name: "\u6C81\u53BF" }, { code: "140431", name: "\u6C81\u6E90\u53BF" }] }, { code: "140500", name: "\u664B\u57CE\u5E02", counties: [{ code: "140502", name: "\u57CE\u533A" }, { code: "140521", name: "\u6C81\u6C34\u53BF" }, { code: "140522", name: "\u9633\u57CE\u53BF" }, { code: "140524", name: "\u9675\u5DDD\u53BF" }, { code: "140525", name: "\u6CFD\u5DDE\u53BF" }, { code: "140581", name: "\u9AD8\u5E73\u5E02" }] }, { code: "140600", name: "\u6714\u5DDE\u5E02", counties: [{ code: "140602", name: "\u6714\u57CE\u533A" }, { code: "140603", name: "\u5E73\u9C81\u533A" }, { code: "140621", name: "\u5C71\u9634\u53BF" }, { code: "140622", name: "\u5E94\u53BF" }, { code: "140623", name: "\u53F3\u7389\u53BF" }, { code: "140671", name: "\u5C71\u897F\u6714\u5DDE\u7ECF\u6D4E\u5F00\u53D1\u533A" }, { code: "140681", name: "\u6000\u4EC1\u5E02" }] }, { code: "140700", name: "\u664B\u4E2D\u5E02", counties: [{ code: "140702", name: "\u6986\u6B21\u533A" }, { code: "140703", name: "\u592A\u8C37\u533A" }, { code: "140721", name: "\u6986\u793E\u53BF" }, { code: "140722", name: "\u5DE6\u6743\u53BF" }, { code: "140723", name: "\u548C\u987A\u53BF" }, { code: "140724", name: "\u6614\u9633\u53BF" }, { code: "140725", name: "\u5BFF\u9633\u53BF" }, { code: "140727", name: "\u7941\u53BF" }, { code: "140728", name: "\u5E73\u9065\u53BF" }, { code: "140729", name: "\u7075\u77F3\u53BF" }, { code: "140781", name: "\u4ECB\u4F11\u5E02" }] }, { code: "140800", name: "\u8FD0\u57CE\u5E02", counties: [{ code: "140802", name: "\u76D0\u6E56\u533A" }, { code: "140821", name: "\u4E34\u7317\u53BF" }, { code: "140822", name: "\u4E07\u8363\u53BF" }, { code: "140823", name: "\u95FB\u559C\u53BF" }, { code: "140824", name: "\u7A37\u5C71\u53BF" }, { code: "140825", name: "\u65B0\u7EDB\u53BF" }, { code: "140826", name: "\u7EDB\u53BF" }, { code: "140827", name: "\u57A3\u66F2\u53BF" }, { code: "140828", name: "\u590F\u53BF" }, { code: "140829", name: "\u5E73\u9646\u53BF" }, { code: "140830", name: "\u82AE\u57CE\u53BF" }, { code: "140881", name: "\u6C38\u6D4E\u5E02" }, { code: "140882", name: "\u6CB3\u6D25\u5E02" }] }, { code: "140900", name: "\u5FFB\u5DDE\u5E02", counties: [{ code: "140902", name: "\u5FFB\u5E9C\u533A" }, { code: "140921", name: "\u5B9A\u8944\u53BF" }, { code: "140922", name: "\u4E94\u53F0\u53BF" }, { code: "140923", name: "\u4EE3\u53BF" }, { code: "140924", name: "\u7E41\u5CD9\u53BF" }, { code: "140925", name: "\u5B81\u6B66\u53BF" }, { code: "140926", name: "\u9759\u4E50\u53BF" }, { code: "140927", name: "\u795E\u6C60\u53BF" }, { code: "140928", name: "\u4E94\u5BE8\u53BF" }, { code: "140929", name: "\u5CA2\u5C9A\u53BF" }, { code: "140930", name: "\u6CB3\u66F2\u53BF" }, { code: "140931", name: "\u4FDD\u5FB7\u53BF" }, { code: "140932", name: "\u504F\u5173\u53BF" }, { code: "140971", name: "\u4E94\u53F0\u5C71\u98CE\u666F\u540D\u80DC\u533A" }, { code: "140981", name: "\u539F\u5E73\u5E02" }] }, { code: "141000", name: "\u4E34\u6C7E\u5E02", counties: [{ code: "141002", name: "\u5C27\u90FD\u533A" }, { code: "141021", name: "\u66F2\u6C83\u53BF" }, { code: "141022", name: "\u7FFC\u57CE\u53BF" }, { code: "141023", name: "\u8944\u6C7E\u53BF" }, { code: "141024", name: "\u6D2A\u6D1E\u53BF" }, { code: "141025", name: "\u53E4\u53BF" }, { code: "141026", name: "\u5B89\u6CFD\u53BF" }, { code: "141027", name: "\u6D6E\u5C71\u53BF" }, { code: "141028", name: "\u5409\u53BF" }, { code: "141029", name: "\u4E61\u5B81\u53BF" }, { code: "141030", name: "\u5927\u5B81\u53BF" }, { code: "141031", name: "\u96B0\u53BF" }, { code: "141032", name: "\u6C38\u548C\u53BF" }, { code: "141033", name: "\u84B2\u53BF" }, { code: "141034", name: "\u6C7E\u897F\u53BF" }, { code: "141081", name: "\u4FAF\u9A6C\u5E02" }, { code: "141082", name: "\u970D\u5DDE\u5E02" }] }, { code: "141100", name: "\u5415\u6881\u5E02", counties: [{ code: "141102", name: "\u79BB\u77F3\u533A" }, { code: "141121", name: "\u6587\u6C34\u53BF" }, { code: "141122", name: "\u4EA4\u57CE\u53BF" }, { code: "141123", name: "\u5174\u53BF" }, { code: "141124", name: "\u4E34\u53BF" }, { code: "141125", name: "\u67F3\u6797\u53BF" }, { code: "141126", name: "\u77F3\u697C\u53BF" }, { code: "141127", name: "\u5C9A\u53BF" }, { code: "141128", name: "\u65B9\u5C71\u53BF" }, { code: "141129", name: "\u4E2D\u9633\u53BF" }, { code: "141130", name: "\u4EA4\u53E3\u53BF" }, { code: "141181", name: "\u5B5D\u4E49\u5E02" }, { code: "141182", name: "\u6C7E\u9633\u5E02" }] }] }, { code: "150000", name: "\u5185\u8499\u53E4\u81EA\u6CBB\u533A", cities: [{ code: "150100", name: "\u547C\u548C\u6D69\u7279\u5E02", counties: [{ code: "150102", name: "\u65B0\u57CE\u533A" }, { code: "150103", name: "\u56DE\u6C11\u533A" }, { code: "150104", name: "\u7389\u6CC9\u533A" }, { code: "150105", name: "\u8D5B\u7F55\u533A" }, { code: "150121", name: "\u571F\u9ED8\u7279\u5DE6\u65D7" }, { code: "150122", name: "\u6258\u514B\u6258\u53BF" }, { code: "150123", name: "\u548C\u6797\u683C\u5C14\u53BF" }, { code: "150124", name: "\u6E05\u6C34\u6CB3\u53BF" }, { code: "150125", name: "\u6B66\u5DDD\u53BF" }, { code: "150172", name: "\u547C\u548C\u6D69\u7279\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }] }, { code: "150200", name: "\u5305\u5934\u5E02", counties: [{ code: "150202", name: "\u4E1C\u6CB3\u533A" }, { code: "150203", name: "\u6606\u90FD\u4ED1\u533A" }, { code: "150204", name: "\u9752\u5C71\u533A" }, { code: "150205", name: "\u77F3\u62D0\u533A" }, { code: "150206", name: "\u767D\u4E91\u9102\u535A\u77FF\u533A" }, { code: "150207", name: "\u4E5D\u539F\u533A" }, { code: "150221", name: "\u571F\u9ED8\u7279\u53F3\u65D7" }, { code: "150222", name: "\u56FA\u9633\u53BF" }, { code: "150223", name: "\u8FBE\u5C14\u7F55\u8302\u660E\u5B89\u8054\u5408\u65D7" }, { code: "150271", name: "\u5305\u5934\u7A00\u571F\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }] }, { code: "150300", name: "\u4E4C\u6D77\u5E02", counties: [{ code: "150302", name: "\u6D77\u52C3\u6E7E\u533A" }, { code: "150303", name: "\u6D77\u5357\u533A" }, { code: "150304", name: "\u4E4C\u8FBE\u533A" }] }, { code: "150400", name: "\u8D64\u5CF0\u5E02", counties: [{ code: "150402", name: "\u7EA2\u5C71\u533A" }, { code: "150403", name: "\u5143\u5B9D\u5C71\u533A" }, { code: "150404", name: "\u677E\u5C71\u533A" }, { code: "150421", name: "\u963F\u9C81\u79D1\u5C14\u6C81\u65D7" }, { code: "150422", name: "\u5DF4\u6797\u5DE6\u65D7" }, { code: "150423", name: "\u5DF4\u6797\u53F3\u65D7" }, { code: "150424", name: "\u6797\u897F\u53BF" }, { code: "150425", name: "\u514B\u4EC0\u514B\u817E\u65D7" }, { code: "150426", name: "\u7FC1\u725B\u7279\u65D7" }, { code: "150428", name: "\u5580\u5587\u6C81\u65D7" }, { code: "150429", name: "\u5B81\u57CE\u53BF" }, { code: "150430", name: "\u6556\u6C49\u65D7" }] }, { code: "150500", name: "\u901A\u8FBD\u5E02", counties: [{ code: "150502", name: "\u79D1\u5C14\u6C81\u533A" }, { code: "150521", name: "\u79D1\u5C14\u6C81\u5DE6\u7FFC\u4E2D\u65D7" }, { code: "150522", name: "\u79D1\u5C14\u6C81\u5DE6\u7FFC\u540E\u65D7" }, { code: "150523", name: "\u5F00\u9C81\u53BF" }, { code: "150524", name: "\u5E93\u4F26\u65D7" }, { code: "150525", name: "\u5948\u66FC\u65D7" }, { code: "150526", name: "\u624E\u9C81\u7279\u65D7" }, { code: "150571", name: "\u901A\u8FBD\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "150581", name: "\u970D\u6797\u90ED\u52D2\u5E02" }] }, { code: "150600", name: "\u9102\u5C14\u591A\u65AF\u5E02", counties: [{ code: "150602", name: "\u4E1C\u80DC\u533A" }, { code: "150603", name: "\u5EB7\u5DF4\u4EC0\u533A" }, { code: "150621", name: "\u8FBE\u62C9\u7279\u65D7" }, { code: "150622", name: "\u51C6\u683C\u5C14\u65D7" }, { code: "150623", name: "\u9102\u6258\u514B\u524D\u65D7" }, { code: "150624", name: "\u9102\u6258\u514B\u65D7" }, { code: "150625", name: "\u676D\u9526\u65D7" }, { code: "150626", name: "\u4E4C\u5BA1\u65D7" }, { code: "150627", name: "\u4F0A\u91D1\u970D\u6D1B\u65D7" }] }, { code: "150700", name: "\u547C\u4F26\u8D1D\u5C14\u5E02", counties: [{ code: "150702", name: "\u6D77\u62C9\u5C14\u533A" }, { code: "150703", name: "\u624E\u8D49\u8BFA\u5C14\u533A" }, { code: "150721", name: "\u963F\u8363\u65D7" }, { code: "150722", name: "\u83AB\u529B\u8FBE\u74E6\u8FBE\u65A1\u5C14\u65CF\u81EA\u6CBB\u65D7" }, { code: "150723", name: "\u9102\u4F26\u6625\u81EA\u6CBB\u65D7" }, { code: "150724", name: "\u9102\u6E29\u514B\u65CF\u81EA\u6CBB\u65D7" }, { code: "150725", name: "\u9648\u5DF4\u5C14\u864E\u65D7" }, { code: "150726", name: "\u65B0\u5DF4\u5C14\u864E\u5DE6\u65D7" }, { code: "150727", name: "\u65B0\u5DF4\u5C14\u864E\u53F3\u65D7" }, { code: "150781", name: "\u6EE1\u6D32\u91CC\u5E02" }, { code: "150782", name: "\u7259\u514B\u77F3\u5E02" }, { code: "150783", name: "\u624E\u5170\u5C6F\u5E02" }, { code: "150784", name: "\u989D\u5C14\u53E4\u7EB3\u5E02" }, { code: "150785", name: "\u6839\u6CB3\u5E02" }] }, { code: "150800", name: "\u5DF4\u5F66\u6DD6\u5C14\u5E02", counties: [{ code: "150802", name: "\u4E34\u6CB3\u533A" }, { code: "150821", name: "\u4E94\u539F\u53BF" }, { code: "150822", name: "\u78F4\u53E3\u53BF" }, { code: "150823", name: "\u4E4C\u62C9\u7279\u524D\u65D7" }, { code: "150824", name: "\u4E4C\u62C9\u7279\u4E2D\u65D7" }, { code: "150825", name: "\u4E4C\u62C9\u7279\u540E\u65D7" }, { code: "150826", name: "\u676D\u9526\u540E\u65D7" }] }, { code: "150900", name: "\u4E4C\u5170\u5BDF\u5E03\u5E02", counties: [{ code: "150902", name: "\u96C6\u5B81\u533A" }, { code: "150921", name: "\u5353\u8D44\u53BF" }, { code: "150922", name: "\u5316\u5FB7\u53BF" }, { code: "150923", name: "\u5546\u90FD\u53BF" }, { code: "150924", name: "\u5174\u548C\u53BF" }, { code: "150925", name: "\u51C9\u57CE\u53BF" }, { code: "150926", name: "\u5BDF\u54C8\u5C14\u53F3\u7FFC\u524D\u65D7" }, { code: "150927", name: "\u5BDF\u54C8\u5C14\u53F3\u7FFC\u4E2D\u65D7" }, { code: "150928", name: "\u5BDF\u54C8\u5C14\u53F3\u7FFC\u540E\u65D7" }, { code: "150929", name: "\u56DB\u5B50\u738B\u65D7" }, { code: "150981", name: "\u4E30\u9547\u5E02" }] }, { code: "152200", name: "\u5174\u5B89\u76DF", counties: [{ code: "152201", name: "\u4E4C\u5170\u6D69\u7279\u5E02" }, { code: "152202", name: "\u963F\u5C14\u5C71\u5E02" }, { code: "152221", name: "\u79D1\u5C14\u6C81\u53F3\u7FFC\u524D\u65D7" }, { code: "152222", name: "\u79D1\u5C14\u6C81\u53F3\u7FFC\u4E2D\u65D7" }, { code: "152223", name: "\u624E\u8D49\u7279\u65D7" }, { code: "152224", name: "\u7A81\u6CC9\u53BF" }] }, { code: "152500", name: "\u9521\u6797\u90ED\u52D2\u76DF", counties: [{ code: "152501", name: "\u4E8C\u8FDE\u6D69\u7279\u5E02" }, { code: "152502", name: "\u9521\u6797\u6D69\u7279\u5E02" }, { code: "152522", name: "\u963F\u5DF4\u560E\u65D7" }, { code: "152523", name: "\u82CF\u5C3C\u7279\u5DE6\u65D7" }, { code: "152524", name: "\u82CF\u5C3C\u7279\u53F3\u65D7" }, { code: "152525", name: "\u4E1C\u4E4C\u73E0\u7A46\u6C81\u65D7" }, { code: "152526", name: "\u897F\u4E4C\u73E0\u7A46\u6C81\u65D7" }, { code: "152527", name: "\u592A\u4EC6\u5BFA\u65D7" }, { code: "152528", name: "\u9576\u9EC4\u65D7" }, { code: "152529", name: "\u6B63\u9576\u767D\u65D7" }, { code: "152530", name: "\u6B63\u84DD\u65D7" }, { code: "152531", name: "\u591A\u4F26\u53BF" }, { code: "152571", name: "\u4E4C\u62C9\u76D6\u7BA1\u7406\u533A\u7BA1\u59D4\u4F1A" }] }, { code: "152900", name: "\u963F\u62C9\u5584\u76DF", counties: [{ code: "152921", name: "\u963F\u62C9\u5584\u5DE6\u65D7" }, { code: "152922", name: "\u963F\u62C9\u5584\u53F3\u65D7" }, { code: "152923", name: "\u989D\u6D4E\u7EB3\u65D7" }, { code: "152971", name: "\u5185\u8499\u53E4\u963F\u62C9\u5584\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }] }] }, { code: "210000", name: "\u8FBD\u5B81\u7701", cities: [{ code: "210100", name: "\u6C88\u9633\u5E02", counties: [{ code: "210102", name: "\u548C\u5E73\u533A" }, { code: "210103", name: "\u6C88\u6CB3\u533A" }, { code: "210104", name: "\u5927\u4E1C\u533A" }, { code: "210105", name: "\u7687\u59D1\u533A" }, { code: "210106", name: "\u94C1\u897F\u533A" }, { code: "210111", name: "\u82CF\u5BB6\u5C6F\u533A" }, { code: "210112", name: "\u6D51\u5357\u533A" }, { code: "210113", name: "\u6C88\u5317\u65B0\u533A" }, { code: "210114", name: "\u4E8E\u6D2A\u533A" }, { code: "210115", name: "\u8FBD\u4E2D\u533A" }, { code: "210123", name: "\u5EB7\u5E73\u53BF" }, { code: "210124", name: "\u6CD5\u5E93\u53BF" }, { code: "210181", name: "\u65B0\u6C11\u5E02" }] }, { code: "210200", name: "\u5927\u8FDE\u5E02", counties: [{ code: "210202", name: "\u4E2D\u5C71\u533A" }, { code: "210203", name: "\u897F\u5C97\u533A" }, { code: "210204", name: "\u6C99\u6CB3\u53E3\u533A" }, { code: "210211", name: "\u7518\u4E95\u5B50\u533A" }, { code: "210212", name: "\u65C5\u987A\u53E3\u533A" }, { code: "210213", name: "\u91D1\u5DDE\u533A" }, { code: "210214", name: "\u666E\u5170\u5E97\u533A" }, { code: "210224", name: "\u957F\u6D77\u53BF" }, { code: "210281", name: "\u74E6\u623F\u5E97\u5E02" }, { code: "210283", name: "\u5E84\u6CB3\u5E02" }] }, { code: "210300", name: "\u978D\u5C71\u5E02", counties: [{ code: "210302", name: "\u94C1\u4E1C\u533A" }, { code: "210303", name: "\u94C1\u897F\u533A" }, { code: "210304", name: "\u7ACB\u5C71\u533A" }, { code: "210311", name: "\u5343\u5C71\u533A" }, { code: "210321", name: "\u53F0\u5B89\u53BF" }, { code: "210323", name: "\u5CAB\u5CA9\u6EE1\u65CF\u81EA\u6CBB\u53BF" }, { code: "210381", name: "\u6D77\u57CE\u5E02" }] }, { code: "210400", name: "\u629A\u987A\u5E02", counties: [{ code: "210402", name: "\u65B0\u629A\u533A" }, { code: "210403", name: "\u4E1C\u6D32\u533A" }, { code: "210404", name: "\u671B\u82B1\u533A" }, { code: "210411", name: "\u987A\u57CE\u533A" }, { code: "210421", name: "\u629A\u987A\u53BF" }, { code: "210422", name: "\u65B0\u5BBE\u6EE1\u65CF\u81EA\u6CBB\u53BF" }, { code: "210423", name: "\u6E05\u539F\u6EE1\u65CF\u81EA\u6CBB\u53BF" }] }, { code: "210500", name: "\u672C\u6EAA\u5E02", counties: [{ code: "210502", name: "\u5E73\u5C71\u533A" }, { code: "210503", name: "\u6EAA\u6E56\u533A" }, { code: "210504", name: "\u660E\u5C71\u533A" }, { code: "210505", name: "\u5357\u82AC\u533A" }, { code: "210521", name: "\u672C\u6EAA\u6EE1\u65CF\u81EA\u6CBB\u53BF" }, { code: "210522", name: "\u6853\u4EC1\u6EE1\u65CF\u81EA\u6CBB\u53BF" }] }, { code: "210600", name: "\u4E39\u4E1C\u5E02", counties: [{ code: "210602", name: "\u5143\u5B9D\u533A" }, { code: "210603", name: "\u632F\u5174\u533A" }, { code: "210604", name: "\u632F\u5B89\u533A" }, { code: "210624", name: "\u5BBD\u7538\u6EE1\u65CF\u81EA\u6CBB\u53BF" }, { code: "210681", name: "\u4E1C\u6E2F\u5E02" }, { code: "210682", name: "\u51E4\u57CE\u5E02" }] }, { code: "210700", name: "\u9526\u5DDE\u5E02", counties: [{ code: "210702", name: "\u53E4\u5854\u533A" }, { code: "210703", name: "\u51CC\u6CB3\u533A" }, { code: "210711", name: "\u592A\u548C\u533A" }, { code: "210726", name: "\u9ED1\u5C71\u53BF" }, { code: "210727", name: "\u4E49\u53BF" }, { code: "210781", name: "\u51CC\u6D77\u5E02" }, { code: "210782", name: "\u5317\u9547\u5E02" }] }, { code: "210800", name: "\u8425\u53E3\u5E02", counties: [{ code: "210802", name: "\u7AD9\u524D\u533A" }, { code: "210803", name: "\u897F\u5E02\u533A" }, { code: "210804", name: "\u9C85\u9C7C\u5708\u533A" }, { code: "210811", name: "\u8001\u8FB9\u533A" }, { code: "210881", name: "\u76D6\u5DDE\u5E02" }, { code: "210882", name: "\u5927\u77F3\u6865\u5E02" }] }, { code: "210900", name: "\u961C\u65B0\u5E02", counties: [{ code: "210902", name: "\u6D77\u5DDE\u533A" }, { code: "210903", name: "\u65B0\u90B1\u533A" }, { code: "210904", name: "\u592A\u5E73\u533A" }, { code: "210905", name: "\u6E05\u6CB3\u95E8\u533A" }, { code: "210911", name: "\u7EC6\u6CB3\u533A" }, { code: "210921", name: "\u961C\u65B0\u8499\u53E4\u65CF\u81EA\u6CBB\u53BF" }, { code: "210922", name: "\u5F70\u6B66\u53BF" }] }, { code: "211000", name: "\u8FBD\u9633\u5E02", counties: [{ code: "211002", name: "\u767D\u5854\u533A" }, { code: "211003", name: "\u6587\u5723\u533A" }, { code: "211004", name: "\u5B8F\u4F1F\u533A" }, { code: "211005", name: "\u5F13\u957F\u5CAD\u533A" }, { code: "211011", name: "\u592A\u5B50\u6CB3\u533A" }, { code: "211021", name: "\u8FBD\u9633\u53BF" }, { code: "211081", name: "\u706F\u5854\u5E02" }] }, { code: "211100", name: "\u76D8\u9526\u5E02", counties: [{ code: "211102", name: "\u53CC\u53F0\u5B50\u533A" }, { code: "211103", name: "\u5174\u9686\u53F0\u533A" }, { code: "211104", name: "\u5927\u6D3C\u533A" }, { code: "211122", name: "\u76D8\u5C71\u53BF" }] }, { code: "211200", name: "\u94C1\u5CAD\u5E02", counties: [{ code: "211202", name: "\u94F6\u5DDE\u533A" }, { code: "211204", name: "\u6E05\u6CB3\u533A" }, { code: "211221", name: "\u94C1\u5CAD\u53BF" }, { code: "211223", name: "\u897F\u4E30\u53BF" }, { code: "211224", name: "\u660C\u56FE\u53BF" }, { code: "211281", name: "\u8C03\u5175\u5C71\u5E02" }, { code: "211282", name: "\u5F00\u539F\u5E02" }] }, { code: "211300", name: "\u671D\u9633\u5E02", counties: [{ code: "211302", name: "\u53CC\u5854\u533A" }, { code: "211303", name: "\u9F99\u57CE\u533A" }, { code: "211321", name: "\u671D\u9633\u53BF" }, { code: "211322", name: "\u5EFA\u5E73\u53BF" }, { code: "211324", name: "\u5580\u5587\u6C81\u5DE6\u7FFC\u8499\u53E4\u65CF\u81EA\u6CBB\u53BF" }, { code: "211381", name: "\u5317\u7968\u5E02" }, { code: "211382", name: "\u51CC\u6E90\u5E02" }] }, { code: "211400", name: "\u846B\u82A6\u5C9B\u5E02", counties: [{ code: "211402", name: "\u8FDE\u5C71\u533A" }, { code: "211403", name: "\u9F99\u6E2F\u533A" }, { code: "211404", name: "\u5357\u7968\u533A" }, { code: "211421", name: "\u7EE5\u4E2D\u53BF" }, { code: "211422", name: "\u5EFA\u660C\u53BF" }, { code: "211481", name: "\u5174\u57CE\u5E02" }] }] }, { code: "220000", name: "\u5409\u6797\u7701", cities: [{ code: "220100", name: "\u957F\u6625\u5E02", counties: [{ code: "220102", name: "\u5357\u5173\u533A" }, { code: "220103", name: "\u5BBD\u57CE\u533A" }, { code: "220104", name: "\u671D\u9633\u533A" }, { code: "220105", name: "\u4E8C\u9053\u533A" }, { code: "220106", name: "\u7EFF\u56ED\u533A" }, { code: "220112", name: "\u53CC\u9633\u533A" }, { code: "220113", name: "\u4E5D\u53F0\u533A" }, { code: "220122", name: "\u519C\u5B89\u53BF" }, { code: "220171", name: "\u957F\u6625\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "220172", name: "\u957F\u6625\u51C0\u6708\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "220173", name: "\u957F\u6625\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "220174", name: "\u957F\u6625\u6C7D\u8F66\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "220182", name: "\u6986\u6811\u5E02" }, { code: "220183", name: "\u5FB7\u60E0\u5E02" }, { code: "220184", name: "\u516C\u4E3B\u5CAD\u5E02" }] }, { code: "220200", name: "\u5409\u6797\u5E02", counties: [{ code: "220202", name: "\u660C\u9091\u533A" }, { code: "220203", name: "\u9F99\u6F6D\u533A" }, { code: "220204", name: "\u8239\u8425\u533A" }, { code: "220211", name: "\u4E30\u6EE1\u533A" }, { code: "220221", name: "\u6C38\u5409\u53BF" }, { code: "220271", name: "\u5409\u6797\u7ECF\u6D4E\u5F00\u53D1\u533A" }, { code: "220272", name: "\u5409\u6797\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "220273", name: "\u5409\u6797\u4E2D\u56FD\u65B0\u52A0\u5761\u98DF\u54C1\u533A" }, { code: "220281", name: "\u86DF\u6CB3\u5E02" }, { code: "220282", name: "\u6866\u7538\u5E02" }, { code: "220283", name: "\u8212\u5170\u5E02" }, { code: "220284", name: "\u78D0\u77F3\u5E02" }] }, { code: "220300", name: "\u56DB\u5E73\u5E02", counties: [{ code: "220302", name: "\u94C1\u897F\u533A" }, { code: "220303", name: "\u94C1\u4E1C\u533A" }, { code: "220322", name: "\u68A8\u6811\u53BF" }, { code: "220323", name: "\u4F0A\u901A\u6EE1\u65CF\u81EA\u6CBB\u53BF" }, { code: "220382", name: "\u53CC\u8FBD\u5E02" }] }, { code: "220400", name: "\u8FBD\u6E90\u5E02", counties: [{ code: "220402", name: "\u9F99\u5C71\u533A" }, { code: "220403", name: "\u897F\u5B89\u533A" }, { code: "220421", name: "\u4E1C\u4E30\u53BF" }, { code: "220422", name: "\u4E1C\u8FBD\u53BF" }] }, { code: "220500", name: "\u901A\u5316\u5E02", counties: [{ code: "220502", name: "\u4E1C\u660C\u533A" }, { code: "220503", name: "\u4E8C\u9053\u6C5F\u533A" }, { code: "220521", name: "\u901A\u5316\u53BF" }, { code: "220523", name: "\u8F89\u5357\u53BF" }, { code: "220524", name: "\u67F3\u6CB3\u53BF" }, { code: "220581", name: "\u6885\u6CB3\u53E3\u5E02" }, { code: "220582", name: "\u96C6\u5B89\u5E02" }] }, { code: "220600", name: "\u767D\u5C71\u5E02", counties: [{ code: "220602", name: "\u6D51\u6C5F\u533A" }, { code: "220605", name: "\u6C5F\u6E90\u533A" }, { code: "220621", name: "\u629A\u677E\u53BF" }, { code: "220622", name: "\u9756\u5B87\u53BF" }, { code: "220623", name: "\u957F\u767D\u671D\u9C9C\u65CF\u81EA\u6CBB\u53BF" }, { code: "220681", name: "\u4E34\u6C5F\u5E02" }] }, { code: "220700", name: "\u677E\u539F\u5E02", counties: [{ code: "220702", name: "\u5B81\u6C5F\u533A" }, { code: "220721", name: "\u524D\u90ED\u5C14\u7F57\u65AF\u8499\u53E4\u65CF\u81EA\u6CBB\u53BF" }, { code: "220722", name: "\u957F\u5CAD\u53BF" }, { code: "220723", name: "\u4E7E\u5B89\u53BF" }, { code: "220771", name: "\u5409\u6797\u677E\u539F\u7ECF\u6D4E\u5F00\u53D1\u533A" }, { code: "220781", name: "\u6276\u4F59\u5E02" }] }, { code: "220800", name: "\u767D\u57CE\u5E02", counties: [{ code: "220802", name: "\u6D2E\u5317\u533A" }, { code: "220821", name: "\u9547\u8D49\u53BF" }, { code: "220822", name: "\u901A\u6986\u53BF" }, { code: "220871", name: "\u5409\u6797\u767D\u57CE\u7ECF\u6D4E\u5F00\u53D1\u533A" }, { code: "220881", name: "\u6D2E\u5357\u5E02" }, { code: "220882", name: "\u5927\u5B89\u5E02" }] }, { code: "222400", name: "\u5EF6\u8FB9\u671D\u9C9C\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "222401", name: "\u5EF6\u5409\u5E02" }, { code: "222402", name: "\u56FE\u4EEC\u5E02" }, { code: "222403", name: "\u6566\u5316\u5E02" }, { code: "222404", name: "\u73F2\u6625\u5E02" }, { code: "222405", name: "\u9F99\u4E95\u5E02" }, { code: "222406", name: "\u548C\u9F99\u5E02" }, { code: "222424", name: "\u6C6A\u6E05\u53BF" }, { code: "222426", name: "\u5B89\u56FE\u53BF" }] }] }, { code: "230000", name: "\u9ED1\u9F99\u6C5F\u7701", cities: [{ code: "230100", name: "\u54C8\u5C14\u6EE8\u5E02", counties: [{ code: "230102", name: "\u9053\u91CC\u533A" }, { code: "230103", name: "\u5357\u5C97\u533A" }, { code: "230104", name: "\u9053\u5916\u533A" }, { code: "230108", name: "\u5E73\u623F\u533A" }, { code: "230109", name: "\u677E\u5317\u533A" }, { code: "230110", name: "\u9999\u574A\u533A" }, { code: "230111", name: "\u547C\u5170\u533A" }, { code: "230112", name: "\u963F\u57CE\u533A" }, { code: "230113", name: "\u53CC\u57CE\u533A" }, { code: "230123", name: "\u4F9D\u5170\u53BF" }, { code: "230124", name: "\u65B9\u6B63\u53BF" }, { code: "230125", name: "\u5BBE\u53BF" }, { code: "230126", name: "\u5DF4\u5F66\u53BF" }, { code: "230127", name: "\u6728\u5170\u53BF" }, { code: "230128", name: "\u901A\u6CB3\u53BF" }, { code: "230129", name: "\u5EF6\u5BFF\u53BF" }, { code: "230183", name: "\u5C1A\u5FD7\u5E02" }, { code: "230184", name: "\u4E94\u5E38\u5E02" }] }, { code: "230200", name: "\u9F50\u9F50\u54C8\u5C14\u5E02", counties: [{ code: "230202", name: "\u9F99\u6C99\u533A" }, { code: "230203", name: "\u5EFA\u534E\u533A" }, { code: "230204", name: "\u94C1\u950B\u533A" }, { code: "230205", name: "\u6602\u6602\u6EAA\u533A" }, { code: "230206", name: "\u5BCC\u62C9\u5C14\u57FA\u533A" }, { code: "230207", name: "\u78BE\u5B50\u5C71\u533A" }, { code: "230208", name: "\u6885\u91CC\u65AF\u8FBE\u65A1\u5C14\u65CF\u533A" }, { code: "230221", name: "\u9F99\u6C5F\u53BF" }, { code: "230223", name: "\u4F9D\u5B89\u53BF" }, { code: "230224", name: "\u6CF0\u6765\u53BF" }, { code: "230225", name: "\u7518\u5357\u53BF" }, { code: "230227", name: "\u5BCC\u88D5\u53BF" }, { code: "230229", name: "\u514B\u5C71\u53BF" }, { code: "230230", name: "\u514B\u4E1C\u53BF" }, { code: "230231", name: "\u62DC\u6CC9\u53BF" }, { code: "230281", name: "\u8BB7\u6CB3\u5E02" }] }, { code: "230300", name: "\u9E21\u897F\u5E02", counties: [{ code: "230302", name: "\u9E21\u51A0\u533A" }, { code: "230303", name: "\u6052\u5C71\u533A" }, { code: "230304", name: "\u6EF4\u9053\u533A" }, { code: "230305", name: "\u68A8\u6811\u533A" }, { code: "230306", name: "\u57CE\u5B50\u6CB3\u533A" }, { code: "230307", name: "\u9EBB\u5C71\u533A" }, { code: "230321", name: "\u9E21\u4E1C\u53BF" }, { code: "230381", name: "\u864E\u6797\u5E02" }, { code: "230382", name: "\u5BC6\u5C71\u5E02" }] }, { code: "230400", name: "\u9E64\u5C97\u5E02", counties: [{ code: "230402", name: "\u5411\u9633\u533A" }, { code: "230403", name: "\u5DE5\u519C\u533A" }, { code: "230404", name: "\u5357\u5C71\u533A" }, { code: "230405", name: "\u5174\u5B89\u533A" }, { code: "230406", name: "\u4E1C\u5C71\u533A" }, { code: "230407", name: "\u5174\u5C71\u533A" }, { code: "230421", name: "\u841D\u5317\u53BF" }, { code: "230422", name: "\u7EE5\u6EE8\u53BF" }] }, { code: "230500", name: "\u53CC\u9E2D\u5C71\u5E02", counties: [{ code: "230502", name: "\u5C16\u5C71\u533A" }, { code: "230503", name: "\u5CAD\u4E1C\u533A" }, { code: "230505", name: "\u56DB\u65B9\u53F0\u533A" }, { code: "230506", name: "\u5B9D\u5C71\u533A" }, { code: "230521", name: "\u96C6\u8D24\u53BF" }, { code: "230522", name: "\u53CB\u8C0A\u53BF" }, { code: "230523", name: "\u5B9D\u6E05\u53BF" }, { code: "230524", name: "\u9976\u6CB3\u53BF" }] }, { code: "230600", name: "\u5927\u5E86\u5E02", counties: [{ code: "230602", name: "\u8428\u5C14\u56FE\u533A" }, { code: "230603", name: "\u9F99\u51E4\u533A" }, { code: "230604", name: "\u8BA9\u80E1\u8DEF\u533A" }, { code: "230605", name: "\u7EA2\u5C97\u533A" }, { code: "230606", name: "\u5927\u540C\u533A" }, { code: "230621", name: "\u8087\u5DDE\u53BF" }, { code: "230622", name: "\u8087\u6E90\u53BF" }, { code: "230623", name: "\u6797\u7538\u53BF" }, { code: "230624", name: "\u675C\u5C14\u4F2F\u7279\u8499\u53E4\u65CF\u81EA\u6CBB\u53BF" }, { code: "230671", name: "\u5927\u5E86\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }] }, { code: "230700", name: "\u4F0A\u6625\u5E02", counties: [{ code: "230717", name: "\u4F0A\u7F8E\u533A" }, { code: "230718", name: "\u4E4C\u7FE0\u533A" }, { code: "230719", name: "\u53CB\u597D\u533A" }, { code: "230722", name: "\u5609\u836B\u53BF" }, { code: "230723", name: "\u6C64\u65FA\u53BF" }, { code: "230724", name: "\u4E30\u6797\u53BF" }, { code: "230725", name: "\u5927\u7B90\u5C71\u53BF" }, { code: "230726", name: "\u5357\u5C94\u53BF" }, { code: "230751", name: "\u91D1\u6797\u533A" }, { code: "230781", name: "\u94C1\u529B\u5E02" }] }, { code: "230800", name: "\u4F73\u6728\u65AF\u5E02", counties: [{ code: "230803", name: "\u5411\u9633\u533A" }, { code: "230804", name: "\u524D\u8FDB\u533A" }, { code: "230805", name: "\u4E1C\u98CE\u533A" }, { code: "230811", name: "\u90CA\u533A" }, { code: "230822", name: "\u6866\u5357\u53BF" }, { code: "230826", name: "\u6866\u5DDD\u53BF" }, { code: "230828", name: "\u6C64\u539F\u53BF" }, { code: "230881", name: "\u540C\u6C5F\u5E02" }, { code: "230882", name: "\u5BCC\u9526\u5E02" }, { code: "230883", name: "\u629A\u8FDC\u5E02" }] }, { code: "230900", name: "\u4E03\u53F0\u6CB3\u5E02", counties: [{ code: "230902", name: "\u65B0\u5174\u533A" }, { code: "230903", name: "\u6843\u5C71\u533A" }, { code: "230904", name: "\u8304\u5B50\u6CB3\u533A" }, { code: "230921", name: "\u52C3\u5229\u53BF" }] }, { code: "231000", name: "\u7261\u4E39\u6C5F\u5E02", counties: [{ code: "231002", name: "\u4E1C\u5B89\u533A" }, { code: "231003", name: "\u9633\u660E\u533A" }, { code: "231004", name: "\u7231\u6C11\u533A" }, { code: "231005", name: "\u897F\u5B89\u533A" }, { code: "231025", name: "\u6797\u53E3\u53BF" }, { code: "231081", name: "\u7EE5\u82AC\u6CB3\u5E02" }, { code: "231083", name: "\u6D77\u6797\u5E02" }, { code: "231084", name: "\u5B81\u5B89\u5E02" }, { code: "231085", name: "\u7A46\u68F1\u5E02" }, { code: "231086", name: "\u4E1C\u5B81\u5E02" }] }, { code: "231100", name: "\u9ED1\u6CB3\u5E02", counties: [{ code: "231102", name: "\u7231\u8F89\u533A" }, { code: "231123", name: "\u900A\u514B\u53BF" }, { code: "231124", name: "\u5B59\u5434\u53BF" }, { code: "231181", name: "\u5317\u5B89\u5E02" }, { code: "231182", name: "\u4E94\u5927\u8FDE\u6C60\u5E02" }, { code: "231183", name: "\u5AE9\u6C5F\u5E02" }] }, { code: "231200", name: "\u7EE5\u5316\u5E02", counties: [{ code: "231202", name: "\u5317\u6797\u533A" }, { code: "231221", name: "\u671B\u594E\u53BF" }, { code: "231222", name: "\u5170\u897F\u53BF" }, { code: "231223", name: "\u9752\u5188\u53BF" }, { code: "231224", name: "\u5E86\u5B89\u53BF" }, { code: "231225", name: "\u660E\u6C34\u53BF" }, { code: "231226", name: "\u7EE5\u68F1\u53BF" }, { code: "231281", name: "\u5B89\u8FBE\u5E02" }, { code: "231282", name: "\u8087\u4E1C\u5E02" }, { code: "231283", name: "\u6D77\u4F26\u5E02" }] }, { code: "232700", name: "\u5927\u5174\u5B89\u5CAD\u5730\u533A", counties: [{ code: "232701", name: "\u6F20\u6CB3\u5E02" }, { code: "232721", name: "\u547C\u739B\u53BF" }, { code: "232722", name: "\u5854\u6CB3\u53BF" }, { code: "232761", name: "\u52A0\u683C\u8FBE\u5947\u533A" }, { code: "232762", name: "\u677E\u5CAD\u533A" }, { code: "232763", name: "\u65B0\u6797\u533A" }, { code: "232764", name: "\u547C\u4E2D\u533A" }] }] }, { code: "310000", name: "\u4E0A\u6D77\u5E02", cities: [{ code: "310100", name: "\u5E02\u8F96\u533A", counties: [{ code: "310101", name: "\u9EC4\u6D66\u533A" }, { code: "310104", name: "\u5F90\u6C47\u533A" }, { code: "310105", name: "\u957F\u5B81\u533A" }, { code: "310106", name: "\u9759\u5B89\u533A" }, { code: "310107", name: "\u666E\u9640\u533A" }, { code: "310109", name: "\u8679\u53E3\u533A" }, { code: "310110", name: "\u6768\u6D66\u533A" }, { code: "310112", name: "\u95F5\u884C\u533A" }, { code: "310113", name: "\u5B9D\u5C71\u533A" }, { code: "310114", name: "\u5609\u5B9A\u533A" }, { code: "310115", name: "\u6D66\u4E1C\u65B0\u533A" }, { code: "310116", name: "\u91D1\u5C71\u533A" }, { code: "310117", name: "\u677E\u6C5F\u533A" }, { code: "310118", name: "\u9752\u6D66\u533A" }, { code: "310120", name: "\u5949\u8D24\u533A" }, { code: "310151", name: "\u5D07\u660E\u533A" }] }] }, { code: "320000", name: "\u6C5F\u82CF\u7701", cities: [{ code: "320100", name: "\u5357\u4EAC\u5E02", counties: [{ code: "320102", name: "\u7384\u6B66\u533A" }, { code: "320104", name: "\u79E6\u6DEE\u533A" }, { code: "320105", name: "\u5EFA\u90BA\u533A" }, { code: "320106", name: "\u9F13\u697C\u533A" }, { code: "320111", name: "\u6D66\u53E3\u533A" }, { code: "320113", name: "\u6816\u971E\u533A" }, { code: "320114", name: "\u96E8\u82B1\u53F0\u533A" }, { code: "320115", name: "\u6C5F\u5B81\u533A" }, { code: "320116", name: "\u516D\u5408\u533A" }, { code: "320117", name: "\u6EA7\u6C34\u533A" }, { code: "320118", name: "\u9AD8\u6DF3\u533A" }] }, { code: "320200", name: "\u65E0\u9521\u5E02", counties: [{ code: "320205", name: "\u9521\u5C71\u533A" }, { code: "320206", name: "\u60E0\u5C71\u533A" }, { code: "320211", name: "\u6EE8\u6E56\u533A" }, { code: "320213", name: "\u6881\u6EAA\u533A" }, { code: "320214", name: "\u65B0\u5434\u533A" }, { code: "320281", name: "\u6C5F\u9634\u5E02" }, { code: "320282", name: "\u5B9C\u5174\u5E02" }] }, { code: "320300", name: "\u5F90\u5DDE\u5E02", counties: [{ code: "320302", name: "\u9F13\u697C\u533A" }, { code: "320303", name: "\u4E91\u9F99\u533A" }, { code: "320305", name: "\u8D3E\u6C6A\u533A" }, { code: "320311", name: "\u6CC9\u5C71\u533A" }, { code: "320312", name: "\u94DC\u5C71\u533A" }, { code: "320321", name: "\u4E30\u53BF" }, { code: "320322", name: "\u6C9B\u53BF" }, { code: "320324", name: "\u7762\u5B81\u53BF" }, { code: "320371", name: "\u5F90\u5DDE\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "320381", name: "\u65B0\u6C82\u5E02" }, { code: "320382", name: "\u90B3\u5DDE\u5E02" }] }, { code: "320400", name: "\u5E38\u5DDE\u5E02", counties: [{ code: "320402", name: "\u5929\u5B81\u533A" }, { code: "320404", name: "\u949F\u697C\u533A" }, { code: "320411", name: "\u65B0\u5317\u533A" }, { code: "320412", name: "\u6B66\u8FDB\u533A" }, { code: "320413", name: "\u91D1\u575B\u533A" }, { code: "320481", name: "\u6EA7\u9633\u5E02" }] }, { code: "320500", name: "\u82CF\u5DDE\u5E02", counties: [{ code: "320505", name: "\u864E\u4E18\u533A" }, { code: "320506", name: "\u5434\u4E2D\u533A" }, { code: "320507", name: "\u76F8\u57CE\u533A" }, { code: "320508", name: "\u59D1\u82CF\u533A" }, { code: "320509", name: "\u5434\u6C5F\u533A" }, { code: "320576", name: "\u82CF\u5DDE\u5DE5\u4E1A\u56ED\u533A" }, { code: "320581", name: "\u5E38\u719F\u5E02" }, { code: "320582", name: "\u5F20\u5BB6\u6E2F\u5E02" }, { code: "320583", name: "\u6606\u5C71\u5E02" }, { code: "320585", name: "\u592A\u4ED3\u5E02" }] }, { code: "320600", name: "\u5357\u901A\u5E02", counties: [{ code: "320612", name: "\u901A\u5DDE\u533A" }, { code: "320613", name: "\u5D07\u5DDD\u533A" }, { code: "320614", name: "\u6D77\u95E8\u533A" }, { code: "320623", name: "\u5982\u4E1C\u53BF" }, { code: "320671", name: "\u5357\u901A\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "320681", name: "\u542F\u4E1C\u5E02" }, { code: "320682", name: "\u5982\u768B\u5E02" }, { code: "320685", name: "\u6D77\u5B89\u5E02" }] }, { code: "320700", name: "\u8FDE\u4E91\u6E2F\u5E02", counties: [{ code: "320703", name: "\u8FDE\u4E91\u533A" }, { code: "320706", name: "\u6D77\u5DDE\u533A" }, { code: "320707", name: "\u8D63\u6986\u533A" }, { code: "320722", name: "\u4E1C\u6D77\u53BF" }, { code: "320723", name: "\u704C\u4E91\u53BF" }, { code: "320724", name: "\u704C\u5357\u53BF" }, { code: "320771", name: "\u8FDE\u4E91\u6E2F\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }] }, { code: "320800", name: "\u6DEE\u5B89\u5E02", counties: [{ code: "320803", name: "\u6DEE\u5B89\u533A" }, { code: "320804", name: "\u6DEE\u9634\u533A" }, { code: "320812", name: "\u6E05\u6C5F\u6D66\u533A" }, { code: "320813", name: "\u6D2A\u6CFD\u533A" }, { code: "320826", name: "\u6D9F\u6C34\u53BF" }, { code: "320830", name: "\u76F1\u7719\u53BF" }, { code: "320831", name: "\u91D1\u6E56\u53BF" }, { code: "320871", name: "\u6DEE\u5B89\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }] }, { code: "320900", name: "\u76D0\u57CE\u5E02", counties: [{ code: "320902", name: "\u4EAD\u6E56\u533A" }, { code: "320903", name: "\u76D0\u90FD\u533A" }, { code: "320904", name: "\u5927\u4E30\u533A" }, { code: "320921", name: "\u54CD\u6C34\u53BF" }, { code: "320922", name: "\u6EE8\u6D77\u53BF" }, { code: "320923", name: "\u961C\u5B81\u53BF" }, { code: "320924", name: "\u5C04\u9633\u53BF" }, { code: "320925", name: "\u5EFA\u6E56\u53BF" }, { code: "320971", name: "\u76D0\u57CE\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "320981", name: "\u4E1C\u53F0\u5E02" }] }, { code: "321000", name: "\u626C\u5DDE\u5E02", counties: [{ code: "321002", name: "\u5E7F\u9675\u533A" }, { code: "321003", name: "\u9097\u6C5F\u533A" }, { code: "321012", name: "\u6C5F\u90FD\u533A" }, { code: "321023", name: "\u5B9D\u5E94\u53BF" }, { code: "321071", name: "\u626C\u5DDE\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "321081", name: "\u4EEA\u5F81\u5E02" }, { code: "321084", name: "\u9AD8\u90AE\u5E02" }] }, { code: "321100", name: "\u9547\u6C5F\u5E02", counties: [{ code: "321102", name: "\u4EAC\u53E3\u533A" }, { code: "321111", name: "\u6DA6\u5DDE\u533A" }, { code: "321112", name: "\u4E39\u5F92\u533A" }, { code: "321171", name: "\u9547\u6C5F\u65B0\u533A" }, { code: "321181", name: "\u4E39\u9633\u5E02" }, { code: "321182", name: "\u626C\u4E2D\u5E02" }, { code: "321183", name: "\u53E5\u5BB9\u5E02" }] }, { code: "321200", name: "\u6CF0\u5DDE\u5E02", counties: [{ code: "321202", name: "\u6D77\u9675\u533A" }, { code: "321203", name: "\u9AD8\u6E2F\u533A" }, { code: "321204", name: "\u59DC\u5830\u533A" }, { code: "321281", name: "\u5174\u5316\u5E02" }, { code: "321282", name: "\u9756\u6C5F\u5E02" }, { code: "321283", name: "\u6CF0\u5174\u5E02" }] }, { code: "321300", name: "\u5BBF\u8FC1\u5E02", counties: [{ code: "321302", name: "\u5BBF\u57CE\u533A" }, { code: "321311", name: "\u5BBF\u8C6B\u533A" }, { code: "321322", name: "\u6CAD\u9633\u53BF" }, { code: "321323", name: "\u6CD7\u9633\u53BF" }, { code: "321324", name: "\u6CD7\u6D2A\u53BF" }, { code: "321371", name: "\u5BBF\u8FC1\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }] }] }, { code: "330000", name: "\u6D59\u6C5F\u7701", cities: [{ code: "330100", name: "\u676D\u5DDE\u5E02", counties: [{ code: "330102", name: "\u4E0A\u57CE\u533A" }, { code: "330105", name: "\u62F1\u5885\u533A" }, { code: "330106", name: "\u897F\u6E56\u533A" }, { code: "330108", name: "\u6EE8\u6C5F\u533A" }, { code: "330109", name: "\u8427\u5C71\u533A" }, { code: "330110", name: "\u4F59\u676D\u533A" }, { code: "330111", name: "\u5BCC\u9633\u533A" }, { code: "330112", name: "\u4E34\u5B89\u533A" }, { code: "330113", name: "\u4E34\u5E73\u533A" }, { code: "330114", name: "\u94B1\u5858\u533A" }, { code: "330122", name: "\u6850\u5E90\u53BF" }, { code: "330127", name: "\u6DF3\u5B89\u53BF" }, { code: "330182", name: "\u5EFA\u5FB7\u5E02" }] }, { code: "330200", name: "\u5B81\u6CE2\u5E02", counties: [{ code: "330203", name: "\u6D77\u66D9\u533A" }, { code: "330205", name: "\u6C5F\u5317\u533A" }, { code: "330206", name: "\u5317\u4ED1\u533A" }, { code: "330211", name: "\u9547\u6D77\u533A" }, { code: "330212", name: "\u911E\u5DDE\u533A" }, { code: "330213", name: "\u5949\u5316\u533A" }, { code: "330225", name: "\u8C61\u5C71\u53BF" }, { code: "330226", name: "\u5B81\u6D77\u53BF" }, { code: "330281", name: "\u4F59\u59DA\u5E02" }, { code: "330282", name: "\u6148\u6EAA\u5E02" }] }, { code: "330300", name: "\u6E29\u5DDE\u5E02", counties: [{ code: "330302", name: "\u9E7F\u57CE\u533A" }, { code: "330303", name: "\u9F99\u6E7E\u533A" }, { code: "330304", name: "\u74EF\u6D77\u533A" }, { code: "330305", name: "\u6D1E\u5934\u533A" }, { code: "330324", name: "\u6C38\u5609\u53BF" }, { code: "330326", name: "\u5E73\u9633\u53BF" }, { code: "330327", name: "\u82CD\u5357\u53BF" }, { code: "330328", name: "\u6587\u6210\u53BF" }, { code: "330329", name: "\u6CF0\u987A\u53BF" }, { code: "330381", name: "\u745E\u5B89\u5E02" }, { code: "330382", name: "\u4E50\u6E05\u5E02" }, { code: "330383", name: "\u9F99\u6E2F\u5E02" }] }, { code: "330400", name: "\u5609\u5174\u5E02", counties: [{ code: "330402", name: "\u5357\u6E56\u533A" }, { code: "330411", name: "\u79C0\u6D32\u533A" }, { code: "330421", name: "\u5609\u5584\u53BF" }, { code: "330424", name: "\u6D77\u76D0\u53BF" }, { code: "330481", name: "\u6D77\u5B81\u5E02" }, { code: "330482", name: "\u5E73\u6E56\u5E02" }, { code: "330483", name: "\u6850\u4E61\u5E02" }] }, { code: "330500", name: "\u6E56\u5DDE\u5E02", counties: [{ code: "330502", name: "\u5434\u5174\u533A" }, { code: "330503", name: "\u5357\u6D54\u533A" }, { code: "330521", name: "\u5FB7\u6E05\u53BF" }, { code: "330522", name: "\u957F\u5174\u53BF" }, { code: "330523", name: "\u5B89\u5409\u53BF" }] }, { code: "330600", name: "\u7ECD\u5174\u5E02", counties: [{ code: "330602", name: "\u8D8A\u57CE\u533A" }, { code: "330603", name: "\u67EF\u6865\u533A" }, { code: "330604", name: "\u4E0A\u865E\u533A" }, { code: "330624", name: "\u65B0\u660C\u53BF" }, { code: "330681", name: "\u8BF8\u66A8\u5E02" }, { code: "330683", name: "\u5D4A\u5DDE\u5E02" }] }, { code: "330700", name: "\u91D1\u534E\u5E02", counties: [{ code: "330702", name: "\u5A7A\u57CE\u533A" }, { code: "330703", name: "\u91D1\u4E1C\u533A" }, { code: "330723", name: "\u6B66\u4E49\u53BF" }, { code: "330726", name: "\u6D66\u6C5F\u53BF" }, { code: "330727", name: "\u78D0\u5B89\u53BF" }, { code: "330781", name: "\u5170\u6EAA\u5E02" }, { code: "330782", name: "\u4E49\u4E4C\u5E02" }, { code: "330783", name: "\u4E1C\u9633\u5E02" }, { code: "330784", name: "\u6C38\u5EB7\u5E02" }] }, { code: "330800", name: "\u8862\u5DDE\u5E02", counties: [{ code: "330802", name: "\u67EF\u57CE\u533A" }, { code: "330803", name: "\u8862\u6C5F\u533A" }, { code: "330822", name: "\u5E38\u5C71\u53BF" }, { code: "330824", name: "\u5F00\u5316\u53BF" }, { code: "330825", name: "\u9F99\u6E38\u53BF" }, { code: "330881", name: "\u6C5F\u5C71\u5E02" }] }, { code: "330900", name: "\u821F\u5C71\u5E02", counties: [{ code: "330902", name: "\u5B9A\u6D77\u533A" }, { code: "330903", name: "\u666E\u9640\u533A" }, { code: "330921", name: "\u5CB1\u5C71\u53BF" }, { code: "330922", name: "\u5D4A\u6CD7\u53BF" }] }, { code: "331000", name: "\u53F0\u5DDE\u5E02", counties: [{ code: "331002", name: "\u6912\u6C5F\u533A" }, { code: "331003", name: "\u9EC4\u5CA9\u533A" }, { code: "331004", name: "\u8DEF\u6865\u533A" }, { code: "331022", name: "\u4E09\u95E8\u53BF" }, { code: "331023", name: "\u5929\u53F0\u53BF" }, { code: "331024", name: "\u4ED9\u5C45\u53BF" }, { code: "331081", name: "\u6E29\u5CAD\u5E02" }, { code: "331082", name: "\u4E34\u6D77\u5E02" }, { code: "331083", name: "\u7389\u73AF\u5E02" }] }, { code: "331100", name: "\u4E3D\u6C34\u5E02", counties: [{ code: "331102", name: "\u83B2\u90FD\u533A" }, { code: "331121", name: "\u9752\u7530\u53BF" }, { code: "331122", name: "\u7F19\u4E91\u53BF" }, { code: "331123", name: "\u9042\u660C\u53BF" }, { code: "331124", name: "\u677E\u9633\u53BF" }, { code: "331125", name: "\u4E91\u548C\u53BF" }, { code: "331126", name: "\u5E86\u5143\u53BF" }, { code: "331127", name: "\u666F\u5B81\u7572\u65CF\u81EA\u6CBB\u53BF" }, { code: "331181", name: "\u9F99\u6CC9\u5E02" }] }] }, { code: "340000", name: "\u5B89\u5FBD\u7701", cities: [{ code: "340100", name: "\u5408\u80A5\u5E02", counties: [{ code: "340102", name: "\u7476\u6D77\u533A" }, { code: "340103", name: "\u5E90\u9633\u533A" }, { code: "340104", name: "\u8700\u5C71\u533A" }, { code: "340111", name: "\u5305\u6CB3\u533A" }, { code: "340121", name: "\u957F\u4E30\u53BF" }, { code: "340122", name: "\u80A5\u4E1C\u53BF" }, { code: "340123", name: "\u80A5\u897F\u53BF" }, { code: "340124", name: "\u5E90\u6C5F\u53BF" }, { code: "340176", name: "\u5408\u80A5\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "340177", name: "\u5408\u80A5\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "340178", name: "\u5408\u80A5\u65B0\u7AD9\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "340181", name: "\u5DE2\u6E56\u5E02" }] }, { code: "340200", name: "\u829C\u6E56\u5E02", counties: [{ code: "340202", name: "\u955C\u6E56\u533A" }, { code: "340207", name: "\u9E20\u6C5F\u533A" }, { code: "340209", name: "\u5F0B\u6C5F\u533A" }, { code: "340210", name: "\u6E7E\u6C9A\u533A" }, { code: "340212", name: "\u7E41\u660C\u533A" }, { code: "340223", name: "\u5357\u9675\u53BF" }, { code: "340271", name: "\u829C\u6E56\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "340272", name: "\u5B89\u5FBD\u829C\u6E56\u4E09\u5C71\u7ECF\u6D4E\u5F00\u53D1\u533A" }, { code: "340281", name: "\u65E0\u4E3A\u5E02" }] }, { code: "340300", name: "\u868C\u57E0\u5E02", counties: [{ code: "340302", name: "\u9F99\u5B50\u6E56\u533A" }, { code: "340303", name: "\u868C\u5C71\u533A" }, { code: "340304", name: "\u79B9\u4F1A\u533A" }, { code: "340311", name: "\u6DEE\u4E0A\u533A" }, { code: "340321", name: "\u6000\u8FDC\u53BF" }, { code: "340322", name: "\u4E94\u6CB3\u53BF" }, { code: "340323", name: "\u56FA\u9547\u53BF" }, { code: "340371", name: "\u868C\u57E0\u5E02\u9AD8\u65B0\u6280\u672F\u5F00\u53D1\u533A" }, { code: "340372", name: "\u868C\u57E0\u5E02\u7ECF\u6D4E\u5F00\u53D1\u533A" }] }, { code: "340400", name: "\u6DEE\u5357\u5E02", counties: [{ code: "340402", name: "\u5927\u901A\u533A" }, { code: "340403", name: "\u7530\u5BB6\u5EB5\u533A" }, { code: "340404", name: "\u8C22\u5BB6\u96C6\u533A" }, { code: "340405", name: "\u516B\u516C\u5C71\u533A" }, { code: "340406", name: "\u6F58\u96C6\u533A" }, { code: "340421", name: "\u51E4\u53F0\u53BF" }, { code: "340422", name: "\u5BFF\u53BF" }] }, { code: "340500", name: "\u9A6C\u978D\u5C71\u5E02", counties: [{ code: "340503", name: "\u82B1\u5C71\u533A" }, { code: "340504", name: "\u96E8\u5C71\u533A" }, { code: "340506", name: "\u535A\u671B\u533A" }, { code: "340521", name: "\u5F53\u6D82\u53BF" }, { code: "340522", name: "\u542B\u5C71\u53BF" }, { code: "340523", name: "\u548C\u53BF" }] }, { code: "340600", name: "\u6DEE\u5317\u5E02", counties: [{ code: "340602", name: "\u675C\u96C6\u533A" }, { code: "340603", name: "\u76F8\u5C71\u533A" }, { code: "340604", name: "\u70C8\u5C71\u533A" }, { code: "340621", name: "\u6FC9\u6EAA\u53BF" }] }, { code: "340700", name: "\u94DC\u9675\u5E02", counties: [{ code: "340705", name: "\u94DC\u5B98\u533A" }, { code: "340706", name: "\u4E49\u5B89\u533A" }, { code: "340711", name: "\u90CA\u533A" }, { code: "340722", name: "\u679E\u9633\u53BF" }] }, { code: "340800", name: "\u5B89\u5E86\u5E02", counties: [{ code: "340802", name: "\u8FCE\u6C5F\u533A" }, { code: "340803", name: "\u5927\u89C2\u533A" }, { code: "340811", name: "\u5B9C\u79C0\u533A" }, { code: "340822", name: "\u6000\u5B81\u53BF" }, { code: "340825", name: "\u592A\u6E56\u53BF" }, { code: "340826", name: "\u5BBF\u677E\u53BF" }, { code: "340827", name: "\u671B\u6C5F\u53BF" }, { code: "340828", name: "\u5CB3\u897F\u53BF" }, { code: "340871", name: "\u5B89\u5FBD\u5B89\u5E86\u7ECF\u6D4E\u5F00\u53D1\u533A" }, { code: "340881", name: "\u6850\u57CE\u5E02" }, { code: "340882", name: "\u6F5C\u5C71\u5E02" }] }, { code: "341000", name: "\u9EC4\u5C71\u5E02", counties: [{ code: "341002", name: "\u5C6F\u6EAA\u533A" }, { code: "341003", name: "\u9EC4\u5C71\u533A" }, { code: "341004", name: "\u5FBD\u5DDE\u533A" }, { code: "341021", name: "\u6B59\u53BF" }, { code: "341022", name: "\u4F11\u5B81\u53BF" }, { code: "341023", name: "\u9EDF\u53BF" }, { code: "341024", name: "\u7941\u95E8\u53BF" }] }, { code: "341100", name: "\u6EC1\u5DDE\u5E02", counties: [{ code: "341102", name: "\u7405\u740A\u533A" }, { code: "341103", name: "\u5357\u8C2F\u533A" }, { code: "341122", name: "\u6765\u5B89\u53BF" }, { code: "341124", name: "\u5168\u6912\u53BF" }, { code: "341125", name: "\u5B9A\u8FDC\u53BF" }, { code: "341126", name: "\u51E4\u9633\u53BF" }, { code: "341171", name: "\u4E2D\u65B0\u82CF\u6EC1\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "341172", name: "\u6EC1\u5DDE\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "341181", name: "\u5929\u957F\u5E02" }, { code: "341182", name: "\u660E\u5149\u5E02" }] }, { code: "341200", name: "\u961C\u9633\u5E02", counties: [{ code: "341202", name: "\u988D\u5DDE\u533A" }, { code: "341203", name: "\u988D\u4E1C\u533A" }, { code: "341204", name: "\u988D\u6CC9\u533A" }, { code: "341221", name: "\u4E34\u6CC9\u53BF" }, { code: "341222", name: "\u592A\u548C\u53BF" }, { code: "341225", name: "\u961C\u5357\u53BF" }, { code: "341226", name: "\u988D\u4E0A\u53BF" }, { code: "341271", name: "\u961C\u9633\u5408\u80A5\u73B0\u4EE3\u4EA7\u4E1A\u56ED\u533A" }, { code: "341272", name: "\u961C\u9633\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "341282", name: "\u754C\u9996\u5E02" }] }, { code: "341300", name: "\u5BBF\u5DDE\u5E02", counties: [{ code: "341302", name: "\u57C7\u6865\u533A" }, { code: "341321", name: "\u7800\u5C71\u53BF" }, { code: "341322", name: "\u8427\u53BF" }, { code: "341323", name: "\u7075\u74A7\u53BF" }, { code: "341324", name: "\u6CD7\u53BF" }, { code: "341371", name: "\u5BBF\u5DDE\u9A6C\u978D\u5C71\u73B0\u4EE3\u4EA7\u4E1A\u56ED\u533A" }, { code: "341372", name: "\u5BBF\u5DDE\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }] }, { code: "341500", name: "\u516D\u5B89\u5E02", counties: [{ code: "341502", name: "\u91D1\u5B89\u533A" }, { code: "341503", name: "\u88D5\u5B89\u533A" }, { code: "341504", name: "\u53F6\u96C6\u533A" }, { code: "341522", name: "\u970D\u90B1\u53BF" }, { code: "341523", name: "\u8212\u57CE\u53BF" }, { code: "341524", name: "\u91D1\u5BE8\u53BF" }, { code: "341525", name: "\u970D\u5C71\u53BF" }] }, { code: "341600", name: "\u4EB3\u5DDE\u5E02", counties: [{ code: "341602", name: "\u8C2F\u57CE\u533A" }, { code: "341621", name: "\u6DA1\u9633\u53BF" }, { code: "341622", name: "\u8499\u57CE\u53BF" }, { code: "341623", name: "\u5229\u8F9B\u53BF" }] }, { code: "341700", name: "\u6C60\u5DDE\u5E02", counties: [{ code: "341702", name: "\u8D35\u6C60\u533A" }, { code: "341721", name: "\u4E1C\u81F3\u53BF" }, { code: "341722", name: "\u77F3\u53F0\u53BF" }, { code: "341723", name: "\u9752\u9633\u53BF" }] }, { code: "341800", name: "\u5BA3\u57CE\u5E02", counties: [{ code: "341802", name: "\u5BA3\u5DDE\u533A" }, { code: "341821", name: "\u90CE\u6EAA\u53BF" }, { code: "341823", name: "\u6CFE\u53BF" }, { code: "341824", name: "\u7EE9\u6EAA\u53BF" }, { code: "341825", name: "\u65CC\u5FB7\u53BF" }, { code: "341871", name: "\u5BA3\u57CE\u5E02\u7ECF\u6D4E\u5F00\u53D1\u533A" }, { code: "341881", name: "\u5B81\u56FD\u5E02" }, { code: "341882", name: "\u5E7F\u5FB7\u5E02" }] }] }, { code: "350000", name: "\u798F\u5EFA\u7701", cities: [{ code: "350100", name: "\u798F\u5DDE\u5E02", counties: [{ code: "350102", name: "\u9F13\u697C\u533A" }, { code: "350103", name: "\u53F0\u6C5F\u533A" }, { code: "350104", name: "\u4ED3\u5C71\u533A" }, { code: "350105", name: "\u9A6C\u5C3E\u533A" }, { code: "350111", name: "\u664B\u5B89\u533A" }, { code: "350112", name: "\u957F\u4E50\u533A" }, { code: "350121", name: "\u95FD\u4FAF\u53BF" }, { code: "350122", name: "\u8FDE\u6C5F\u53BF" }, { code: "350123", name: "\u7F57\u6E90\u53BF" }, { code: "350124", name: "\u95FD\u6E05\u53BF" }, { code: "350125", name: "\u6C38\u6CF0\u53BF" }, { code: "350128", name: "\u5E73\u6F6D\u53BF" }, { code: "350181", name: "\u798F\u6E05\u5E02" }] }, { code: "350200", name: "\u53A6\u95E8\u5E02", counties: [{ code: "350203", name: "\u601D\u660E\u533A" }, { code: "350205", name: "\u6D77\u6CA7\u533A" }, { code: "350206", name: "\u6E56\u91CC\u533A" }, { code: "350211", name: "\u96C6\u7F8E\u533A" }, { code: "350212", name: "\u540C\u5B89\u533A" }, { code: "350213", name: "\u7FD4\u5B89\u533A" }] }, { code: "350300", name: "\u8386\u7530\u5E02", counties: [{ code: "350302", name: "\u57CE\u53A2\u533A" }, { code: "350303", name: "\u6DB5\u6C5F\u533A" }, { code: "350304", name: "\u8354\u57CE\u533A" }, { code: "350305", name: "\u79C0\u5C7F\u533A" }, { code: "350322", name: "\u4ED9\u6E38\u53BF" }] }, { code: "350400", name: "\u4E09\u660E\u5E02", counties: [{ code: "350404", name: "\u4E09\u5143\u533A" }, { code: "350405", name: "\u6C99\u53BF\u533A" }, { code: "350421", name: "\u660E\u6EAA\u53BF" }, { code: "350423", name: "\u6E05\u6D41\u53BF" }, { code: "350424", name: "\u5B81\u5316\u53BF" }, { code: "350425", name: "\u5927\u7530\u53BF" }, { code: "350426", name: "\u5C24\u6EAA\u53BF" }, { code: "350428", name: "\u5C06\u4E50\u53BF" }, { code: "350429", name: "\u6CF0\u5B81\u53BF" }, { code: "350430", name: "\u5EFA\u5B81\u53BF" }, { code: "350481", name: "\u6C38\u5B89\u5E02" }] }, { code: "350500", name: "\u6CC9\u5DDE\u5E02", counties: [{ code: "350502", name: "\u9CA4\u57CE\u533A" }, { code: "350503", name: "\u4E30\u6CFD\u533A" }, { code: "350504", name: "\u6D1B\u6C5F\u533A" }, { code: "350505", name: "\u6CC9\u6E2F\u533A" }, { code: "350521", name: "\u60E0\u5B89\u53BF" }, { code: "350524", name: "\u5B89\u6EAA\u53BF" }, { code: "350525", name: "\u6C38\u6625\u53BF" }, { code: "350526", name: "\u5FB7\u5316\u53BF" }, { code: "350527", name: "\u91D1\u95E8\u53BF" }, { code: "350581", name: "\u77F3\u72EE\u5E02" }, { code: "350582", name: "\u664B\u6C5F\u5E02" }, { code: "350583", name: "\u5357\u5B89\u5E02" }] }, { code: "350600", name: "\u6F33\u5DDE\u5E02", counties: [{ code: "350602", name: "\u8297\u57CE\u533A" }, { code: "350603", name: "\u9F99\u6587\u533A" }, { code: "350604", name: "\u9F99\u6D77\u533A" }, { code: "350605", name: "\u957F\u6CF0\u533A" }, { code: "350622", name: "\u4E91\u9704\u53BF" }, { code: "350623", name: "\u6F33\u6D66\u53BF" }, { code: "350624", name: "\u8BCF\u5B89\u53BF" }, { code: "350626", name: "\u4E1C\u5C71\u53BF" }, { code: "350627", name: "\u5357\u9756\u53BF" }, { code: "350628", name: "\u5E73\u548C\u53BF" }, { code: "350629", name: "\u534E\u5B89\u53BF" }] }, { code: "350700", name: "\u5357\u5E73\u5E02", counties: [{ code: "350702", name: "\u5EF6\u5E73\u533A" }, { code: "350703", name: "\u5EFA\u9633\u533A" }, { code: "350721", name: "\u987A\u660C\u53BF" }, { code: "350722", name: "\u6D66\u57CE\u53BF" }, { code: "350723", name: "\u5149\u6CFD\u53BF" }, { code: "350724", name: "\u677E\u6EAA\u53BF" }, { code: "350725", name: "\u653F\u548C\u53BF" }, { code: "350781", name: "\u90B5\u6B66\u5E02" }, { code: "350782", name: "\u6B66\u5937\u5C71\u5E02" }, { code: "350783", name: "\u5EFA\u74EF\u5E02" }] }, { code: "350800", name: "\u9F99\u5CA9\u5E02", counties: [{ code: "350802", name: "\u65B0\u7F57\u533A" }, { code: "350803", name: "\u6C38\u5B9A\u533A" }, { code: "350821", name: "\u957F\u6C40\u53BF" }, { code: "350823", name: "\u4E0A\u676D\u53BF" }, { code: "350824", name: "\u6B66\u5E73\u53BF" }, { code: "350825", name: "\u8FDE\u57CE\u53BF" }, { code: "350881", name: "\u6F33\u5E73\u5E02" }] }, { code: "350900", name: "\u5B81\u5FB7\u5E02", counties: [{ code: "350902", name: "\u8549\u57CE\u533A" }, { code: "350921", name: "\u971E\u6D66\u53BF" }, { code: "350922", name: "\u53E4\u7530\u53BF" }, { code: "350923", name: "\u5C4F\u5357\u53BF" }, { code: "350924", name: "\u5BFF\u5B81\u53BF" }, { code: "350925", name: "\u5468\u5B81\u53BF" }, { code: "350926", name: "\u67D8\u8363\u53BF" }, { code: "350981", name: "\u798F\u5B89\u5E02" }, { code: "350982", name: "\u798F\u9F0E\u5E02" }] }] }, { code: "360000", name: "\u6C5F\u897F\u7701", cities: [{ code: "360100", name: "\u5357\u660C\u5E02", counties: [{ code: "360102", name: "\u4E1C\u6E56\u533A" }, { code: "360103", name: "\u897F\u6E56\u533A" }, { code: "360104", name: "\u9752\u4E91\u8C31\u533A" }, { code: "360111", name: "\u9752\u5C71\u6E56\u533A" }, { code: "360112", name: "\u65B0\u5EFA\u533A" }, { code: "360113", name: "\u7EA2\u8C37\u6EE9\u533A" }, { code: "360121", name: "\u5357\u660C\u53BF" }, { code: "360123", name: "\u5B89\u4E49\u53BF" }, { code: "360124", name: "\u8FDB\u8D24\u53BF" }] }, { code: "360200", name: "\u666F\u5FB7\u9547\u5E02", counties: [{ code: "360202", name: "\u660C\u6C5F\u533A" }, { code: "360203", name: "\u73E0\u5C71\u533A" }, { code: "360222", name: "\u6D6E\u6881\u53BF" }, { code: "360281", name: "\u4E50\u5E73\u5E02" }] }, { code: "360300", name: "\u840D\u4E61\u5E02", counties: [{ code: "360302", name: "\u5B89\u6E90\u533A" }, { code: "360313", name: "\u6E58\u4E1C\u533A" }, { code: "360321", name: "\u83B2\u82B1\u53BF" }, { code: "360322", name: "\u4E0A\u6817\u53BF" }, { code: "360323", name: "\u82A6\u6EAA\u53BF" }] }, { code: "360400", name: "\u4E5D\u6C5F\u5E02", counties: [{ code: "360402", name: "\u6FC2\u6EAA\u533A" }, { code: "360403", name: "\u6D54\u9633\u533A" }, { code: "360404", name: "\u67F4\u6851\u533A" }, { code: "360423", name: "\u6B66\u5B81\u53BF" }, { code: "360424", name: "\u4FEE\u6C34\u53BF" }, { code: "360425", name: "\u6C38\u4FEE\u53BF" }, { code: "360426", name: "\u5FB7\u5B89\u53BF" }, { code: "360428", name: "\u90FD\u660C\u53BF" }, { code: "360429", name: "\u6E56\u53E3\u53BF" }, { code: "360430", name: "\u5F6D\u6CFD\u53BF" }, { code: "360481", name: "\u745E\u660C\u5E02" }, { code: "360482", name: "\u5171\u9752\u57CE\u5E02" }, { code: "360483", name: "\u5E90\u5C71\u5E02" }] }, { code: "360500", name: "\u65B0\u4F59\u5E02", counties: [{ code: "360502", name: "\u6E1D\u6C34\u533A" }, { code: "360521", name: "\u5206\u5B9C\u53BF" }] }, { code: "360600", name: "\u9E70\u6F6D\u5E02", counties: [{ code: "360602", name: "\u6708\u6E56\u533A" }, { code: "360603", name: "\u4F59\u6C5F\u533A" }, { code: "360681", name: "\u8D35\u6EAA\u5E02" }] }, { code: "360700", name: "\u8D63\u5DDE\u5E02", counties: [{ code: "360702", name: "\u7AE0\u8D21\u533A" }, { code: "360703", name: "\u5357\u5EB7\u533A" }, { code: "360704", name: "\u8D63\u53BF\u533A" }, { code: "360722", name: "\u4FE1\u4E30\u53BF" }, { code: "360723", name: "\u5927\u4F59\u53BF" }, { code: "360724", name: "\u4E0A\u72B9\u53BF" }, { code: "360725", name: "\u5D07\u4E49\u53BF" }, { code: "360726", name: "\u5B89\u8FDC\u53BF" }, { code: "360728", name: "\u5B9A\u5357\u53BF" }, { code: "360729", name: "\u5168\u5357\u53BF" }, { code: "360730", name: "\u5B81\u90FD\u53BF" }, { code: "360731", name: "\u4E8E\u90FD\u53BF" }, { code: "360732", name: "\u5174\u56FD\u53BF" }, { code: "360733", name: "\u4F1A\u660C\u53BF" }, { code: "360734", name: "\u5BFB\u4E4C\u53BF" }, { code: "360735", name: "\u77F3\u57CE\u53BF" }, { code: "360781", name: "\u745E\u91D1\u5E02" }, { code: "360783", name: "\u9F99\u5357\u5E02" }] }, { code: "360800", name: "\u5409\u5B89\u5E02", counties: [{ code: "360802", name: "\u5409\u5DDE\u533A" }, { code: "360803", name: "\u9752\u539F\u533A" }, { code: "360821", name: "\u5409\u5B89\u53BF" }, { code: "360822", name: "\u5409\u6C34\u53BF" }, { code: "360823", name: "\u5CE1\u6C5F\u53BF" }, { code: "360824", name: "\u65B0\u5E72\u53BF" }, { code: "360825", name: "\u6C38\u4E30\u53BF" }, { code: "360826", name: "\u6CF0\u548C\u53BF" }, { code: "360827", name: "\u9042\u5DDD\u53BF" }, { code: "360828", name: "\u4E07\u5B89\u53BF" }, { code: "360829", name: "\u5B89\u798F\u53BF" }, { code: "360830", name: "\u6C38\u65B0\u53BF" }, { code: "360881", name: "\u4E95\u5188\u5C71\u5E02" }] }, { code: "360900", name: "\u5B9C\u6625\u5E02", counties: [{ code: "360902", name: "\u8881\u5DDE\u533A" }, { code: "360921", name: "\u5949\u65B0\u53BF" }, { code: "360922", name: "\u4E07\u8F7D\u53BF" }, { code: "360923", name: "\u4E0A\u9AD8\u53BF" }, { code: "360924", name: "\u5B9C\u4E30\u53BF" }, { code: "360925", name: "\u9756\u5B89\u53BF" }, { code: "360926", name: "\u94DC\u9F13\u53BF" }, { code: "360981", name: "\u4E30\u57CE\u5E02" }, { code: "360982", name: "\u6A1F\u6811\u5E02" }, { code: "360983", name: "\u9AD8\u5B89\u5E02" }] }, { code: "361000", name: "\u629A\u5DDE\u5E02", counties: [{ code: "361002", name: "\u4E34\u5DDD\u533A" }, { code: "361003", name: "\u4E1C\u4E61\u533A" }, { code: "361021", name: "\u5357\u57CE\u53BF" }, { code: "361022", name: "\u9ECE\u5DDD\u53BF" }, { code: "361023", name: "\u5357\u4E30\u53BF" }, { code: "361024", name: "\u5D07\u4EC1\u53BF" }, { code: "361025", name: "\u4E50\u5B89\u53BF" }, { code: "361026", name: "\u5B9C\u9EC4\u53BF" }, { code: "361027", name: "\u91D1\u6EAA\u53BF" }, { code: "361028", name: "\u8D44\u6EAA\u53BF" }, { code: "361030", name: "\u5E7F\u660C\u53BF" }] }, { code: "361100", name: "\u4E0A\u9976\u5E02", counties: [{ code: "361102", name: "\u4FE1\u5DDE\u533A" }, { code: "361103", name: "\u5E7F\u4E30\u533A" }, { code: "361104", name: "\u5E7F\u4FE1\u533A" }, { code: "361123", name: "\u7389\u5C71\u53BF" }, { code: "361124", name: "\u94C5\u5C71\u53BF" }, { code: "361125", name: "\u6A2A\u5CF0\u53BF" }, { code: "361126", name: "\u5F0B\u9633\u53BF" }, { code: "361127", name: "\u4F59\u5E72\u53BF" }, { code: "361128", name: "\u9131\u9633\u53BF" }, { code: "361129", name: "\u4E07\u5E74\u53BF" }, { code: "361130", name: "\u5A7A\u6E90\u53BF" }, { code: "361181", name: "\u5FB7\u5174\u5E02" }] }] }, { code: "370000", name: "\u5C71\u4E1C\u7701", cities: [{ code: "370100", name: "\u6D4E\u5357\u5E02", counties: [{ code: "370102", name: "\u5386\u4E0B\u533A" }, { code: "370103", name: "\u5E02\u4E2D\u533A" }, { code: "370104", name: "\u69D0\u836B\u533A" }, { code: "370105", name: "\u5929\u6865\u533A" }, { code: "370112", name: "\u5386\u57CE\u533A" }, { code: "370113", name: "\u957F\u6E05\u533A" }, { code: "370114", name: "\u7AE0\u4E18\u533A" }, { code: "370115", name: "\u6D4E\u9633\u533A" }, { code: "370116", name: "\u83B1\u829C\u533A" }, { code: "370117", name: "\u94A2\u57CE\u533A" }, { code: "370124", name: "\u5E73\u9634\u53BF" }, { code: "370126", name: "\u5546\u6CB3\u53BF" }, { code: "370176", name: "\u6D4E\u5357\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }] }, { code: "370200", name: "\u9752\u5C9B\u5E02", counties: [{ code: "370202", name: "\u5E02\u5357\u533A" }, { code: "370203", name: "\u5E02\u5317\u533A" }, { code: "370211", name: "\u9EC4\u5C9B\u533A" }, { code: "370212", name: "\u5D02\u5C71\u533A" }, { code: "370213", name: "\u674E\u6CA7\u533A" }, { code: "370214", name: "\u57CE\u9633\u533A" }, { code: "370215", name: "\u5373\u58A8\u533A" }, { code: "370281", name: "\u80F6\u5DDE\u5E02" }, { code: "370283", name: "\u5E73\u5EA6\u5E02" }, { code: "370285", name: "\u83B1\u897F\u5E02" }] }, { code: "370300", name: "\u6DC4\u535A\u5E02", counties: [{ code: "370302", name: "\u6DC4\u5DDD\u533A" }, { code: "370303", name: "\u5F20\u5E97\u533A" }, { code: "370304", name: "\u535A\u5C71\u533A" }, { code: "370305", name: "\u4E34\u6DC4\u533A" }, { code: "370306", name: "\u5468\u6751\u533A" }, { code: "370321", name: "\u6853\u53F0\u53BF" }, { code: "370322", name: "\u9AD8\u9752\u53BF" }, { code: "370323", name: "\u6C82\u6E90\u53BF" }] }, { code: "370400", name: "\u67A3\u5E84\u5E02", counties: [{ code: "370402", name: "\u5E02\u4E2D\u533A" }, { code: "370403", name: "\u859B\u57CE\u533A" }, { code: "370404", name: "\u5CC4\u57CE\u533A" }, { code: "370405", name: "\u53F0\u513F\u5E84\u533A" }, { code: "370406", name: "\u5C71\u4EAD\u533A" }, { code: "370481", name: "\u6ED5\u5DDE\u5E02" }] }, { code: "370500", name: "\u4E1C\u8425\u5E02", counties: [{ code: "370502", name: "\u4E1C\u8425\u533A" }, { code: "370503", name: "\u6CB3\u53E3\u533A" }, { code: "370505", name: "\u57A6\u5229\u533A" }, { code: "370522", name: "\u5229\u6D25\u53BF" }, { code: "370523", name: "\u5E7F\u9976\u53BF" }, { code: "370571", name: "\u4E1C\u8425\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "370572", name: "\u4E1C\u8425\u6E2F\u7ECF\u6D4E\u5F00\u53D1\u533A" }] }, { code: "370600", name: "\u70DF\u53F0\u5E02", counties: [{ code: "370602", name: "\u829D\u7F58\u533A" }, { code: "370611", name: "\u798F\u5C71\u533A" }, { code: "370612", name: "\u725F\u5E73\u533A" }, { code: "370613", name: "\u83B1\u5C71\u533A" }, { code: "370614", name: "\u84EC\u83B1\u533A" }, { code: "370671", name: "\u70DF\u53F0\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "370676", name: "\u70DF\u53F0\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "370681", name: "\u9F99\u53E3\u5E02" }, { code: "370682", name: "\u83B1\u9633\u5E02" }, { code: "370683", name: "\u83B1\u5DDE\u5E02" }, { code: "370685", name: "\u62DB\u8FDC\u5E02" }, { code: "370686", name: "\u6816\u971E\u5E02" }, { code: "370687", name: "\u6D77\u9633\u5E02" }] }, { code: "370700", name: "\u6F4D\u574A\u5E02", counties: [{ code: "370702", name: "\u6F4D\u57CE\u533A" }, { code: "370703", name: "\u5BD2\u4EAD\u533A" }, { code: "370704", name: "\u574A\u5B50\u533A" }, { code: "370705", name: "\u594E\u6587\u533A" }, { code: "370724", name: "\u4E34\u6710\u53BF" }, { code: "370725", name: "\u660C\u4E50\u53BF" }, { code: "370772", name: "\u6F4D\u574A\u6EE8\u6D77\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "370781", name: "\u9752\u5DDE\u5E02" }, { code: "370782", name: "\u8BF8\u57CE\u5E02" }, { code: "370783", name: "\u5BFF\u5149\u5E02" }, { code: "370784", name: "\u5B89\u4E18\u5E02" }, { code: "370785", name: "\u9AD8\u5BC6\u5E02" }, { code: "370786", name: "\u660C\u9091\u5E02" }] }, { code: "370800", name: "\u6D4E\u5B81\u5E02", counties: [{ code: "370811", name: "\u4EFB\u57CE\u533A" }, { code: "370812", name: "\u5156\u5DDE\u533A" }, { code: "370826", name: "\u5FAE\u5C71\u53BF" }, { code: "370827", name: "\u9C7C\u53F0\u53BF" }, { code: "370828", name: "\u91D1\u4E61\u53BF" }, { code: "370829", name: "\u5609\u7965\u53BF" }, { code: "370830", name: "\u6C76\u4E0A\u53BF" }, { code: "370831", name: "\u6CD7\u6C34\u53BF" }, { code: "370832", name: "\u6881\u5C71\u53BF" }, { code: "370871", name: "\u6D4E\u5B81\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "370881", name: "\u66F2\u961C\u5E02" }, { code: "370883", name: "\u90B9\u57CE\u5E02" }] }, { code: "370900", name: "\u6CF0\u5B89\u5E02", counties: [{ code: "370902", name: "\u6CF0\u5C71\u533A" }, { code: "370911", name: "\u5CB1\u5CB3\u533A" }, { code: "370921", name: "\u5B81\u9633\u53BF" }, { code: "370923", name: "\u4E1C\u5E73\u53BF" }, { code: "370982", name: "\u65B0\u6CF0\u5E02" }, { code: "370983", name: "\u80A5\u57CE\u5E02" }] }, { code: "371000", name: "\u5A01\u6D77\u5E02", counties: [{ code: "371002", name: "\u73AF\u7FE0\u533A" }, { code: "371003", name: "\u6587\u767B\u533A" }, { code: "371071", name: "\u5A01\u6D77\u706B\u70AC\u9AD8\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "371072", name: "\u5A01\u6D77\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "371073", name: "\u5A01\u6D77\u4E34\u6E2F\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "371082", name: "\u8363\u6210\u5E02" }, { code: "371083", name: "\u4E73\u5C71\u5E02" }] }, { code: "371100", name: "\u65E5\u7167\u5E02", counties: [{ code: "371102", name: "\u4E1C\u6E2F\u533A" }, { code: "371103", name: "\u5C9A\u5C71\u533A" }, { code: "371121", name: "\u4E94\u83B2\u53BF" }, { code: "371122", name: "\u8392\u53BF" }, { code: "371171", name: "\u65E5\u7167\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }] }, { code: "371300", name: "\u4E34\u6C82\u5E02", counties: [{ code: "371302", name: "\u5170\u5C71\u533A" }, { code: "371311", name: "\u7F57\u5E84\u533A" }, { code: "371312", name: "\u6CB3\u4E1C\u533A" }, { code: "371321", name: "\u6C82\u5357\u53BF" }, { code: "371322", name: "\u90EF\u57CE\u53BF" }, { code: "371323", name: "\u6C82\u6C34\u53BF" }, { code: "371324", name: "\u5170\u9675\u53BF" }, { code: "371325", name: "\u8D39\u53BF" }, { code: "371326", name: "\u5E73\u9091\u53BF" }, { code: "371327", name: "\u8392\u5357\u53BF" }, { code: "371328", name: "\u8499\u9634\u53BF" }, { code: "371329", name: "\u4E34\u6CAD\u53BF" }, { code: "371371", name: "\u4E34\u6C82\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }] }, { code: "371400", name: "\u5FB7\u5DDE\u5E02", counties: [{ code: "371402", name: "\u5FB7\u57CE\u533A" }, { code: "371403", name: "\u9675\u57CE\u533A" }, { code: "371422", name: "\u5B81\u6D25\u53BF" }, { code: "371423", name: "\u5E86\u4E91\u53BF" }, { code: "371424", name: "\u4E34\u9091\u53BF" }, { code: "371425", name: "\u9F50\u6CB3\u53BF" }, { code: "371426", name: "\u5E73\u539F\u53BF" }, { code: "371427", name: "\u590F\u6D25\u53BF" }, { code: "371428", name: "\u6B66\u57CE\u53BF" }, { code: "371471", name: "\u5FB7\u5DDE\u5929\u8862\u65B0\u533A" }, { code: "371481", name: "\u4E50\u9675\u5E02" }, { code: "371482", name: "\u79B9\u57CE\u5E02" }] }, { code: "371500", name: "\u804A\u57CE\u5E02", counties: [{ code: "371502", name: "\u4E1C\u660C\u5E9C\u533A" }, { code: "371503", name: "\u830C\u5E73\u533A" }, { code: "371521", name: "\u9633\u8C37\u53BF" }, { code: "371522", name: "\u8398\u53BF" }, { code: "371524", name: "\u4E1C\u963F\u53BF" }, { code: "371525", name: "\u51A0\u53BF" }, { code: "371526", name: "\u9AD8\u5510\u53BF" }, { code: "371581", name: "\u4E34\u6E05\u5E02" }] }, { code: "371600", name: "\u6EE8\u5DDE\u5E02", counties: [{ code: "371602", name: "\u6EE8\u57CE\u533A" }, { code: "371603", name: "\u6CBE\u5316\u533A" }, { code: "371621", name: "\u60E0\u6C11\u53BF" }, { code: "371622", name: "\u9633\u4FE1\u53BF" }, { code: "371623", name: "\u65E0\u68E3\u53BF" }, { code: "371625", name: "\u535A\u5174\u53BF" }, { code: "371681", name: "\u90B9\u5E73\u5E02" }] }, { code: "371700", name: "\u83CF\u6CFD\u5E02", counties: [{ code: "371702", name: "\u7261\u4E39\u533A" }, { code: "371703", name: "\u5B9A\u9676\u533A" }, { code: "371721", name: "\u66F9\u53BF" }, { code: "371722", name: "\u5355\u53BF" }, { code: "371723", name: "\u6210\u6B66\u53BF" }, { code: "371724", name: "\u5DE8\u91CE\u53BF" }, { code: "371725", name: "\u90D3\u57CE\u53BF" }, { code: "371726", name: "\u9104\u57CE\u53BF" }, { code: "371728", name: "\u4E1C\u660E\u53BF" }, { code: "371771", name: "\u83CF\u6CFD\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "371772", name: "\u83CF\u6CFD\u9AD8\u65B0\u6280\u672F\u5F00\u53D1\u533A" }] }] }, { code: "410000", name: "\u6CB3\u5357\u7701", cities: [{ code: "410100", name: "\u90D1\u5DDE\u5E02", counties: [{ code: "410102", name: "\u4E2D\u539F\u533A" }, { code: "410103", name: "\u4E8C\u4E03\u533A" }, { code: "410104", name: "\u7BA1\u57CE\u56DE\u65CF\u533A" }, { code: "410105", name: "\u91D1\u6C34\u533A" }, { code: "410106", name: "\u4E0A\u8857\u533A" }, { code: "410108", name: "\u60E0\u6D4E\u533A" }, { code: "410122", name: "\u4E2D\u725F\u53BF" }, { code: "410171", name: "\u90D1\u5DDE\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "410172", name: "\u90D1\u5DDE\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "410173", name: "\u90D1\u5DDE\u822A\u7A7A\u6E2F\u7ECF\u6D4E\u7EFC\u5408\u5B9E\u9A8C\u533A" }, { code: "410181", name: "\u5DE9\u4E49\u5E02" }, { code: "410182", name: "\u8365\u9633\u5E02" }, { code: "410183", name: "\u65B0\u5BC6\u5E02" }, { code: "410184", name: "\u65B0\u90D1\u5E02" }, { code: "410185", name: "\u767B\u5C01\u5E02" }] }, { code: "410200", name: "\u5F00\u5C01\u5E02", counties: [{ code: "410202", name: "\u9F99\u4EAD\u533A" }, { code: "410203", name: "\u987A\u6CB3\u56DE\u65CF\u533A" }, { code: "410204", name: "\u9F13\u697C\u533A" }, { code: "410205", name: "\u79B9\u738B\u53F0\u533A" }, { code: "410212", name: "\u7965\u7B26\u533A" }, { code: "410221", name: "\u675E\u53BF" }, { code: "410222", name: "\u901A\u8BB8\u53BF" }, { code: "410223", name: "\u5C09\u6C0F\u53BF" }, { code: "410225", name: "\u5170\u8003\u53BF" }] }, { code: "410300", name: "\u6D1B\u9633\u5E02", counties: [{ code: "410302", name: "\u8001\u57CE\u533A" }, { code: "410303", name: "\u897F\u5DE5\u533A" }, { code: "410304", name: "\u700D\u6CB3\u56DE\u65CF\u533A" }, { code: "410305", name: "\u6DA7\u897F\u533A" }, { code: "410307", name: "\u5043\u5E08\u533A" }, { code: "410308", name: "\u5B5F\u6D25\u533A" }, { code: "410311", name: "\u6D1B\u9F99\u533A" }, { code: "410323", name: "\u65B0\u5B89\u53BF" }, { code: "410324", name: "\u683E\u5DDD\u53BF" }, { code: "410325", name: "\u5D69\u53BF" }, { code: "410326", name: "\u6C5D\u9633\u53BF" }, { code: "410327", name: "\u5B9C\u9633\u53BF" }, { code: "410328", name: "\u6D1B\u5B81\u53BF" }, { code: "410329", name: "\u4F0A\u5DDD\u53BF" }, { code: "410371", name: "\u6D1B\u9633\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }] }, { code: "410400", name: "\u5E73\u9876\u5C71\u5E02", counties: [{ code: "410402", name: "\u65B0\u534E\u533A" }, { code: "410403", name: "\u536B\u4E1C\u533A" }, { code: "410404", name: "\u77F3\u9F99\u533A" }, { code: "410411", name: "\u6E5B\u6CB3\u533A" }, { code: "410421", name: "\u5B9D\u4E30\u53BF" }, { code: "410422", name: "\u53F6\u53BF" }, { code: "410423", name: "\u9C81\u5C71\u53BF" }, { code: "410425", name: "\u90CF\u53BF" }, { code: "410471", name: "\u5E73\u9876\u5C71\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "410472", name: "\u5E73\u9876\u5C71\u5E02\u57CE\u4E61\u4E00\u4F53\u5316\u793A\u8303\u533A" }, { code: "410481", name: "\u821E\u94A2\u5E02" }, { code: "410482", name: "\u6C5D\u5DDE\u5E02" }] }, { code: "410500", name: "\u5B89\u9633\u5E02", counties: [{ code: "410502", name: "\u6587\u5CF0\u533A" }, { code: "410503", name: "\u5317\u5173\u533A" }, { code: "410505", name: "\u6BB7\u90FD\u533A" }, { code: "410506", name: "\u9F99\u5B89\u533A" }, { code: "410522", name: "\u5B89\u9633\u53BF" }, { code: "410523", name: "\u6C64\u9634\u53BF" }, { code: "410526", name: "\u6ED1\u53BF" }, { code: "410527", name: "\u5185\u9EC4\u53BF" }, { code: "410571", name: "\u5B89\u9633\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "410581", name: "\u6797\u5DDE\u5E02" }] }, { code: "410600", name: "\u9E64\u58C1\u5E02", counties: [{ code: "410602", name: "\u9E64\u5C71\u533A" }, { code: "410603", name: "\u5C71\u57CE\u533A" }, { code: "410611", name: "\u6DC7\u6EE8\u533A" }, { code: "410621", name: "\u6D5A\u53BF" }, { code: "410622", name: "\u6DC7\u53BF" }, { code: "410671", name: "\u9E64\u58C1\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }] }, { code: "410700", name: "\u65B0\u4E61\u5E02", counties: [{ code: "410702", name: "\u7EA2\u65D7\u533A" }, { code: "410703", name: "\u536B\u6EE8\u533A" }, { code: "410704", name: "\u51E4\u6CC9\u533A" }, { code: "410711", name: "\u7267\u91CE\u533A" }, { code: "410721", name: "\u65B0\u4E61\u53BF" }, { code: "410724", name: "\u83B7\u5609\u53BF" }, { code: "410725", name: "\u539F\u9633\u53BF" }, { code: "410726", name: "\u5EF6\u6D25\u53BF" }, { code: "410727", name: "\u5C01\u4E18\u53BF" }, { code: "410771", name: "\u65B0\u4E61\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "410772", name: "\u65B0\u4E61\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "410773", name: "\u65B0\u4E61\u5E02\u5E73\u539F\u57CE\u4E61\u4E00\u4F53\u5316\u793A\u8303\u533A" }, { code: "410781", name: "\u536B\u8F89\u5E02" }, { code: "410782", name: "\u8F89\u53BF\u5E02" }, { code: "410783", name: "\u957F\u57A3\u5E02" }] }, { code: "410800", name: "\u7126\u4F5C\u5E02", counties: [{ code: "410802", name: "\u89E3\u653E\u533A" }, { code: "410803", name: "\u4E2D\u7AD9\u533A" }, { code: "410804", name: "\u9A6C\u6751\u533A" }, { code: "410811", name: "\u5C71\u9633\u533A" }, { code: "410821", name: "\u4FEE\u6B66\u53BF" }, { code: "410822", name: "\u535A\u7231\u53BF" }, { code: "410823", name: "\u6B66\u965F\u53BF" }, { code: "410825", name: "\u6E29\u53BF" }, { code: "410871", name: "\u7126\u4F5C\u57CE\u4E61\u4E00\u4F53\u5316\u793A\u8303\u533A" }, { code: "410882", name: "\u6C81\u9633\u5E02" }, { code: "410883", name: "\u5B5F\u5DDE\u5E02" }] }, { code: "410900", name: "\u6FEE\u9633\u5E02", counties: [{ code: "410902", name: "\u534E\u9F99\u533A" }, { code: "410922", name: "\u6E05\u4E30\u53BF" }, { code: "410923", name: "\u5357\u4E50\u53BF" }, { code: "410926", name: "\u8303\u53BF" }, { code: "410927", name: "\u53F0\u524D\u53BF" }, { code: "410928", name: "\u6FEE\u9633\u53BF" }, { code: "410971", name: "\u6CB3\u5357\u6FEE\u9633\u5DE5\u4E1A\u56ED\u533A" }, { code: "410972", name: "\u6FEE\u9633\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }] }, { code: "411000", name: "\u8BB8\u660C\u5E02", counties: [{ code: "411002", name: "\u9B4F\u90FD\u533A" }, { code: "411003", name: "\u5EFA\u5B89\u533A" }, { code: "411024", name: "\u9122\u9675\u53BF" }, { code: "411025", name: "\u8944\u57CE\u53BF" }, { code: "411071", name: "\u8BB8\u660C\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "411081", name: "\u79B9\u5DDE\u5E02" }, { code: "411082", name: "\u957F\u845B\u5E02" }] }, { code: "411100", name: "\u6F2F\u6CB3\u5E02", counties: [{ code: "411102", name: "\u6E90\u6C47\u533A" }, { code: "411103", name: "\u90FE\u57CE\u533A" }, { code: "411104", name: "\u53EC\u9675\u533A" }, { code: "411121", name: "\u821E\u9633\u53BF" }, { code: "411122", name: "\u4E34\u988D\u53BF" }, { code: "411171", name: "\u6F2F\u6CB3\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }] }, { code: "411200", name: "\u4E09\u95E8\u5CE1\u5E02", counties: [{ code: "411202", name: "\u6E56\u6EE8\u533A" }, { code: "411203", name: "\u9655\u5DDE\u533A" }, { code: "411221", name: "\u6E11\u6C60\u53BF" }, { code: "411224", name: "\u5362\u6C0F\u53BF" }, { code: "411271", name: "\u6CB3\u5357\u4E09\u95E8\u5CE1\u7ECF\u6D4E\u5F00\u53D1\u533A" }, { code: "411281", name: "\u4E49\u9A6C\u5E02" }, { code: "411282", name: "\u7075\u5B9D\u5E02" }] }, { code: "411300", name: "\u5357\u9633\u5E02", counties: [{ code: "411302", name: "\u5B9B\u57CE\u533A" }, { code: "411303", name: "\u5367\u9F99\u533A" }, { code: "411321", name: "\u5357\u53EC\u53BF" }, { code: "411322", name: "\u65B9\u57CE\u53BF" }, { code: "411323", name: "\u897F\u5CE1\u53BF" }, { code: "411324", name: "\u9547\u5E73\u53BF" }, { code: "411325", name: "\u5185\u4E61\u53BF" }, { code: "411326", name: "\u6DC5\u5DDD\u53BF" }, { code: "411327", name: "\u793E\u65D7\u53BF" }, { code: "411328", name: "\u5510\u6CB3\u53BF" }, { code: "411329", name: "\u65B0\u91CE\u53BF" }, { code: "411330", name: "\u6850\u67CF\u53BF" }, { code: "411371", name: "\u5357\u9633\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }, { code: "411372", name: "\u5357\u9633\u5E02\u57CE\u4E61\u4E00\u4F53\u5316\u793A\u8303\u533A" }, { code: "411381", name: "\u9093\u5DDE\u5E02" }] }, { code: "411400", name: "\u5546\u4E18\u5E02", counties: [{ code: "411402", name: "\u6881\u56ED\u533A" }, { code: "411403", name: "\u7762\u9633\u533A" }, { code: "411421", name: "\u6C11\u6743\u53BF" }, { code: "411422", name: "\u7762\u53BF" }, { code: "411423", name: "\u5B81\u9675\u53BF" }, { code: "411424", name: "\u67D8\u57CE\u53BF" }, { code: "411425", name: "\u865E\u57CE\u53BF" }, { code: "411426", name: "\u590F\u9091\u53BF" }, { code: "411471", name: "\u8C6B\u4E1C\u7EFC\u5408\u7269\u6D41\u4EA7\u4E1A\u805A\u96C6\u533A" }, { code: "411472", name: "\u6CB3\u5357\u5546\u4E18\u7ECF\u6D4E\u5F00\u53D1\u533A" }, { code: "411481", name: "\u6C38\u57CE\u5E02" }] }, { code: "411500", name: "\u4FE1\u9633\u5E02", counties: [{ code: "411502", name: "\u6D49\u6CB3\u533A" }, { code: "411503", name: "\u5E73\u6865\u533A" }, { code: "411521", name: "\u7F57\u5C71\u53BF" }, { code: "411522", name: "\u5149\u5C71\u53BF" }, { code: "411523", name: "\u65B0\u53BF" }, { code: "411524", name: "\u5546\u57CE\u53BF" }, { code: "411525", name: "\u56FA\u59CB\u53BF" }, { code: "411526", name: "\u6F62\u5DDD\u53BF" }, { code: "411527", name: "\u6DEE\u6EE8\u53BF" }, { code: "411528", name: "\u606F\u53BF" }, { code: "411571", name: "\u4FE1\u9633\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u5F00\u53D1\u533A" }] }, { code: "411600", name: "\u5468\u53E3\u5E02", counties: [{ code: "411602", name: "\u5DDD\u6C47\u533A" }, { code: "411603", name: "\u6DEE\u9633\u533A" }, { code: "411621", name: "\u6276\u6C9F\u53BF" }, { code: "411622", name: "\u897F\u534E\u53BF" }, { code: "411623", name: "\u5546\u6C34\u53BF" }, { code: "411624", name: "\u6C88\u4E18\u53BF" }, { code: "411625", name: "\u90F8\u57CE\u53BF" }, { code: "411627", name: "\u592A\u5EB7\u53BF" }, { code: "411628", name: "\u9E7F\u9091\u53BF" }, { code: "411671", name: "\u5468\u53E3\u4E34\u6E2F\u5F00\u53D1\u533A" }, { code: "411681", name: "\u9879\u57CE\u5E02" }] }, { code: "411700", name: "\u9A7B\u9A6C\u5E97\u5E02", counties: [{ code: "411702", name: "\u9A7F\u57CE\u533A" }, { code: "411721", name: "\u897F\u5E73\u53BF" }, { code: "411722", name: "\u4E0A\u8521\u53BF" }, { code: "411723", name: "\u5E73\u8206\u53BF" }, { code: "411724", name: "\u6B63\u9633\u53BF" }, { code: "411725", name: "\u786E\u5C71\u53BF" }, { code: "411726", name: "\u6CCC\u9633\u53BF" }, { code: "411727", name: "\u6C5D\u5357\u53BF" }, { code: "411728", name: "\u9042\u5E73\u53BF" }, { code: "411729", name: "\u65B0\u8521\u53BF" }, { code: "411771", name: "\u6CB3\u5357\u9A7B\u9A6C\u5E97\u7ECF\u6D4E\u5F00\u53D1\u533A" }] }, { code: "419000", name: "\u7701\u76F4\u8F96\u53BF\u7EA7\u884C\u653F\u533A\u5212", counties: [{ code: "419001", name: "\u6D4E\u6E90\u5E02" }] }] }, { code: "420000", name: "\u6E56\u5317\u7701", cities: [{ code: "420100", name: "\u6B66\u6C49\u5E02", counties: [{ code: "420102", name: "\u6C5F\u5CB8\u533A" }, { code: "420103", name: "\u6C5F\u6C49\u533A" }, { code: "420104", name: "\u785A\u53E3\u533A" }, { code: "420105", name: "\u6C49\u9633\u533A" }, { code: "420106", name: "\u6B66\u660C\u533A" }, { code: "420107", name: "\u9752\u5C71\u533A" }, { code: "420111", name: "\u6D2A\u5C71\u533A" }, { code: "420112", name: "\u4E1C\u897F\u6E56\u533A" }, { code: "420113", name: "\u6C49\u5357\u533A" }, { code: "420114", name: "\u8521\u7538\u533A" }, { code: "420115", name: "\u6C5F\u590F\u533A" }, { code: "420116", name: "\u9EC4\u9642\u533A" }, { code: "420117", name: "\u65B0\u6D32\u533A" }] }, { code: "420200", name: "\u9EC4\u77F3\u5E02", counties: [{ code: "420202", name: "\u9EC4\u77F3\u6E2F\u533A" }, { code: "420203", name: "\u897F\u585E\u5C71\u533A" }, { code: "420204", name: "\u4E0B\u9646\u533A" }, { code: "420205", name: "\u94C1\u5C71\u533A" }, { code: "420222", name: "\u9633\u65B0\u53BF" }, { code: "420281", name: "\u5927\u51B6\u5E02" }] }, { code: "420300", name: "\u5341\u5830\u5E02", counties: [{ code: "420302", name: "\u8305\u7BAD\u533A" }, { code: "420303", name: "\u5F20\u6E7E\u533A" }, { code: "420304", name: "\u90E7\u9633\u533A" }, { code: "420322", name: "\u90E7\u897F\u53BF" }, { code: "420323", name: "\u7AF9\u5C71\u53BF" }, { code: "420324", name: "\u7AF9\u6EAA\u53BF" }, { code: "420325", name: "\u623F\u53BF" }, { code: "420381", name: "\u4E39\u6C5F\u53E3\u5E02" }] }, { code: "420500", name: "\u5B9C\u660C\u5E02", counties: [{ code: "420502", name: "\u897F\u9675\u533A" }, { code: "420503", name: "\u4F0D\u5BB6\u5C97\u533A" }, { code: "420504", name: "\u70B9\u519B\u533A" }, { code: "420505", name: "\u7307\u4EAD\u533A" }, { code: "420506", name: "\u5937\u9675\u533A" }, { code: "420525", name: "\u8FDC\u5B89\u53BF" }, { code: "420526", name: "\u5174\u5C71\u53BF" }, { code: "420527", name: "\u79ED\u5F52\u53BF" }, { code: "420528", name: "\u957F\u9633\u571F\u5BB6\u65CF\u81EA\u6CBB\u53BF" }, { code: "420529", name: "\u4E94\u5CF0\u571F\u5BB6\u65CF\u81EA\u6CBB\u53BF" }, { code: "420581", name: "\u5B9C\u90FD\u5E02" }, { code: "420582", name: "\u5F53\u9633\u5E02" }, { code: "420583", name: "\u679D\u6C5F\u5E02" }] }, { code: "420600", name: "\u8944\u9633\u5E02", counties: [{ code: "420602", name: "\u8944\u57CE\u533A" }, { code: "420606", name: "\u6A0A\u57CE\u533A" }, { code: "420607", name: "\u8944\u5DDE\u533A" }, { code: "420624", name: "\u5357\u6F33\u53BF" }, { code: "420625", name: "\u8C37\u57CE\u53BF" }, { code: "420626", name: "\u4FDD\u5EB7\u53BF" }, { code: "420682", name: "\u8001\u6CB3\u53E3\u5E02" }, { code: "420683", name: "\u67A3\u9633\u5E02" }, { code: "420684", name: "\u5B9C\u57CE\u5E02" }] }, { code: "420700", name: "\u9102\u5DDE\u5E02", counties: [{ code: "420702", name: "\u6881\u5B50\u6E56\u533A" }, { code: "420703", name: "\u534E\u5BB9\u533A" }, { code: "420704", name: "\u9102\u57CE\u533A" }] }, { code: "420800", name: "\u8346\u95E8\u5E02", counties: [{ code: "420802", name: "\u4E1C\u5B9D\u533A" }, { code: "420804", name: "\u6387\u5200\u533A" }, { code: "420822", name: "\u6C99\u6D0B\u53BF" }, { code: "420881", name: "\u949F\u7965\u5E02" }, { code: "420882", name: "\u4EAC\u5C71\u5E02" }] }, { code: "420900", name: "\u5B5D\u611F\u5E02", counties: [{ code: "420902", name: "\u5B5D\u5357\u533A" }, { code: "420921", name: "\u5B5D\u660C\u53BF" }, { code: "420922", name: "\u5927\u609F\u53BF" }, { code: "420923", name: "\u4E91\u68A6\u53BF" }, { code: "420981", name: "\u5E94\u57CE\u5E02" }, { code: "420982", name: "\u5B89\u9646\u5E02" }, { code: "420984", name: "\u6C49\u5DDD\u5E02" }] }, { code: "421000", name: "\u8346\u5DDE\u5E02", counties: [{ code: "421002", name: "\u6C99\u5E02\u533A" }, { code: "421003", name: "\u8346\u5DDE\u533A" }, { code: "421022", name: "\u516C\u5B89\u53BF" }, { code: "421024", name: "\u6C5F\u9675\u53BF" }, { code: "421071", name: "\u8346\u5DDE\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "421081", name: "\u77F3\u9996\u5E02" }, { code: "421083", name: "\u6D2A\u6E56\u5E02" }, { code: "421087", name: "\u677E\u6ECB\u5E02" }, { code: "421088", name: "\u76D1\u5229\u5E02" }] }, { code: "421100", name: "\u9EC4\u5188\u5E02", counties: [{ code: "421102", name: "\u9EC4\u5DDE\u533A" }, { code: "421121", name: "\u56E2\u98CE\u53BF" }, { code: "421122", name: "\u7EA2\u5B89\u53BF" }, { code: "421123", name: "\u7F57\u7530\u53BF" }, { code: "421124", name: "\u82F1\u5C71\u53BF" }, { code: "421125", name: "\u6D60\u6C34\u53BF" }, { code: "421126", name: "\u8572\u6625\u53BF" }, { code: "421127", name: "\u9EC4\u6885\u53BF" }, { code: "421171", name: "\u9F99\u611F\u6E56\u7BA1\u7406\u533A" }, { code: "421181", name: "\u9EBB\u57CE\u5E02" }, { code: "421182", name: "\u6B66\u7A74\u5E02" }] }, { code: "421200", name: "\u54B8\u5B81\u5E02", counties: [{ code: "421202", name: "\u54B8\u5B89\u533A" }, { code: "421221", name: "\u5609\u9C7C\u53BF" }, { code: "421222", name: "\u901A\u57CE\u53BF" }, { code: "421223", name: "\u5D07\u9633\u53BF" }, { code: "421224", name: "\u901A\u5C71\u53BF" }, { code: "421281", name: "\u8D64\u58C1\u5E02" }] }, { code: "421300", name: "\u968F\u5DDE\u5E02", counties: [{ code: "421303", name: "\u66FE\u90FD\u533A" }, { code: "421321", name: "\u968F\u53BF" }, { code: "421381", name: "\u5E7F\u6C34\u5E02" }] }, { code: "422800", name: "\u6069\u65BD\u571F\u5BB6\u65CF\u82D7\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "422801", name: "\u6069\u65BD\u5E02" }, { code: "422802", name: "\u5229\u5DDD\u5E02" }, { code: "422822", name: "\u5EFA\u59CB\u53BF" }, { code: "422823", name: "\u5DF4\u4E1C\u53BF" }, { code: "422825", name: "\u5BA3\u6069\u53BF" }, { code: "422826", name: "\u54B8\u4E30\u53BF" }, { code: "422827", name: "\u6765\u51E4\u53BF" }, { code: "422828", name: "\u9E64\u5CF0\u53BF" }] }, { code: "429000", name: "\u7701\u76F4\u8F96\u53BF\u7EA7\u884C\u653F\u533A\u5212", counties: [{ code: "429004", name: "\u4ED9\u6843\u5E02" }, { code: "429005", name: "\u6F5C\u6C5F\u5E02" }, { code: "429006", name: "\u5929\u95E8\u5E02" }, { code: "429021", name: "\u795E\u519C\u67B6\u6797\u533A" }] }] }, { code: "430000", name: "\u6E56\u5357\u7701", cities: [{ code: "430100", name: "\u957F\u6C99\u5E02", counties: [{ code: "430102", name: "\u8299\u84C9\u533A" }, { code: "430103", name: "\u5929\u5FC3\u533A" }, { code: "430104", name: "\u5CB3\u9E93\u533A" }, { code: "430105", name: "\u5F00\u798F\u533A" }, { code: "430111", name: "\u96E8\u82B1\u533A" }, { code: "430112", name: "\u671B\u57CE\u533A" }, { code: "430121", name: "\u957F\u6C99\u53BF" }, { code: "430181", name: "\u6D4F\u9633\u5E02" }, { code: "430182", name: "\u5B81\u4E61\u5E02" }] }, { code: "430200", name: "\u682A\u6D32\u5E02", counties: [{ code: "430202", name: "\u8377\u5858\u533A" }, { code: "430203", name: "\u82A6\u6DDE\u533A" }, { code: "430204", name: "\u77F3\u5CF0\u533A" }, { code: "430211", name: "\u5929\u5143\u533A" }, { code: "430212", name: "\u6E0C\u53E3\u533A" }, { code: "430223", name: "\u6538\u53BF" }, { code: "430224", name: "\u8336\u9675\u53BF" }, { code: "430225", name: "\u708E\u9675\u53BF" }, { code: "430281", name: "\u91B4\u9675\u5E02" }] }, { code: "430300", name: "\u6E58\u6F6D\u5E02", counties: [{ code: "430302", name: "\u96E8\u6E56\u533A" }, { code: "430304", name: "\u5CB3\u5858\u533A" }, { code: "430321", name: "\u6E58\u6F6D\u53BF" }, { code: "430371", name: "\u6E56\u5357\u6E58\u6F6D\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u56ED\u533A" }, { code: "430372", name: "\u6E58\u6F6D\u662D\u5C71\u793A\u8303\u533A" }, { code: "430373", name: "\u6E58\u6F6D\u4E5D\u534E\u793A\u8303\u533A" }, { code: "430381", name: "\u6E58\u4E61\u5E02" }, { code: "430382", name: "\u97F6\u5C71\u5E02" }] }, { code: "430400", name: "\u8861\u9633\u5E02", counties: [{ code: "430405", name: "\u73E0\u6656\u533A" }, { code: "430406", name: "\u96C1\u5CF0\u533A" }, { code: "430407", name: "\u77F3\u9F13\u533A" }, { code: "430408", name: "\u84B8\u6E58\u533A" }, { code: "430412", name: "\u5357\u5CB3\u533A" }, { code: "430421", name: "\u8861\u9633\u53BF" }, { code: "430422", name: "\u8861\u5357\u53BF" }, { code: "430423", name: "\u8861\u5C71\u53BF" }, { code: "430424", name: "\u8861\u4E1C\u53BF" }, { code: "430426", name: "\u7941\u4E1C\u53BF" }, { code: "430473", name: "\u6E56\u5357\u8861\u9633\u677E\u6728\u7ECF\u6D4E\u5F00\u53D1\u533A" }, { code: "430476", name: "\u6E56\u5357\u8861\u9633\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u56ED\u533A" }, { code: "430481", name: "\u8012\u9633\u5E02" }, { code: "430482", name: "\u5E38\u5B81\u5E02" }] }, { code: "430500", name: "\u90B5\u9633\u5E02", counties: [{ code: "430502", name: "\u53CC\u6E05\u533A" }, { code: "430503", name: "\u5927\u7965\u533A" }, { code: "430511", name: "\u5317\u5854\u533A" }, { code: "430522", name: "\u65B0\u90B5\u53BF" }, { code: "430523", name: "\u90B5\u9633\u53BF" }, { code: "430524", name: "\u9686\u56DE\u53BF" }, { code: "430525", name: "\u6D1E\u53E3\u53BF" }, { code: "430527", name: "\u7EE5\u5B81\u53BF" }, { code: "430528", name: "\u65B0\u5B81\u53BF" }, { code: "430529", name: "\u57CE\u6B65\u82D7\u65CF\u81EA\u6CBB\u53BF" }, { code: "430581", name: "\u6B66\u5188\u5E02" }, { code: "430582", name: "\u90B5\u4E1C\u5E02" }] }, { code: "430600", name: "\u5CB3\u9633\u5E02", counties: [{ code: "430602", name: "\u5CB3\u9633\u697C\u533A" }, { code: "430603", name: "\u4E91\u6EAA\u533A" }, { code: "430611", name: "\u541B\u5C71\u533A" }, { code: "430621", name: "\u5CB3\u9633\u53BF" }, { code: "430623", name: "\u534E\u5BB9\u53BF" }, { code: "430624", name: "\u6E58\u9634\u53BF" }, { code: "430626", name: "\u5E73\u6C5F\u53BF" }, { code: "430671", name: "\u5CB3\u9633\u5E02\u5C48\u539F\u7BA1\u7406\u533A" }, { code: "430681", name: "\u6C68\u7F57\u5E02" }, { code: "430682", name: "\u4E34\u6E58\u5E02" }] }, { code: "430700", name: "\u5E38\u5FB7\u5E02", counties: [{ code: "430702", name: "\u6B66\u9675\u533A" }, { code: "430703", name: "\u9F0E\u57CE\u533A" }, { code: "430721", name: "\u5B89\u4E61\u53BF" }, { code: "430722", name: "\u6C49\u5BFF\u53BF" }, { code: "430723", name: "\u6FA7\u53BF" }, { code: "430724", name: "\u4E34\u6FA7\u53BF" }, { code: "430725", name: "\u6843\u6E90\u53BF" }, { code: "430726", name: "\u77F3\u95E8\u53BF" }, { code: "430771", name: "\u5E38\u5FB7\u5E02\u897F\u6D1E\u5EAD\u7BA1\u7406\u533A" }, { code: "430781", name: "\u6D25\u5E02\u5E02" }] }, { code: "430800", name: "\u5F20\u5BB6\u754C\u5E02", counties: [{ code: "430802", name: "\u6C38\u5B9A\u533A" }, { code: "430811", name: "\u6B66\u9675\u6E90\u533A" }, { code: "430821", name: "\u6148\u5229\u53BF" }, { code: "430822", name: "\u6851\u690D\u53BF" }] }, { code: "430900", name: "\u76CA\u9633\u5E02", counties: [{ code: "430902", name: "\u8D44\u9633\u533A" }, { code: "430903", name: "\u8D6B\u5C71\u533A" }, { code: "430921", name: "\u5357\u53BF" }, { code: "430922", name: "\u6843\u6C5F\u53BF" }, { code: "430923", name: "\u5B89\u5316\u53BF" }, { code: "430971", name: "\u76CA\u9633\u5E02\u5927\u901A\u6E56\u7BA1\u7406\u533A" }, { code: "430972", name: "\u6E56\u5357\u76CA\u9633\u9AD8\u65B0\u6280\u672F\u4EA7\u4E1A\u56ED\u533A" }, { code: "430981", name: "\u6C85\u6C5F\u5E02" }] }, { code: "431000", name: "\u90F4\u5DDE\u5E02", counties: [{ code: "431002", name: "\u5317\u6E56\u533A" }, { code: "431003", name: "\u82CF\u4ED9\u533A" }, { code: "431021", name: "\u6842\u9633\u53BF" }, { code: "431022", name: "\u5B9C\u7AE0\u53BF" }, { code: "431023", name: "\u6C38\u5174\u53BF" }, { code: "431024", name: "\u5609\u79BE\u53BF" }, { code: "431025", name: "\u4E34\u6B66\u53BF" }, { code: "431026", name: "\u6C5D\u57CE\u53BF" }, { code: "431027", name: "\u6842\u4E1C\u53BF" }, { code: "431028", name: "\u5B89\u4EC1\u53BF" }, { code: "431081", name: "\u8D44\u5174\u5E02" }] }, { code: "431100", name: "\u6C38\u5DDE\u5E02", counties: [{ code: "431102", name: "\u96F6\u9675\u533A" }, { code: "431103", name: "\u51B7\u6C34\u6EE9\u533A" }, { code: "431122", name: "\u4E1C\u5B89\u53BF" }, { code: "431123", name: "\u53CC\u724C\u53BF" }, { code: "431124", name: "\u9053\u53BF" }, { code: "431125", name: "\u6C5F\u6C38\u53BF" }, { code: "431126", name: "\u5B81\u8FDC\u53BF" }, { code: "431127", name: "\u84DD\u5C71\u53BF" }, { code: "431128", name: "\u65B0\u7530\u53BF" }, { code: "431129", name: "\u6C5F\u534E\u7476\u65CF\u81EA\u6CBB\u53BF" }, { code: "431171", name: "\u6C38\u5DDE\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "431173", name: "\u6C38\u5DDE\u5E02\u56DE\u9F99\u5729\u7BA1\u7406\u533A" }, { code: "431181", name: "\u7941\u9633\u5E02" }] }, { code: "431200", name: "\u6000\u5316\u5E02", counties: [{ code: "431202", name: "\u9E64\u57CE\u533A" }, { code: "431221", name: "\u4E2D\u65B9\u53BF" }, { code: "431222", name: "\u6C85\u9675\u53BF" }, { code: "431223", name: "\u8FB0\u6EAA\u53BF" }, { code: "431224", name: "\u6E86\u6D66\u53BF" }, { code: "431225", name: "\u4F1A\u540C\u53BF" }, { code: "431226", name: "\u9EBB\u9633\u82D7\u65CF\u81EA\u6CBB\u53BF" }, { code: "431227", name: "\u65B0\u6643\u4F97\u65CF\u81EA\u6CBB\u53BF" }, { code: "431228", name: "\u82B7\u6C5F\u4F97\u65CF\u81EA\u6CBB\u53BF" }, { code: "431229", name: "\u9756\u5DDE\u82D7\u65CF\u4F97\u65CF\u81EA\u6CBB\u53BF" }, { code: "431230", name: "\u901A\u9053\u4F97\u65CF\u81EA\u6CBB\u53BF" }, { code: "431271", name: "\u6000\u5316\u5E02\u6D2A\u6C5F\u7BA1\u7406\u533A" }, { code: "431281", name: "\u6D2A\u6C5F\u5E02" }] }, { code: "431300", name: "\u5A04\u5E95\u5E02", counties: [{ code: "431302", name: "\u5A04\u661F\u533A" }, { code: "431321", name: "\u53CC\u5CF0\u53BF" }, { code: "431322", name: "\u65B0\u5316\u53BF" }, { code: "431381", name: "\u51B7\u6C34\u6C5F\u5E02" }, { code: "431382", name: "\u6D9F\u6E90\u5E02" }] }, { code: "433100", name: "\u6E58\u897F\u571F\u5BB6\u65CF\u82D7\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "433101", name: "\u5409\u9996\u5E02" }, { code: "433122", name: "\u6CF8\u6EAA\u53BF" }, { code: "433123", name: "\u51E4\u51F0\u53BF" }, { code: "433124", name: "\u82B1\u57A3\u53BF" }, { code: "433125", name: "\u4FDD\u9756\u53BF" }, { code: "433126", name: "\u53E4\u4E08\u53BF" }, { code: "433127", name: "\u6C38\u987A\u53BF" }, { code: "433130", name: "\u9F99\u5C71\u53BF" }] }] }, { code: "440000", name: "\u5E7F\u4E1C\u7701", cities: [{ code: "440100", name: "\u5E7F\u5DDE\u5E02", counties: [{ code: "440103", name: "\u8354\u6E7E\u533A" }, { code: "440104", name: "\u8D8A\u79C0\u533A" }, { code: "440105", name: "\u6D77\u73E0\u533A" }, { code: "440106", name: "\u5929\u6CB3\u533A" }, { code: "440111", name: "\u767D\u4E91\u533A" }, { code: "440112", name: "\u9EC4\u57D4\u533A" }, { code: "440113", name: "\u756A\u79BA\u533A" }, { code: "440114", name: "\u82B1\u90FD\u533A" }, { code: "440115", name: "\u5357\u6C99\u533A" }, { code: "440117", name: "\u4ECE\u5316\u533A" }, { code: "440118", name: "\u589E\u57CE\u533A" }] }, { code: "440200", name: "\u97F6\u5173\u5E02", counties: [{ code: "440203", name: "\u6B66\u6C5F\u533A" }, { code: "440204", name: "\u6D48\u6C5F\u533A" }, { code: "440205", name: "\u66F2\u6C5F\u533A" }, { code: "440222", name: "\u59CB\u5174\u53BF" }, { code: "440224", name: "\u4EC1\u5316\u53BF" }, { code: "440229", name: "\u7FC1\u6E90\u53BF" }, { code: "440232", name: "\u4E73\u6E90\u7476\u65CF\u81EA\u6CBB\u53BF" }, { code: "440233", name: "\u65B0\u4E30\u53BF" }, { code: "440281", name: "\u4E50\u660C\u5E02" }, { code: "440282", name: "\u5357\u96C4\u5E02" }] }, { code: "440300", name: "\u6DF1\u5733\u5E02", counties: [{ code: "440303", name: "\u7F57\u6E56\u533A" }, { code: "440304", name: "\u798F\u7530\u533A" }, { code: "440305", name: "\u5357\u5C71\u533A" }, { code: "440306", name: "\u5B9D\u5B89\u533A" }, { code: "440307", name: "\u9F99\u5C97\u533A" }, { code: "440308", name: "\u76D0\u7530\u533A" }, { code: "440309", name: "\u9F99\u534E\u533A" }, { code: "440310", name: "\u576A\u5C71\u533A" }, { code: "440311", name: "\u5149\u660E\u533A" }] }, { code: "440400", name: "\u73E0\u6D77\u5E02", counties: [{ code: "440402", name: "\u9999\u6D32\u533A" }, { code: "440403", name: "\u6597\u95E8\u533A" }, { code: "440404", name: "\u91D1\u6E7E\u533A" }] }, { code: "440500", name: "\u6C55\u5934\u5E02", counties: [{ code: "440507", name: "\u9F99\u6E56\u533A" }, { code: "440511", name: "\u91D1\u5E73\u533A" }, { code: "440512", name: "\u6FE0\u6C5F\u533A" }, { code: "440513", name: "\u6F6E\u9633\u533A" }, { code: "440514", name: "\u6F6E\u5357\u533A" }, { code: "440515", name: "\u6F84\u6D77\u533A" }, { code: "440523", name: "\u5357\u6FB3\u53BF" }] }, { code: "440600", name: "\u4F5B\u5C71\u5E02", counties: [{ code: "440604", name: "\u7985\u57CE\u533A" }, { code: "440605", name: "\u5357\u6D77\u533A" }, { code: "440606", name: "\u987A\u5FB7\u533A" }, { code: "440607", name: "\u4E09\u6C34\u533A" }, { code: "440608", name: "\u9AD8\u660E\u533A" }] }, { code: "440700", name: "\u6C5F\u95E8\u5E02", counties: [{ code: "440703", name: "\u84EC\u6C5F\u533A" }, { code: "440704", name: "\u6C5F\u6D77\u533A" }, { code: "440705", name: "\u65B0\u4F1A\u533A" }, { code: "440781", name: "\u53F0\u5C71\u5E02" }, { code: "440783", name: "\u5F00\u5E73\u5E02" }, { code: "440784", name: "\u9E64\u5C71\u5E02" }, { code: "440785", name: "\u6069\u5E73\u5E02" }] }, { code: "440800", name: "\u6E5B\u6C5F\u5E02", counties: [{ code: "440802", name: "\u8D64\u574E\u533A" }, { code: "440803", name: "\u971E\u5C71\u533A" }, { code: "440804", name: "\u5761\u5934\u533A" }, { code: "440811", name: "\u9EBB\u7AE0\u533A" }, { code: "440823", name: "\u9042\u6EAA\u53BF" }, { code: "440825", name: "\u5F90\u95FB\u53BF" }, { code: "440881", name: "\u5EC9\u6C5F\u5E02" }, { code: "440882", name: "\u96F7\u5DDE\u5E02" }, { code: "440883", name: "\u5434\u5DDD\u5E02" }] }, { code: "440900", name: "\u8302\u540D\u5E02", counties: [{ code: "440902", name: "\u8302\u5357\u533A" }, { code: "440904", name: "\u7535\u767D\u533A" }, { code: "440981", name: "\u9AD8\u5DDE\u5E02" }, { code: "440982", name: "\u5316\u5DDE\u5E02" }, { code: "440983", name: "\u4FE1\u5B9C\u5E02" }] }, { code: "441200", name: "\u8087\u5E86\u5E02", counties: [{ code: "441202", name: "\u7AEF\u5DDE\u533A" }, { code: "441203", name: "\u9F0E\u6E56\u533A" }, { code: "441204", name: "\u9AD8\u8981\u533A" }, { code: "441223", name: "\u5E7F\u5B81\u53BF" }, { code: "441224", name: "\u6000\u96C6\u53BF" }, { code: "441225", name: "\u5C01\u5F00\u53BF" }, { code: "441226", name: "\u5FB7\u5E86\u53BF" }, { code: "441284", name: "\u56DB\u4F1A\u5E02" }] }, { code: "441300", name: "\u60E0\u5DDE\u5E02", counties: [{ code: "441302", name: "\u60E0\u57CE\u533A" }, { code: "441303", name: "\u60E0\u9633\u533A" }, { code: "441322", name: "\u535A\u7F57\u53BF" }, { code: "441323", name: "\u60E0\u4E1C\u53BF" }, { code: "441324", name: "\u9F99\u95E8\u53BF" }] }, { code: "441400", name: "\u6885\u5DDE\u5E02", counties: [{ code: "441402", name: "\u6885\u6C5F\u533A" }, { code: "441403", name: "\u6885\u53BF\u533A" }, { code: "441422", name: "\u5927\u57D4\u53BF" }, { code: "441423", name: "\u4E30\u987A\u53BF" }, { code: "441424", name: "\u4E94\u534E\u53BF" }, { code: "441426", name: "\u5E73\u8FDC\u53BF" }, { code: "441427", name: "\u8549\u5CAD\u53BF" }, { code: "441481", name: "\u5174\u5B81\u5E02" }] }, { code: "441500", name: "\u6C55\u5C3E\u5E02", counties: [{ code: "441502", name: "\u57CE\u533A" }, { code: "441521", name: "\u6D77\u4E30\u53BF" }, { code: "441523", name: "\u9646\u6CB3\u53BF" }, { code: "441581", name: "\u9646\u4E30\u5E02" }] }, { code: "441600", name: "\u6CB3\u6E90\u5E02", counties: [{ code: "441602", name: "\u6E90\u57CE\u533A" }, { code: "441621", name: "\u7D2B\u91D1\u53BF" }, { code: "441622", name: "\u9F99\u5DDD\u53BF" }, { code: "441623", name: "\u8FDE\u5E73\u53BF" }, { code: "441624", name: "\u548C\u5E73\u53BF" }, { code: "441625", name: "\u4E1C\u6E90\u53BF" }] }, { code: "441700", name: "\u9633\u6C5F\u5E02", counties: [{ code: "441702", name: "\u6C5F\u57CE\u533A" }, { code: "441704", name: "\u9633\u4E1C\u533A" }, { code: "441721", name: "\u9633\u897F\u53BF" }, { code: "441781", name: "\u9633\u6625\u5E02" }] }, { code: "441800", name: "\u6E05\u8FDC\u5E02", counties: [{ code: "441802", name: "\u6E05\u57CE\u533A" }, { code: "441803", name: "\u6E05\u65B0\u533A" }, { code: "441821", name: "\u4F5B\u5188\u53BF" }, { code: "441823", name: "\u9633\u5C71\u53BF" }, { code: "441825", name: "\u8FDE\u5C71\u58EE\u65CF\u7476\u65CF\u81EA\u6CBB\u53BF" }, { code: "441826", name: "\u8FDE\u5357\u7476\u65CF\u81EA\u6CBB\u53BF" }, { code: "441881", name: "\u82F1\u5FB7\u5E02" }, { code: "441882", name: "\u8FDE\u5DDE\u5E02" }] }, { code: "441900", name: "\u4E1C\u839E\u5E02", counties: [] }, { code: "442000", name: "\u4E2D\u5C71\u5E02", counties: [] }, { code: "445100", name: "\u6F6E\u5DDE\u5E02", counties: [{ code: "445102", name: "\u6E58\u6865\u533A" }, { code: "445103", name: "\u6F6E\u5B89\u533A" }, { code: "445122", name: "\u9976\u5E73\u53BF" }] }, { code: "445200", name: "\u63ED\u9633\u5E02", counties: [{ code: "445202", name: "\u6995\u57CE\u533A" }, { code: "445203", name: "\u63ED\u4E1C\u533A" }, { code: "445222", name: "\u63ED\u897F\u53BF" }, { code: "445224", name: "\u60E0\u6765\u53BF" }, { code: "445281", name: "\u666E\u5B81\u5E02" }] }, { code: "445300", name: "\u4E91\u6D6E\u5E02", counties: [{ code: "445302", name: "\u4E91\u57CE\u533A" }, { code: "445303", name: "\u4E91\u5B89\u533A" }, { code: "445321", name: "\u65B0\u5174\u53BF" }, { code: "445322", name: "\u90C1\u5357\u53BF" }, { code: "445381", name: "\u7F57\u5B9A\u5E02" }] }] }, { code: "450000", name: "\u5E7F\u897F\u58EE\u65CF\u81EA\u6CBB\u533A", cities: [{ code: "450100", name: "\u5357\u5B81\u5E02", counties: [{ code: "450102", name: "\u5174\u5B81\u533A" }, { code: "450103", name: "\u9752\u79C0\u533A" }, { code: "450105", name: "\u6C5F\u5357\u533A" }, { code: "450107", name: "\u897F\u4E61\u5858\u533A" }, { code: "450108", name: "\u826F\u5E86\u533A" }, { code: "450109", name: "\u9095\u5B81\u533A" }, { code: "450110", name: "\u6B66\u9E23\u533A" }, { code: "450123", name: "\u9686\u5B89\u53BF" }, { code: "450124", name: "\u9A6C\u5C71\u53BF" }, { code: "450125", name: "\u4E0A\u6797\u53BF" }, { code: "450126", name: "\u5BBE\u9633\u53BF" }, { code: "450181", name: "\u6A2A\u5DDE\u5E02" }] }, { code: "450200", name: "\u67F3\u5DDE\u5E02", counties: [{ code: "450202", name: "\u57CE\u4E2D\u533A" }, { code: "450203", name: "\u9C7C\u5CF0\u533A" }, { code: "450204", name: "\u67F3\u5357\u533A" }, { code: "450205", name: "\u67F3\u5317\u533A" }, { code: "450206", name: "\u67F3\u6C5F\u533A" }, { code: "450222", name: "\u67F3\u57CE\u53BF" }, { code: "450223", name: "\u9E7F\u5BE8\u53BF" }, { code: "450224", name: "\u878D\u5B89\u53BF" }, { code: "450225", name: "\u878D\u6C34\u82D7\u65CF\u81EA\u6CBB\u53BF" }, { code: "450226", name: "\u4E09\u6C5F\u4F97\u65CF\u81EA\u6CBB\u53BF" }] }, { code: "450300", name: "\u6842\u6797\u5E02", counties: [{ code: "450302", name: "\u79C0\u5CF0\u533A" }, { code: "450303", name: "\u53E0\u5F69\u533A" }, { code: "450304", name: "\u8C61\u5C71\u533A" }, { code: "450305", name: "\u4E03\u661F\u533A" }, { code: "450311", name: "\u96C1\u5C71\u533A" }, { code: "450312", name: "\u4E34\u6842\u533A" }, { code: "450321", name: "\u9633\u6714\u53BF" }, { code: "450323", name: "\u7075\u5DDD\u53BF" }, { code: "450324", name: "\u5168\u5DDE\u53BF" }, { code: "450325", name: "\u5174\u5B89\u53BF" }, { code: "450326", name: "\u6C38\u798F\u53BF" }, { code: "450327", name: "\u704C\u9633\u53BF" }, { code: "450328", name: "\u9F99\u80DC\u5404\u65CF\u81EA\u6CBB\u53BF" }, { code: "450329", name: "\u8D44\u6E90\u53BF" }, { code: "450330", name: "\u5E73\u4E50\u53BF" }, { code: "450332", name: "\u606D\u57CE\u7476\u65CF\u81EA\u6CBB\u53BF" }, { code: "450381", name: "\u8354\u6D66\u5E02" }] }, { code: "450400", name: "\u68A7\u5DDE\u5E02", counties: [{ code: "450403", name: "\u4E07\u79C0\u533A" }, { code: "450405", name: "\u957F\u6D32\u533A" }, { code: "450406", name: "\u9F99\u5729\u533A" }, { code: "450421", name: "\u82CD\u68A7\u53BF" }, { code: "450422", name: "\u85E4\u53BF" }, { code: "450423", name: "\u8499\u5C71\u53BF" }, { code: "450481", name: "\u5C91\u6EAA\u5E02" }] }, { code: "450500", name: "\u5317\u6D77\u5E02", counties: [{ code: "450502", name: "\u6D77\u57CE\u533A" }, { code: "450503", name: "\u94F6\u6D77\u533A" }, { code: "450512", name: "\u94C1\u5C71\u6E2F\u533A" }, { code: "450521", name: "\u5408\u6D66\u53BF" }] }, { code: "450600", name: "\u9632\u57CE\u6E2F\u5E02", counties: [{ code: "450602", name: "\u6E2F\u53E3\u533A" }, { code: "450603", name: "\u9632\u57CE\u533A" }, { code: "450621", name: "\u4E0A\u601D\u53BF" }, { code: "450681", name: "\u4E1C\u5174\u5E02" }] }, { code: "450700", name: "\u94A6\u5DDE\u5E02", counties: [{ code: "450702", name: "\u94A6\u5357\u533A" }, { code: "450703", name: "\u94A6\u5317\u533A" }, { code: "450721", name: "\u7075\u5C71\u53BF" }, { code: "450722", name: "\u6D66\u5317\u53BF" }] }, { code: "450800", name: "\u8D35\u6E2F\u5E02", counties: [{ code: "450802", name: "\u6E2F\u5317\u533A" }, { code: "450803", name: "\u6E2F\u5357\u533A" }, { code: "450804", name: "\u8983\u5858\u533A" }, { code: "450821", name: "\u5E73\u5357\u53BF" }, { code: "450881", name: "\u6842\u5E73\u5E02" }] }, { code: "450900", name: "\u7389\u6797\u5E02", counties: [{ code: "450902", name: "\u7389\u5DDE\u533A" }, { code: "450903", name: "\u798F\u7EF5\u533A" }, { code: "450921", name: "\u5BB9\u53BF" }, { code: "450922", name: "\u9646\u5DDD\u53BF" }, { code: "450923", name: "\u535A\u767D\u53BF" }, { code: "450924", name: "\u5174\u4E1A\u53BF" }, { code: "450981", name: "\u5317\u6D41\u5E02" }] }, { code: "451000", name: "\u767E\u8272\u5E02", counties: [{ code: "451002", name: "\u53F3\u6C5F\u533A" }, { code: "451003", name: "\u7530\u9633\u533A" }, { code: "451022", name: "\u7530\u4E1C\u53BF" }, { code: "451024", name: "\u5FB7\u4FDD\u53BF" }, { code: "451026", name: "\u90A3\u5761\u53BF" }, { code: "451027", name: "\u51CC\u4E91\u53BF" }, { code: "451028", name: "\u4E50\u4E1A\u53BF" }, { code: "451029", name: "\u7530\u6797\u53BF" }, { code: "451030", name: "\u897F\u6797\u53BF" }, { code: "451031", name: "\u9686\u6797\u5404\u65CF\u81EA\u6CBB\u53BF" }, { code: "451081", name: "\u9756\u897F\u5E02" }, { code: "451082", name: "\u5E73\u679C\u5E02" }] }, { code: "451100", name: "\u8D3A\u5DDE\u5E02", counties: [{ code: "451102", name: "\u516B\u6B65\u533A" }, { code: "451103", name: "\u5E73\u6842\u533A" }, { code: "451121", name: "\u662D\u5E73\u53BF" }, { code: "451122", name: "\u949F\u5C71\u53BF" }, { code: "451123", name: "\u5BCC\u5DDD\u7476\u65CF\u81EA\u6CBB\u53BF" }] }, { code: "451200", name: "\u6CB3\u6C60\u5E02", counties: [{ code: "451202", name: "\u91D1\u57CE\u6C5F\u533A" }, { code: "451203", name: "\u5B9C\u5DDE\u533A" }, { code: "451221", name: "\u5357\u4E39\u53BF" }, { code: "451222", name: "\u5929\u5CE8\u53BF" }, { code: "451223", name: "\u51E4\u5C71\u53BF" }, { code: "451224", name: "\u4E1C\u5170\u53BF" }, { code: "451225", name: "\u7F57\u57CE\u4EEB\u4F6C\u65CF\u81EA\u6CBB\u53BF" }, { code: "451226", name: "\u73AF\u6C5F\u6BDB\u5357\u65CF\u81EA\u6CBB\u53BF" }, { code: "451227", name: "\u5DF4\u9A6C\u7476\u65CF\u81EA\u6CBB\u53BF" }, { code: "451228", name: "\u90FD\u5B89\u7476\u65CF\u81EA\u6CBB\u53BF" }, { code: "451229", name: "\u5927\u5316\u7476\u65CF\u81EA\u6CBB\u53BF" }] }, { code: "451300", name: "\u6765\u5BBE\u5E02", counties: [{ code: "451302", name: "\u5174\u5BBE\u533A" }, { code: "451321", name: "\u5FFB\u57CE\u53BF" }, { code: "451322", name: "\u8C61\u5DDE\u53BF" }, { code: "451323", name: "\u6B66\u5BA3\u53BF" }, { code: "451324", name: "\u91D1\u79C0\u7476\u65CF\u81EA\u6CBB\u53BF" }, { code: "451381", name: "\u5408\u5C71\u5E02" }] }, { code: "451400", name: "\u5D07\u5DE6\u5E02", counties: [{ code: "451402", name: "\u6C5F\u5DDE\u533A" }, { code: "451421", name: "\u6276\u7EE5\u53BF" }, { code: "451422", name: "\u5B81\u660E\u53BF" }, { code: "451423", name: "\u9F99\u5DDE\u53BF" }, { code: "451424", name: "\u5927\u65B0\u53BF" }, { code: "451425", name: "\u5929\u7B49\u53BF" }, { code: "451481", name: "\u51ED\u7965\u5E02" }] }] }, { code: "460000", name: "\u6D77\u5357\u7701", cities: [{ code: "460100", name: "\u6D77\u53E3\u5E02", counties: [{ code: "460105", name: "\u79C0\u82F1\u533A" }, { code: "460106", name: "\u9F99\u534E\u533A" }, { code: "460107", name: "\u743C\u5C71\u533A" }, { code: "460108", name: "\u7F8E\u5170\u533A" }] }, { code: "460200", name: "\u4E09\u4E9A\u5E02", counties: [{ code: "460202", name: "\u6D77\u68E0\u533A" }, { code: "460203", name: "\u5409\u9633\u533A" }, { code: "460204", name: "\u5929\u6DAF\u533A" }, { code: "460205", name: "\u5D16\u5DDE\u533A" }] }, { code: "460300", name: "\u4E09\u6C99\u5E02", counties: [{ code: "460321", name: "\u897F\u6C99\u7FA4\u5C9B" }, { code: "460322", name: "\u5357\u6C99\u7FA4\u5C9B" }, { code: "460323", name: "\u4E2D\u6C99\u7FA4\u5C9B\u7684\u5C9B\u7901\u53CA\u5176\u6D77\u57DF" }] }, { code: "460400", name: "\u510B\u5DDE\u5E02", counties: [] }, { code: "469000", name: "\u7701\u76F4\u8F96\u53BF\u7EA7\u884C\u653F\u533A\u5212", counties: [{ code: "469001", name: "\u4E94\u6307\u5C71\u5E02" }, { code: "469002", name: "\u743C\u6D77\u5E02" }, { code: "469005", name: "\u6587\u660C\u5E02" }, { code: "469006", name: "\u4E07\u5B81\u5E02" }, { code: "469007", name: "\u4E1C\u65B9\u5E02" }, { code: "469021", name: "\u5B9A\u5B89\u53BF" }, { code: "469022", name: "\u5C6F\u660C\u53BF" }, { code: "469023", name: "\u6F84\u8FC8\u53BF" }, { code: "469024", name: "\u4E34\u9AD8\u53BF" }, { code: "469025", name: "\u767D\u6C99\u9ECE\u65CF\u81EA\u6CBB\u53BF" }, { code: "469026", name: "\u660C\u6C5F\u9ECE\u65CF\u81EA\u6CBB\u53BF" }, { code: "469027", name: "\u4E50\u4E1C\u9ECE\u65CF\u81EA\u6CBB\u53BF" }, { code: "469028", name: "\u9675\u6C34\u9ECE\u65CF\u81EA\u6CBB\u53BF" }, { code: "469029", name: "\u4FDD\u4EAD\u9ECE\u65CF\u82D7\u65CF\u81EA\u6CBB\u53BF" }, { code: "469030", name: "\u743C\u4E2D\u9ECE\u65CF\u82D7\u65CF\u81EA\u6CBB\u53BF" }] }] }, { code: "500000", name: "\u91CD\u5E86\u5E02", cities: [{ code: "500100", name: "\u5E02\u8F96\u533A", counties: [{ code: "500101", name: "\u4E07\u5DDE\u533A" }, { code: "500102", name: "\u6DAA\u9675\u533A" }, { code: "500103", name: "\u6E1D\u4E2D\u533A" }, { code: "500104", name: "\u5927\u6E21\u53E3\u533A" }, { code: "500105", name: "\u6C5F\u5317\u533A" }, { code: "500106", name: "\u6C99\u576A\u575D\u533A" }, { code: "500107", name: "\u4E5D\u9F99\u5761\u533A" }, { code: "500108", name: "\u5357\u5CB8\u533A" }, { code: "500109", name: "\u5317\u789A\u533A" }, { code: "500110", name: "\u7DA6\u6C5F\u533A" }, { code: "500111", name: "\u5927\u8DB3\u533A" }, { code: "500112", name: "\u6E1D\u5317\u533A" }, { code: "500113", name: "\u5DF4\u5357\u533A" }, { code: "500114", name: "\u9ED4\u6C5F\u533A" }, { code: "500115", name: "\u957F\u5BFF\u533A" }, { code: "500116", name: "\u6C5F\u6D25\u533A" }, { code: "500117", name: "\u5408\u5DDD\u533A" }, { code: "500118", name: "\u6C38\u5DDD\u533A" }, { code: "500119", name: "\u5357\u5DDD\u533A" }, { code: "500120", name: "\u74A7\u5C71\u533A" }, { code: "500151", name: "\u94DC\u6881\u533A" }, { code: "500152", name: "\u6F7C\u5357\u533A" }, { code: "500153", name: "\u8363\u660C\u533A" }, { code: "500154", name: "\u5F00\u5DDE\u533A" }, { code: "500155", name: "\u6881\u5E73\u533A" }, { code: "500156", name: "\u6B66\u9686\u533A" }] }, { code: "500200", name: "\u53BF", counties: [{ code: "500229", name: "\u57CE\u53E3\u53BF" }, { code: "500230", name: "\u4E30\u90FD\u53BF" }, { code: "500231", name: "\u57AB\u6C5F\u53BF" }, { code: "500233", name: "\u5FE0\u53BF" }, { code: "500235", name: "\u4E91\u9633\u53BF" }, { code: "500236", name: "\u5949\u8282\u53BF" }, { code: "500237", name: "\u5DEB\u5C71\u53BF" }, { code: "500238", name: "\u5DEB\u6EAA\u53BF" }, { code: "500240", name: "\u77F3\u67F1\u571F\u5BB6\u65CF\u81EA\u6CBB\u53BF" }, { code: "500241", name: "\u79C0\u5C71\u571F\u5BB6\u65CF\u82D7\u65CF\u81EA\u6CBB\u53BF" }, { code: "500242", name: "\u9149\u9633\u571F\u5BB6\u65CF\u82D7\u65CF\u81EA\u6CBB\u53BF" }, { code: "500243", name: "\u5F6D\u6C34\u82D7\u65CF\u571F\u5BB6\u65CF\u81EA\u6CBB\u53BF" }] }] }, { code: "510000", name: "\u56DB\u5DDD\u7701", cities: [{ code: "510100", name: "\u6210\u90FD\u5E02", counties: [{ code: "510104", name: "\u9526\u6C5F\u533A" }, { code: "510105", name: "\u9752\u7F8A\u533A" }, { code: "510106", name: "\u91D1\u725B\u533A" }, { code: "510107", name: "\u6B66\u4FAF\u533A" }, { code: "510108", name: "\u6210\u534E\u533A" }, { code: "510112", name: "\u9F99\u6CC9\u9A7F\u533A" }, { code: "510113", name: "\u9752\u767D\u6C5F\u533A" }, { code: "510114", name: "\u65B0\u90FD\u533A" }, { code: "510115", name: "\u6E29\u6C5F\u533A" }, { code: "510116", name: "\u53CC\u6D41\u533A" }, { code: "510117", name: "\u90EB\u90FD\u533A" }, { code: "510118", name: "\u65B0\u6D25\u533A" }, { code: "510121", name: "\u91D1\u5802\u53BF" }, { code: "510129", name: "\u5927\u9091\u53BF" }, { code: "510131", name: "\u84B2\u6C5F\u53BF" }, { code: "510181", name: "\u90FD\u6C5F\u5830\u5E02" }, { code: "510182", name: "\u5F6D\u5DDE\u5E02" }, { code: "510183", name: "\u909B\u5D03\u5E02" }, { code: "510184", name: "\u5D07\u5DDE\u5E02" }, { code: "510185", name: "\u7B80\u9633\u5E02" }] }, { code: "510300", name: "\u81EA\u8D21\u5E02", counties: [{ code: "510302", name: "\u81EA\u6D41\u4E95\u533A" }, { code: "510303", name: "\u8D21\u4E95\u533A" }, { code: "510304", name: "\u5927\u5B89\u533A" }, { code: "510311", name: "\u6CBF\u6EE9\u533A" }, { code: "510321", name: "\u8363\u53BF" }, { code: "510322", name: "\u5BCC\u987A\u53BF" }] }, { code: "510400", name: "\u6500\u679D\u82B1\u5E02", counties: [{ code: "510402", name: "\u4E1C\u533A" }, { code: "510403", name: "\u897F\u533A" }, { code: "510411", name: "\u4EC1\u548C\u533A" }, { code: "510421", name: "\u7C73\u6613\u53BF" }, { code: "510422", name: "\u76D0\u8FB9\u53BF" }] }, { code: "510500", name: "\u6CF8\u5DDE\u5E02", counties: [{ code: "510502", name: "\u6C5F\u9633\u533A" }, { code: "510503", name: "\u7EB3\u6EAA\u533A" }, { code: "510504", name: "\u9F99\u9A6C\u6F6D\u533A" }, { code: "510521", name: "\u6CF8\u53BF" }, { code: "510522", name: "\u5408\u6C5F\u53BF" }, { code: "510524", name: "\u53D9\u6C38\u53BF" }, { code: "510525", name: "\u53E4\u853A\u53BF" }] }, { code: "510600", name: "\u5FB7\u9633\u5E02", counties: [{ code: "510603", name: "\u65CC\u9633\u533A" }, { code: "510604", name: "\u7F57\u6C5F\u533A" }, { code: "510623", name: "\u4E2D\u6C5F\u53BF" }, { code: "510681", name: "\u5E7F\u6C49\u5E02" }, { code: "510682", name: "\u4EC0\u90A1\u5E02" }, { code: "510683", name: "\u7EF5\u7AF9\u5E02" }] }, { code: "510700", name: "\u7EF5\u9633\u5E02", counties: [{ code: "510703", name: "\u6DAA\u57CE\u533A" }, { code: "510704", name: "\u6E38\u4ED9\u533A" }, { code: "510705", name: "\u5B89\u5DDE\u533A" }, { code: "510722", name: "\u4E09\u53F0\u53BF" }, { code: "510723", name: "\u76D0\u4EAD\u53BF" }, { code: "510725", name: "\u6893\u6F7C\u53BF" }, { code: "510726", name: "\u5317\u5DDD\u7F8C\u65CF\u81EA\u6CBB\u53BF" }, { code: "510727", name: "\u5E73\u6B66\u53BF" }, { code: "510781", name: "\u6C5F\u6CB9\u5E02" }] }, { code: "510800", name: "\u5E7F\u5143\u5E02", counties: [{ code: "510802", name: "\u5229\u5DDE\u533A" }, { code: "510811", name: "\u662D\u5316\u533A" }, { code: "510812", name: "\u671D\u5929\u533A" }, { code: "510821", name: "\u65FA\u82CD\u53BF" }, { code: "510822", name: "\u9752\u5DDD\u53BF" }, { code: "510823", name: "\u5251\u9601\u53BF" }, { code: "510824", name: "\u82CD\u6EAA\u53BF" }] }, { code: "510900", name: "\u9042\u5B81\u5E02", counties: [{ code: "510903", name: "\u8239\u5C71\u533A" }, { code: "510904", name: "\u5B89\u5C45\u533A" }, { code: "510921", name: "\u84EC\u6EAA\u53BF" }, { code: "510923", name: "\u5927\u82F1\u53BF" }, { code: "510981", name: "\u5C04\u6D2A\u5E02" }] }, { code: "511000", name: "\u5185\u6C5F\u5E02", counties: [{ code: "511002", name: "\u5E02\u4E2D\u533A" }, { code: "511011", name: "\u4E1C\u5174\u533A" }, { code: "511024", name: "\u5A01\u8FDC\u53BF" }, { code: "511025", name: "\u8D44\u4E2D\u53BF" }, { code: "511083", name: "\u9686\u660C\u5E02" }] }, { code: "511100", name: "\u4E50\u5C71\u5E02", counties: [{ code: "511102", name: "\u5E02\u4E2D\u533A" }, { code: "511111", name: "\u6C99\u6E7E\u533A" }, { code: "511112", name: "\u4E94\u901A\u6865\u533A" }, { code: "511113", name: "\u91D1\u53E3\u6CB3\u533A" }, { code: "511123", name: "\u728D\u4E3A\u53BF" }, { code: "511124", name: "\u4E95\u7814\u53BF" }, { code: "511126", name: "\u5939\u6C5F\u53BF" }, { code: "511129", name: "\u6C90\u5DDD\u53BF" }, { code: "511132", name: "\u5CE8\u8FB9\u5F5D\u65CF\u81EA\u6CBB\u53BF" }, { code: "511133", name: "\u9A6C\u8FB9\u5F5D\u65CF\u81EA\u6CBB\u53BF" }, { code: "511181", name: "\u5CE8\u7709\u5C71\u5E02" }] }, { code: "511300", name: "\u5357\u5145\u5E02", counties: [{ code: "511302", name: "\u987A\u5E86\u533A" }, { code: "511303", name: "\u9AD8\u576A\u533A" }, { code: "511304", name: "\u5609\u9675\u533A" }, { code: "511321", name: "\u5357\u90E8\u53BF" }, { code: "511322", name: "\u8425\u5C71\u53BF" }, { code: "511323", name: "\u84EC\u5B89\u53BF" }, { code: "511324", name: "\u4EEA\u9647\u53BF" }, { code: "511325", name: "\u897F\u5145\u53BF" }, { code: "511381", name: "\u9606\u4E2D\u5E02" }] }, { code: "511400", name: "\u7709\u5C71\u5E02", counties: [{ code: "511402", name: "\u4E1C\u5761\u533A" }, { code: "511403", name: "\u5F6D\u5C71\u533A" }, { code: "511421", name: "\u4EC1\u5BFF\u53BF" }, { code: "511423", name: "\u6D2A\u96C5\u53BF" }, { code: "511424", name: "\u4E39\u68F1\u53BF" }, { code: "511425", name: "\u9752\u795E\u53BF" }] }, { code: "511500", name: "\u5B9C\u5BBE\u5E02", counties: [{ code: "511502", name: "\u7FE0\u5C4F\u533A" }, { code: "511503", name: "\u5357\u6EAA\u533A" }, { code: "511504", name: "\u53D9\u5DDE\u533A" }, { code: "511523", name: "\u6C5F\u5B89\u53BF" }, { code: "511524", name: "\u957F\u5B81\u53BF" }, { code: "511525", name: "\u9AD8\u53BF" }, { code: "511526", name: "\u73D9\u53BF" }, { code: "511527", name: "\u7B60\u8FDE\u53BF" }, { code: "511528", name: "\u5174\u6587\u53BF" }, { code: "511529", name: "\u5C4F\u5C71\u53BF" }] }, { code: "511600", name: "\u5E7F\u5B89\u5E02", counties: [{ code: "511602", name: "\u5E7F\u5B89\u533A" }, { code: "511603", name: "\u524D\u950B\u533A" }, { code: "511621", name: "\u5CB3\u6C60\u53BF" }, { code: "511622", name: "\u6B66\u80DC\u53BF" }, { code: "511623", name: "\u90BB\u6C34\u53BF" }, { code: "511681", name: "\u534E\u84E5\u5E02" }] }, { code: "511700", name: "\u8FBE\u5DDE\u5E02", counties: [{ code: "511702", name: "\u901A\u5DDD\u533A" }, { code: "511703", name: "\u8FBE\u5DDD\u533A" }, { code: "511722", name: "\u5BA3\u6C49\u53BF" }, { code: "511723", name: "\u5F00\u6C5F\u53BF" }, { code: "511724", name: "\u5927\u7AF9\u53BF" }, { code: "511725", name: "\u6E20\u53BF" }, { code: "511781", name: "\u4E07\u6E90\u5E02" }] }, { code: "511800", name: "\u96C5\u5B89\u5E02", counties: [{ code: "511802", name: "\u96E8\u57CE\u533A" }, { code: "511803", name: "\u540D\u5C71\u533A" }, { code: "511822", name: "\u8365\u7ECF\u53BF" }, { code: "511823", name: "\u6C49\u6E90\u53BF" }, { code: "511824", name: "\u77F3\u68C9\u53BF" }, { code: "511825", name: "\u5929\u5168\u53BF" }, { code: "511826", name: "\u82A6\u5C71\u53BF" }, { code: "511827", name: "\u5B9D\u5174\u53BF" }] }, { code: "511900", name: "\u5DF4\u4E2D\u5E02", counties: [{ code: "511902", name: "\u5DF4\u5DDE\u533A" }, { code: "511903", name: "\u6069\u9633\u533A" }, { code: "511921", name: "\u901A\u6C5F\u53BF" }, { code: "511922", name: "\u5357\u6C5F\u53BF" }, { code: "511923", name: "\u5E73\u660C\u53BF" }] }, { code: "512000", name: "\u8D44\u9633\u5E02", counties: [{ code: "512002", name: "\u96C1\u6C5F\u533A" }, { code: "512021", name: "\u5B89\u5CB3\u53BF" }, { code: "512022", name: "\u4E50\u81F3\u53BF" }] }, { code: "513200", name: "\u963F\u575D\u85CF\u65CF\u7F8C\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "513201", name: "\u9A6C\u5C14\u5EB7\u5E02" }, { code: "513221", name: "\u6C76\u5DDD\u53BF" }, { code: "513222", name: "\u7406\u53BF" }, { code: "513223", name: "\u8302\u53BF" }, { code: "513224", name: "\u677E\u6F58\u53BF" }, { code: "513225", name: "\u4E5D\u5BE8\u6C9F\u53BF" }, { code: "513226", name: "\u91D1\u5DDD\u53BF" }, { code: "513227", name: "\u5C0F\u91D1\u53BF" }, { code: "513228", name: "\u9ED1\u6C34\u53BF" }, { code: "513230", name: "\u58E4\u5858\u53BF" }, { code: "513231", name: "\u963F\u575D\u53BF" }, { code: "513232", name: "\u82E5\u5C14\u76D6\u53BF" }, { code: "513233", name: "\u7EA2\u539F\u53BF" }] }, { code: "513300", name: "\u7518\u5B5C\u85CF\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "513301", name: "\u5EB7\u5B9A\u5E02" }, { code: "513322", name: "\u6CF8\u5B9A\u53BF" }, { code: "513323", name: "\u4E39\u5DF4\u53BF" }, { code: "513324", name: "\u4E5D\u9F99\u53BF" }, { code: "513325", name: "\u96C5\u6C5F\u53BF" }, { code: "513326", name: "\u9053\u5B5A\u53BF" }, { code: "513327", name: "\u7089\u970D\u53BF" }, { code: "513328", name: "\u7518\u5B5C\u53BF" }, { code: "513329", name: "\u65B0\u9F99\u53BF" }, { code: "513330", name: "\u5FB7\u683C\u53BF" }, { code: "513331", name: "\u767D\u7389\u53BF" }, { code: "513332", name: "\u77F3\u6E20\u53BF" }, { code: "513333", name: "\u8272\u8FBE\u53BF" }, { code: "513334", name: "\u7406\u5858\u53BF" }, { code: "513335", name: "\u5DF4\u5858\u53BF" }, { code: "513336", name: "\u4E61\u57CE\u53BF" }, { code: "513337", name: "\u7A3B\u57CE\u53BF" }, { code: "513338", name: "\u5F97\u8363\u53BF" }] }, { code: "513400", name: "\u51C9\u5C71\u5F5D\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "513401", name: "\u897F\u660C\u5E02" }, { code: "513402", name: "\u4F1A\u7406\u5E02" }, { code: "513422", name: "\u6728\u91CC\u85CF\u65CF\u81EA\u6CBB\u53BF" }, { code: "513423", name: "\u76D0\u6E90\u53BF" }, { code: "513424", name: "\u5FB7\u660C\u53BF" }, { code: "513426", name: "\u4F1A\u4E1C\u53BF" }, { code: "513427", name: "\u5B81\u5357\u53BF" }, { code: "513428", name: "\u666E\u683C\u53BF" }, { code: "513429", name: "\u5E03\u62D6\u53BF" }, { code: "513430", name: "\u91D1\u9633\u53BF" }, { code: "513431", name: "\u662D\u89C9\u53BF" }, { code: "513432", name: "\u559C\u5FB7\u53BF" }, { code: "513433", name: "\u5195\u5B81\u53BF" }, { code: "513434", name: "\u8D8A\u897F\u53BF" }, { code: "513435", name: "\u7518\u6D1B\u53BF" }, { code: "513436", name: "\u7F8E\u59D1\u53BF" }, { code: "513437", name: "\u96F7\u6CE2\u53BF" }] }] }, { code: "520000", name: "\u8D35\u5DDE\u7701", cities: [{ code: "520100", name: "\u8D35\u9633\u5E02", counties: [{ code: "520102", name: "\u5357\u660E\u533A" }, { code: "520103", name: "\u4E91\u5CA9\u533A" }, { code: "520111", name: "\u82B1\u6EAA\u533A" }, { code: "520112", name: "\u4E4C\u5F53\u533A" }, { code: "520113", name: "\u767D\u4E91\u533A" }, { code: "520115", name: "\u89C2\u5C71\u6E56\u533A" }, { code: "520121", name: "\u5F00\u9633\u53BF" }, { code: "520122", name: "\u606F\u70FD\u53BF" }, { code: "520123", name: "\u4FEE\u6587\u53BF" }, { code: "520181", name: "\u6E05\u9547\u5E02" }] }, { code: "520200", name: "\u516D\u76D8\u6C34\u5E02", counties: [{ code: "520201", name: "\u949F\u5C71\u533A" }, { code: "520203", name: "\u516D\u679D\u7279\u533A" }, { code: "520204", name: "\u6C34\u57CE\u533A" }, { code: "520281", name: "\u76D8\u5DDE\u5E02" }] }, { code: "520300", name: "\u9075\u4E49\u5E02", counties: [{ code: "520302", name: "\u7EA2\u82B1\u5C97\u533A" }, { code: "520303", name: "\u6C47\u5DDD\u533A" }, { code: "520304", name: "\u64AD\u5DDE\u533A" }, { code: "520322", name: "\u6850\u6893\u53BF" }, { code: "520323", name: "\u7EE5\u9633\u53BF" }, { code: "520324", name: "\u6B63\u5B89\u53BF" }, { code: "520325", name: "\u9053\u771F\u4EE1\u4F6C\u65CF\u82D7\u65CF\u81EA\u6CBB\u53BF" }, { code: "520326", name: "\u52A1\u5DDD\u4EE1\u4F6C\u65CF\u82D7\u65CF\u81EA\u6CBB\u53BF" }, { code: "520327", name: "\u51E4\u5188\u53BF" }, { code: "520328", name: "\u6E44\u6F6D\u53BF" }, { code: "520329", name: "\u4F59\u5E86\u53BF" }, { code: "520330", name: "\u4E60\u6C34\u53BF" }, { code: "520381", name: "\u8D64\u6C34\u5E02" }, { code: "520382", name: "\u4EC1\u6000\u5E02" }] }, { code: "520400", name: "\u5B89\u987A\u5E02", counties: [{ code: "520402", name: "\u897F\u79C0\u533A" }, { code: "520403", name: "\u5E73\u575D\u533A" }, { code: "520422", name: "\u666E\u5B9A\u53BF" }, { code: "520423", name: "\u9547\u5B81\u5E03\u4F9D\u65CF\u82D7\u65CF\u81EA\u6CBB\u53BF" }, { code: "520424", name: "\u5173\u5CAD\u5E03\u4F9D\u65CF\u82D7\u65CF\u81EA\u6CBB\u53BF" }, { code: "520425", name: "\u7D2B\u4E91\u82D7\u65CF\u5E03\u4F9D\u65CF\u81EA\u6CBB\u53BF" }] }, { code: "520500", name: "\u6BD5\u8282\u5E02", counties: [{ code: "520502", name: "\u4E03\u661F\u5173\u533A" }, { code: "520521", name: "\u5927\u65B9\u53BF" }, { code: "520523", name: "\u91D1\u6C99\u53BF" }, { code: "520524", name: "\u7EC7\u91D1\u53BF" }, { code: "520525", name: "\u7EB3\u96CD\u53BF" }, { code: "520526", name: "\u5A01\u5B81\u5F5D\u65CF\u56DE\u65CF\u82D7\u65CF\u81EA\u6CBB\u53BF" }, { code: "520527", name: "\u8D6B\u7AE0\u53BF" }, { code: "520581", name: "\u9ED4\u897F\u5E02" }] }, { code: "520600", name: "\u94DC\u4EC1\u5E02", counties: [{ code: "520602", name: "\u78A7\u6C5F\u533A" }, { code: "520603", name: "\u4E07\u5C71\u533A" }, { code: "520621", name: "\u6C5F\u53E3\u53BF" }, { code: "520622", name: "\u7389\u5C4F\u4F97\u65CF\u81EA\u6CBB\u53BF" }, { code: "520623", name: "\u77F3\u9621\u53BF" }, { code: "520624", name: "\u601D\u5357\u53BF" }, { code: "520625", name: "\u5370\u6C5F\u571F\u5BB6\u65CF\u82D7\u65CF\u81EA\u6CBB\u53BF" }, { code: "520626", name: "\u5FB7\u6C5F\u53BF" }, { code: "520627", name: "\u6CBF\u6CB3\u571F\u5BB6\u65CF\u81EA\u6CBB\u53BF" }, { code: "520628", name: "\u677E\u6843\u82D7\u65CF\u81EA\u6CBB\u53BF" }] }, { code: "522300", name: "\u9ED4\u897F\u5357\u5E03\u4F9D\u65CF\u82D7\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "522301", name: "\u5174\u4E49\u5E02" }, { code: "522302", name: "\u5174\u4EC1\u5E02" }, { code: "522323", name: "\u666E\u5B89\u53BF" }, { code: "522324", name: "\u6674\u9686\u53BF" }, { code: "522325", name: "\u8D1E\u4E30\u53BF" }, { code: "522326", name: "\u671B\u8C1F\u53BF" }, { code: "522327", name: "\u518C\u4EA8\u53BF" }, { code: "522328", name: "\u5B89\u9F99\u53BF" }] }, { code: "522600", name: "\u9ED4\u4E1C\u5357\u82D7\u65CF\u4F97\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "522601", name: "\u51EF\u91CC\u5E02" }, { code: "522622", name: "\u9EC4\u5E73\u53BF" }, { code: "522623", name: "\u65BD\u79C9\u53BF" }, { code: "522624", name: "\u4E09\u7A57\u53BF" }, { code: "522625", name: "\u9547\u8FDC\u53BF" }, { code: "522626", name: "\u5C91\u5DE9\u53BF" }, { code: "522627", name: "\u5929\u67F1\u53BF" }, { code: "522628", name: "\u9526\u5C4F\u53BF" }, { code: "522629", name: "\u5251\u6CB3\u53BF" }, { code: "522630", name: "\u53F0\u6C5F\u53BF" }, { code: "522631", name: "\u9ECE\u5E73\u53BF" }, { code: "522632", name: "\u6995\u6C5F\u53BF" }, { code: "522633", name: "\u4ECE\u6C5F\u53BF" }, { code: "522634", name: "\u96F7\u5C71\u53BF" }, { code: "522635", name: "\u9EBB\u6C5F\u53BF" }, { code: "522636", name: "\u4E39\u5BE8\u53BF" }] }, { code: "522700", name: "\u9ED4\u5357\u5E03\u4F9D\u65CF\u82D7\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "522701", name: "\u90FD\u5300\u5E02" }, { code: "522702", name: "\u798F\u6CC9\u5E02" }, { code: "522722", name: "\u8354\u6CE2\u53BF" }, { code: "522723", name: "\u8D35\u5B9A\u53BF" }, { code: "522725", name: "\u74EE\u5B89\u53BF" }, { code: "522726", name: "\u72EC\u5C71\u53BF" }, { code: "522727", name: "\u5E73\u5858\u53BF" }, { code: "522728", name: "\u7F57\u7538\u53BF" }, { code: "522729", name: "\u957F\u987A\u53BF" }, { code: "522730", name: "\u9F99\u91CC\u53BF" }, { code: "522731", name: "\u60E0\u6C34\u53BF" }, { code: "522732", name: "\u4E09\u90FD\u6C34\u65CF\u81EA\u6CBB\u53BF" }] }] }, { code: "530000", name: "\u4E91\u5357\u7701", cities: [{ code: "530100", name: "\u6606\u660E\u5E02", counties: [{ code: "530102", name: "\u4E94\u534E\u533A" }, { code: "530103", name: "\u76D8\u9F99\u533A" }, { code: "530111", name: "\u5B98\u6E21\u533A" }, { code: "530112", name: "\u897F\u5C71\u533A" }, { code: "530113", name: "\u4E1C\u5DDD\u533A" }, { code: "530114", name: "\u5448\u8D21\u533A" }, { code: "530115", name: "\u664B\u5B81\u533A" }, { code: "530124", name: "\u5BCC\u6C11\u53BF" }, { code: "530125", name: "\u5B9C\u826F\u53BF" }, { code: "530126", name: "\u77F3\u6797\u5F5D\u65CF\u81EA\u6CBB\u53BF" }, { code: "530127", name: "\u5D69\u660E\u53BF" }, { code: "530128", name: "\u7984\u529D\u5F5D\u65CF\u82D7\u65CF\u81EA\u6CBB\u53BF" }, { code: "530129", name: "\u5BFB\u7538\u56DE\u65CF\u5F5D\u65CF\u81EA\u6CBB\u53BF" }, { code: "530181", name: "\u5B89\u5B81\u5E02" }] }, { code: "530300", name: "\u66F2\u9756\u5E02", counties: [{ code: "530302", name: "\u9E92\u9E9F\u533A" }, { code: "530303", name: "\u6CBE\u76CA\u533A" }, { code: "530304", name: "\u9A6C\u9F99\u533A" }, { code: "530322", name: "\u9646\u826F\u53BF" }, { code: "530323", name: "\u5E08\u5B97\u53BF" }, { code: "530324", name: "\u7F57\u5E73\u53BF" }, { code: "530325", name: "\u5BCC\u6E90\u53BF" }, { code: "530326", name: "\u4F1A\u6CFD\u53BF" }, { code: "530381", name: "\u5BA3\u5A01\u5E02" }] }, { code: "530400", name: "\u7389\u6EAA\u5E02", counties: [{ code: "530402", name: "\u7EA2\u5854\u533A" }, { code: "530403", name: "\u6C5F\u5DDD\u533A" }, { code: "530423", name: "\u901A\u6D77\u53BF" }, { code: "530424", name: "\u534E\u5B81\u53BF" }, { code: "530425", name: "\u6613\u95E8\u53BF" }, { code: "530426", name: "\u5CE8\u5C71\u5F5D\u65CF\u81EA\u6CBB\u53BF" }, { code: "530427", name: "\u65B0\u5E73\u5F5D\u65CF\u50A3\u65CF\u81EA\u6CBB\u53BF" }, { code: "530428", name: "\u5143\u6C5F\u54C8\u5C3C\u65CF\u5F5D\u65CF\u50A3\u65CF\u81EA\u6CBB\u53BF" }, { code: "530481", name: "\u6F84\u6C5F\u5E02" }] }, { code: "530500", name: "\u4FDD\u5C71\u5E02", counties: [{ code: "530502", name: "\u9686\u9633\u533A" }, { code: "530521", name: "\u65BD\u7538\u53BF" }, { code: "530523", name: "\u9F99\u9675\u53BF" }, { code: "530524", name: "\u660C\u5B81\u53BF" }, { code: "530581", name: "\u817E\u51B2\u5E02" }] }, { code: "530600", name: "\u662D\u901A\u5E02", counties: [{ code: "530602", name: "\u662D\u9633\u533A" }, { code: "530621", name: "\u9C81\u7538\u53BF" }, { code: "530622", name: "\u5DE7\u5BB6\u53BF" }, { code: "530623", name: "\u76D0\u6D25\u53BF" }, { code: "530624", name: "\u5927\u5173\u53BF" }, { code: "530625", name: "\u6C38\u5584\u53BF" }, { code: "530626", name: "\u7EE5\u6C5F\u53BF" }, { code: "530627", name: "\u9547\u96C4\u53BF" }, { code: "530628", name: "\u5F5D\u826F\u53BF" }, { code: "530629", name: "\u5A01\u4FE1\u53BF" }, { code: "530681", name: "\u6C34\u5BCC\u5E02" }] }, { code: "530700", name: "\u4E3D\u6C5F\u5E02", counties: [{ code: "530702", name: "\u53E4\u57CE\u533A" }, { code: "530721", name: "\u7389\u9F99\u7EB3\u897F\u65CF\u81EA\u6CBB\u53BF" }, { code: "530722", name: "\u6C38\u80DC\u53BF" }, { code: "530723", name: "\u534E\u576A\u53BF" }, { code: "530724", name: "\u5B81\u8497\u5F5D\u65CF\u81EA\u6CBB\u53BF" }] }, { code: "530800", name: "\u666E\u6D31\u5E02", counties: [{ code: "530802", name: "\u601D\u8305\u533A" }, { code: "530821", name: "\u5B81\u6D31\u54C8\u5C3C\u65CF\u5F5D\u65CF\u81EA\u6CBB\u53BF" }, { code: "530822", name: "\u58A8\u6C5F\u54C8\u5C3C\u65CF\u81EA\u6CBB\u53BF" }, { code: "530823", name: "\u666F\u4E1C\u5F5D\u65CF\u81EA\u6CBB\u53BF" }, { code: "530824", name: "\u666F\u8C37\u50A3\u65CF\u5F5D\u65CF\u81EA\u6CBB\u53BF" }, { code: "530825", name: "\u9547\u6C85\u5F5D\u65CF\u54C8\u5C3C\u65CF\u62C9\u795C\u65CF\u81EA\u6CBB\u53BF" }, { code: "530826", name: "\u6C5F\u57CE\u54C8\u5C3C\u65CF\u5F5D\u65CF\u81EA\u6CBB\u53BF" }, { code: "530827", name: "\u5B5F\u8FDE\u50A3\u65CF\u62C9\u795C\u65CF\u4F64\u65CF\u81EA\u6CBB\u53BF" }, { code: "530828", name: "\u6F9C\u6CA7\u62C9\u795C\u65CF\u81EA\u6CBB\u53BF" }, { code: "530829", name: "\u897F\u76DF\u4F64\u65CF\u81EA\u6CBB\u53BF" }] }, { code: "530900", name: "\u4E34\u6CA7\u5E02", counties: [{ code: "530902", name: "\u4E34\u7FD4\u533A" }, { code: "530921", name: "\u51E4\u5E86\u53BF" }, { code: "530922", name: "\u4E91\u53BF" }, { code: "530923", name: "\u6C38\u5FB7\u53BF" }, { code: "530924", name: "\u9547\u5EB7\u53BF" }, { code: "530925", name: "\u53CC\u6C5F\u62C9\u795C\u65CF\u4F64\u65CF\u5E03\u6717\u65CF\u50A3\u65CF\u81EA\u6CBB\u53BF" }, { code: "530926", name: "\u803F\u9A6C\u50A3\u65CF\u4F64\u65CF\u81EA\u6CBB\u53BF" }, { code: "530927", name: "\u6CA7\u6E90\u4F64\u65CF\u81EA\u6CBB\u53BF" }] }, { code: "532300", name: "\u695A\u96C4\u5F5D\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "532301", name: "\u695A\u96C4\u5E02" }, { code: "532302", name: "\u7984\u4E30\u5E02" }, { code: "532322", name: "\u53CC\u67CF\u53BF" }, { code: "532323", name: "\u725F\u5B9A\u53BF" }, { code: "532324", name: "\u5357\u534E\u53BF" }, { code: "532325", name: "\u59DA\u5B89\u53BF" }, { code: "532326", name: "\u5927\u59DA\u53BF" }, { code: "532327", name: "\u6C38\u4EC1\u53BF" }, { code: "532328", name: "\u5143\u8C0B\u53BF" }, { code: "532329", name: "\u6B66\u5B9A\u53BF" }] }, { code: "532500", name: "\u7EA2\u6CB3\u54C8\u5C3C\u65CF\u5F5D\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "532501", name: "\u4E2A\u65E7\u5E02" }, { code: "532502", name: "\u5F00\u8FDC\u5E02" }, { code: "532503", name: "\u8499\u81EA\u5E02" }, { code: "532504", name: "\u5F25\u52D2\u5E02" }, { code: "532523", name: "\u5C4F\u8FB9\u82D7\u65CF\u81EA\u6CBB\u53BF" }, { code: "532524", name: "\u5EFA\u6C34\u53BF" }, { code: "532525", name: "\u77F3\u5C4F\u53BF" }, { code: "532527", name: "\u6CF8\u897F\u53BF" }, { code: "532528", name: "\u5143\u9633\u53BF" }, { code: "532529", name: "\u7EA2\u6CB3\u53BF" }, { code: "532530", name: "\u91D1\u5E73\u82D7\u65CF\u7476\u65CF\u50A3\u65CF\u81EA\u6CBB\u53BF" }, { code: "532531", name: "\u7EFF\u6625\u53BF" }, { code: "532532", name: "\u6CB3\u53E3\u7476\u65CF\u81EA\u6CBB\u53BF" }] }, { code: "532600", name: "\u6587\u5C71\u58EE\u65CF\u82D7\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "532601", name: "\u6587\u5C71\u5E02" }, { code: "532622", name: "\u781A\u5C71\u53BF" }, { code: "532623", name: "\u897F\u7574\u53BF" }, { code: "532624", name: "\u9EBB\u6817\u5761\u53BF" }, { code: "532625", name: "\u9A6C\u5173\u53BF" }, { code: "532626", name: "\u4E18\u5317\u53BF" }, { code: "532627", name: "\u5E7F\u5357\u53BF" }, { code: "532628", name: "\u5BCC\u5B81\u53BF" }] }, { code: "532800", name: "\u897F\u53CC\u7248\u7EB3\u50A3\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "532801", name: "\u666F\u6D2A\u5E02" }, { code: "532822", name: "\u52D0\u6D77\u53BF" }, { code: "532823", name: "\u52D0\u814A\u53BF" }] }, { code: "532900", name: "\u5927\u7406\u767D\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "532901", name: "\u5927\u7406\u5E02" }, { code: "532922", name: "\u6F3E\u6FDE\u5F5D\u65CF\u81EA\u6CBB\u53BF" }, { code: "532923", name: "\u7965\u4E91\u53BF" }, { code: "532924", name: "\u5BBE\u5DDD\u53BF" }, { code: "532925", name: "\u5F25\u6E21\u53BF" }, { code: "532926", name: "\u5357\u6DA7\u5F5D\u65CF\u81EA\u6CBB\u53BF" }, { code: "532927", name: "\u5DCD\u5C71\u5F5D\u65CF\u56DE\u65CF\u81EA\u6CBB\u53BF" }, { code: "532928", name: "\u6C38\u5E73\u53BF" }, { code: "532929", name: "\u4E91\u9F99\u53BF" }, { code: "532930", name: "\u6D31\u6E90\u53BF" }, { code: "532931", name: "\u5251\u5DDD\u53BF" }, { code: "532932", name: "\u9E64\u5E86\u53BF" }] }, { code: "533100", name: "\u5FB7\u5B8F\u50A3\u65CF\u666F\u9887\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "533102", name: "\u745E\u4E3D\u5E02" }, { code: "533103", name: "\u8292\u5E02" }, { code: "533122", name: "\u6881\u6CB3\u53BF" }, { code: "533123", name: "\u76C8\u6C5F\u53BF" }, { code: "533124", name: "\u9647\u5DDD\u53BF" }] }, { code: "533300", name: "\u6012\u6C5F\u5088\u50F3\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "533301", name: "\u6CF8\u6C34\u5E02" }, { code: "533323", name: "\u798F\u8D21\u53BF" }, { code: "533324", name: "\u8D21\u5C71\u72EC\u9F99\u65CF\u6012\u65CF\u81EA\u6CBB\u53BF" }, { code: "533325", name: "\u5170\u576A\u767D\u65CF\u666E\u7C73\u65CF\u81EA\u6CBB\u53BF" }] }, { code: "533400", name: "\u8FEA\u5E86\u85CF\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "533401", name: "\u9999\u683C\u91CC\u62C9\u5E02" }, { code: "533422", name: "\u5FB7\u94A6\u53BF" }, { code: "533423", name: "\u7EF4\u897F\u5088\u50F3\u65CF\u81EA\u6CBB\u53BF" }] }] }, { code: "540000", name: "\u897F\u85CF\u81EA\u6CBB\u533A", cities: [{ code: "540100", name: "\u62C9\u8428\u5E02", counties: [{ code: "540102", name: "\u57CE\u5173\u533A" }, { code: "540103", name: "\u5806\u9F99\u5FB7\u5E86\u533A" }, { code: "540104", name: "\u8FBE\u5B5C\u533A" }, { code: "540121", name: "\u6797\u5468\u53BF" }, { code: "540122", name: "\u5F53\u96C4\u53BF" }, { code: "540123", name: "\u5C3C\u6728\u53BF" }, { code: "540124", name: "\u66F2\u6C34\u53BF" }, { code: "540127", name: "\u58A8\u7AF9\u5DE5\u5361\u53BF" }, { code: "540171", name: "\u683C\u5C14\u6728\u85CF\u9752\u5DE5\u4E1A\u56ED\u533A" }, { code: "540172", name: "\u62C9\u8428\u7ECF\u6D4E\u6280\u672F\u5F00\u53D1\u533A" }, { code: "540173", name: "\u897F\u85CF\u6587\u5316\u65C5\u6E38\u521B\u610F\u56ED\u533A" }, { code: "540174", name: "\u8FBE\u5B5C\u5DE5\u4E1A\u56ED\u533A" }] }, { code: "540200", name: "\u65E5\u5580\u5219\u5E02", counties: [{ code: "540202", name: "\u6851\u73E0\u5B5C\u533A" }, { code: "540221", name: "\u5357\u6728\u6797\u53BF" }, { code: "540222", name: "\u6C5F\u5B5C\u53BF" }, { code: "540223", name: "\u5B9A\u65E5\u53BF" }, { code: "540224", name: "\u8428\u8FE6\u53BF" }, { code: "540225", name: "\u62C9\u5B5C\u53BF" }, { code: "540226", name: "\u6602\u4EC1\u53BF" }, { code: "540227", name: "\u8C22\u901A\u95E8\u53BF" }, { code: "540228", name: "\u767D\u6717\u53BF" }, { code: "540229", name: "\u4EC1\u5E03\u53BF" }, { code: "540230", name: "\u5EB7\u9A6C\u53BF" }, { code: "540231", name: "\u5B9A\u7ED3\u53BF" }, { code: "540232", name: "\u4EF2\u5DF4\u53BF" }, { code: "540233", name: "\u4E9A\u4E1C\u53BF" }, { code: "540234", name: "\u5409\u9686\u53BF" }, { code: "540235", name: "\u8042\u62C9\u6728\u53BF" }, { code: "540236", name: "\u8428\u560E\u53BF" }, { code: "540237", name: "\u5C97\u5DF4\u53BF" }] }, { code: "540300", name: "\u660C\u90FD\u5E02", counties: [{ code: "540302", name: "\u5361\u82E5\u533A" }, { code: "540321", name: "\u6C5F\u8FBE\u53BF" }, { code: "540322", name: "\u8D21\u89C9\u53BF" }, { code: "540323", name: "\u7C7B\u4E4C\u9F50\u53BF" }, { code: "540324", name: "\u4E01\u9752\u53BF" }, { code: "540325", name: "\u5BDF\u96C5\u53BF" }, { code: "540326", name: "\u516B\u5BBF\u53BF" }, { code: "540327", name: "\u5DE6\u8D21\u53BF" }, { code: "540328", name: "\u8292\u5EB7\u53BF" }, { code: "540329", name: "\u6D1B\u9686\u53BF" }, { code: "540330", name: "\u8FB9\u575D\u53BF" }] }, { code: "540400", name: "\u6797\u829D\u5E02", counties: [{ code: "540402", name: "\u5DF4\u5B9C\u533A" }, { code: "540421", name: "\u5DE5\u5E03\u6C5F\u8FBE\u53BF" }, { code: "540423", name: "\u58A8\u8131\u53BF" }, { code: "540424", name: "\u6CE2\u5BC6\u53BF" }, { code: "540425", name: "\u5BDF\u9685\u53BF" }, { code: "540426", name: "\u6717\u53BF" }, { code: "540481", name: "\u7C73\u6797\u5E02" }] }, { code: "540500", name: "\u5C71\u5357\u5E02", counties: [{ code: "540502", name: "\u4E43\u4E1C\u533A" }, { code: "540521", name: "\u624E\u56CA\u53BF" }, { code: "540522", name: "\u8D21\u560E\u53BF" }, { code: "540523", name: "\u6851\u65E5\u53BF" }, { code: "540524", name: "\u743C\u7ED3\u53BF" }, { code: "540525", name: "\u66F2\u677E\u53BF" }, { code: "540526", name: "\u63AA\u7F8E\u53BF" }, { code: "540527", name: "\u6D1B\u624E\u53BF" }, { code: "540528", name: "\u52A0\u67E5\u53BF" }, { code: "540529", name: "\u9686\u5B50\u53BF" }, { code: "540531", name: "\u6D6A\u5361\u5B50\u53BF" }, { code: "540581", name: "\u9519\u90A3\u5E02" }] }, { code: "540600", name: "\u90A3\u66F2\u5E02", counties: [{ code: "540602", name: "\u8272\u5C3C\u533A" }, { code: "540621", name: "\u5609\u9ECE\u53BF" }, { code: "540622", name: "\u6BD4\u5982\u53BF" }, { code: "540623", name: "\u8042\u8363\u53BF" }, { code: "540624", name: "\u5B89\u591A\u53BF" }, { code: "540625", name: "\u7533\u624E\u53BF" }, { code: "540626", name: "\u7D22\u53BF" }, { code: "540627", name: "\u73ED\u6208\u53BF" }, { code: "540628", name: "\u5DF4\u9752\u53BF" }, { code: "540629", name: "\u5C3C\u739B\u53BF" }, { code: "540630", name: "\u53CC\u6E56\u53BF" }] }, { code: "542500", name: "\u963F\u91CC\u5730\u533A", counties: [{ code: "542521", name: "\u666E\u5170\u53BF" }, { code: "542522", name: "\u672D\u8FBE\u53BF" }, { code: "542523", name: "\u5676\u5C14\u53BF" }, { code: "542524", name: "\u65E5\u571F\u53BF" }, { code: "542525", name: "\u9769\u5409\u53BF" }, { code: "542526", name: "\u6539\u5219\u53BF" }, { code: "542527", name: "\u63AA\u52E4\u53BF" }] }] }, { code: "610000", name: "\u9655\u897F\u7701", cities: [{ code: "610100", name: "\u897F\u5B89\u5E02", counties: [{ code: "610102", name: "\u65B0\u57CE\u533A" }, { code: "610103", name: "\u7891\u6797\u533A" }, { code: "610104", name: "\u83B2\u6E56\u533A" }, { code: "610111", name: "\u705E\u6865\u533A" }, { code: "610112", name: "\u672A\u592E\u533A" }, { code: "610113", name: "\u96C1\u5854\u533A" }, { code: "610114", name: "\u960E\u826F\u533A" }, { code: "610115", name: "\u4E34\u6F7C\u533A" }, { code: "610116", name: "\u957F\u5B89\u533A" }, { code: "610117", name: "\u9AD8\u9675\u533A" }, { code: "610118", name: "\u9120\u9091\u533A" }, { code: "610122", name: "\u84DD\u7530\u53BF" }, { code: "610124", name: "\u5468\u81F3\u53BF" }] }, { code: "610200", name: "\u94DC\u5DDD\u5E02", counties: [{ code: "610202", name: "\u738B\u76CA\u533A" }, { code: "610203", name: "\u5370\u53F0\u533A" }, { code: "610204", name: "\u8000\u5DDE\u533A" }, { code: "610222", name: "\u5B9C\u541B\u53BF" }] }, { code: "610300", name: "\u5B9D\u9E21\u5E02", counties: [{ code: "610302", name: "\u6E2D\u6EE8\u533A" }, { code: "610303", name: "\u91D1\u53F0\u533A" }, { code: "610304", name: "\u9648\u4ED3\u533A" }, { code: "610305", name: "\u51E4\u7FD4\u533A" }, { code: "610323", name: "\u5C90\u5C71\u53BF" }, { code: "610324", name: "\u6276\u98CE\u53BF" }, { code: "610326", name: "\u7709\u53BF" }, { code: "610327", name: "\u9647\u53BF" }, { code: "610328", name: "\u5343\u9633\u53BF" }, { code: "610329", name: "\u9E9F\u6E38\u53BF" }, { code: "610330", name: "\u51E4\u53BF" }, { code: "610331", name: "\u592A\u767D\u53BF" }] }, { code: "610400", name: "\u54B8\u9633\u5E02", counties: [{ code: "610402", name: "\u79E6\u90FD\u533A" }, { code: "610403", name: "\u6768\u9675\u533A" }, { code: "610404", name: "\u6E2D\u57CE\u533A" }, { code: "610422", name: "\u4E09\u539F\u53BF" }, { code: "610423", name: "\u6CFE\u9633\u53BF" }, { code: "610424", name: "\u4E7E\u53BF" }, { code: "610425", name: "\u793C\u6CC9\u53BF" }, { code: "610426", name: "\u6C38\u5BFF\u53BF" }, { code: "610428", name: "\u957F\u6B66\u53BF" }, { code: "610429", name: "\u65EC\u9091\u53BF" }, { code: "610430", name: "\u6DF3\u5316\u53BF" }, { code: "610431", name: "\u6B66\u529F\u53BF" }, { code: "610481", name: "\u5174\u5E73\u5E02" }, { code: "610482", name: "\u5F6C\u5DDE\u5E02" }] }, { code: "610500", name: "\u6E2D\u5357\u5E02", counties: [{ code: "610502", name: "\u4E34\u6E2D\u533A" }, { code: "610503", name: "\u534E\u5DDE\u533A" }, { code: "610522", name: "\u6F7C\u5173\u53BF" }, { code: "610523", name: "\u5927\u8354\u53BF" }, { code: "610524", name: "\u5408\u9633\u53BF" }, { code: "610525", name: "\u6F84\u57CE\u53BF" }, { code: "610526", name: "\u84B2\u57CE\u53BF" }, { code: "610527", name: "\u767D\u6C34\u53BF" }, { code: "610528", name: "\u5BCC\u5E73\u53BF" }, { code: "610581", name: "\u97E9\u57CE\u5E02" }, { code: "610582", name: "\u534E\u9634\u5E02" }] }, { code: "610600", name: "\u5EF6\u5B89\u5E02", counties: [{ code: "610602", name: "\u5B9D\u5854\u533A" }, { code: "610603", name: "\u5B89\u585E\u533A" }, { code: "610621", name: "\u5EF6\u957F\u53BF" }, { code: "610622", name: "\u5EF6\u5DDD\u53BF" }, { code: "610625", name: "\u5FD7\u4E39\u53BF" }, { code: "610626", name: "\u5434\u8D77\u53BF" }, { code: "610627", name: "\u7518\u6CC9\u53BF" }, { code: "610628", name: "\u5BCC\u53BF" }, { code: "610629", name: "\u6D1B\u5DDD\u53BF" }, { code: "610630", name: "\u5B9C\u5DDD\u53BF" }, { code: "610631", name: "\u9EC4\u9F99\u53BF" }, { code: "610632", name: "\u9EC4\u9675\u53BF" }, { code: "610681", name: "\u5B50\u957F\u5E02" }] }, { code: "610700", name: "\u6C49\u4E2D\u5E02", counties: [{ code: "610702", name: "\u6C49\u53F0\u533A" }, { code: "610703", name: "\u5357\u90D1\u533A" }, { code: "610722", name: "\u57CE\u56FA\u53BF" }, { code: "610723", name: "\u6D0B\u53BF" }, { code: "610724", name: "\u897F\u4E61\u53BF" }, { code: "610725", name: "\u52C9\u53BF" }, { code: "610726", name: "\u5B81\u5F3A\u53BF" }, { code: "610727", name: "\u7565\u9633\u53BF" }, { code: "610728", name: "\u9547\u5DF4\u53BF" }, { code: "610729", name: "\u7559\u575D\u53BF" }, { code: "610730", name: "\u4F5B\u576A\u53BF" }] }, { code: "610800", name: "\u6986\u6797\u5E02", counties: [{ code: "610802", name: "\u6986\u9633\u533A" }, { code: "610803", name: "\u6A2A\u5C71\u533A" }, { code: "610822", name: "\u5E9C\u8C37\u53BF" }, { code: "610824", name: "\u9756\u8FB9\u53BF" }, { code: "610825", name: "\u5B9A\u8FB9\u53BF" }, { code: "610826", name: "\u7EE5\u5FB7\u53BF" }, { code: "610827", name: "\u7C73\u8102\u53BF" }, { code: "610828", name: "\u4F73\u53BF" }, { code: "610829", name: "\u5434\u5821\u53BF" }, { code: "610830", name: "\u6E05\u6DA7\u53BF" }, { code: "610831", name: "\u5B50\u6D32\u53BF" }, { code: "610881", name: "\u795E\u6728\u5E02" }] }, { code: "610900", name: "\u5B89\u5EB7\u5E02", counties: [{ code: "610902", name: "\u6C49\u6EE8\u533A" }, { code: "610921", name: "\u6C49\u9634\u53BF" }, { code: "610922", name: "\u77F3\u6CC9\u53BF" }, { code: "610923", name: "\u5B81\u9655\u53BF" }, { code: "610924", name: "\u7D2B\u9633\u53BF" }, { code: "610925", name: "\u5C9A\u768B\u53BF" }, { code: "610926", name: "\u5E73\u5229\u53BF" }, { code: "610927", name: "\u9547\u576A\u53BF" }, { code: "610929", name: "\u767D\u6CB3\u53BF" }, { code: "610981", name: "\u65EC\u9633\u5E02" }] }, { code: "611000", name: "\u5546\u6D1B\u5E02", counties: [{ code: "611002", name: "\u5546\u5DDE\u533A" }, { code: "611021", name: "\u6D1B\u5357\u53BF" }, { code: "611022", name: "\u4E39\u51E4\u53BF" }, { code: "611023", name: "\u5546\u5357\u53BF" }, { code: "611024", name: "\u5C71\u9633\u53BF" }, { code: "611025", name: "\u9547\u5B89\u53BF" }, { code: "611026", name: "\u67DE\u6C34\u53BF" }] }] }, { code: "620000", name: "\u7518\u8083\u7701", cities: [{ code: "620100", name: "\u5170\u5DDE\u5E02", counties: [{ code: "620102", name: "\u57CE\u5173\u533A" }, { code: "620103", name: "\u4E03\u91CC\u6CB3\u533A" }, { code: "620104", name: "\u897F\u56FA\u533A" }, { code: "620105", name: "\u5B89\u5B81\u533A" }, { code: "620111", name: "\u7EA2\u53E4\u533A" }, { code: "620121", name: "\u6C38\u767B\u53BF" }, { code: "620122", name: "\u768B\u5170\u53BF" }, { code: "620123", name: "\u6986\u4E2D\u53BF" }, { code: "620171", name: "\u5170\u5DDE\u65B0\u533A" }] }, { code: "620200", name: "\u5609\u5CEA\u5173\u5E02", counties: [] }, { code: "620300", name: "\u91D1\u660C\u5E02", counties: [{ code: "620302", name: "\u91D1\u5DDD\u533A" }, { code: "620321", name: "\u6C38\u660C\u53BF" }] }, { code: "620400", name: "\u767D\u94F6\u5E02", counties: [{ code: "620402", name: "\u767D\u94F6\u533A" }, { code: "620403", name: "\u5E73\u5DDD\u533A" }, { code: "620421", name: "\u9756\u8FDC\u53BF" }, { code: "620422", name: "\u4F1A\u5B81\u53BF" }, { code: "620423", name: "\u666F\u6CF0\u53BF" }] }, { code: "620500", name: "\u5929\u6C34\u5E02", counties: [{ code: "620502", name: "\u79E6\u5DDE\u533A" }, { code: "620503", name: "\u9EA6\u79EF\u533A" }, { code: "620521", name: "\u6E05\u6C34\u53BF" }, { code: "620522", name: "\u79E6\u5B89\u53BF" }, { code: "620523", name: "\u7518\u8C37\u53BF" }, { code: "620524", name: "\u6B66\u5C71\u53BF" }, { code: "620525", name: "\u5F20\u5BB6\u5DDD\u56DE\u65CF\u81EA\u6CBB\u53BF" }] }, { code: "620600", name: "\u6B66\u5A01\u5E02", counties: [{ code: "620602", name: "\u51C9\u5DDE\u533A" }, { code: "620621", name: "\u6C11\u52E4\u53BF" }, { code: "620622", name: "\u53E4\u6D6A\u53BF" }, { code: "620623", name: "\u5929\u795D\u85CF\u65CF\u81EA\u6CBB\u53BF" }] }, { code: "620700", name: "\u5F20\u6396\u5E02", counties: [{ code: "620702", name: "\u7518\u5DDE\u533A" }, { code: "620721", name: "\u8083\u5357\u88D5\u56FA\u65CF\u81EA\u6CBB\u53BF" }, { code: "620722", name: "\u6C11\u4E50\u53BF" }, { code: "620723", name: "\u4E34\u6CFD\u53BF" }, { code: "620724", name: "\u9AD8\u53F0\u53BF" }, { code: "620725", name: "\u5C71\u4E39\u53BF" }] }, { code: "620800", name: "\u5E73\u51C9\u5E02", counties: [{ code: "620802", name: "\u5D06\u5CD2\u533A" }, { code: "620821", name: "\u6CFE\u5DDD\u53BF" }, { code: "620822", name: "\u7075\u53F0\u53BF" }, { code: "620823", name: "\u5D07\u4FE1\u53BF" }, { code: "620825", name: "\u5E84\u6D6A\u53BF" }, { code: "620826", name: "\u9759\u5B81\u53BF" }, { code: "620881", name: "\u534E\u4EAD\u5E02" }] }, { code: "620900", name: "\u9152\u6CC9\u5E02", counties: [{ code: "620902", name: "\u8083\u5DDE\u533A" }, { code: "620921", name: "\u91D1\u5854\u53BF" }, { code: "620922", name: "\u74DC\u5DDE\u53BF" }, { code: "620923", name: "\u8083\u5317\u8499\u53E4\u65CF\u81EA\u6CBB\u53BF" }, { code: "620924", name: "\u963F\u514B\u585E\u54C8\u8428\u514B\u65CF\u81EA\u6CBB\u53BF" }, { code: "620981", name: "\u7389\u95E8\u5E02" }, { code: "620982", name: "\u6566\u714C\u5E02" }] }, { code: "621000", name: "\u5E86\u9633\u5E02", counties: [{ code: "621002", name: "\u897F\u5CF0\u533A" }, { code: "621021", name: "\u5E86\u57CE\u53BF" }, { code: "621022", name: "\u73AF\u53BF" }, { code: "621023", name: "\u534E\u6C60\u53BF" }, { code: "621024", name: "\u5408\u6C34\u53BF" }, { code: "621025", name: "\u6B63\u5B81\u53BF" }, { code: "621026", name: "\u5B81\u53BF" }, { code: "621027", name: "\u9547\u539F\u53BF" }] }, { code: "621100", name: "\u5B9A\u897F\u5E02", counties: [{ code: "621102", name: "\u5B89\u5B9A\u533A" }, { code: "621121", name: "\u901A\u6E2D\u53BF" }, { code: "621122", name: "\u9647\u897F\u53BF" }, { code: "621123", name: "\u6E2D\u6E90\u53BF" }, { code: "621124", name: "\u4E34\u6D2E\u53BF" }, { code: "621125", name: "\u6F33\u53BF" }, { code: "621126", name: "\u5CB7\u53BF" }] }, { code: "621200", name: "\u9647\u5357\u5E02", counties: [{ code: "621202", name: "\u6B66\u90FD\u533A" }, { code: "621221", name: "\u6210\u53BF" }, { code: "621222", name: "\u6587\u53BF" }, { code: "621223", name: "\u5B95\u660C\u53BF" }, { code: "621224", name: "\u5EB7\u53BF" }, { code: "621225", name: "\u897F\u548C\u53BF" }, { code: "621226", name: "\u793C\u53BF" }, { code: "621227", name: "\u5FBD\u53BF" }, { code: "621228", name: "\u4E24\u5F53\u53BF" }] }, { code: "622900", name: "\u4E34\u590F\u56DE\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "622901", name: "\u4E34\u590F\u5E02" }, { code: "622921", name: "\u4E34\u590F\u53BF" }, { code: "622922", name: "\u5EB7\u4E50\u53BF" }, { code: "622923", name: "\u6C38\u9756\u53BF" }, { code: "622924", name: "\u5E7F\u6CB3\u53BF" }, { code: "622925", name: "\u548C\u653F\u53BF" }, { code: "622926", name: "\u4E1C\u4E61\u65CF\u81EA\u6CBB\u53BF" }, { code: "622927", name: "\u79EF\u77F3\u5C71\u4FDD\u5B89\u65CF\u4E1C\u4E61\u65CF\u6492\u62C9\u65CF\u81EA\u6CBB\u53BF" }] }, { code: "623000", name: "\u7518\u5357\u85CF\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "623001", name: "\u5408\u4F5C\u5E02" }, { code: "623021", name: "\u4E34\u6F6D\u53BF" }, { code: "623022", name: "\u5353\u5C3C\u53BF" }, { code: "623023", name: "\u821F\u66F2\u53BF" }, { code: "623024", name: "\u8FED\u90E8\u53BF" }, { code: "623025", name: "\u739B\u66F2\u53BF" }, { code: "623026", name: "\u788C\u66F2\u53BF" }, { code: "623027", name: "\u590F\u6CB3\u53BF" }] }] }, { code: "630000", name: "\u9752\u6D77\u7701", cities: [{ code: "630100", name: "\u897F\u5B81\u5E02", counties: [{ code: "630102", name: "\u57CE\u4E1C\u533A" }, { code: "630103", name: "\u57CE\u4E2D\u533A" }, { code: "630104", name: "\u57CE\u897F\u533A" }, { code: "630105", name: "\u57CE\u5317\u533A" }, { code: "630106", name: "\u6E5F\u4E2D\u533A" }, { code: "630121", name: "\u5927\u901A\u56DE\u65CF\u571F\u65CF\u81EA\u6CBB\u53BF" }, { code: "630123", name: "\u6E5F\u6E90\u53BF" }] }, { code: "630200", name: "\u6D77\u4E1C\u5E02", counties: [{ code: "630202", name: "\u4E50\u90FD\u533A" }, { code: "630203", name: "\u5E73\u5B89\u533A" }, { code: "630222", name: "\u6C11\u548C\u56DE\u65CF\u571F\u65CF\u81EA\u6CBB\u53BF" }, { code: "630223", name: "\u4E92\u52A9\u571F\u65CF\u81EA\u6CBB\u53BF" }, { code: "630224", name: "\u5316\u9686\u56DE\u65CF\u81EA\u6CBB\u53BF" }, { code: "630225", name: "\u5FAA\u5316\u6492\u62C9\u65CF\u81EA\u6CBB\u53BF" }] }, { code: "632200", name: "\u6D77\u5317\u85CF\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "632221", name: "\u95E8\u6E90\u56DE\u65CF\u81EA\u6CBB\u53BF" }, { code: "632222", name: "\u7941\u8FDE\u53BF" }, { code: "632223", name: "\u6D77\u664F\u53BF" }, { code: "632224", name: "\u521A\u5BDF\u53BF" }] }, { code: "632300", name: "\u9EC4\u5357\u85CF\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "632301", name: "\u540C\u4EC1\u5E02" }, { code: "632322", name: "\u5C16\u624E\u53BF" }, { code: "632323", name: "\u6CFD\u5E93\u53BF" }, { code: "632324", name: "\u6CB3\u5357\u8499\u53E4\u65CF\u81EA\u6CBB\u53BF" }] }, { code: "632500", name: "\u6D77\u5357\u85CF\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "632521", name: "\u5171\u548C\u53BF" }, { code: "632522", name: "\u540C\u5FB7\u53BF" }, { code: "632523", name: "\u8D35\u5FB7\u53BF" }, { code: "632524", name: "\u5174\u6D77\u53BF" }, { code: "632525", name: "\u8D35\u5357\u53BF" }] }, { code: "632600", name: "\u679C\u6D1B\u85CF\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "632621", name: "\u739B\u6C81\u53BF" }, { code: "632622", name: "\u73ED\u739B\u53BF" }, { code: "632623", name: "\u7518\u5FB7\u53BF" }, { code: "632624", name: "\u8FBE\u65E5\u53BF" }, { code: "632625", name: "\u4E45\u6CBB\u53BF" }, { code: "632626", name: "\u739B\u591A\u53BF" }] }, { code: "632700", name: "\u7389\u6811\u85CF\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "632701", name: "\u7389\u6811\u5E02" }, { code: "632722", name: "\u6742\u591A\u53BF" }, { code: "632723", name: "\u79F0\u591A\u53BF" }, { code: "632724", name: "\u6CBB\u591A\u53BF" }, { code: "632725", name: "\u56CA\u8C26\u53BF" }, { code: "632726", name: "\u66F2\u9EBB\u83B1\u53BF" }] }, { code: "632800", name: "\u6D77\u897F\u8499\u53E4\u65CF\u85CF\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "632801", name: "\u683C\u5C14\u6728\u5E02" }, { code: "632802", name: "\u5FB7\u4EE4\u54C8\u5E02" }, { code: "632803", name: "\u832B\u5D16\u5E02" }, { code: "632821", name: "\u4E4C\u5170\u53BF" }, { code: "632822", name: "\u90FD\u5170\u53BF" }, { code: "632823", name: "\u5929\u5CFB\u53BF" }, { code: "632857", name: "\u5927\u67F4\u65E6\u884C\u653F\u59D4\u5458\u4F1A" }] }] }, { code: "640000", name: "\u5B81\u590F\u56DE\u65CF\u81EA\u6CBB\u533A", cities: [{ code: "640100", name: "\u94F6\u5DDD\u5E02", counties: [{ code: "640104", name: "\u5174\u5E86\u533A" }, { code: "640105", name: "\u897F\u590F\u533A" }, { code: "640106", name: "\u91D1\u51E4\u533A" }, { code: "640121", name: "\u6C38\u5B81\u53BF" }, { code: "640122", name: "\u8D3A\u5170\u53BF" }, { code: "640181", name: "\u7075\u6B66\u5E02" }] }, { code: "640200", name: "\u77F3\u5634\u5C71\u5E02", counties: [{ code: "640202", name: "\u5927\u6B66\u53E3\u533A" }, { code: "640205", name: "\u60E0\u519C\u533A" }, { code: "640221", name: "\u5E73\u7F57\u53BF" }] }, { code: "640300", name: "\u5434\u5FE0\u5E02", counties: [{ code: "640302", name: "\u5229\u901A\u533A" }, { code: "640303", name: "\u7EA2\u5BFA\u5821\u533A" }, { code: "640323", name: "\u76D0\u6C60\u53BF" }, { code: "640324", name: "\u540C\u5FC3\u53BF" }, { code: "640381", name: "\u9752\u94DC\u5CE1\u5E02" }] }, { code: "640400", name: "\u56FA\u539F\u5E02", counties: [{ code: "640402", name: "\u539F\u5DDE\u533A" }, { code: "640422", name: "\u897F\u5409\u53BF" }, { code: "640423", name: "\u9686\u5FB7\u53BF" }, { code: "640424", name: "\u6CFE\u6E90\u53BF" }, { code: "640425", name: "\u5F6D\u9633\u53BF" }] }, { code: "640500", name: "\u4E2D\u536B\u5E02", counties: [{ code: "640502", name: "\u6C99\u5761\u5934\u533A" }, { code: "640521", name: "\u4E2D\u5B81\u53BF" }, { code: "640522", name: "\u6D77\u539F\u53BF" }] }] }, { code: "650000", name: "\u65B0\u7586\u7EF4\u543E\u5C14\u81EA\u6CBB\u533A", cities: [{ code: "650100", name: "\u4E4C\u9C81\u6728\u9F50\u5E02", counties: [{ code: "650102", name: "\u5929\u5C71\u533A" }, { code: "650103", name: "\u6C99\u4F9D\u5DF4\u514B\u533A" }, { code: "650104", name: "\u65B0\u5E02\u533A" }, { code: "650105", name: "\u6C34\u78E8\u6C9F\u533A" }, { code: "650106", name: "\u5934\u5C6F\u6CB3\u533A" }, { code: "650107", name: "\u8FBE\u5742\u57CE\u533A" }, { code: "650109", name: "\u7C73\u4E1C\u533A" }, { code: "650121", name: "\u4E4C\u9C81\u6728\u9F50\u53BF" }] }, { code: "650200", name: "\u514B\u62C9\u739B\u4F9D\u5E02", counties: [{ code: "650202", name: "\u72EC\u5C71\u5B50\u533A" }, { code: "650203", name: "\u514B\u62C9\u739B\u4F9D\u533A" }, { code: "650204", name: "\u767D\u78B1\u6EE9\u533A" }, { code: "650205", name: "\u4E4C\u5C14\u79BE\u533A" }] }, { code: "650400", name: "\u5410\u9C81\u756A\u5E02", counties: [{ code: "650402", name: "\u9AD8\u660C\u533A" }, { code: "650421", name: "\u912F\u5584\u53BF" }, { code: "650422", name: "\u6258\u514B\u900A\u53BF" }] }, { code: "650500", name: "\u54C8\u5BC6\u5E02", counties: [{ code: "650502", name: "\u4F0A\u5DDE\u533A" }, { code: "650521", name: "\u5DF4\u91CC\u5764\u54C8\u8428\u514B\u81EA\u6CBB\u53BF" }, { code: "650522", name: "\u4F0A\u543E\u53BF" }] }, { code: "652300", name: "\u660C\u5409\u56DE\u65CF\u81EA\u6CBB\u5DDE", counties: [{ code: "652301", name: "\u660C\u5409\u5E02" }, { code: "652302", name: "\u961C\u5EB7\u5E02" }, { code: "652323", name: "\u547C\u56FE\u58C1\u53BF" }, { code: "652324", name: "\u739B\u7EB3\u65AF\u53BF" }, { code: "652325", name: "\u5947\u53F0\u53BF" }, { code: "652327", name: "\u5409\u6728\u8428\u5C14\u53BF" }, { code: "652328", name: "\u6728\u5792\u54C8\u8428\u514B\u81EA\u6CBB\u53BF" }] }, { code: "652700", name: "\u535A\u5C14\u5854\u62C9\u8499\u53E4\u81EA\u6CBB\u5DDE", counties: [{ code: "652701", name: "\u535A\u4E50\u5E02" }, { code: "652702", name: "\u963F\u62C9\u5C71\u53E3\u5E02" }, { code: "652722", name: "\u7CBE\u6CB3\u53BF" }, { code: "652723", name: "\u6E29\u6CC9\u53BF" }] }, { code: "652800", name: "\u5DF4\u97F3\u90ED\u695E\u8499\u53E4\u81EA\u6CBB\u5DDE", counties: [{ code: "652801", name: "\u5E93\u5C14\u52D2\u5E02" }, { code: "652822", name: "\u8F6E\u53F0\u53BF" }, { code: "652823", name: "\u5C09\u7281\u53BF" }, { code: "652824", name: "\u82E5\u7F8C\u53BF" }, { code: "652825", name: "\u4E14\u672B\u53BF" }, { code: "652826", name: "\u7109\u8006\u56DE\u65CF\u81EA\u6CBB\u53BF" }, { code: "652827", name: "\u548C\u9759\u53BF" }, { code: "652828", name: "\u548C\u7855\u53BF" }, { code: "652829", name: "\u535A\u6E56\u53BF" }] }, { code: "652900", name: "\u963F\u514B\u82CF\u5730\u533A", counties: [{ code: "652901", name: "\u963F\u514B\u82CF\u5E02" }, { code: "652902", name: "\u5E93\u8F66\u5E02" }, { code: "652922", name: "\u6E29\u5BBF\u53BF" }, { code: "652924", name: "\u6C99\u96C5\u53BF" }, { code: "652925", name: "\u65B0\u548C\u53BF" }, { code: "652926", name: "\u62DC\u57CE\u53BF" }, { code: "652927", name: "\u4E4C\u4EC0\u53BF" }, { code: "652928", name: "\u963F\u74E6\u63D0\u53BF" }, { code: "652929", name: "\u67EF\u576A\u53BF" }] }, { code: "653000", name: "\u514B\u5B5C\u52D2\u82CF\u67EF\u5C14\u514B\u5B5C\u81EA\u6CBB\u5DDE", counties: [{ code: "653001", name: "\u963F\u56FE\u4EC0\u5E02" }, { code: "653022", name: "\u963F\u514B\u9676\u53BF" }, { code: "653023", name: "\u963F\u5408\u5947\u53BF" }, { code: "653024", name: "\u4E4C\u6070\u53BF" }] }, { code: "653100", name: "\u5580\u4EC0\u5730\u533A", counties: [{ code: "653101", name: "\u5580\u4EC0\u5E02" }, { code: "653121", name: "\u758F\u9644\u53BF" }, { code: "653122", name: "\u758F\u52D2\u53BF" }, { code: "653123", name: "\u82F1\u5409\u6C99\u53BF" }, { code: "653124", name: "\u6CFD\u666E\u53BF" }, { code: "653125", name: "\u838E\u8F66\u53BF" }, { code: "653126", name: "\u53F6\u57CE\u53BF" }, { code: "653127", name: "\u9EA6\u76D6\u63D0\u53BF" }, { code: "653128", name: "\u5CB3\u666E\u6E56\u53BF" }, { code: "653129", name: "\u4F3D\u5E08\u53BF" }, { code: "653130", name: "\u5DF4\u695A\u53BF" }, { code: "653131", name: "\u5854\u4EC0\u5E93\u5C14\u5E72\u5854\u5409\u514B\u81EA\u6CBB\u53BF" }] }, { code: "653200", name: "\u548C\u7530\u5730\u533A", counties: [{ code: "653201", name: "\u548C\u7530\u5E02" }, { code: "653221", name: "\u548C\u7530\u53BF" }, { code: "653222", name: "\u58A8\u7389\u53BF" }, { code: "653223", name: "\u76AE\u5C71\u53BF" }, { code: "653224", name: "\u6D1B\u6D66\u53BF" }, { code: "653225", name: "\u7B56\u52D2\u53BF" }, { code: "653226", name: "\u4E8E\u7530\u53BF" }, { code: "653227", name: "\u6C11\u4E30\u53BF" }] }, { code: "654000", name: "\u4F0A\u7281\u54C8\u8428\u514B\u81EA\u6CBB\u5DDE", counties: [{ code: "654002", name: "\u4F0A\u5B81\u5E02" }, { code: "654003", name: "\u594E\u5C6F\u5E02" }, { code: "654004", name: "\u970D\u5C14\u679C\u65AF\u5E02" }, { code: "654021", name: "\u4F0A\u5B81\u53BF" }, { code: "654022", name: "\u5BDF\u5E03\u67E5\u5C14\u9521\u4F2F\u81EA\u6CBB\u53BF" }, { code: "654023", name: "\u970D\u57CE\u53BF" }, { code: "654024", name: "\u5DE9\u7559\u53BF" }, { code: "654025", name: "\u65B0\u6E90\u53BF" }, { code: "654026", name: "\u662D\u82CF\u53BF" }, { code: "654027", name: "\u7279\u514B\u65AF\u53BF" }, { code: "654028", name: "\u5C3C\u52D2\u514B\u53BF" }] }, { code: "654200", name: "\u5854\u57CE\u5730\u533A", counties: [{ code: "654201", name: "\u5854\u57CE\u5E02" }, { code: "654202", name: "\u4E4C\u82CF\u5E02" }, { code: "654203", name: "\u6C99\u6E7E\u5E02" }, { code: "654221", name: "\u989D\u654F\u53BF" }, { code: "654224", name: "\u6258\u91CC\u53BF" }, { code: "654225", name: "\u88D5\u6C11\u53BF" }, { code: "654226", name: "\u548C\u5E03\u514B\u8D5B\u5C14\u8499\u53E4\u81EA\u6CBB\u53BF" }] }, { code: "654300", name: "\u963F\u52D2\u6CF0\u5730\u533A", counties: [{ code: "654301", name: "\u963F\u52D2\u6CF0\u5E02" }, { code: "654321", name: "\u5E03\u5C14\u6D25\u53BF" }, { code: "654322", name: "\u5BCC\u8574\u53BF" }, { code: "654323", name: "\u798F\u6D77\u53BF" }, { code: "654324", name: "\u54C8\u5DF4\u6CB3\u53BF" }, { code: "654325", name: "\u9752\u6CB3\u53BF" }, { code: "654326", name: "\u5409\u6728\u4E43\u53BF" }] }, { code: "659000", name: "\u81EA\u6CBB\u533A\u76F4\u8F96\u53BF\u7EA7\u884C\u653F\u533A\u5212", counties: [{ code: "659001", name: "\u77F3\u6CB3\u5B50\u5E02" }, { code: "659002", name: "\u963F\u62C9\u5C14\u5E02" }, { code: "659003", name: "\u56FE\u6728\u8212\u514B\u5E02" }, { code: "659004", name: "\u4E94\u5BB6\u6E20\u5E02" }, { code: "659005", name: "\u5317\u5C6F\u5E02" }, { code: "659006", name: "\u94C1\u95E8\u5173\u5E02" }, { code: "659007", name: "\u53CC\u6CB3\u5E02" }, { code: "659008", name: "\u53EF\u514B\u8FBE\u62C9\u5E02" }, { code: "659009", name: "\u6606\u7389\u5E02" }, { code: "659010", name: "\u80E1\u6768\u6CB3\u5E02" }, { code: "659011", name: "\u65B0\u661F\u5E02" }, { code: "659012", name: "\u767D\u6768\u5E02" }] }] }, { code: "710000", name: "\u53F0\u6E7E\u7701", cities: [{ code: "710100", name: "\u53F0\u5317\u5E02", counties: [{ code: "710101", name: "\u677E\u5C71\u533A" }, { code: "710102", name: "\u4FE1\u4E49\u533A" }, { code: "710103", name: "\u5927\u5B89\u533A" }, { code: "710104", name: "\u4E2D\u6B63\u533A" }, { code: "710105", name: "\u5927\u540C\u533A" }, { code: "710106", name: "\u4E2D\u5C71\u533A" }, { code: "710107", name: "\u4E07\u534E\u533A" }, { code: "710108", name: "\u6587\u5C71\u533A" }, { code: "710109", name: "\u5357\u6E2F\u533A" }, { code: "710110", name: "\u5185\u6E56\u533A" }, { code: "710111", name: "\u58EB\u6797\u533A" }, { code: "710112", name: "\u5317\u6295\u533A" }] }, { code: "710200", name: "\u65B0\u5317\u5E02", counties: [{ code: "710201", name: "\u677F\u6865\u533A" }, { code: "710202", name: "\u65B0\u5E84\u533A" }, { code: "710203", name: "\u4E2D\u548C\u533A" }, { code: "710204", name: "\u4E09\u91CD\u533A" }, { code: "710205", name: "\u65B0\u5E97\u533A" }, { code: "710206", name: "\u571F\u57CE\u533A" }, { code: "710207", name: "\u6C38\u548C\u533A" }, { code: "710208", name: "\u82A6\u6D32\u533A" }, { code: "710209", name: "\u6C50\u6B62\u533A" }, { code: "710210", name: "\u6811\u6797\u533A" }, { code: "710211", name: "\u6DE1\u6C34\u533A" }, { code: "710212", name: "\u4E09\u5CE1\u533A" }, { code: "710213", name: "\u6797\u53E3\u533A" }, { code: "710214", name: "\u83BA\u6B4C\u533A" }, { code: "710215", name: "\u4E94\u80A1\u533A" }, { code: "710216", name: "\u6CF0\u5C71\u533A" }, { code: "710217", name: "\u745E\u82B3\u533A" }, { code: "710218", name: "\u516B\u91CC\u533A" }, { code: "710219", name: "\u6DF1\u5751\u533A" }, { code: "710220", name: "\u4E09\u829D\u533A" }, { code: "710221", name: "\u4E07\u91CC\u533A" }, { code: "710222", name: "\u91D1\u5C71\u533A" }, { code: "710223", name: "\u8D21\u5BEE\u533A" }, { code: "710224", name: "\u77F3\u95E8\u533A" }, { code: "710225", name: "\u53CC\u6EAA\u533A" }, { code: "710226", name: "\u77F3\u7887\u533A" }, { code: "710227", name: "\u576A\u6797\u533A" }, { code: "710228", name: "\u4E4C\u6765\u533A" }, { code: "710229", name: "\u5E73\u6EAA\u533A" }] }, { code: "710300", name: "\u6843\u56ED\u5E02", counties: [{ code: "710301", name: "\u6843\u56ED\u533A" }, { code: "710302", name: "\u4E2D\u575C\u533A" }, { code: "710303", name: "\u5E73\u9547\u533A" }, { code: "710304", name: "\u516B\u5FB7\u533A" }, { code: "710305", name: "\u6768\u6885\u533A" }, { code: "710306", name: "\u82A6\u7AF9\u533A" }, { code: "710307", name: "\u9F9F\u5C71\u533A" }, { code: "710308", name: "\u9F99\u6F6D\u533A" }, { code: "710309", name: "\u5927\u6EAA\u533A" }, { code: "710310", name: "\u5927\u56ED\u533A" }, { code: "710311", name: "\u89C2\u97F3\u533A" }, { code: "710312", name: "\u65B0\u5C4B\u533A" }, { code: "710313", name: "\u590D\u5174\u533A" }] }, { code: "710400", name: "\u53F0\u4E2D\u5E02", counties: [{ code: "710401", name: "\u5317\u5C6F\u533A" }, { code: "710402", name: "\u897F\u5C6F\u533A" }, { code: "710403", name: "\u5927\u91CC\u533A" }, { code: "710404", name: "\u592A\u5E73\u533A" }, { code: "710405", name: "\u5357\u5C6F\u533A" }, { code: "710406", name: "\u4E30\u539F\u533A" }, { code: "710407", name: "\u4E1C\u533A" }, { code: "710408", name: "\u5357\u533A" }, { code: "710409", name: "\u897F\u533A" }, { code: "710410", name: "\u5317\u533A" }, { code: "710411", name: "\u4E2D\u533A" }, { code: "710412", name: "\u6F6D\u5B50\u533A" }, { code: "710413", name: "\u5927\u96C5\u533A" }, { code: "710414", name: "\u6C99\u9E7F\u533A" }, { code: "710415", name: "\u6E05\u6C34\u533A" }, { code: "710416", name: "\u9F99\u4E95\u533A" }, { code: "710417", name: "\u5927\u7532\u533A" }, { code: "710418", name: "\u4E4C\u65E5\u533A" }, { code: "710419", name: "\u795E\u5188\u533A" }, { code: "710420", name: "\u96FE\u5CF0\u533A" }, { code: "710421", name: "\u68A7\u6816\u533A" }, { code: "710422", name: "\u5927\u809A\u533A" }, { code: "710423", name: "\u540E\u91CC\u533A" }, { code: "710424", name: "\u4E1C\u52BF\u533A" }, { code: "710425", name: "\u5916\u57D4\u533A" }, { code: "710426", name: "\u65B0\u793E\u533A" }, { code: "710427", name: "\u5927\u5B89\u533A" }, { code: "710428", name: "\u77F3\u5188\u533A" }, { code: "710429", name: "\u548C\u5E73\u533A" }] }, { code: "710500", name: "\u53F0\u5357\u5E02", counties: [{ code: "710501", name: "\u6C38\u5EB7\u533A" }, { code: "710502", name: "\u5B89\u5357\u533A" }, { code: "710503", name: "\u4E1C\u533A" }, { code: "710504", name: "\u5317\u533A" }, { code: "710505", name: "\u5357\u533A" }, { code: "710506", name: "\u4E2D\u897F\u533A" }, { code: "710507", name: "\u65B0\u8425\u533A" }, { code: "710508", name: "\u4EC1\u5FB7\u533A" }, { code: "710509", name: "\u5F52\u4EC1\u533A" }, { code: "710510", name: "\u5B89\u5E73\u533A" }, { code: "710511", name: "\u4F73\u91CC\u533A" }, { code: "710512", name: "\u5584\u5316\u533A" }, { code: "710513", name: "\u9EBB\u8C46\u533A" }, { code: "710514", name: "\u65B0\u5316\u533A" }, { code: "710515", name: "\u65B0\u5E02\u533A" }, { code: "710516", name: "\u5173\u5E99\u533A" }, { code: "710517", name: "\u5B89\u5B9A\u533A" }, { code: "710518", name: "\u767D\u6CB3\u533A" }, { code: "710519", name: "\u5B66\u7532\u533A" }, { code: "710520", name: "\u76D0\u6C34\u533A" }, { code: "710521", name: "\u897F\u6E2F\u533A" }, { code: "710522", name: "\u4E0B\u8425\u533A" }, { code: "710523", name: "\u540E\u58C1\u533A" }, { code: "710524", name: "\u4E03\u80A1\u533A" }, { code: "710525", name: "\u516D\u7532\u533A" }, { code: "710526", name: "\u5B98\u7530\u533A" }, { code: "710527", name: "\u67F3\u8425\u533A" }, { code: "710528", name: "\u4E1C\u5C71\u533A" }, { code: "710529", name: "\u5C06\u519B\u533A" }, { code: "710530", name: "\u7389\u4E95\u533A" }, { code: "710531", name: "\u5317\u95E8\u533A" }, { code: "710532", name: "\u5927\u5185\u533A" }, { code: "710533", name: "\u6960\u897F\u533A" }, { code: "710534", name: "\u5357\u5316\u533A" }, { code: "710535", name: "\u5C71\u4E0A\u533A" }, { code: "710536", name: "\u5DE6\u9547\u533A" }, { code: "710537", name: "\u9F99\u5D0E\u533A" }] }, { code: "710600", name: "\u9AD8\u96C4\u5E02", counties: [{ code: "710601", name: "\u51E4\u5C71\u533A" }, { code: "710602", name: "\u4E09\u6C11\u533A" }, { code: "710603", name: "\u5DE6\u8425\u533A" }, { code: "710604", name: "\u524D\u9547\u533A" }, { code: "710605", name: "\u6960\u6893\u533A" }, { code: "710606", name: "\u82D3\u96C5\u533A" }, { code: "710607", name: "\u5C0F\u6E2F\u533A" }, { code: "710608", name: "\u9F13\u5C71\u533A" }, { code: "710609", name: "\u5927\u5BEE\u533A" }, { code: "710610", name: "\u5188\u5C71\u533A" }, { code: "710611", name: "\u4EC1\u6B66\u533A" }, { code: "710612", name: "\u6797\u56ED\u533A" }, { code: "710613", name: "\u8DEF\u7AF9\u533A" }, { code: "710614", name: "\u65B0\u5174\u533A" }, { code: "710615", name: "\u9E1F\u677E\u533A" }, { code: "710616", name: "\u5927\u6811\u533A" }, { code: "710617", name: "\u7F8E\u6D53\u533A" }, { code: "710618", name: "\u6865\u5934\u533A" }, { code: "710619", name: "\u65D7\u5C71\u533A" }, { code: "710620", name: "\u6893\u5B98\u533A" }, { code: "710621", name: "\u5927\u793E\u533A" }, { code: "710622", name: "\u8304\u8423\u533A" }, { code: "710623", name: "\u71D5\u5DE2\u533A" }, { code: "710624", name: "\u6E56\u5185\u533A" }, { code: "710625", name: "\u963F\u83B2\u533A" }, { code: "710626", name: "\u65D7\u6D25\u533A" }, { code: "710627", name: "\u524D\u91D1\u533A" }, { code: "710628", name: "\u76D0\u57D5\u533A" }, { code: "710629", name: "\u5F25\u9640\u533A" }, { code: "710630", name: "\u5185\u95E8\u533A" }, { code: "710631", name: "\u6C38\u5B89\u533A" }, { code: "710632", name: "\u516D\u9F9F\u533A" }, { code: "710633", name: "\u6749\u6797\u533A" }, { code: "710634", name: "\u7530\u5BEE\u533A" }, { code: "710635", name: "\u7532\u4ED9\u533A" }, { code: "710636", name: "\u6843\u6E90\u533A" }, { code: "710637", name: "\u90A3\u739B\u590F\u533A" }, { code: "710638", name: "\u8302\u6797\u533A" }] }, { code: "710700", name: "\u57FA\u9686\u5E02", counties: [{ code: "710701", name: "\u5B89\u4E50\u533A" }, { code: "710702", name: "\u4E03\u5835\u533A" }, { code: "710703", name: "\u4FE1\u4E49\u533A" }, { code: "710704", name: "\u4E2D\u6B63\u533A" }, { code: "710705", name: "\u4E2D\u5C71\u533A" }, { code: "710706", name: "\u4EC1\u7231\u533A" }, { code: "710707", name: "\u6696\u6696\u533A" }] }, { code: "710800", name: "\u65B0\u7AF9\u5E02", counties: [{ code: "710801", name: "\u4E1C\u533A" }, { code: "710802", name: "\u5317\u533A" }, { code: "710803", name: "\u9999\u5C71\u533A" }] }, { code: "710900", name: "\u5609\u4E49\u5E02", counties: [{ code: "710901", name: "\u4E1C\u533A" }, { code: "710902", name: "\u897F\u533A" }] }, { code: "711000", name: "\u65B0\u7AF9\u53BF", counties: [{ code: "711001", name: "\u7AF9\u5317\u5E02" }, { code: "711002", name: "\u7AF9\u4E1C\u9547" }, { code: "711003", name: "\u65B0\u57D4\u9547" }, { code: "711004", name: "\u5173\u897F\u9547" }, { code: "711005", name: "\u6E56\u53E3\u4E61" }, { code: "711006", name: "\u65B0\u4E30\u4E61" }, { code: "711007", name: "\u828E\u6797\u4E61" }, { code: "711008", name: "\u5B9D\u5C71\u4E61" }, { code: "711009", name: "\u6A2A\u5C71\u4E61" }, { code: "711010", name: "\u5C16\u77F3\u4E61" }, { code: "711011", name: "\u5317\u57D4\u4E61" }, { code: "711012", name: "\u5CE8\u7709\u4E61" }, { code: "711013", name: "\u4E94\u5CF0\u4E61" }] }, { code: "711100", name: "\u82D7\u6817\u53BF", counties: [{ code: "711101", name: "\u5934\u4EFD\u5E02" }, { code: "711102", name: "\u82D7\u6817\u5E02" }, { code: "711103", name: "\u7AF9\u5357\u9547" }, { code: "711104", name: "\u82D1\u91CC\u9547" }, { code: "711105", name: "\u540E\u9F99\u9547" }, { code: "711106", name: "\u901A\u9704\u9547" }, { code: "711107", name: "\u5353\u5170\u9547" }, { code: "711108", name: "\u516C\u9986\u4E61" }, { code: "711109", name: "\u94DC\u9523\u4E61" }, { code: "711110", name: "\u4E09\u4E49\u4E61" }, { code: "711111", name: "\u5927\u6E56\u4E61" }, { code: "711112", name: "\u9020\u6865\u4E61" }, { code: "711113", name: "\u5934\u5C4B\u4E61" }, { code: "711114", name: "\u5357\u5E84\u4E61" }, { code: "711115", name: "\u897F\u6E56\u4E61" }, { code: "711116", name: "\u4E09\u6E7E\u4E61" }, { code: "711117", name: "\u6CF0\u5B89\u4E61" }, { code: "711118", name: "\u72EE\u6F6D\u4E61" }] }, { code: "711200", name: "\u5F70\u5316\u53BF", counties: [{ code: "711201", name: "\u5F70\u5316\u5E02" }, { code: "711202", name: "\u5458\u6797\u5E02" }, { code: "711203", name: "\u548C\u7F8E\u9547" }, { code: "711204", name: "\u9E7F\u6E2F\u9547" }, { code: "711205", name: "\u6EAA\u6E56\u9547" }, { code: "711206", name: "\u4E8C\u6797\u9547" }, { code: "711207", name: "\u7530\u4E2D\u9547" }, { code: "711208", name: "\u5317\u6597\u9547" }, { code: "711209", name: "\u798F\u5174\u4E61" }, { code: "711210", name: "\u82B1\u575B\u4E61" }, { code: "711211", name: "\u793E\u5934\u4E61" }, { code: "711212", name: "\u79C0\u6C34\u4E61" }, { code: "711213", name: "\u4F38\u6E2F\u4E61" }, { code: "711214", name: "\u5927\u6751\u4E61" }, { code: "711215", name: "\u6C38\u9756\u4E61" }, { code: "711216", name: "\u57D4\u5FC3\u4E61" }, { code: "711217", name: "\u82B3\u82D1\u4E61" }, { code: "711218", name: "\u57D4\u76D0\u4E61" }, { code: "711219", name: "\u57E4\u5934\u4E61" }, { code: "711220", name: "\u6EAA\u5DDE\u4E61" }, { code: "711221", name: "\u7530\u5C3E\u4E61" }, { code: "711222", name: "\u82AC\u56ED\u4E61" }, { code: "711223", name: "\u7EBF\u897F\u4E61" }, { code: "711224", name: "\u5927\u57CE\u4E61" }, { code: "711225", name: "\u4E8C\u6C34\u4E61" }, { code: "711226", name: "\u7AF9\u5858\u4E61" }] }, { code: "711300", name: "\u5357\u6295\u53BF", counties: [{ code: "711301", name: "\u5357\u6295\u5E02" }, { code: "711302", name: "\u8349\u5C6F\u9547" }, { code: "711303", name: "\u57D4\u91CC\u9547" }, { code: "711304", name: "\u7AF9\u5C71\u9547" }, { code: "711305", name: "\u96C6\u96C6\u9547" }, { code: "711306", name: "\u540D\u95F4\u4E61" }, { code: "711307", name: "\u56FD\u59D3\u4E61" }, { code: "711308", name: "\u9E7F\u8C37\u4E61" }, { code: "711309", name: "\u6C34\u91CC\u4E61" }, { code: "711310", name: "\u4FE1\u4E49\u4E61" }, { code: "711311", name: "\u4EC1\u7231\u4E61" }, { code: "711312", name: "\u9C7C\u6C60\u4E61" }, { code: "711313", name: "\u4E2D\u5BEE\u4E61" }] }, { code: "711400", name: "\u4E91\u6797\u53BF", counties: [{ code: "711401", name: "\u6597\u516D\u5E02" }, { code: "711402", name: "\u864E\u5C3E\u9547" }, { code: "711403", name: "\u897F\u87BA\u9547" }, { code: "711404", name: "\u6597\u5357\u9547" }, { code: "711405", name: "\u5317\u6E2F\u9547" }, { code: "711406", name: "\u571F\u5E93\u9547" }, { code: "711407", name: "\u9EA6\u5BEE\u4E61" }, { code: "711408", name: "\u53E4\u5751\u4E61" }, { code: "711409", name: "\u83BF\u6850\u4E61" }, { code: "711410", name: "\u53E3\u6E56\u4E61" }, { code: "711411", name: "\u4E8C\u4ED1\u4E61" }, { code: "711412", name: "\u5143\u957F\u4E61" }, { code: "711413", name: "\u6C34\u6797\u4E61" }, { code: "711414", name: "\u4ED1\u80CC\u4E61" }, { code: "711415", name: "\u53F0\u897F\u4E61" }, { code: "711416", name: "\u56DB\u6E56\u4E61" }, { code: "711417", name: "\u5927\u57E4\u4E61" }, { code: "711418", name: "\u6797\u5185\u4E61" }, { code: "711419", name: "\u4E1C\u52BF\u4E61" }, { code: "711420", name: "\u8912\u5FE0\u4E61" }] }, { code: "711500", name: "\u5609\u4E49\u53BF", counties: [{ code: "711501", name: "\u6734\u5B50\u5E02" }, { code: "711502", name: "\u592A\u4FDD\u5E02" }, { code: "711503", name: "\u5927\u6797\u9547" }, { code: "711504", name: "\u5E03\u888B\u9547" }, { code: "711505", name: "\u6C11\u96C4\u4E61" }, { code: "711506", name: "\u6C34\u4E0A\u4E61" }, { code: "711507", name: "\u4E2D\u57D4\u4E61" }, { code: "711508", name: "\u7AF9\u5D0E\u4E61" }, { code: "711509", name: "\u65B0\u6E2F\u4E61" }, { code: "711510", name: "\u4E1C\u77F3\u4E61" }, { code: "711511", name: "\u516D\u811A\u4E61" }, { code: "711512", name: "\u6885\u5C71\u4E61" }, { code: "711513", name: "\u4E49\u7AF9\u4E61" }, { code: "711514", name: "\u9E7F\u8349\u4E61" }, { code: "711515", name: "\u6EAA\u53E3\u4E61" }, { code: "711516", name: "\u756A\u8DEF\u4E61" }, { code: "711517", name: "\u963F\u91CC\u5C71\u4E61" }, { code: "711518", name: "\u5927\u57D4\u4E61" }] }, { code: "711600", name: "\u5C4F\u4E1C\u53BF", counties: [{ code: "711601", name: "\u5C4F\u4E1C\u5E02" }, { code: "711602", name: "\u6F6E\u5DDE\u9547" }, { code: "711603", name: "\u4E1C\u6E2F\u9547" }, { code: "711604", name: "\u6052\u6625\u9547" }, { code: "711605", name: "\u5185\u57D4\u4E61" }, { code: "711606", name: "\u4E07\u4E39\u4E61" }, { code: "711607", name: "\u65B0\u56ED\u4E61" }, { code: "711608", name: "\u957F\u6CBB\u4E61" }, { code: "711609", name: "\u91CC\u6E2F\u4E61" }, { code: "711610", name: "\u76D0\u57D4\u4E61" }, { code: "711611", name: "\u9AD8\u6811\u4E61" }, { code: "711612", name: "\u678B\u5BEE\u4E61" }, { code: "711613", name: "\u4E5D\u5982\u4E61" }, { code: "711614", name: "\u4E07\u5CE6\u4E61" }, { code: "711615", name: "\u4F73\u51AC\u4E61" }, { code: "711616", name: "\u6797\u8FB9\u4E61" }, { code: "711617", name: "\u7AF9\u7530\u4E61" }, { code: "711618", name: "\u5D01\u9876\u4E61" }, { code: "711619", name: "\u7409\u7403\u4E61" }, { code: "711620", name: "\u9E9F\u6D1B\u4E61" }, { code: "711621", name: "\u5357\u5DDE\u4E61" }, { code: "711622", name: "\u65B0\u57E4\u4E61" }, { code: "711623", name: "\u8F66\u57CE\u4E61" }, { code: "711624", name: "\u6EE1\u5DDE\u4E61" }, { code: "711625", name: "\u4E09\u5730\u95E8\u4E61" }, { code: "711626", name: "\u6765\u4E49\u4E61" }, { code: "711627", name: "\u739B\u5BB6\u4E61" }, { code: "711628", name: "\u678B\u5C71\u4E61" }, { code: "711629", name: "\u6CF0\u6B66\u4E61" }, { code: "711630", name: "\u7261\u4E39\u4E61" }, { code: "711631", name: "\u72EE\u5B50\u4E61" }, { code: "711632", name: "\u6625\u65E5\u4E61" }, { code: "711633", name: "\u96FE\u53F0\u4E61" }] }, { code: "711700", name: "\u5B9C\u5170\u53BF", counties: [{ code: "711701", name: "\u5B9C\u5170\u5E02" }, { code: "711702", name: "\u7F57\u4E1C\u9547" }, { code: "711703", name: "\u82CF\u6FB3\u9547" }, { code: "711704", name: "\u5934\u57CE\u9547" }, { code: "711705", name: "\u51AC\u5C71\u4E61" }, { code: "711706", name: "\u4E94\u7ED3\u4E61" }, { code: "711707", name: "\u7901\u6EAA\u4E61" }, { code: "711708", name: "\u5458\u5C71\u4E61" }, { code: "711709", name: "\u58EE\u56F4\u4E61" }, { code: "711710", name: "\u4E09\u661F\u4E61" }, { code: "711711", name: "\u5927\u540C\u4E61" }, { code: "711712", name: "\u5357\u6FB3\u4E61" }] }, { code: "711800", name: "\u82B1\u83B2\u53BF", counties: [{ code: "711801", name: "\u82B1\u83B2\u5E02" }, { code: "711802", name: "\u7389\u91CC\u9547" }, { code: "711803", name: "\u51E4\u6797\u9547" }, { code: "711804", name: "\u5409\u5B89\u4E61" }, { code: "711805", name: "\u65B0\u57CE\u4E61" }, { code: "711806", name: "\u5BFF\u4E30\u4E61" }, { code: "711807", name: "\u79C0\u6797\u4E61" }, { code: "711808", name: "\u5149\u590D\u4E61" }, { code: "711809", name: "\u745E\u7A57\u4E61" }, { code: "711810", name: "\u5BCC\u91CC\u4E61" }, { code: "711811", name: "\u4E07\u8363\u4E61" }, { code: "711812", name: "\u5353\u6EAA\u4E61" }, { code: "711813", name: "\u4E30\u6EE8\u4E61" }] }, { code: "711900", name: "\u53F0\u4E1C\u53BF", counties: [{ code: "711901", name: "\u53F0\u4E1C\u5E02" }, { code: "711902", name: "\u5351\u5357\u4E61" }, { code: "711903", name: "\u6210\u529F\u9547" }, { code: "711904", name: "\u592A\u9EBB\u91CC\u4E61" }, { code: "711905", name: "\u5173\u5C71\u9547" }, { code: "711906", name: "\u4E1C\u6CB3\u4E61" }, { code: "711907", name: "\u6C60\u4E0A\u4E61" }, { code: "711908", name: "\u9E7F\u91CE\u4E61" }, { code: "711909", name: "\u957F\u6EE8\u4E61" }, { code: "711910", name: "\u5927\u6B66\u4E61" }, { code: "711911", name: "\u5170\u5C7F\u4E61" }, { code: "711912", name: "\u6D77\u7AEF\u4E61" }, { code: "711913", name: "\u7EFF\u5C9B\u4E61" }, { code: "711914", name: "\u91D1\u5CF0\u4E61" }, { code: "711915", name: "\u5EF6\u5E73\u4E61" }, { code: "711916", name: "\u8FBE\u4EC1\u4E61" }] }, { code: "712000", name: "\u6F8E\u6E56\u53BF", counties: [{ code: "712001", name: "\u9A6C\u516C\u5E02" }, { code: "712002", name: "\u6E56\u897F\u4E61" }, { code: "712003", name: "\u767D\u6C99\u4E61" }, { code: "712004", name: "\u897F\u5C7F\u4E61" }, { code: "712005", name: "\u671B\u5B89\u4E61" }, { code: "712006", name: "\u4E03\u7F8E\u4E61" }] }, { code: "712100", name: "\u91D1\u95E8\u53BF", counties: [{ code: "712101", name: "\u91D1\u57CE\u9547" }, { code: "712102", name: "\u91D1\u6E56\u9547" }, { code: "712103", name: "\u91D1\u6C99\u9547" }, { code: "712104", name: "\u91D1\u5B81\u4E61" }, { code: "712105", name: "\u70C8\u5C7F\u4E61" }, { code: "712106", name: "\u4E4C\u4E18\u4E61" }] }, { code: "712200", name: "\u8FDE\u6C5F\u53BF", counties: [{ code: "712201", name: "\u5357\u7AFF\u4E61" }, { code: "712202", name: "\u5317\u7AFF\u4E61" }, { code: "712203", name: "\u8392\u5149\u4E61" }, { code: "712204", name: "\u4E1C\u5F15\u4E61" }] }] }, { code: "810000", name: "\u9999\u6E2F\u7279\u522B\u884C\u653F\u533A", cities: [{ code: "810100", name: "\u9999\u6E2F\u5C9B", counties: [{ code: "810101", name: "\u4E2D\u897F\u533A" }, { code: "810102", name: "\u6E7E\u4ED4\u533A" }, { code: "810103", name: "\u4E1C\u533A" }, { code: "810104", name: "\u5357\u533A" }] }, { code: "810200", name: "\u4E5D\u9F99", counties: [{ code: "810201", name: "\u6CB9\u5C16\u65FA\u533A" }, { code: "810202", name: "\u6DF1\u6C34\u57D7\u533A" }, { code: "810203", name: "\u4E5D\u9F99\u57CE\u533A" }, { code: "810204", name: "\u9EC4\u5927\u4ED9\u533A" }, { code: "810205", name: "\u89C2\u5858\u533A" }] }, { code: "810300", name: "\u65B0\u754C", counties: [{ code: "810301", name: "\u8475\u9752\u533A" }, { code: "810302", name: "\u8343\u6E7E\u533A" }, { code: "810303", name: "\u5C6F\u95E8\u533A" }, { code: "810304", name: "\u5143\u6717\u533A" }, { code: "810305", name: "\u5317\u533A" }, { code: "810306", name: "\u5927\u57D4\u533A" }, { code: "810307", name: "\u6C99\u7530\u533A" }, { code: "810308", name: "\u897F\u8D21\u533A" }, { code: "810309", name: "\u79BB\u5C9B\u533A" }] }] }, { code: "820000", name: "\u6FB3\u95E8\u7279\u522B\u884C\u653F\u533A", cities: [{ code: "820100", name: "\u6FB3\u95E8\u534A\u5C9B", counties: [{ code: "820101", name: "\u5927\u5802\u533A" }, { code: "820102", name: "\u671B\u5FB7\u5802\u533A" }, { code: "820103", name: "\u98CE\u987A\u5802\u533A" }, { code: "820104", name: "\u82B1\u5730\u739B\u5802\u533A" }, { code: "820105", name: "\u5723\u5B89\u591A\u5C3C\u5802\u533A" }] }, { code: "820200", name: "\u6FB3\u95E8\u5916\u5C9B", counties: [{ code: "820201", name: "\u5609\u6A21\u5802\u533A\uFF08\u6C39\u4ED4\uFF09" }, { code: "820202", name: "\u5723\u65B9\u6D4E\u5404\u5802\u533A\uFF08\u8DEF\u73AF\uFF09" }] }] }, { code: "999999", name: "\u6D77\u5916", cities: [] }] };
+
+// cloudfunctions/compat-api/lib/geo.js
+var SHOW_FILTER_NAMES = ["\u5E02\u8F96\u533A", "\u53BF", "\u7701\u76F4\u8F96\u53BF\u7EA7\u884C\u653F\u533A\u5212", "\u81EA\u6CBB\u533A\u76F4\u8F96\u53BF\u7EA7\u884C\u653F\u533A\u5212"];
+var FILTER = new Set(SHOW_FILTER_NAMES);
+var CODE_RE = /^\d{6}$/;
+var provinces = Array.isArray(divisions_default?.provinces) ? divisions_default.provinces : [];
+if (!provinces.length)
+  throw new Error("[geo] \u884C\u653F\u533A\u5212\u6570\u636E\u4E3A\u7A7A\uFF1Alib/geo/divisions.json \u8BF7\u8DD1 scripts/gen-geo-divisions.mjs \u91CD\u65B0\u751F\u6210");
+var prov = /* @__PURE__ */ new Map();
+var city = /* @__PURE__ */ new Map();
+var county = /* @__PURE__ */ new Map();
+var owner = /* @__PURE__ */ new Map();
+for (const p of provinces) {
+  prov.set(p.code, p);
+  prov.set(p.code.slice(0, 2), p);
+  for (const c of p.cities || []) {
+    city.set(c.code, c);
+    owner.set(c.code, { p, c });
+    for (const a of c.counties || []) {
+      county.set(a.code, a);
+      owner.set(a.code, { p, c, a });
+    }
+  }
+  owner.set(p.code, { p });
+}
+var META = divisions_default?._meta || {};
+function resolveOrigin(code) {
+  const c = norm(code);
+  const empty = { level1: null, level2: null, level3: null, display: "" };
+  if (!c)
+    return empty;
+  const hit = owner.get(c);
+  if (!hit)
+    return empty;
+  const level1 = hit.p ? { code: hit.p.code, name: hit.p.name } : null;
+  const level2 = hit.c ? { code: hit.c.code, name: hit.c.name } : null;
+  const level3 = hit.a ? { code: hit.a.code, name: hit.a.name } : null;
+  const display = [level1, level2, level3].filter(Boolean).filter((l) => !FILTER.has(l.name)).map((l) => l.name).join("");
+  return { level1, level2, level3, display };
+}
+function isKnownOriginCode(code) {
+  const c = norm(code);
+  return !!c && CODE_RE.test(c) && owner.has(c);
+}
+function norm(code) {
+  if (code === null || code === void 0)
+    return "";
+  return String(code).trim();
+}
+
+// cloudfunctions/compat-api/lib/person-places.js
+var MAX_RESIDENCE_PLACES = 9;
+var RESIDENCE_LIMIT_MESSAGE = "\u5C45\u4F4F\u5730\u6700\u591A 9 \u6761";
+var RESIDENCE_SHAPE_MESSAGE = "\u5C45\u4F4F\u5730\u683C\u5F0F\u65E0\u6548\uFF0C\u5E94\u4E3A\u6570\u7EC4";
+var BIRTH_PLACE_SHAPE_MESSAGE = "\u51FA\u751F\u5730\u683C\u5F0F\u65E0\u6548\uFF0C\u5E94\u4E3A\u5BF9\u8C61";
+var PERSON_PLACE_FIELDS = ["birth_place", "residence_places"];
+var text = (v) => v === null || v === void 0 ? "" : String(v).trim();
+function normalizeBirthPlace(raw) {
+  if (typeof raw === "string")
+    return { origin_code: "", note: raw.trim() };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw))
+    return { origin_code: "", note: "" };
+  return { origin_code: text(raw.origin_code), note: text(raw.note) };
+}
+function normalizeResidencePlaces(raw) {
+  if (!Array.isArray(raw))
+    return [];
+  return raw.map((item) => normalizeBirthPlace(item));
+}
+function assertResidencePlacesLimit(raw) {
+  if (Array.isArray(raw) && raw.length > MAX_RESIDENCE_PLACES) {
+    const err = new Error(RESIDENCE_LIMIT_MESSAGE);
+    err.status = 400;
+    throw err;
+  }
+  return true;
+}
+var isBirthPlaceShape = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+function shapeError(message) {
+  const err = new Error(message);
+  err.status = 400;
+  return err;
+}
+function assertPlaceFieldShapes(body) {
+  const b = body || {};
+  if (b.residence_places !== void 0 && b.residence_places !== null && !Array.isArray(b.residence_places)) {
+    throw shapeError(RESIDENCE_SHAPE_MESSAGE);
+  }
+  if (b.birth_place !== void 0 && b.birth_place !== null && !isBirthPlaceShape(b.birth_place)) {
+    throw shapeError(BIRTH_PLACE_SHAPE_MESSAGE);
+  }
+  return true;
+}
+function hasPlaceContent(raw) {
+  const p = normalizeBirthPlace(raw);
+  return !!p.origin_code || !!p.note;
+}
+function sameBirthPlace(a, b) {
+  const x = normalizeBirthPlace(a);
+  const y = normalizeBirthPlace(b);
+  return x.origin_code === y.origin_code && x.note === y.note;
+}
+function sameResidencePlaces(a, b) {
+  const x = normalizeResidencePlaces(a);
+  const y = normalizeResidencePlaces(b);
+  if (x.length !== y.length)
+    return false;
+  return x.every((v, i) => v.origin_code === y[i].origin_code && v.note === y[i].note);
+}
+function placeViewOf(raw) {
+  const p = normalizeBirthPlace(raw);
+  return {
+    place: p.origin_code ? resolveOrigin(p.origin_code).display : "",
+    place_code: p.origin_code,
+    place_note: p.note
+  };
+}
+function residenceViewOf(raw) {
+  return normalizeResidencePlaces(raw).map((item) => placeViewOf(item));
+}
+function treeOriginPatchOf(raw) {
+  const p = normalizeBirthPlace(raw);
+  return {
+    origin_code: p.origin_code,
+    origin: p.origin_code ? resolveOrigin(p.origin_code).display : p.note || ""
+  };
+}
+function unknownOriginCodeMessage(code) {
+  return `\u51FA\u751F\u5730\u884C\u653F\u533A\u5212\u4EE3\u7801\u65E0\u6548\uFF1A${code}`;
+}
+function assertKnownOriginCodes(body) {
+  const b = body || {};
+  const bad = [];
+  if (b.birth_place !== void 0 && b.birth_place !== null) {
+    const code = normalizeBirthPlace(b.birth_place).origin_code;
+    if (code && !isKnownOriginCode(code))
+      bad.push(code);
+  }
+  if (b.residence_places !== void 0 && b.residence_places !== null) {
+    for (const item of normalizeResidencePlaces(b.residence_places)) {
+      if (item.origin_code && !isKnownOriginCode(item.origin_code))
+        bad.push(item.origin_code);
+    }
+  }
+  if (bad.length) {
+    const err = new Error(unknownOriginCodeMessage(bad[0]));
+    err.status = 400;
+    throw err;
+  }
+  return true;
+}
+function isPlaceFieldsOnly(body) {
+  const b = body || {};
+  const keys = Object.keys(b).filter((k) => b[k] !== void 0 && b[k] !== null);
+  return keys.length > 0 && keys.every((k) => PERSON_PLACE_FIELDS.includes(k));
+}
+
+// cloudfunctions/compat-api/lib/founder-attach.js
 var FOUNDER_LINK_TYPE = "founder";
 var CHAIN_LINK_TYPE = "chain";
 var FOUNDER_REQUEST_COLLECTION = "jiazu_founder_requests";
@@ -25599,7 +30505,7 @@ var KIND_LABEL = { master: "\u4E2D\u534E\u4E16\u672C", clan: "\u7956\u8C31", fam
 var MIRROR_LOCK_MESSAGE = "\u59CB\u7956\u8282\u70B9\u4FE1\u606F\u9700\u5728\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u4E2D\u4FEE\u6539";
 var CLAN_FOUNDER_LOCK_MESSAGE = "\u59CB\u7956\u8282\u70B9\u4FE1\u606F\u9700\u5728\u672C\u59D3\u7956\u8C31\u4E2D\u4FEE\u6539";
 var CHAIN_MIRROR_LOCK_MESSAGE = "\u8BE5\u8282\u70B9\u4E3A\u4E0A\u5C42\uFF08\u4E2D\u534E\u4E16\u672C\uFF09\u955C\u50CF\uFF0C\u9700\u5230\u603B\u8C31\u4FEE\u6539";
-var PLACEHOLDER_LOCK_MESSAGE = "\u7A7A\u767D\u5360\u4F4D\u59CB\u7956\u8282\u70B9\uFF1A\u8BF7\u5148\u300C\u8BA4\u7956\u300D\u6302\u8F7D\u5230\u4E2D\u534E\u4E16\u672C\u540E\u518D\u586B\u5199\u4FE1\u606F";
+var PLACEHOLDER_LOCK_MESSAGE = "\u8BE5\u8282\u70B9\u4E3A\u5B64\u513F\u955C\u50CF\uFF08\u771F\u8EAB\u4E0D\u53EF\u8FBE\uFF09\uFF1A\u8BF7\u5148\u89E3\u9664\u767B\u8BB0\u540E\u5728\u672C\u6811\u91CD\u5EFA\u59CB\u7956\u4FE1\u606F";
 function genRequestId() {
   return import_node_crypto2.default.randomBytes(12).toString("hex");
 }
@@ -25640,10 +30546,13 @@ function isFounderMirror(person, masterTreeId) {
     return false;
   return !masterTreeId || person.external_tree === masterTreeId;
 }
-function isUpperMirror(person, treeId) {
+function isMirrorMarked(person) {
+  return !!person && String(person.external_mirror || "") === "true";
+}
+function isReadonlyMirror(person, treeId) {
   if (!person)
     return false;
-  if (String(person.external_mirror || "") !== "true")
+  if (!isMirrorMarked(person))
     return false;
   if (!person.external_tree)
     return false;
@@ -25651,13 +30560,26 @@ function isUpperMirror(person, treeId) {
     return false;
   return person.external_link_type === FOUNDER_LINK_TYPE || person.external_link_type === CHAIN_LINK_TYPE;
 }
-async function upperMirrorLockMessage(person, treeId) {
-  if (!isUpperMirror(person, treeId))
+var isUpperMirror = isReadonlyMirror;
+function isOrphanMirror(person) {
+  return isMirrorMarked(person) && !person.external_tree;
+}
+function familyMirrorLockMessage(entry, treeId = "") {
+  const title = String(entry?.display_title || treeId || "\u8BE5\u5BB6\u65CF\u6811");
+  return `\u8BE5\u8282\u70B9\u4E3A ${title} \u59CB\u7956\u7684\u955C\u50CF\uFF0C\u9700\u5728 ${title} \u4E2D\u4FEE\u6539`;
+}
+async function mirrorLockMessageOf(person, treeId) {
+  if (!isReadonlyMirror(person, treeId))
     return "";
   if (person.external_link_type === CHAIN_LINK_TYPE)
     return CHAIN_MIRROR_LOCK_MESSAGE;
-  const upper = await metaEntryOf(person.external_tree);
-  return treeKindOf(upper) === TREE_KIND.CLAN ? CLAN_FOUNDER_LOCK_MESSAGE : MIRROR_LOCK_MESSAGE;
+  const target = await metaEntryOf(person.external_tree);
+  const kind = treeKindOf(target);
+  if (kind === TREE_KIND.FAMILY)
+    return familyMirrorLockMessage(target, person.external_tree);
+  if (kind === TREE_KIND.CLAN)
+    return CLAN_FOUNDER_LOCK_MESSAGE;
+  return MIRROR_LOCK_MESSAGE;
 }
 function assertOneAttachPerTree(person) {
   if (person?.external_link_type === FOUNDER_LINK_TYPE && person.external_tree) {
@@ -25688,6 +30610,51 @@ function isFounderNode(tree, person, entry) {
   const fh = resolveFounderHandle(tree, entry);
   return !!fh && !!person && person.handle === fh;
 }
+function nonMirrorRoots(tree) {
+  return Object.values(tree?.people || {}).filter(
+    (p) => p && p.handle && !p.parent_family && String(p.external_mirror) !== "true"
+  );
+}
+function resolveOriginFounder(tree, entry = null) {
+  const byMeta = resolveFounderHandle(tree, entry);
+  if (byMeta)
+    return { handle: byMeta, source: "meta" };
+  const roots = nonMirrorRoots(tree);
+  if (roots.length !== 1)
+    return null;
+  return { handle: roots[0].handle, source: "root" };
+}
+function founderUndecidedMessage(tree) {
+  const roots = nonMirrorRoots(tree);
+  if (!roots.length)
+    return "\u672C\u6811\u65E0\u6CD5\u8BA4\u5B9A\u59CB\u7956\uFF1A\u672A\u767B\u8BB0\u59CB\u7956\uFF0C\u4E14\u6811\u5185\u6CA1\u6709\u975E\u955C\u50CF\u6839\u8282\u70B9";
+  if (roots.length > 1)
+    return `\u672C\u6811\u65E0\u6CD5\u8BA4\u5B9A\u59CB\u7956\uFF1A\u672A\u767B\u8BB0\u59CB\u7956\uFF0C\u4E14\u975E\u955C\u50CF\u6839\u8282\u70B9\u6709 ${roots.length} \u4E2A`;
+  return "";
+}
+function founderThreeGenerations(tree, founderHandle) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  let level = founderHandle && tree?.people?.[founderHandle] ? [founderHandle] : [];
+  for (let generation = 1; generation <= 3 && level.length; generation++) {
+    const next = [];
+    for (const h of level) {
+      if (seen.has(h))
+        continue;
+      seen.add(h);
+      out.push({ handle: h, generation });
+      const p = tree.people[h];
+      for (const fh of p?.spouse_families || []) {
+        for (const ch of tree.families?.[fh]?.child_handles || []) {
+          if (tree.people?.[ch] && !seen.has(ch))
+            next.push(ch);
+        }
+      }
+    }
+    level = next;
+  }
+  return out;
+}
 function findAttachedFounderHandle(tree, entry, masterTreeId) {
   if (!tree?.people)
     return "";
@@ -25701,33 +30668,38 @@ function findAttachedFounderHandle(tree, entry, masterTreeId) {
   const pref = resolveFounderHandle(tree, entry);
   return hits.includes(pref) ? pref : hits.sort()[0];
 }
-function isPlaceholderFounder(tree, person, entry) {
-  if (!isFounderNode(tree, person, entry))
-    return false;
-  if (person.external_link_type)
-    return false;
-  return !String(person.name || "").trim();
-}
-function founderLockMessage(person, tree, masterTreeId, entry) {
+function founderLockMessage(person, tree, masterTreeId, entry = null) {
   if (!person || !tree)
     return "";
   if (masterTreeId && tree.tree_id === masterTreeId)
     return "";
-  if (isFounderMirror(person, masterTreeId))
+  const founderPointerToMaster = person.external_link_type === FOUNDER_LINK_TYPE && !!person.external_tree && person.external_tree === masterTreeId;
+  if ((isMirrorMarked(person) || founderPointerToMaster) && isFounderMirror(person, masterTreeId)) {
     return MIRROR_LOCK_MESSAGE;
-  if (isPlaceholderFounder(tree, person, entry))
+  }
+  if (isOrphanMirror(person))
     return PLACEHOLDER_LOCK_MESSAGE;
   return "";
 }
-async function assertFounderEditable(tree, handle, masterTreeId, entry = null) {
+async function personEditLockMessage(person, tree, masterTreeId, entry = null) {
+  if (!person || !tree)
+    return "";
+  if (masterTreeId && tree.tree_id === masterTreeId)
+    return "";
+  const mirrorLock = await mirrorLockMessageOf(person, tree.tree_id);
+  if (mirrorLock)
+    return mirrorLock;
+  return founderLockMessage(person, tree, masterTreeId, entry);
+}
+async function assertFounderEditable(tree, handle, masterTreeId, entry = null, body = null) {
   const person = tree?.people?.[handle];
   if (!person)
     return;
   if (tree.tree_id === masterTreeId)
     return;
   const metaEntry = entry || await metaEntryOf(tree.tree_id);
-  const msg = founderLockMessage(person, tree, masterTreeId, metaEntry);
-  if (msg) {
+  const msg = await personEditLockMessage(person, tree, masterTreeId, metaEntry);
+  if (msg && !isPlaceFieldsOnly(body)) {
     const e = new Error(msg);
     e.status = 403;
     throw e;
@@ -25749,10 +30721,39 @@ function chainGenOf(detail) {
   const n = parseInt(raw || "", 10);
   return Number.isFinite(n) ? n : null;
 }
+async function resolveChainGen({ treeId, handle, maxDepth = 8 } = {}) {
+  const none = { gen: null, source: "none", tree_id: String(treeId || ""), handle: String(handle || ""), hops: 0 };
+  if (!treeId || !handle)
+    return none;
+  const visited = /* @__PURE__ */ new Set();
+  let curTree = String(treeId);
+  let curHandle = String(handle);
+  for (let hop = 0; hop < maxDepth; hop++) {
+    const key = `${curTree}:${curHandle}`;
+    if (visited.has(key))
+      return none;
+    visited.add(key);
+    const detail = await getDetail(curTree, curHandle);
+    const gen = chainGenOf(detail);
+    if (gen !== null)
+      return { gen, source: "attribute", tree_id: curTree, handle: curHandle, hops: hop };
+    const tree = await getTree(curTree);
+    const person = tree?.people?.[curHandle];
+    if (!isReadonlyMirror(person, curTree) || !person.external_person_handle)
+      return none;
+    curTree = String(person.external_tree);
+    curHandle = String(person.external_person_handle);
+  }
+  return none;
+}
 function founderRelationNote(masterName, gen, layerLabel = KIND_LABEL.master) {
   const who = String(masterName || "").trim() || `${layerLabel}\u8282\u70B9`;
   const layer = String(layerLabel || KIND_LABEL.master);
   return gen === null || gen === void 0 ? `${who}\uFF08${layer}\uFF09` : `${who}\uFF08${layer} \xB7 \u7B2C ${gen} \u4E16\uFF09`;
+}
+function founderRegistrationNote(name, familyTreeTitle) {
+  const who = String(name || "").trim() || "\u5BB6\u65CF\u6811\u59CB\u7956";
+  return `${who}\uFF08${String(familyTreeTitle || "\u5BB6\u65CF\u6811").trim() || "\u5BB6\u65CF\u6811"} \xB7 \u59CB\u7956\uFF09`;
 }
 function planFounderMirror(founder, masterPerson, masterTreeId, gen, requestedBy = "", layerLabel = KIND_LABEL.master) {
   return {
@@ -25771,33 +30772,37 @@ function planFounderMirror(founder, masterPerson, masterTreeId, gen, requestedBy
     ...requestedBy ? { external_founder_created_by: requestedBy } : {}
   };
 }
-function planFounderPlaceholder(founder) {
+function planFounderRegistration(founder, { masterTreeId, masterPerson, gen = null, requestedBy = "", layerLabel = KIND_LABEL.clan }) {
   return {
     ...founder,
-    name: "",
-    surname: "",
-    given: "",
-    gender: "U",
-    birth_date: "",
-    death_date: "",
-    birth_place: "",
-    death_place: "",
+    external_tree: masterTreeId,
+    external_person_handle: masterPerson.handle,
+    external_link_type: FOUNDER_LINK_TYPE,
+    external_mirror: "",
+    external_relation_note: founderRelationNote(masterPerson.name, gen, layerLabel),
+    ...requestedBy ? { external_founder_created_by: requestedBy } : {}
+  };
+}
+function planFounderDetach(founder) {
+  return {
+    ...founder,
     external_tree: "",
     external_person_handle: "",
     external_link_type: "",
     external_mirror: "",
     external_relation_note: "",
-    external_founder_created_by: ""
+    external_founder_created_by: "",
+    external_prev_clan_founder_handle: ""
   };
 }
-function applyFounderAttach({ tree, founderHandle, masterPerson, masterTreeId, gen, requestedBy = "", layerLabel = KIND_LABEL.master }) {
+function applyFounderAttach({ tree, founderHandle, masterPerson, masterTreeId, gen, requestedBy = "", layerLabel = KIND_LABEL.clan }) {
   const founder = tree.people[founderHandle];
   if (!founder) {
     const e = new Error("\u59CB\u7956\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u8BE5\u5BB6\u65CF\u6811");
     e.status = 404;
     throw e;
   }
-  Object.assign(founder, planFounderMirror(founder, masterPerson, masterTreeId, gen, requestedBy, layerLabel));
+  Object.assign(founder, planFounderRegistration(founder, { masterTreeId, masterPerson, gen, requestedBy, layerLabel }));
   return { founder_handle: founderHandle, founder_name: founder.name };
 }
 function applyFounderDetach({ tree, founderHandle }) {
@@ -25807,8 +30812,62 @@ function applyFounderDetach({ tree, founderHandle }) {
     e.status = 404;
     throw e;
   }
-  Object.assign(founder, planFounderPlaceholder(founder));
+  Object.assign(founder, planFounderDetach(founder));
   return { founder_handle: founderHandle };
+}
+function isClanRegistration(person, clanTreeId = "") {
+  return isReadonlyMirror(person, clanTreeId);
+}
+function clanRegistrationOf(clanTree, familyTreeId, clanTreeId = "") {
+  const cid = clanTreeId || clanTree?.tree_id || "";
+  const hits = clanRegistrations(clanTree, cid).filter((p) => String(p.external_tree || "") === String(familyTreeId || ""));
+  return hits.length ? hits.sort((a, b) => String(a.gramps_id || "").localeCompare(String(b.gramps_id || "")))[0] : null;
+}
+function clanRegistrations(clanTree, clanTreeId = "") {
+  const cid = clanTreeId || clanTree?.tree_id || "";
+  return Object.values(clanTree?.people || {}).filter(
+    (p) => isClanRegistration(p, cid) && String(p.external_tree || "") && String(p.external_tree) !== cid
+  );
+}
+function assertOneRegistrationPerFamilyTree(clanTree, familyTreeId, clanTreeId = "") {
+  if (!familyTreeId)
+    return;
+  if (clanRegistrationOf(clanTree, familyTreeId, clanTreeId)) {
+    throw badRequest("\u8BE5\u5BB6\u65CF\u6811\u5728\u672C\u5B97\u8C31\u5185\u5DF2\u6709\u59CB\u7956\u767B\u8BB0\uFF0C\u8BF7\u5148\u89E3\u9664\u767B\u8BB0\uFF08\u6216\u89E3\u9664\u6302\u8F7D\uFF09\u540E\u518D\u64CD\u4F5C");
+  }
+}
+function planClanRegistrationMirror({
+  familyFounder,
+  familyTreeId,
+  familyTreeTitle = "",
+  handle,
+  grampsId,
+  prevClanFounderHandle = ""
+}) {
+  const display = planFounderMirror({ handle, gramps_id: grampsId }, familyFounder || {}, familyTreeId, null, "", familyTreeTitle);
+  return {
+    ...display,
+    external_relation_note: founderRegistrationNote(familyFounder?.name, familyTreeTitle),
+    ...prevClanFounderHandle ? { external_prev_clan_founder_handle: String(prevClanFounderHandle) } : {}
+  };
+}
+function applyClanRegistration({ clan, registration }) {
+  if (!clan?.people || !registration?.handle)
+    throw badRequest("\u5B97\u8C31\u767B\u8BB0\u955C\u50CF\u7F3A\u5C11\u5FC5\u8981\u5B57\u6BB5");
+  if (clan.people[registration.handle])
+    throw badRequest("\u5B97\u8C31\u767B\u8BB0\u955C\u50CF handle \u51B2\u7A81");
+  clan.people[registration.handle] = { ...registration, parent_family: "", spouse_families: [] };
+  return { registration_handle: registration.handle };
+}
+function applyClanRegistrationRemoval({ clan, registrationHandle }) {
+  const person = clan?.people?.[registrationHandle];
+  if (!person)
+    return { removed_handle: "" };
+  for (const fam of Object.values(clan.families || {})) {
+    fam.child_handles = (fam.child_handles || []).filter((h) => h !== registrationHandle);
+  }
+  delete clan.people[registrationHandle];
+  return { removed_handle: registrationHandle };
 }
 var FOUNDER_STATE_NONE = "none";
 function isFounderMissing(entry) {
@@ -25890,8 +30949,8 @@ function buildFounderRequest({ id, treeId, founder, masterTreeId, masterPerson, 
     ...targetKind ? { target_kind: targetKind } : {}
   };
 }
-function filterPendingRequests(list, { chief = false, myTree = "" } = {}) {
-  return (list || []).filter((r) => r.status === "pending").filter((r) => chief || r.tree_id === myTree).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+function filterPendingRequests(list2, { chief = false, myTree = "" } = {}) {
+  return (list2 || []).filter((r) => r.status === "pending").filter((r) => chief || r.tree_id === myTree).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
 }
 async function attachFounder({ treeId, founderHandle, masterTreeId, masterHandle, requestedBy = "", entry = null, targetEntry = null }) {
   if (!treeId || !founderHandle)
@@ -25913,6 +30972,9 @@ async function attachFounder({ treeId, founderHandle, masterTreeId, masterHandle
   }
   const tgt = targetEntry !== null && targetEntry !== void 0 ? targetEntry : await metaEntryOf(masterTreeId);
   assertAttachTarget({ sourceTreeId: treeId, sourceEntry: meta, targetTreeId: masterTreeId, targetEntry: tgt });
+  if (treeKindOf(tgt) === TREE_KIND.MASTER) {
+    throw badRequest("\u7956\u8C31\u8BA4\u7956\u4E16\u672C\u987B\u8D70 attachClanToMaster\uFF1B\u672C\u63A5\u53E3\u53EA\u53D7\u7406\u666E\u901A\u5BB6\u65CF\u6811 \u2192 \u7956\u8C31\u7684\u767B\u8BB0");
+  }
   assertOneAttachPerTree(founder);
   const masterTree = await getTree(masterTreeId);
   if (!masterTree)
@@ -25920,12 +30982,19 @@ async function attachFounder({ treeId, founderHandle, masterTreeId, masterHandle
   const masterPerson = masterTree.people[masterHandle];
   if (!masterPerson)
     throw notFound("\u6240\u9009\u4E0A\u5C42\u6811\u8282\u70B9\u4E0D\u5B58\u5728");
-  const detail = await getDetail(masterTreeId, masterHandle);
-  const gen = chainGenOf(detail);
+  const gen = (await resolveChainGen({ treeId: masterTreeId, handle: masterHandle })).gen;
   const layerLabel = kindLabel(treeKindOf(tgt));
-  const applied = await updateTrees(
-    [treeId],
-    (trees) => applyFounderAttach({
+  assertOneRegistrationPerFamilyTree(masterTree, treeId, masterTreeId);
+  const registration = planClanRegistrationMirror({
+    familyFounder: founder,
+    familyTreeId: treeId,
+    familyTreeTitle: String(meta?.display_title || treeId),
+    handle: import_node_crypto2.default.randomBytes(12).toString("hex"),
+    grampsId: await nextPersonId2(),
+    prevClanFounderHandle: String(tgt?.founder_handle || "")
+  });
+  const applied = await updateTrees([treeId, masterTreeId], (trees) => ({
+    founder: applyFounderAttach({
       tree: trees[treeId],
       founderHandle,
       masterPerson,
@@ -25933,21 +31002,15 @@ async function attachFounder({ treeId, founderHandle, masterTreeId, masterHandle
       gen,
       requestedBy,
       layerLabel
-    })
-  );
+    }),
+    registration: applyClanRegistration({ clan: trees[masterTreeId], registration })
+  }));
   let registered = null;
   if (founderMissing) {
     const node = (await getTree(treeId))?.people?.[founderHandle] || founder;
     registered = await registerFounderInMeta(treeId, node);
   }
-  try {
-    const d = await getDetail(treeId, founderHandle);
-    if (d) {
-      const cleared = { ...d, attributes: [], events: [], name: masterPerson.name, updated_at: (/* @__PURE__ */ new Date()).toISOString() };
-      await saveDetail(cleared);
-    }
-  } catch {
-  }
+  await registerClanFounderIfVacant(masterTreeId);
   return {
     ok: true,
     tree_id: treeId,
@@ -25961,7 +31024,11 @@ async function attachFounder({ treeId, founderHandle, masterTreeId, masterHandle
     relation_note: founderRelationNote(masterPerson.name, gen, layerLabel),
     // 无始祖态的认祖 = 指定始祖：true 表示本次已把该节点回写为 tree-meta 的始祖
     founder_registered: !!registered,
-    message: `\u5DF2\u8BA4\u7956\uFF1A${treeId} \u59CB\u7956\u6302\u8F7D\u81F3${layerLabel}\u300C${masterPerson.name}\u300D`
+    // R2：本树始祖仍是**真身**（身份字段与详情未被覆盖）；R4：宗谱侧写了 1 条只读登记镜像
+    founder_true_body: true,
+    clan_registration_handle: registration.handle,
+    clan_registration_gramps_id: registration.gramps_id,
+    message: `\u5DF2\u8BA4\u7956\uFF1A${treeId} \u59CB\u7956\u767B\u8BB0\u81F3${layerLabel}\u300C${masterPerson.name}\u300D\uFF08\u672C\u6811\u59CB\u7956\u4ECD\u53EF\u7F16\u8F91\uFF09`
   };
 }
 async function registerFounderInMeta(treeId, person) {
@@ -25971,10 +31038,31 @@ async function registerFounderInMeta(treeId, person) {
   if (!key)
     return null;
   const entry = planFounderRegister(trees[key], person);
-  await saveMeta({ ...m, trees: { ...trees, [key]: entry } });
-  return entry;
+  return mutateTreeMeta(treeId, () => entry);
 }
-async function detachFounder({ treeId, founderHandle, masterTreeId, entry = null }) {
+async function registerClanFounderIfVacant(clanTreeId) {
+  const m = await getMeta();
+  const key = Object.keys(m?.trees || {}).find((k) => m.trees[k]?.tree_id === clanTreeId) || "";
+  if (!key)
+    return false;
+  const entry = m.trees[key];
+  if (String(entry?.founder_handle || "").trim())
+    return false;
+  const clanTree = await getTree(clanTreeId);
+  const kindOfId = (id) => treeKindOf(Object.values(m?.trees || {}).find((t) => String(t?.tree_id || "") === String(id || "")));
+  const regs = clanRegistrations(clanTree, clanTreeId).filter((p) => kindOfId(p.external_tree) === TREE_KIND.FAMILY);
+  if (!regs.length)
+    return false;
+  const primary = regs.sort((a, b) => String(a.gramps_id || "").localeCompare(String(b.gramps_id || "")))[0];
+  await mutateTreeMeta(clanTreeId, (entry2) => ({
+    ...entry2,
+    founder_handle: primary.handle,
+    founder_gramps_id: primary.gramps_id || "",
+    founder_name: primary.name || ""
+  }));
+  return true;
+}
+async function detachFounder({ treeId, founderHandle, masterTreeId }) {
   if (!treeId || !founderHandle)
     throw badRequest("\u7F3A\u5C11 tree_id \u6216 founder_handle");
   const tree0 = await getTree(treeId);
@@ -25989,15 +31077,29 @@ async function detachFounder({ treeId, founderHandle, masterTreeId, entry = null
   if (!isFounderMirror(founder, upperTreeId))
     throw badRequest("\u8BE5\u59CB\u7956\u8282\u70B9\u5F53\u524D\u672A\u6302\u8F7D\u5230\u4E0A\u5C42\u6811");
   const masterHandle = founder.external_person_handle || "";
-  const applied = await updateTrees(
-    [treeId],
-    (trees) => applyFounderDetach({ tree: trees[treeId], founderHandle })
-  );
+  let upperTree = null;
   try {
-    const d = await getDetail(treeId, founderHandle);
-    if (d)
-      await saveDetail({ ...d, attributes: [], events: [], name: "", updated_at: (/* @__PURE__ */ new Date()).toISOString() });
+    upperTree = await getTree(upperTreeId);
   } catch {
+    upperTree = null;
+  }
+  const registration = upperTree ? clanRegistrationOf(upperTree, treeId, upperTreeId) : null;
+  const applied = await updateTrees([treeId, ...upperTree && registration ? [upperTreeId] : []], (trees) => ({
+    founder: applyFounderDetach({ tree: trees[treeId], founderHandle }),
+    registration: upperTree && registration ? applyClanRegistrationRemoval({ clan: trees[upperTreeId], registrationHandle: registration.handle }) : null
+  }));
+  if (registration?.handle) {
+    try {
+      await deleteDetail(upperTreeId, registration.handle);
+    } catch {
+    }
+  }
+  let clanFounderRestored = false;
+  if (registration?.handle) {
+    try {
+      clanFounderRestored = await restoreClanFounderAfterRemoval(upperTreeId, registration);
+    } catch {
+    }
   }
   return {
     ok: true,
@@ -26005,9 +31107,38 @@ async function detachFounder({ treeId, founderHandle, masterTreeId, entry = null
     founder_handle: applied.founder_handle,
     master_tree_id: founder.external_tree || upperTreeId,
     master_handle: masterHandle,
-    placeholder: true,
-    message: `\u5DF2\u89E3\u9664 \u59CB\u7956\u6302\u8F7D\uFF1A${treeId} \u59CB\u7956\u56DE\u5230\u7A7A\u767D\u5360\u4F4D\u6001\uFF08\u53EF\u91CD\u65B0\u8BA4\u7956\uFF09`
+    // R2：不再回到「空白占位」——真身数据保留，本树始祖仍可编辑
+    placeholder: false,
+    founder_data_kept: true,
+    clan_registration_removed: !!registration,
+    clan_founder_restored: clanFounderRestored,
+    message: `\u5DF2\u89E3\u9664\u59CB\u7956\u767B\u8BB0\uFF1A${treeId} \u59CB\u7956\u771F\u8EAB\u6570\u636E\u4FDD\u7559\uFF08\u6307\u9488\u5DF2\u6E05\uFF0C\u53EF\u7EE7\u7EED\u7F16\u8F91\u6216\u91CD\u65B0\u8BA4\u7956\uFF09`
   };
+}
+async function restoreClanFounderAfterRemoval(clanTreeId, registration) {
+  const m = await getMeta();
+  const key = Object.keys(m?.trees || {}).find((k) => m.trees[k]?.tree_id === clanTreeId) || "";
+  if (!key)
+    return false;
+  const entry = m.trees[key];
+  if (String(entry?.founder_handle || "") !== String(registration.handle || ""))
+    return false;
+  const clanTree = await getTree(clanTreeId);
+  const prev = String(registration.external_prev_clan_founder_handle || "");
+  await mutateTreeMeta(clanTreeId, (entry2) => {
+    const next = { ...entry2 };
+    if (prev && clanTree?.people?.[prev]) {
+      next.founder_handle = prev;
+      next.founder_gramps_id = String(clanTree.people[prev].gramps_id || "");
+      next.founder_name = String(clanTree.people[prev].name || "");
+    } else {
+      delete next.founder_handle;
+      delete next.founder_gramps_id;
+      delete next.founder_name;
+    }
+    return next;
+  });
+  return true;
 }
 async function resetFounder({ treeId, meta = null } = {}) {
   if (!treeId)
@@ -26024,8 +31155,8 @@ async function resetFounder({ treeId, meta = null } = {}) {
     tree = null;
   }
   const previous = assertFounderResettable({ entry: trees[key], tree });
-  const nextMeta = { ...m, trees: { ...trees, [key]: planFounderReset(trees[key]) } };
-  await saveMeta(nextMeta);
+  const resetEntry = planFounderReset(trees[key]);
+  await mutateTreeMeta(treeId, () => resetEntry);
   return {
     ok: true,
     tree_id: treeId,
@@ -26348,20 +31479,23 @@ async function updatePerson(treeId, handle, body, opts = {}) {
     const person = tree.people[handle];
     if (!person)
       throw new Error("person not found");
+    assertPlaceFieldShapes(body);
     if (opts.masterTreeId && treeId !== opts.masterTreeId) {
-      const mirrorLock = await upperMirrorLockMessage(person, treeId);
       const entry = opts.founderEntry !== void 0 ? opts.founderEntry : await metaEntryOf(treeId);
-      const lock = mirrorLock || founderLockMessage(person, tree, opts.masterTreeId, entry);
-      if (lock) {
+      const lock = await personEditLockMessage(person, tree, opts.masterTreeId, entry);
+      if (lock && !isPlaceFieldsOnly(body)) {
         const err = new Error(lock);
         err.status = 403;
         throw err;
       }
     }
-    const { surname, given, name } = nameParts(body.primary_name);
-    person.surname = surname;
-    person.given = given;
-    person.name = name;
+    assertResidencePlacesLimit(body.residence_places);
+    if (body.primary_name !== void 0 && body.primary_name !== null) {
+      const { surname, given, name } = nameParts(body.primary_name);
+      person.surname = surname;
+      person.given = given;
+      person.name = name || person.name;
+    }
     if (body.gender !== void 0 && [0, 1, 2].includes(body.gender)) {
       person.gender = genderFromNum(body.gender);
     }
@@ -26369,6 +31503,10 @@ async function updatePerson(treeId, handle, body, opts = {}) {
       lockedDeceased: !!opts.deceasedLocked || !!opts.masterTreeId && treeId === opts.masterTreeId,
       deceasedLockLabel: opts.deceasedLockLabel
     });
+    if (body.birth_place !== void 0 && body.birth_place !== null)
+      person.birth_place = normalizeBirthPlace(body.birth_place);
+    if (body.residence_places !== void 0 && body.residence_places !== null)
+      person.residence_places = normalizeResidencePlaces(body.residence_places);
     const ext = {};
     const others = [];
     for (const a of body.attribute_list || []) {
@@ -26384,7 +31522,8 @@ async function updatePerson(treeId, handle, body, opts = {}) {
       if (k in ext)
         person[k] = ext[k];
     const detail = await getDetail(treeId, handle) || { tree_id: treeId, handle, events: [], media: [], citations: [], notes: [], attributes: [] };
-    detail.attributes = others;
+    if (body.attribute_list !== void 0 && body.attribute_list !== null)
+      detail.attributes = others;
     detail.updated_at = (/* @__PURE__ */ new Date()).toISOString();
     pendingDetail = detail;
     return { ok: true, handle };
@@ -26426,7 +31565,8 @@ async function createPerson(treeId, body) {
       gender: genderFromNum(body.gender),
       birth_date: "",
       death_date: "",
-      birth_place: "",
+      birth_place: { origin_code: "", note: "" },
+      residence_places: [],
       death_place: "",
       parent_family: "",
       spouse_families: [],
@@ -26539,6 +31679,104 @@ function unlinkFamily(tree, fam) {
     }
   }
 }
+function sameChildHandleSet(current, submitted) {
+  const a = (current || []).map((h) => String(h ?? ""));
+  const b = (submitted || []).map((h) => String(h ?? ""));
+  if (a.length !== b.length)
+    return false;
+  if (new Set(b).size !== b.length)
+    return false;
+  const sortedA = [...a].sort();
+  const sortedB = [...b].sort();
+  return sortedA.every((h, i) => h === sortedB[i]);
+}
+var FAMILY_NOT_FOUND_TEXT = "\u5BB6\u65CF\u8BB0\u5F55\u4E0D\u5B58\u5728";
+var CHILD_SET_MISMATCH_TEXT = "\u5B50\u5973\u5217\u8868\u987B\u4E0E\u73B0\u6709\u5B50\u5973\u5B8C\u5168\u4E00\u81F4\uFF08\u7B49\u957F / \u540C\u5143\u7D20 / \u65E0\u91CD\u590D\uFF09";
+async function reorderChildren({
+  treeId,
+  familyHandle,
+  personHandle,
+  childHandles,
+  masterTreeId = "",
+  charge = null,
+  refund: refund2 = null
+} = {}) {
+  if (!treeId)
+    throw fail("\u7F3A\u5C11 tree_id");
+  if (!familyHandle)
+    throw fail("\u7F3A\u5C11 family_handle");
+  if (!personHandle)
+    throw fail("\u7F3A\u5C11 person_handle");
+  if (!Array.isArray(childHandles))
+    throw fail("\u7F3A\u5C11 child_handles\uFF08\u987B\u4E3A\u6570\u7EC4\uFF09");
+  const tree0 = await getTree(treeId);
+  if (!tree0)
+    throw fail(`\u6811\u4E0D\u5B58\u5728: ${treeId}`, 404);
+  const person = tree0.people?.[personHandle];
+  if (!person)
+    throw fail("\u8282\u70B9\u4E0D\u5B58\u5728", 404);
+  const fam0 = tree0.families?.[familyHandle];
+  if (!fam0)
+    throw fail(FAMILY_NOT_FOUND_TEXT, 404);
+  const current = (fam0.child_handles || []).map((h) => String(h ?? ""));
+  const next = childHandles.map((h) => String(h ?? ""));
+  if (!sameChildHandleSet(current, next))
+    throw fail(CHILD_SET_MISMATCH_TEXT, 400);
+  if (!current.includes(personHandle))
+    throw fail("person_handle \u4E0D\u5728\u8BE5\u5BB6\u65CF\u7684\u5B50\u5973\u5217\u8868\u4E2D", 400);
+  if (masterTreeId) {
+    const lockMsg = await personEditLockMessage(person, tree0, masterTreeId);
+    if (lockMsg)
+      throw fail(lockMsg, 403);
+  }
+  const personName = person.name || "";
+  const position = next.indexOf(personHandle) + 1;
+  const previousPosition = current.indexOf(personHandle) + 1;
+  const report = {
+    ok: true,
+    tree_id: treeId,
+    family_handle: familyHandle,
+    person_handle: personHandle,
+    person_name: personName,
+    position,
+    previous_position: previousPosition,
+    child_handles: next,
+    /* 位次发生变化的节点（**含被拖动的本人**）；不计费、仅供前端预览 */
+    shifted: next.filter((h, i) => current.indexOf(h) !== i)
+  };
+  if (current.length === next.length && current.every((h, i) => h === next[i])) {
+    return { ...report, noop: true, changed: false, fee: null };
+  }
+  let charged = null;
+  try {
+    await updateTree(treeId, async (tree) => {
+      const fam = tree.families?.[familyHandle];
+      if (!fam)
+        throw fail(FAMILY_NOT_FOUND_TEXT, 404);
+      if (charge) {
+        charged = await charge({
+          dry_run: false,
+          tree_id: treeId,
+          person_handle: personHandle,
+          person_name: personName,
+          position,
+          // 人类可读 desc（口径「调整排行：<姓名> 第 <位次> 位」）
+          desc: `\u8C03\u6574\u6392\u884C\uFF1A${personName} \u7B2C ${position} \u4F4D`
+        });
+      }
+      fam.child_handles = next;
+      const problems = checkTreeIntegrity(tree);
+      if (problems.length)
+        throw fail(`\u6392\u884C\u8C03\u6574\u540E\u7ED3\u6784\u6821\u9A8C\u5931\u8D25\uFF1A${problems.slice(0, 3).join("\uFF1B")}`, 500);
+    });
+  } catch (e) {
+    if (refund2)
+      await refund2(charged);
+    throw e;
+  }
+  const saved = await getTree(treeId);
+  return { ...report, noop: false, changed: true, version: saved?.version, updated_at: saved?.updated_at, fee: charged ? charged.fee : null };
+}
 function attrMap(detail) {
   const map2 = {};
   for (const a of detail?.attributes || [])
@@ -26595,7 +31833,8 @@ function newChainPerson({ handle, grampsId, surname, given, gender = "U" }) {
     gender: ["M", "F", "U"].includes(gender) ? gender : "U",
     birth_date: "",
     death_date: "",
-    birth_place: "",
+    birth_place: { origin_code: "", note: "" },
+    residence_places: [],
     death_place: "",
     parent_family: "",
     spouse_families: [],
@@ -26844,6 +32083,14 @@ async function clanSelfGenMap(treeId) {
     if (Number.isFinite(g))
       map2.set(d.handle, g);
   }
+  const tree = await getTree(treeId);
+  for (const [handle, person] of Object.entries(tree?.people || {})) {
+    if (map2.has(handle) || !isMirrorMarked(person))
+      continue;
+    const drilled = await resolveChainGen({ treeId, handle });
+    if (drilled.gen !== null)
+      map2.set(handle, drilled.gen);
+  }
   return map2;
 }
 async function appendChainBatch({ treeId, parentHandle, names, masterTreeId }) {
@@ -26851,7 +32098,7 @@ async function appendChainBatch({ treeId, parentHandle, names, masterTreeId }) {
   if (!isChainBatchTree(kind))
     throw new Error("\u6279\u91CF\u7EED\u7F16\u4EC5\u9002\u7528\u4E8E\u4E2D\u534E\u4E16\u672C\u4E0E\u7956\u8C31");
   const isClan = kind === TREE_KIND.CLAN;
-  const list = normalizeBatchNames(names);
+  const list2 = normalizeBatchNames(names);
   const tree0 = await getTree(treeId);
   if (!tree0)
     throw new Error(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
@@ -26870,7 +32117,7 @@ async function appendChainBatch({ treeId, parentHandle, names, masterTreeId }) {
       throw new Error("\u8BE5\u8282\u70B9\u4E0D\u5728\u4E2D\u534E\u4E16\u672C\u6E90\u6D41\u94FE\u4E0A\uFF08\u65E0\u4E16\u6570\uFF09\uFF0C\u65E0\u6CD5\u7EED\u7F16\u4E0B\u4E00\u4E16");
     startGen = nextChainGen(parentInfo.gen, { aggregate: parentInfo.aggregate });
   }
-  const handles = list.map(() => genHandle());
+  const handles = list2.map(() => genHandle());
   let mutatedTree = null;
   let snapshot = null;
   const writtenDetails = [];
@@ -26886,7 +32133,7 @@ async function appendChainBatch({ treeId, parentHandle, names, masterTreeId }) {
       };
       const out = [];
       let parentOfCurrent = parentHandle;
-      for (let k = 0; k < list.length; k++) {
+      for (let k = 0; k < list2.length; k++) {
         const gen = startGen + k;
         const h = handles[k];
         const sn = inheritedSurname(tree, parentOfCurrent);
@@ -26894,7 +32141,7 @@ async function appendChainBatch({ treeId, parentHandle, names, masterTreeId }) {
           handle: h,
           grampsId: await nextPersonId2(),
           surname: sn,
-          given: list[k],
+          given: list2[k],
           gender: "M"
           // 新建默认男（与既有单节点续编口径一致）
         });
@@ -26917,7 +32164,7 @@ async function appendChainBatch({ treeId, parentHandle, names, masterTreeId }) {
     restoreTreeInPlace(mutatedTree, snapshot);
     throw e;
   }
-  const count = list.length;
+  const count = list2.length;
   const endGen = startGen + count - 1;
   return {
     ok: true,
@@ -26991,6 +32238,7 @@ async function createTree({
   genealogyName = "",
   hallName = "",
   origin = "",
+  originCode = "",
   description = "",
   initiatorPhone = "",
   onBeforeWrite = null
@@ -27002,6 +32250,9 @@ async function createTree({
   if (!given)
     throw fail("\u8BF7\u586B\u5199\u59CB\u7956\u59D3\u540D");
   const gender = ["M", "F", "U"].includes(founderGender) ? founderGender : "M";
+  const code = String(originCode || "").trim();
+  if (code && !isKnownOriginCode(code))
+    throw fail(`\u53D1\u6E90\u5730\u884C\u653F\u533A\u5212\u4EE3\u7801\u65E0\u6548\uFF1A${code}`);
   const meta = await getMeta();
   const treeId = nextTreeId(meta, char);
   const handle = genHandle();
@@ -27026,7 +32277,9 @@ async function createTree({
         gender,
         birth_date: "",
         death_date: "",
-        birth_place: "",
+        // C11：建树发源地直填 tree-meta 的同时写入始祖节点出生地码（不变量：树上发源地 = 某节点出生地）
+        birth_place: { origin_code: code, note: "" },
+        residence_places: [],
         death_place: "",
         parent_family: "",
         spouse_families: [],
@@ -27050,7 +32303,7 @@ async function createTree({
     attributes: [],
     updated_at: now
   });
-  meta.trees[treeId] = {
+  const createdEntry = {
     tree_id: treeId,
     path_alias: `/${treeId}`,
     surname_char: char,
@@ -27059,21 +32312,22 @@ async function createTree({
     genealogy_name: String(genealogyName || "").trim() || `${char}\u6C0F\u5BB6\u8C31`,
     archive_url: "",
     hall_name: String(hallName || "").trim() || `${char}\u6C0F\u5B97\u7960`,
-    origin: String(origin || "").trim(),
+    origin: code ? resolveOrigin(code).display : String(origin || "").trim(),
+    origin_code: code,
     description: String(description || "").trim() || `\u65B0\u5EFA\u5BB6\u65CF\u6811\uFF0C\u59CB\u7956\uFF1A${founderFullName}`,
     enable_custom_domain: false,
     created_at: now,
     created_by: initiatorPhone || ""
   };
-  await saveMeta(meta);
+  await mutateTreeMeta(treeId, () => createdEntry);
   return {
     ok: true,
     tree_id: treeId,
     founder_handle: handle,
     founder_gramps_id: founderGrampsId,
     surname_char: char,
-    display_title: meta.trees[treeId].display_title,
-    message: `\u5DF2\u521B\u5EFA\u300C${meta.trees[treeId].display_title}\u300D\uFF08${treeId}\uFF09`
+    display_title: createdEntry.display_title,
+    message: `\u5DF2\u521B\u5EFA\u300C${createdEntry.display_title}\u300D\uFF08${treeId}\uFF09`
   };
 }
 async function splitTree({ treeId, ancestorHandle, ancestorName = "", initiatorPhone }) {
@@ -27083,6 +32337,7 @@ async function splitTree({ treeId, ancestorHandle, ancestorName = "", initiatorP
     throw fail(`\u672A\u627E\u5230 tree: ${treeId}`);
   let newTreeId = null;
   let movedPeople = 0;
+  let newTreeSurname = "";
   await updateTree(treeId, async (tree) => {
     const ancestor = tree.people[ancestorHandle];
     if (!ancestor)
@@ -27128,7 +32383,7 @@ async function splitTree({ treeId, ancestorHandle, ancestorName = "", initiatorP
       delete tree.families[fh];
     movedPeople = people.size;
     await saveTree(newTree);
-    meta.trees[newTreeId] = {
+    const newEntry = {
       tree_id: newTreeId,
       path_alias: `/${newTreeId}`,
       surname_char: surnameChar,
@@ -27138,25 +32393,28 @@ async function splitTree({ treeId, ancestorHandle, ancestorName = "", initiatorP
       archive_url: "",
       hall_name: "",
       origin: "",
+      origin_code: "",
+      // 拆树 = 新树无发源地（与 origin 同置空）
       description: `\u7531 ${treeId} \u62C6\u5206\u800C\u6765\uFF0C\u59CB\u7956\uFF1A${ancestor.name || ancestorName}`,
       enable_custom_domain: false,
       created_at: (/* @__PURE__ */ new Date()).toISOString()
     };
-    await saveMeta(meta);
+    await mutateTreeMeta(newTreeId, () => newEntry);
+    newTreeSurname = newEntry.surname_char;
     return { ok: true, newTreeId, movedPeople };
   });
   return {
     ok: true,
     newTreeId,
-    surname: meta.trees[newTreeId].surname_char,
+    surname: newTreeSurname,
     movedPeople,
     message: `\u5DF2\u62C6\u5206 ${movedPeople} \u4EBA\u5230\u65B0\u5BB6\u65CF\u6811 ${newTreeId}`
   };
 }
 function spouseSlots(selfGender, spouseGender) {
-  const norm2 = (g) => g === "F" ? "F" : g === "M" ? "M" : "U";
-  const self = norm2(selfGender);
-  const spouse = norm2(spouseGender);
+  const norm5 = (g) => g === "F" ? "F" : g === "M" ? "M" : "U";
+  const self = norm5(selfGender);
+  const spouse = norm5(spouseGender);
   let selfSlot;
   if (self === "F")
     selfSlot = "mother";
@@ -27222,7 +32480,8 @@ async function addSpouseNode({
         gender: ["M", "F", "U"].includes(gender) ? gender : "U",
         birth_date: "",
         death_date: "",
-        birth_place: "",
+        birth_place: { origin_code: "", note: "" },
+        residence_places: [],
         death_place: "",
         parent_family: "",
         spouse_families: [],
@@ -28164,13 +33423,12 @@ async function refreshTreeMetaStats(treeIds) {
   if (!ids.length)
     return false;
   const m = await getMeta();
-  const trees = { ...m?.trees || {} };
-  let changed = false;
+  const changedIds = [];
   for (const id of ids) {
-    const key = Object.keys(trees).find((k) => trees[k]?.tree_id === id);
+    const key = Object.keys(m?.trees || {}).find((k) => m.trees[k]?.tree_id === id);
     if (!key)
       continue;
-    const entry = trees[key];
+    const entry = m.trees[key];
     if (!META_STAT_KEYS.some((k) => k in entry))
       continue;
     const tree = await getTree(id);
@@ -28185,12 +33443,10 @@ async function refreshTreeMetaStats(treeIds) {
       patch.node_count = Object.keys(tree.people || {}).length;
     if ("family_count" in entry)
       patch.family_count = Object.keys(tree.families || {}).length;
-    trees[key] = { ...entry, ...patch };
-    changed = true;
+    await mutateTreeMeta(id, (e) => ({ ...e, ...patch }));
+    changedIds.push(id);
   }
-  if (changed)
-    await saveMeta({ ...m, trees });
-  return changed;
+  return changedIds.length > 0;
 }
 
 // cloudfunctions/compat-api/lib/economy-fee.js
@@ -28203,6 +33459,9 @@ var FEE = {
   // 带 new_parent_tree_id：9 片 / 次（**绝不是 9 × 人数**）
   delete_node_per_person: 3,
   // 删除节点：3 片 / 节点（subtree = 3N；promote = 1 × 3）
+  // 调整同胞排行（POST /admin/sibling-reorder）：1 片 / 次，pin 本节点
+  // —— 一次「确定保存」= 一次计费，与被动移位的兄弟数量无关（排行真源 = family.child_handles[] 位次）
+  sibling_reorder: 1,
   tree_create_seeds: 9,
   // 建树：9颗石榴籽（非竹片）
   // 立支（POST /admin/establish-branch）：9999 颗完整石榴籽 / 次（docs/branch-clan-ops.spec.md §3-4 / §6-1-7）；
@@ -28220,6 +33479,8 @@ var TX_TYPE_OF_OP = {
   reparent_same_tree: "edit_fee",
   reparent_cross_tree: "move_fee",
   delete_node: "delete_fee",
+  // 调整同胞排行：**复用既有枚举 `edit_fee`**（人物内容修改一类，docs/economy.spec.md §4-6 的 19 项，不自造类型）
+  sibling_reorder: "edit_fee",
   tree_create: "tree_create",
   // 立支同样产出一棵新树、扣籽 → **复用既有枚举 `tree_create`**（docs/branch-clan-ops.spec.md §6-1-7 / §13-8）
   establish_branch: "tree_create",
@@ -28227,7 +33488,7 @@ var TX_TYPE_OF_OP = {
 };
 var ASSET_KEY = { bamboos: "bamboos", seeds: "seeds" };
 var LOT_KIND = { bamboos: "bamboo", seeds: "seed" };
-var norm = (n) => Math.max(0, Math.floor(Number(n) || 0));
+var norm2 = (n) => toNonNegInt(n);
 function feeOf(op, ctx = {}) {
   const c = ctx || {};
   switch (op) {
@@ -28235,8 +33496,10 @@ function feeOf(op, ctx = {}) {
       return { unit: "bamboos", pieces: FEE.person_update, tx_type: TX_TYPE_OF_OP.person_update };
     case "reparent":
       return c.cross_tree ? { unit: "bamboos", pieces: FEE.reparent_cross_tree, tx_type: TX_TYPE_OF_OP.reparent_cross_tree, cross_tree: true } : { unit: "bamboos", pieces: FEE.reparent_same_tree, tx_type: TX_TYPE_OF_OP.reparent_same_tree };
+    case "sibling_reorder":
+      return { unit: "bamboos", pieces: FEE.sibling_reorder, tx_type: TX_TYPE_OF_OP.sibling_reorder };
     case "delete_node": {
-      const people = c.mode === "promote" ? 1 : norm(c.people_count);
+      const people = c.mode === "promote" ? 1 : norm2(c.people_count);
       const wouldBe = FEE.delete_node_per_person * people;
       if (c.dry_run === true) {
         return { unit: "bamboos", pieces: wouldBe, tx_type: TX_TYPE_OF_OP.delete_node, free: true, reason: "dry_run" };
@@ -28266,10 +33529,14 @@ function hasPersonChanges(body) {
     return true;
   if (b.gender !== void 0 && b.gender !== null)
     return true;
-  for (const k of ["name", "surname", "given", "birth_date", "death_date", "birth_place", "death_place", "is_living"]) {
+  for (const k of ["name", "surname", "given", "birth_date", "death_date", "death_place", "is_living"]) {
     if (b[k] !== void 0 && b[k] !== null && b[k] !== "")
       return true;
   }
+  if (b.birth_place !== void 0 && b.birth_place !== null)
+    return true;
+  if (b.residence_places !== void 0 && b.residence_places !== null)
+    return true;
   if (Array.isArray(b.attribute_list) && b.attribute_list.length > 0)
     return true;
   return false;
@@ -28294,9 +33561,9 @@ function attrKeyOf(a) {
   return typeof a?.type === "string" ? a.type : a?.type?.string || (typeof a?.key === "string" ? a.key : "");
 }
 var STRUCTURAL_ATTR_KEYS = [...EXTERNAL_KEYS, ...CHAIN_ATTR_KEYS];
-function attrMapOf(list, skipStructural = false) {
+function attrMapOf(list2, skipStructural = false) {
   const map2 = /* @__PURE__ */ new Map();
-  for (const a of list || []) {
+  for (const a of list2 || []) {
     const key = attrKeyOf(a);
     if (!key)
       continue;
@@ -28337,8 +33604,8 @@ function personValueDiff(body = {}, person = {}, detail = null) {
   const hasName = !!b.primary_name || ["name", "surname", "given"].some((k) => b[k] !== void 0 && b[k] !== null);
   if (hasName) {
     const pn = b.primary_name || {};
-    const list = Array.isArray(pn.surname_list) ? pn.surname_list : [];
-    const surname = emptyText((list.find((s) => s && s.primary) || list[0] || {}).surname);
+    const list2 = Array.isArray(pn.surname_list) ? pn.surname_list : [];
+    const surname = emptyText((list2.find((s) => s && s.primary) || list2[0] || {}).surname);
     const given = emptyText(pn.first_name);
     const cand = {
       name: b.name !== void 0 && b.name !== null ? emptyText(b.name) : emptyText(`${surname}${given}` || "\u672A\u77E5"),
@@ -28355,8 +33622,11 @@ function personValueDiff(body = {}, person = {}, detail = null) {
   }
   if (b.birth_date !== void 0 && emptyText(b.birth_date) !== emptyText(p.birth_date))
     fields.push("birth_date");
-  if (b.birth_place !== void 0 && emptyText(b.birth_place) !== emptyText(p.birth_place))
+  if (b.birth_place !== void 0 && b.birth_place !== null && !sameBirthPlace(b.birth_place, p.birth_place))
     fields.push("birth_place");
+  if (b.residence_places !== void 0 && b.residence_places !== null && !sameResidencePlaces(b.residence_places, p.residence_places)) {
+    fields.push("residence_places");
+  }
   if (b.death_place !== void 0 && emptyText(b.death_place) !== emptyText(p.death_place))
     fields.push("death_place");
   const hasLiving = typeof b.is_living === "boolean";
@@ -28397,7 +33667,7 @@ function isPersonUnchanged(body, person, detail = null) {
   return !personValueDiff(body, person, detail).changed;
 }
 async function quoteOf(phone, unit, need) {
-  const n = norm(need);
+  const n = norm2(need);
   const user = await getAssets(phone);
   sweep(user, /* @__PURE__ */ new Date());
   const current = sumLots(user[ASSET_KEY[unit]]);
@@ -28430,6 +33700,8 @@ function defaultDesc(unit, n, ref) {
       return `\u8DE8\u6811\u8FC1\u79FB${who ? ` ${who}` : ""}\uFF08\u6263 ${unitCn}\uFF09`;
     case "delete_node":
       return `\u5220\u9664\u8282\u70B9${who ? ` ${who}` : ""}${ref.people_count > 1 ? ` \u7B49 ${ref.people_count} \u4EBA` : ""}\uFF08\u6263 ${unitCn}\uFF09`;
+    case "sibling_reorder":
+      return `\u8C03\u6574\u6392\u884C\uFF1A${who}${ref.position ? ` \u7B2C ${ref.position} \u4F4D` : ""}\uFF08\u6263 ${unitCn}\uFF09`;
     case "tree_create":
       return `\u65B0\u5EFA\u5BB6\u65CF\u6811${ref.tree_id ? ` ${ref.tree_id}` : ""}\uFF08\u6263 ${unitCn}\uFF09`;
     case "establish_branch":
@@ -28439,7 +33711,7 @@ function defaultDesc(unit, n, ref) {
   }
 }
 async function chargeUnit(unit, phone, count, ref = {}) {
-  const n = norm(count);
+  const n = norm2(count);
   const op = ref.op || (unit === "seeds" ? "tree_create" : "person_update");
   const txType = ref.tx_type || TX_TYPE_OF_OP[op] || "edit_fee";
   return withAssets(phone, (user) => {
@@ -28517,7 +33789,7 @@ async function refund(phone, taken, ref = {}) {
   const unit = ref.unit === "seeds" ? "seeds" : "bamboos";
   const items = (taken || []).map((t) => ({
     lot_id: String(t && (t.lot_id || t.id) || ""),
-    qty: norm(t && t.qty),
+    qty: norm2(t && t.qty),
     expires_at: t && t.expires_at !== void 0 ? t.expires_at : null,
     source: t && t.source || "",
     created_at: t && t.created_at || ""
@@ -28542,7 +33814,7 @@ async function refund(phone, taken, ref = {}) {
         if (it.created_at)
           lot.created_at = it.created_at;
       }
-      lot.qty = norm(lot.qty) + it.qty;
+      lot.qty = norm2(lot.qty) + it.qty;
       refunded += it.qty;
     }
     const tx = recordTx(
@@ -28596,1719 +33868,310 @@ function errorPayload(err, extra = {}) {
   return { error: e.message || "internal error", ...extra };
 }
 
-// cloudfunctions/compat-api/lib/economy-spirit.js
-init_store();
+// cloudfunctions/compat-api/index.js
+init_economy_spirit();
+init_economy_market();
+init_economy_ops();
+init_invite();
 
-// cloudfunctions/compat-api/lib/scope.js
+// cloudfunctions/compat-api/lib/invite-codes.js
+var import_node_crypto4 = require("node:crypto");
 init_store();
-async function setAnchor(phone, treeId, personHandle) {
-  await colSet("jiazu_anchors", phone, {
-    tree_id: treeId,
-    person_handle: personHandle,
-    updated_at: (/* @__PURE__ */ new Date()).toISOString()
-  });
+init_economy_ledger();
+init_invite();
+init_scope();
+var INVITE_CODES_COL = "jiazu_invite_codes";
+var INVITE_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+var INVITE_CODE_LEN = 6;
+var INVITE_CODE_TTL_DAYS = 30;
+var INVITE_CODE_MAX_ATTEMPTS = 5;
+var INVITE_KINDS = ["node", "plain"];
+var INVITE_CODE_RE = new RegExp(`^[${INVITE_CODE_ALPHABET}]{${INVITE_CODE_LEN}}$`);
+var INVITE_BIND_REWARD_INVITER_SCROLL_FRAGMENTS = 1;
+var INVITE_BIND_REWARD_INVITER_BAMBOO_PIECES = 10;
+var INVITE_BIND_REWARD_INVITEE_FRAGMENTS = 30;
+var INVITE_BIND_TX_REF = "invite_bind";
+var INVITE_BIND_TX_SOURCE = "invite_bind";
+var DECISIONS = ["accept", "replace", "skip"];
+var MSG_ALREADY_HANDLED = "\u60A8\u5DF2\u5904\u7406\u8FC7\u8BE5\u9080\u8BF7";
+function normalizeInviteCode(raw) {
+  return String(raw ?? "").trim().toUpperCase();
 }
-async function clearAnchor(phone) {
-  await colDelete("jiazu_anchors", phone);
+function randomInviteCode(rand = (n) => (0, import_node_crypto4.randomInt)(0, n)) {
+  let out = "";
+  for (let i = 0; i < INVITE_CODE_LEN; i += 1)
+    out += INVITE_CODE_ALPHABET[rand(INVITE_CODE_ALPHABET.length)];
+  return out;
 }
-async function getAnchor(phone) {
-  return colGet("jiazu_anchors", phone);
+function isoPlusDays3(now, days) {
+  return new Date(new Date(now).getTime() + days * 864e5).toISOString();
 }
-async function buildScope(families, phone, role) {
-  if (role === "tree_steward" || role === "chief_editor") {
-    return { person: null, family: null, unrestricted: true };
-  }
-  const anchor = await getAnchor(phone);
-  if (!anchor)
-    return { person: /* @__PURE__ */ new Set(), family: /* @__PURE__ */ new Set(), unrestricted: false };
-  const personScope = /* @__PURE__ */ new Set([anchor.person_handle]);
-  const familyScope = /* @__PURE__ */ new Set();
-  const parentOf = /* @__PURE__ */ new Map();
-  const childOf = /* @__PURE__ */ new Map();
-  for (const f of families) {
-    for (const p of [f.father_handle, f.mother_handle]) {
-      if (!p)
-        continue;
-      if (!parentOf.has(p))
-        parentOf.set(p, []);
-      parentOf.get(p).push(f.handle);
-    }
-    for (const ch of f.child_handles || []) {
-      if (!childOf.has(ch))
-        childOf.set(ch, []);
-      childOf.get(ch).push(f.handle);
-    }
-  }
-  const descend = (start, limit) => {
-    const queue = [start];
-    const depth = /* @__PURE__ */ new Map([[start, 0]]);
-    while (queue.length) {
-      const h = queue.shift();
-      const d = depth.get(h) || 0;
-      if (limit !== null && d >= limit)
-        continue;
-      for (const famHandle of parentOf.get(h) || []) {
-        familyScope.add(famHandle);
-        const fam = families.find((x) => x.handle === famHandle);
-        for (const ch of fam?.child_handles || []) {
-          if (!depth.has(ch)) {
-            depth.set(ch, d + 1);
-            personScope.add(ch);
-            queue.push(ch);
-          }
-        }
-        if (fam?.father_handle && fam?.mother_handle) {
-          const spouse = fam.father_handle === h ? fam.mother_handle : fam.father_handle;
-          if (!depth.has(spouse)) {
-            depth.set(spouse, d + 1);
-            personScope.add(spouse);
-          }
-        }
-      }
-    }
+function inviteCodeState(doc, now = /* @__PURE__ */ new Date()) {
+  if (!doc)
+    return "not_found";
+  if (doc.revoked_at)
+    return "revoked";
+  if (doc.expires_at && Date.parse(doc.expires_at) <= new Date(now).getTime())
+    return "expired";
+  const max = doc.max_uses;
+  if (max !== null && max !== void 0 && Number(doc.used_count || 0) >= Number(max))
+    return "used";
+  return "valid";
+}
+function inviteCodeUsable(doc, now = /* @__PURE__ */ new Date()) {
+  return inviteCodeState(doc, now) === "valid";
+}
+async function getInviteCode(raw) {
+  const code = normalizeInviteCode(raw);
+  if (!code)
+    return null;
+  return colGet(INVITE_CODES_COL, code);
+}
+async function issueInviteCode({ inviterPhone, kind, treeId = null, personHandle = null, now = /* @__PURE__ */ new Date() } = {}) {
+  const inviter = String(inviterPhone || "").trim();
+  if (!INVITE_KINDS.includes(kind))
+    throw Object.assign(new Error("\u53C2\u6570\u9519\u8BEF\uFF1Akind \u2208 node/plain"), { status: 400 });
+  if (!inviter)
+    throw Object.assign(new Error("\u53C2\u6570\u9519\u8BEF\uFF1A\u7B7E\u53D1\u4EBA\u7F3A\u5931"), { status: 400 });
+  const isNode = kind === "node";
+  const doc = {
+    kind,
+    inviter_phone: inviter,
+    tree_id: isNode ? String(treeId || "") : null,
+    person_handle: isNode ? String(personHandle || "") : null,
+    created_at: new Date(now).toISOString(),
+    expires_at: isoPlusDays3(now, INVITE_CODE_TTL_DAYS),
+    max_uses: isNode ? 1 : null,
+    used_count: 0,
+    used_by: [],
+    revoked_at: null
   };
-  if (role === "branch_curator") {
-    descend(anchor.person_handle, 3);
-    let cur = anchor.person_handle;
-    for (let i = 0; i < 3; i++) {
-      const fams = childOf.get(cur) || [];
-      if (!fams.length)
-        break;
-      const fam = families.find((x) => x.handle === fams[0]);
-      if (!fam)
-        break;
-      familyScope.add(fam.handle);
-      const parent = fam.father_handle || fam.mother_handle;
-      if (!parent)
-        break;
-      personScope.add(parent);
-      cur = parent;
-    }
-  } else {
-    descend(anchor.person_handle, null);
+  for (let i = 0; i < INVITE_CODE_MAX_ATTEMPTS; i += 1) {
+    const code = randomInviteCode();
+    if (await colGet(INVITE_CODES_COL, code))
+      continue;
+    await colSet(INVITE_CODES_COL, code, doc);
+    return { ...doc, _id: code, code };
   }
-  return { person: personScope, family: familyScope, unrestricted: false };
+  throw Object.assign(new Error("\u9080\u8BF7\u7801\u751F\u6210\u5931\u8D25\uFF08\u78B0\u649E\u91CD\u8BD5\u8D85\u9650\uFF09\uFF0C\u8BF7\u91CD\u8BD5"), { status: 500 });
 }
-async function canEditPerson(families, phone, role, personHandle) {
-  const scope = await buildScope(families, phone, role);
-  if (scope.unrestricted)
-    return true;
-  return scope.person.has(personHandle);
+async function inviterDisplayName(phone) {
+  const account = await colGet(USERS_COL3, String(phone || "").trim());
+  return String(account?.nickname || "").trim() || maskPhone3(phone);
 }
-
-// cloudfunctions/compat-api/lib/economy-spirit.js
-var SPIRIT_COL = "jiazu_spirit";
-var SPIRIT_ID = "global";
-var MASTER_TREE_ID = process.env.MASTER_TREE_ID || "zhonghua";
-var BUFFER_DAYS = 30;
-var PERMANENT_THRESHOLD_DAYS = 360;
-var JADE_SYNTH_SEEDS = 999;
-var BAMBOO_PER_BUNDLE = 100;
-var SPIRIT_LOG_LIMIT = 100;
-var SPIRIT_GIFT_ACTIVITY_ENV = "SPIRIT_GIFT_ACTIVITY";
-var DAY_MS2 = 864e5;
-var ERR_MISSING_TREE_ID = "\u7F3A\u5C11 tree_id";
-var ERR_MISSING_JADE_ID = "\u7F3A\u5C11 jade_id";
-var ERR_TREE_NOT_FOUND = "\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728";
-var ERR_MASTER_NO_SLOT = "\u4E2D\u534E\u4E16\u672C\u65E0\u65F6\u6D41\u5B50\u57DF\u51F9\u69FD";
-var ERR_JADE_NOT_FOUND = "\u672A\u627E\u5230\u8BE5\u77F3\u69B4\u7C7D\u7389";
-var ERR_JADE_MOUNTED = "\u8BE5\u77F3\u69B4\u7C7D\u7389\u5DF2\u9576\u5D4C\uFF0C\u4E0D\u53EF\u91CD\u590D\u4F7F\u7528";
-var ERR_SLOT_TAKEN = "\u8BE5\u5BB6\u65CF\u6811\u51F9\u69FD\u5DF2\u9576\u5D4C\u77F3\u69B4\u7C7D\u7389";
-var ERR_NO_JADE_ON_TREE = "\u8BE5\u5BB6\u65CF\u6811\u5C1A\u672A\u9576\u5D4C\u77F3\u69B4\u7C7D\u7389\uFF0C\u65E0\u6CD5\u704C\u6CE8\u7389\u9732\u7075\u6CFD";
-var ERR_JADE_MOUNTED_DECOMPOSE = "\u5DF2\u9576\u5D4C\u7684\u77F3\u69B4\u7C7D\u7389\u4E0D\u53EF\u5206\u89E3";
-var ERR_PLAN_INVALID = "\u4E0D\u652F\u6301\u7684\u84C4\u80FD\u6863\u4F4D";
-var NOTICE_LOGIN_REQUIRED = "\u8BF7\u5148\u767B\u5F55\u540E\u67E5\u770B\u7075\u6CFD\u84C4\u80FD\u6D41\u6C34";
-var NOTICE_MEMBER_ONLY = "\u7075\u6CFD\u84C4\u80FD\u6D41\u6C34\u4EC5\u5BB6\u65CF\u6210\u5458\u53EF\u67E5\u770B";
-var SPIRIT_PLANS = [
-  { plan: "daily", label: "\u5355\u65E5", seeds: 1, days: 1, gift_bundles: 0, activity_bundles: 0, discount: "100%", activity_min_discount: null },
-  { plan: "monthly", label: "\u6708\u5EA6", seeds: 29, days: 30, gift_bundles: 0, activity_bundles: 0, discount: "97%", activity_min_discount: null },
-  { plan: "quarterly", label: "\u5B63\u5EA6", seeds: 109, days: 90, gift_bundles: 0, activity_bundles: 1, discount: "91%", activity_min_discount: "83%" },
-  { plan: "half_year", label: "\u534A\u5E74\u5EA6", seeds: 149, days: 180, gift_bundles: 2, activity_bundles: 0, discount: "83%", activity_min_discount: "72%" },
-  { plan: "yearly", label: "\u5E74\u5EA6", seeds: 299, days: 365, gift_bundles: 8, activity_bundles: 0, discount: "82%", activity_min_discount: "60%" }
-];
-function planOf(plan) {
-  return SPIRIT_PLANS.find((p) => p.plan === plan) || null;
-}
-function giftEnabledPlans(env) {
-  const src = env === void 0 ? process.env : env || {};
-  const raw = src[SPIRIT_GIFT_ACTIVITY_ENV];
-  return String(raw === void 0 || raw === null ? "" : raw).split(",").map((s) => s.trim()).filter(Boolean);
-}
-function giftBundlesOf(plan, env) {
-  const P = planOf(plan);
-  if (!P)
-    return 0;
-  let bundles = P.gift_bundles;
-  if (P.activity_bundles > 0 && giftEnabledPlans(env).includes(plan))
-    bundles += P.activity_bundles;
-  return bundles;
-}
-function giftPiecesOf(plan, env) {
-  return giftBundlesOf(plan, env) * BAMBOO_PER_BUNDLE;
-}
-function plansPayload(env) {
-  const enabled = giftEnabledPlans(env);
-  return SPIRIT_PLANS.map((P) => {
-    const bundles = giftBundlesOf(P.plan, env);
-    return {
-      plan: P.plan,
-      label: P.label,
-      seeds: P.seeds,
-      days: P.days,
-      gift_bundles: bundles,
-      gift_pieces: bundles * BAMBOO_PER_BUNDLE,
-      discount: P.discount,
-      activity_min_discount: P.activity_min_discount,
-      activity: enabled.includes(P.plan)
-    };
-  });
-}
-function activityPayload(env) {
-  return { gift_enabled_plans: giftEnabledPlans(env) };
-}
-var toMs2 = (d) => d instanceof Date ? d.getTime() : new Date(d).getTime();
-var isoOf = (d) => new Date(toMs2(d)).toISOString();
-var isoPlusDays2 = (from, days) => new Date(toMs2(from) + days * DAY_MS2).toISOString();
-function httpError(status, message) {
-  const e = new Error(message);
-  e.status = status;
-  return e;
-}
-function seedsInsufficient(need, current, message) {
-  const e = assetInsufficient(need, current, "seed");
-  if (message)
-    e.message = message;
-  return e;
-}
-function spiritLogId() {
-  const rand = Math.random().toString(36).slice(2, 8).padEnd(6, "0").slice(0, 6);
-  return `spl_${Date.now()}_${rand}`;
-}
-function blankSpiritDoc() {
-  return { _id: SPIRIT_ID, trees: {} };
-}
-function jadeExpired(jade, now) {
-  if (!jade || jade.expires_at === null || jade.expires_at === void 0 || jade.expires_at === "")
-    return false;
-  const t = Date.parse(jade.expires_at);
-  return Number.isFinite(t) && t <= toMs2(now);
-}
-function settle(entry, now = /* @__PURE__ */ new Date()) {
-  if (!entry || !entry.jade)
-    return false;
-  const nowMs = toMs2(now);
-  const expMs = entry.spirit_expires_at ? Date.parse(entry.spirit_expires_at) : NaN;
-  let status;
-  let buffer_until;
-  if (!Number.isFinite(expMs)) {
-    status = "inactive";
-    buffer_until = null;
-  } else {
-    const bufMs = expMs + BUFFER_DAYS * DAY_MS2;
-    if (nowMs < expMs) {
-      status = "active";
-      buffer_until = null;
-    } else if (nowMs < bufMs) {
-      status = "buffer";
-      buffer_until = new Date(bufMs).toISOString();
-    } else {
-      status = "expired";
-      buffer_until = new Date(bufMs).toISOString();
-    }
-  }
-  const changed = entry.status !== status || (entry.buffer_until || null) !== buffer_until;
-  entry.status = status;
-  entry.buffer_until = buffer_until;
-  return changed;
-}
-function stateTextOf(status, opts = {}) {
-  const daysLeft = Math.max(0, Math.floor(Number(opts.days_left) || 0));
-  const bufferDaysLeft = Math.max(0, Math.floor(Number(opts.buffer_days_left) || 0));
-  switch (status) {
-    case "inactive":
-      return { primary: "\u65F6\u6D41\u5B50\u57DF \xB7 \u672A\u6FC0\u6D3B", secondary: "\u704C\u6CE8\u7389\u9732\u7075\u6CFD\u5373\u53EF\u5F00\u542F" };
-    case "active":
-      return { primary: `\u7075\u6C14\u5145\u76C8 \xB7 \u5269\u4F59 ${daysLeft} \u5929`, secondary: `\u7075\u6C14\u5230\u671F\u65E5 ${opts.expires_date || ""}` };
-    case "buffer":
-      return { primary: `\u7075\u6C14\u5DF2\u5C3D \xB7 \u7F13\u51B2\u671F\u5269\u4F59 ${bufferDaysLeft} \u5929`, secondary: `\u7F13\u51B2\u671F\u81F3 ${opts.buffer_date || ""}\uFF0C\u7EED\u671F\u53EF\u6062\u590D` };
-    case "expired":
-      return { primary: "\u65F6\u6D41\u5B50\u57DF\u5DF2\u505C\u7528", secondary: "\u704C\u6CE8\u7389\u9732\u7075\u6CFD\u53EF\u91CD\u65B0\u6FC0\u6D3B\uFF08\u6570\u636E\u4FDD\u7559\uFF09" };
-    default:
-      return { primary: "\u672A\u5F00\u542F\u65F6\u6D41\u5B50\u57DF", secondary: "\u9576\u5D4C\u77F3\u69B4\u7C7D\u7389\uFF0C\u89E3\u9501\u672C\u5BB6\u65CF\u4E13\u5C5E\u7A7A\u95F4" };
-  }
-}
-function chargeBase(spiritExpiresAt, now = /* @__PURE__ */ new Date()) {
-  const nowMs = toMs2(now);
-  const expMs = spiritExpiresAt ? Date.parse(spiritExpiresAt) : NaN;
-  return Number.isFinite(expMs) && expMs > nowMs ? expMs : nowMs;
-}
-function chargeNextExpiry(spiritExpiresAt, days, now = /* @__PURE__ */ new Date()) {
-  const d = Math.max(0, Number(days) || 0);
-  return new Date(chargeBase(spiritExpiresAt, now) + d * DAY_MS2).toISOString();
-}
-async function isTreeMember(treeId, viewer) {
-  const v = viewer || {};
-  if (v.role === "chief_editor")
-    return true;
-  if (!v.phone)
-    return false;
-  const anchor = await getAnchor(v.phone);
-  return !!(anchor && anchor.tree_id === treeId);
-}
-async function viewerPolicy(treeId, viewer) {
-  const v = viewer || {};
-  const logged = !!v.phone;
-  const member = logged ? await isTreeMember(treeId, v) : false;
-  const logsVisible = member;
-  return {
-    logged,
-    member,
-    logs_visible: logsVisible,
-    can_charge: logged,
-    logs_notice: logsVisible ? "" : logged ? NOTICE_MEMBER_ONLY : NOTICE_LOGIN_REQUIRED
-  };
-}
-async function treeMetaOf(treeId) {
-  if (!treeId)
-    throw httpError(400, ERR_MISSING_TREE_ID);
+async function treeLabels(treeId) {
   const meta = await getMeta();
-  const t = meta?.trees?.[treeId];
-  if (!t)
-    throw httpError(404, ERR_TREE_NOT_FOUND);
-  return t;
-}
-function mountableKind(tree) {
-  const kind = tree?.kind || "";
-  return kind === "family" || kind === "clan";
-}
-var spiritLocks = /* @__PURE__ */ new Map();
-async function withSpirit(treeId, mutator, now = /* @__PURE__ */ new Date()) {
-  const lock = spiritLocks.get(treeId) || Promise.resolve();
-  const run = lock.then(async () => {
-    const base = await colGet(SPIRIT_COL, SPIRIT_ID);
-    const doc = base ? JSON.parse(JSON.stringify(base)) : blankSpiritDoc();
-    doc.trees = doc.trees || {};
-    const entry = doc.trees[treeId] || null;
-    const settled = settle(entry, now);
-    const ctx = { doc, now, treeId, dirty: settled };
-    const result = await mutator(entry, ctx);
-    if (ctx.dirty)
-      await colSet(SPIRIT_COL, SPIRIT_ID, doc);
-    return result;
-  });
-  spiritLocks.set(treeId, run.catch(() => {
-  }));
-  return run;
-}
-async function readSpiritEntry(treeId, now = /* @__PURE__ */ new Date()) {
-  return withSpirit(treeId, (entry) => entry ? JSON.parse(JSON.stringify(entry)) : null, now);
-}
-async function settleAllTrees(now = /* @__PURE__ */ new Date()) {
-  const base = await colGet(SPIRIT_COL, SPIRIT_ID);
-  if (!base || !base.trees)
-    return [];
-  const doc = JSON.parse(JSON.stringify(base));
-  const changed = [];
-  for (const [tid, entry] of Object.entries(doc.trees))
-    if (settle(entry, now))
-      changed.push(tid);
-  if (changed.length > 0)
-    await colSet(SPIRIT_COL, SPIRIT_ID, doc);
-  return changed;
-}
-async function synthesizeJade(phone, now = /* @__PURE__ */ new Date()) {
-  return withAssets(phone, async (user) => {
-    sweep(user, now);
-    let charge;
-    try {
-      charge = chargeLots(user.seeds, JADE_SYNTH_SEEDS, "seed");
-    } catch (err) {
-      throw seedsInsufficient(
-        JADE_SYNTH_SEEDS,
-        err.current,
-        `\u77F3\u69B4\u7C7D\u4E0D\u8DB3\uFF1A\u5408\u6210\u77F3\u69B4\u7C7D\u7389\u9700 ${JADE_SYNTH_SEEDS} \u9897\u5B8C\u6574\u77F3\u69B4\u7C7D\uFF0C\u5F53\u524D\u53EF\u7528 ${err.current} \u9897`
-      );
-    }
-    const seeds_used = charge.taken.map((t) => ({ lot_id: t.id, qty: t.qty, expires_at: t.expires_at ?? null }));
-    user.seeds = (user.seeds || []).filter((l) => Math.floor(Number(l.qty) || 0) > 0);
-    const earliestMs = seeds_used.reduce((min, t) => {
-      const ms = t.expires_at ? Date.parse(t.expires_at) : Number.POSITIVE_INFINITY;
-      return ms < min ? ms : min;
-    }, Number.POSITIVE_INFINITY);
-    const permanent = Number.isFinite(earliestMs) && toMs2(now) + PERMANENT_THRESHOLD_DAYS * DAY_MS2 <= earliestMs;
-    const jade = addLot(user, "jade", 1, {
-      expires_at: permanent ? null : new Date(earliestMs).toISOString(),
-      source: "synthesis",
-      now
-    });
-    recordTx(
-      user,
-      {
-        type: "jade_synth",
-        delta: { seeds: -JADE_SYNTH_SEEDS, jades: 1 },
-        ref: {},
-        desc: "\u5408\u6210\u77F3\u69B4\u7C7D\u7389"
-      },
-      now
-    );
-    return {
-      ok: true,
-      jade_id: jade.id,
-      seeds_deducted: JADE_SYNTH_SEEDS,
-      expires_at: jade.expires_at,
-      permanent,
-      seeds_used
-    };
-  });
-}
-async function decomposeJade(phone, jadeId, now = /* @__PURE__ */ new Date()) {
-  if (!jadeId)
-    throw httpError(400, ERR_MISSING_JADE_ID);
-  return withAssets(phone, async (user) => {
-    sweep(user, now);
-    const jade = (user.jades || []).find((j) => j.id === jadeId);
-    if (!jade || jadeExpired(jade, now))
-      throw httpError(404, ERR_JADE_NOT_FOUND);
-    if (jade.mounted_tree_id)
-      throw httpError(409, ERR_JADE_MOUNTED_DECOMPOSE);
-    user.jades = (user.jades || []).filter((j) => j.id !== jadeId);
-    const lot = addLot(user, "seed", JADE_SYNTH_SEEDS, { ttl_days: SEED_TTL_DAYS, source: "jade_decompose", now });
-    recordTx(
-      user,
-      {
-        type: "jade_decompose",
-        delta: { jades: -1, seeds: JADE_SYNTH_SEEDS },
-        ref: { jade_id: jadeId },
-        desc: "\u5206\u89E3\u77F3\u69B4\u7C7D\u7389"
-      },
-      now
-    );
-    return {
-      ok: true,
-      seeds_returned: JADE_SYNTH_SEEDS,
-      seed_expires_at: lot.expires_at,
-      seed_lot_id: lot.id,
-      jade_id: jadeId
-    };
-  });
-}
-async function mountJade(phone, treeId, jadeId, now = /* @__PURE__ */ new Date()) {
-  if (!treeId)
-    throw httpError(400, ERR_MISSING_TREE_ID);
-  if (!jadeId)
-    throw httpError(400, ERR_MISSING_JADE_ID);
-  const tree = await treeMetaOf(treeId);
-  if (!mountableKind(tree) || treeId === MASTER_TREE_ID)
-    throw httpError(400, ERR_MASTER_NO_SLOT);
-  const assets = await getAssets(phone);
-  const mine = (assets.jades || []).find((j) => j.id === jadeId);
-  if (!mine || jadeExpired(mine, now))
-    throw httpError(404, ERR_JADE_NOT_FOUND);
-  if (mine.mounted_tree_id)
-    throw httpError(409, ERR_JADE_MOUNTED);
-  const mountedAt = isoOf(now);
-  const slot = { jade_id: jadeId, mounted_at: mountedAt, expires_at: mine.expires_at ?? null };
-  const mounted = await withSpirit(
-    treeId,
-    (entry, ctx) => {
-      if (entry && entry.jade)
-        throw httpError(409, ERR_SLOT_TAKEN);
-      for (const e of Object.values(ctx.doc.trees || {})) {
-        if (e && e.jade && e.jade.jade_id === jadeId)
-          throw httpError(409, ERR_JADE_MOUNTED);
-      }
-      ctx.doc.trees[treeId] = {
-        jade: { jade_id: slot.jade_id, mounted_at: slot.mounted_at, expires_at: slot.expires_at },
-        spirit_expires_at: null,
-        buffer_until: null,
-        status: "inactive",
-        logs: []
-      };
-      ctx.dirty = true;
-      return { mounted_at: slot.mounted_at };
-    },
-    now
-  );
-  try {
-    await withAssets(phone, (user) => {
-      const j = (user.jades || []).find((x) => x.id === jadeId);
-      if (!j)
-        throw httpError(404, ERR_JADE_NOT_FOUND);
-      j.mounted_tree_id = treeId;
-      recordTx(
-        user,
-        {
-          type: "jade_mount",
-          delta: { jades: 0 },
-          ref: { tree_id: treeId, jade_id: jadeId },
-          desc: "\u9576\u5D4C\u77F3\u69B4\u7C7D\u7389\uFF0C\u89E3\u9501\u65F6\u6D41\u5B50\u57DF"
-        },
-        now
-      );
-    });
-  } catch (e) {
-    await withSpirit(
-      treeId,
-      (entry, ctx) => {
-        delete ctx.doc.trees[treeId];
-        ctx.dirty = true;
-      },
-      now
-    ).catch(() => {
-    });
-    throw e;
-  }
+  const entry = Object.values(meta?.trees || {}).find((t) => t && t.tree_id === treeId) || null;
   return {
-    ok: true,
-    tree_id: treeId,
-    jade_id: jadeId,
-    mounted_at: mounted.mounted_at,
-    jade_expires_at: slot.expires_at,
-    status: "inactive",
-    spirit_expires_at: null
+    tree_name: String(entry?.display_title || entry?.genealogy_name || "").trim() || treeId,
+    hall_name: String(entry?.hall_name || "").trim() || null
   };
 }
-async function chargeSpirit(phone, treeId, plan, now = /* @__PURE__ */ new Date(), opts = {}) {
-  if (!treeId)
-    throw httpError(400, ERR_MISSING_TREE_ID);
-  const P = planOf(plan);
-  if (!P)
-    throw httpError(400, ERR_PLAN_INVALID);
-  await treeMetaOf(treeId);
-  const giftPieces = giftPiecesOf(plan, opts.env);
-  const assetsSnapshot = await getAssets(phone);
-  let assetsWritten = false;
-  try {
-    return await withSpirit(
-      treeId,
-      async (entry, ctx) => {
-        if (!entry || !entry.jade)
-          throw httpError(409, ERR_NO_JADE_ON_TREE);
-        const before = entry.spirit_expires_at || null;
-        const details = await withAssets(phone, async (user) => {
-          sweep(user, now);
-          let charge;
-          try {
-            charge = chargeLots(user.seeds, P.seeds, "seed");
-          } catch (err) {
-            throw seedsInsufficient(P.seeds, err.current, `\u77F3\u69B4\u7C7D\u4E0D\u8DB3\uFF1A\u672C\u6B21\u9700 ${P.seeds} \u9897\uFF0C\u5F53\u524D\u53EF\u7528 ${err.current} \u9897`);
-          }
-          user.seeds = (user.seeds || []).filter((l) => Math.floor(Number(l.qty) || 0) > 0);
-          let gift_lot_id = null;
-          if (giftPieces > 0) {
-            gift_lot_id = addLot(user, "bamboo", giftPieces, { source: "spirit_gift", now }).id;
-          }
-          recordTx(
-            user,
-            {
-              type: "spirit_charge",
-              delta: giftPieces > 0 ? { seeds: -P.seeds, bamboos: giftPieces } : { seeds: -P.seeds },
-              ref: { tree_id: treeId, plan },
-              desc: `\u704C\u6CE8\u7389\u9732\u7075\u6CFD\uFF08${plan}\uFF09`
-            },
-            now
-          );
-          return {
-            seeds_used: charge.taken.map((t) => ({ lot_id: t.id, qty: t.qty, expires_at: t.expires_at ?? null })),
-            seeds_balance_after: sumLots(user.seeds),
-            gift_lot_id
-          };
-        });
-        assetsWritten = true;
-        const newExp = chargeNextExpiry(before, P.days, now);
-        entry.spirit_expires_at = newExp;
-        entry.buffer_until = null;
-        entry.status = "active";
-        entry.logs = entry.logs || [];
-        const log = {
-          id: spiritLogId(),
-          ts: isoOf(now),
-          phone,
-          plan,
-          seeds: P.seeds,
-          days: P.days,
-          gift_bamboos: giftPieces,
-          spirit_expires_at_after: newExp
-        };
-        entry.logs.push(log);
-        ctx.dirty = true;
-        return {
-          ok: true,
-          tree_id: treeId,
-          plan,
-          seeds_deducted: P.seeds,
-          days: P.days,
-          spirit_expires_at: newExp,
-          spirit_expires_at_before: before,
-          buffer_until_preview: isoPlusDays2(newExp, BUFFER_DAYS),
-          status: "active",
-          gift_bamboos: giftPieces,
-          gift_bundles: Math.floor(giftPieces / BAMBOO_PER_BUNDLE),
-          gift_lot_id: details.gift_lot_id,
-          seeds_used: details.seeds_used,
-          seeds_balance_after: details.seeds_balance_after,
-          log_id: log.id,
-          message: "\u704C\u6CE8\u6210\u529F"
-        };
-      },
-      now
-    );
-  } catch (e) {
-    if (assetsWritten) {
-      await withAssets(phone, (user) => Object.assign(user, JSON.parse(JSON.stringify(assetsSnapshot)))).catch(() => {
-      });
-    }
-    throw e;
-  }
-}
-async function spiritInfo(treeId, viewer = null, now = /* @__PURE__ */ new Date(), opts = {}) {
-  const tree = await treeMetaOf(treeId);
-  const entry = await readSpiritEntry(treeId, now);
-  const mounted = !!(entry && entry.jade);
-  const status = mounted ? entry.status : null;
-  const spiritExpiresAt = mounted ? entry.spirit_expires_at || null : null;
-  const bufferUntil = mounted ? entry.buffer_until || null : null;
-  const nowMs = toMs2(now);
-  const daysLeft = spiritExpiresAt ? Math.max(0, Math.ceil((Date.parse(spiritExpiresAt) - nowMs) / DAY_MS2)) : 0;
-  const bufferDaysLeft = bufferUntil ? Math.max(0, Math.ceil((Date.parse(bufferUntil) - nowMs) / DAY_MS2)) : 0;
-  const policy = await viewerPolicy(treeId, viewer);
-  const allLogs = mounted ? entry.logs || [] : [];
-  const logs = policy.logs_visible ? [...allLogs].sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts)).slice(0, SPIRIT_LOG_LIMIT) : [];
-  const state = stateTextOf(status, {
-    days_left: daysLeft,
-    buffer_days_left: bufferDaysLeft,
-    expires_date: spiritExpiresAt ? beijingDate(spiritExpiresAt) : "",
-    buffer_date: bufferUntil ? beijingDate(bufferUntil) : ""
-  });
-  return {
-    tree_id: treeId,
-    kind: tree.kind || null,
-    mounted,
-    status,
-    spirit_expires_at: spiritExpiresAt,
-    buffer_until: bufferUntil,
-    buffer_until_preview: spiritExpiresAt ? isoPlusDays2(spiritExpiresAt, BUFFER_DAYS) : null,
-    days_left: daysLeft,
-    buffer_days_left: bufferDaysLeft,
-    jade: mounted ? { ...entry.jade } : null,
-    logs,
-    logs_total: allLogs.length,
-    logs_visible: policy.logs_visible,
-    logs_notice: policy.logs_notice,
-    state_text: state,
-    can_charge: policy.can_charge,
-    activity: activityPayload(opts.env),
-    plans: plansPayload(opts.env)
+async function resolveInviteCodeInfo(raw, now = /* @__PURE__ */ new Date()) {
+  const code = normalizeInviteCode(raw);
+  const doc = code ? await getInviteCode(code) : null;
+  const state = inviteCodeState(doc, now);
+  const out = {
+    valid: state === "valid",
+    kind: doc?.kind || null,
+    inviter_nickname: null,
+    tree_id: doc?.tree_id || null,
+    tree_name: null,
+    hall_name: null,
+    person_handle: doc?.person_handle || null,
+    person_name: null,
+    person_gender: null,
+    can_bind: false
   };
-}
-
-// cloudfunctions/compat-api/lib/economy-market.js
-init_store();
-var MARKET_COL = "jiazu_market";
-var MARKET_ID = "global";
-var LISTING_TTL_DAYS = 7;
-var PIECES_PER_BUNDLE = 100;
-var FEE_RATE_PERCENT = 1;
-var FEE_RATE_DENOMINATOR = 100;
-var LISTING_STATUSES = ["open", "sold", "cancelled", "expired"];
-var DEFAULT_PRICE_FEN = 990;
-var DEFAULT_DAILY_STOCK = 50;
-var RELEASE_HOUR = 21;
-var RELEASE_AT = "21:00";
-var OFFICIAL_BAMBOO_TTL_DAYS = BAMBOO_TTL_DAYS;
-var WALLET_TX_TYPE = "official_bamboo";
-var DAY_MS3 = 864e5;
-var toMs3 = (d) => d instanceof Date ? d.getTime() : new Date(d).getTime();
-var isoOf2 = (d) => new Date(toMs3(d)).toISOString();
-var ERR_LISTING_ID_MISSING = "\u7F3A\u5C11 listing_id";
-var ERR_BUNDLES_INVALID = "\u675F\u6570\u5FC5\u987B\u4E3A\u4E0D\u5C0F\u4E8E 1 \u7684\u6574\u6570\uFF081 \u675F = 100 \u7247\uFF09";
-var ERR_PRICE_INVALID = "\u6807\u4EF7\u5FC5\u987B\u4E3A\u4E0D\u5C0F\u4E8E 1 \u7684\u6574\u6570\u77F3\u69B4\u7C7D";
-var ERR_PRICE_FEN_INVALID = "\u4EF7\u683C\u5FC5\u987B\u4E3A\u4E0D\u5C0F\u4E8E 1 \u5206\u7684\u6574\u6570";
-var ERR_DAILY_STOCK_INVALID = "\u6BCF\u65E5\u5E93\u5B58\u5FC5\u987B\u4E3A\u4E0D\u5C0F\u4E8E 0 \u7684\u6574\u6570";
-var ERR_STATUS_INVALID = "\u4E0D\u652F\u6301\u7684\u6302\u5355\u72B6\u6001";
-var ERR_LISTING_NOT_FOUND = "\u6302\u5355\u4E0D\u5B58\u5728";
-var ERR_LISTING_CLOSED = "\u6302\u5355\u5DF2\u6210\u4EA4\u6216\u5DF2\u64A4\u5355";
-var ERR_LISTING_EXPIRED = "\u6302\u5355\u5DF2\u8FC7\u671F";
-var ERR_NOT_OWNER = "\u53EA\u80FD\u64A4\u9500\u672C\u4EBA\u7684\u6302\u5355";
-var ERR_SELF_TRADE = "\u4E0D\u53EF\u8D2D\u4E70\u81EA\u5DF1\u7684\u6302\u5355";
-var ERR_BAMBOO_EXPIRED = "\u90E8\u5206\u7AF9\u7247\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u64A4\u5355\u540E\u91CD\u6302";
-var ERR_NOT_OPEN_YET = "\u672A\u5230\u53D1\u552E\u65F6\u95F4";
-var ERR_SOLD_OUT = "\u4ECA\u65E5\u5DF2\u552E\u7F44";
-var ERR_OPEN_LISTING_BLOCK_LOGOUT = "\u8BF7\u5148\u64A4\u9500\u672A\u6210\u4EA4\u6302\u5355";
-function httpError2(status, message) {
-  const e = new Error(message);
-  e.status = status;
-  return e;
-}
-function seedsInsufficient2(need, current, message) {
-  const e = assetInsufficient(need, current, "seed");
-  if (message)
-    e.message = message;
-  return e;
-}
-function bambooInsufficient(need, current, message) {
-  const e = assetInsufficient(need, current, "bamboo");
-  if (message)
-    e.message = message;
-  return e;
-}
-var rand6 = () => Math.random().toString(36).slice(2, 8).padEnd(6, "0").slice(0, 6);
-function listingId() {
-  return `lst_${Date.now()}_${rand6()}`;
-}
-function tradeId() {
-  return `trd_${Date.now()}_${rand6()}`;
-}
-function feeOf2(priceSeeds) {
-  const price = Math.max(0, Math.floor(Number(priceSeeds) || 0));
-  return Math.floor(price * FEE_RATE_PERCENT / FEE_RATE_DENOMINATOR);
-}
-function feeBreakdown(priceSeeds) {
-  const price_seeds = Math.max(0, Math.floor(Number(priceSeeds) || 0));
-  const fee_seeds = feeOf2(price_seeds);
-  return {
-    price_seeds,
-    fee_seeds,
-    buyer_paid: price_seeds,
-    seller_got: price_seeds - fee_seeds,
-    destroyed: fee_seeds,
-    waived: fee_seeds === 0
-  };
-}
-function lockedPieces(phone, listings) {
-  let sum = 0;
-  for (const l of listings || []) {
-    if (!l || l.status !== "open" || l.seller_phone !== phone)
-      continue;
-    sum += Math.max(0, Math.floor(Number(l.pieces) || 0));
-  }
-  return sum;
-}
-function availablePieces(phone, user, listings) {
-  return Math.max(0, sumLots(user?.bamboos) - lockedPieces(phone, listings));
-}
-function sellablePieces(phone, user, listings) {
-  return Math.floor(availablePieces(phone, user, listings) / PIECES_PER_BUNDLE) * PIECES_PER_BUNDLE;
-}
-function sweepListings(listings, now = /* @__PURE__ */ new Date()) {
-  const expired = [];
-  const nowMs = toMs3(now);
-  for (const l of listings || []) {
-    if (!l || l.status !== "open")
-      continue;
-    const expMs = l.expires_at ? Date.parse(l.expires_at) : NaN;
-    if (!Number.isFinite(expMs) || expMs > nowMs)
-      continue;
-    l.status = "expired";
-    expired.push(l);
-  }
-  return expired;
-}
-function blankMarketDoc() {
-  return {
-    _id: MARKET_ID,
-    listings: [],
-    trades: [],
-    official: {
-      price_fen: DEFAULT_PRICE_FEN,
-      daily_stock: DEFAULT_DAILY_STOCK,
-      stock: {},
-      last_release_date: ""
-    }
-  };
-}
-function ensureOfficial(doc) {
-  doc.official = doc.official || {};
-  const o = doc.official;
-  o.stock = o.stock && typeof o.stock === "object" ? o.stock : {};
-  o.price_fen = Number.isFinite(Number(o.price_fen)) && Number(o.price_fen) > 0 ? Math.floor(Number(o.price_fen)) : DEFAULT_PRICE_FEN;
-  o.daily_stock = Number.isFinite(Number(o.daily_stock)) && Number(o.daily_stock) >= 0 ? Math.floor(Number(o.daily_stock)) : DEFAULT_DAILY_STOCK;
-  o.last_release_date = typeof o.last_release_date === "string" ? o.last_release_date : "";
-  return o;
-}
-function releaseAtMs(now = /* @__PURE__ */ new Date()) {
-  return Date.parse(`${beijingDate(now)}T${String(RELEASE_HOUR).padStart(2, "0")}:00:00+08:00`);
-}
-function releaseOfficial(official, now = /* @__PURE__ */ new Date()) {
-  const o = official || {};
-  o.stock = o.stock && typeof o.stock === "object" ? o.stock : {};
-  const today = beijingDate(now);
-  const openMs = releaseAtMs(now);
-  const isOpen = toMs3(now) >= openMs;
-  const last = typeof o.last_release_date === "string" ? o.last_release_date : "";
-  const released = isOpen && last < today;
-  if (released) {
-    o.stock[today] = Math.max(0, Math.floor(Number(o.daily_stock) || 0));
-    o.last_release_date = today;
-  }
-  return {
-    released,
-    released_today: (typeof o.last_release_date === "string" ? o.last_release_date : "") === today,
-    today,
-    is_open: isOpen,
-    open_at: `${today}T${RELEASE_AT}:00+08:00`,
-    open_at_ms: openMs,
-    release_at: RELEASE_AT,
-    stock_left_today: Math.max(0, Math.floor(Number(o.stock[today]) || 0))
-  };
-}
-function byExpiryAsc(a, b) {
-  const av = a?.expires_at ? Date.parse(a.expires_at) : Number.POSITIVE_INFINITY;
-  const bv = b?.expires_at ? Date.parse(b.expires_at) : Number.POSITIVE_INFINITY;
-  const an = Number.isFinite(av) ? av : Number.POSITIVE_INFINITY;
-  const bn = Number.isFinite(bv) ? bv : Number.POSITIVE_INFINITY;
-  return an - bn;
-}
-function bambooSlices(sellerUser, pieces, now = /* @__PURE__ */ new Date()) {
-  const need = Math.max(0, Math.floor(Number(pieces) || 0));
-  const available = sumLots(sellerUser?.bamboos);
-  if (available < need)
-    throw bambooInsufficient(need, available, ERR_BAMBOO_EXPIRED);
-  const taken = [];
-  let left = need;
-  for (const lot of [...sellerUser.bamboos || []].sort(byExpiryAsc)) {
-    if (left <= 0)
-      break;
-    const qty = Math.max(0, Math.floor(Number(lot.qty) || 0));
-    if (qty <= 0)
-      continue;
-    const take = Math.min(qty, left);
-    taken.push({ lot_id: lot.id, qty: take, expires_at: lot.expires_at ?? null });
-    left -= take;
-  }
-  if (left > 0)
-    throw bambooInsufficient(need, need - left, ERR_BAMBOO_EXPIRED);
-  const merged = [];
-  const index = /* @__PURE__ */ new Map();
-  for (const t of taken) {
-    const key = t.expires_at ?? "";
-    if (index.has(key))
-      index.get(key).qty += t.qty;
-    else {
-      const row = { qty: t.qty, expires_at: t.expires_at ?? null, source: "market" };
-      index.set(key, row);
-      merged.push(row);
-    }
-  }
-  return { slices: taken, receive: merged, pieces: need, expires_at_inherited: merged.map((m) => m.expires_at) };
-}
-function planTrade({ listing, sellerUser, buyerUser, listings = [], now = /* @__PURE__ */ new Date() } = {}) {
-  const price_seeds = Math.max(0, Math.floor(Number(listing?.price_seeds) || 0));
-  const pieces = Math.max(0, Math.floor(Number(listing?.pieces) || 0));
-  const { fee_seeds, seller_got, destroyed, waived } = feeBreakdown(price_seeds);
-  const lockedOthers = lockedPieces(listing?.seller_phone, listings);
-  const sellerAvailable = Math.max(0, sumLots(sellerUser?.bamboos) - lockedOthers);
-  if (sellerAvailable < pieces)
-    throw bambooInsufficient(pieces, sellerAvailable, ERR_BAMBOO_EXPIRED);
-  const buyerAvailable = sumLots(buyerUser?.seeds);
-  if (buyerAvailable < price_seeds) {
-    throw seedsInsufficient2(price_seeds, buyerAvailable, `\u77F3\u69B4\u7C7D\u4E0D\u8DB3\uFF1A\u672C\u6B21\u9700 ${price_seeds} \u9897\uFF0C\u5F53\u524D\u53EF\u7528 ${buyerAvailable} \u9897`);
-  }
-  const { slices, receive } = bambooSlices(sellerUser, pieces, now);
-  return { price_seeds, pieces, fee_seeds, seller_got, destroyed, waived, slices, receive, buyer_seeds_available: buyerAvailable };
-}
-function applyBuyerSide(buyerUser, plan, trade_id, now = /* @__PURE__ */ new Date(), listing = {}) {
-  const charge = chargeLots(buyerUser.seeds, plan.price_seeds, "seed");
-  buyerUser.seeds = (buyerUser.seeds || []).filter((l) => Math.floor(Number(l.qty) || 0) > 0);
-  const lots = [];
-  for (const g of plan.receive || []) {
-    lots.push(
-      addLot(buyerUser, "bamboo", g.qty, {
-        expires_at: g.expires_at ?? void 0,
-        // **继承卖方原值**（缺省才回落 365 天）
-        source: "market",
-        now
-      })
-    );
-  }
-  recordTx(
-    buyerUser,
-    {
-      type: "market_buy",
-      delta: { seeds: -plan.price_seeds, bamboos: plan.pieces },
-      fee_seeds: plan.fee_seeds,
-      ref: { listing_id: listing.id, trade_id },
-      desc: `\u5E02\u96C6\u4E70\u5165\u7AF9\u7B80 ${plan.pieces} \u7247\uFF08${plan.pieces / PIECES_PER_BUNDLE} \u675F\uFF09`
-    },
-    now
-  );
-  return { lot_ids: lots.map((l) => l.id), seeds_used: charge.taken.map((t) => ({ lot_id: t.id, qty: t.qty })) };
-}
-function applySellerSide(sellerUser, plan, trade_id, now = /* @__PURE__ */ new Date(), listing = {}) {
-  const byId = new Map((sellerUser.bamboos || []).map((l) => [l.id, l]));
-  let left = plan.pieces;
-  for (const s of plan.slices || []) {
-    const lot = byId.get(s.lot_id);
-    const qty = Math.max(0, Math.floor(Number(lot?.qty) || 0));
-    if (!lot || qty < s.qty)
-      throw bambooInsufficient(plan.pieces, sumLots(sellerUser.bamboos), ERR_BAMBOO_EXPIRED);
-    lot.qty = qty - s.qty;
-    left -= s.qty;
-  }
-  if (left > 0)
-    throw bambooInsufficient(plan.pieces, sumLots(sellerUser.bamboos), ERR_BAMBOO_EXPIRED);
-  sellerUser.bamboos = (sellerUser.bamboos || []).filter((l) => Math.floor(Number(l.qty) || 0) > 0);
-  let seed_lot = null;
-  if (plan.seller_got > 0)
-    seed_lot = addLot(sellerUser, "seed", plan.seller_got, { source: "market", now });
-  recordTx(
-    sellerUser,
-    {
-      type: "market_sell",
-      delta: { seeds: plan.seller_got, bamboos: -plan.pieces },
-      fee_seeds: plan.fee_seeds,
-      ref: { listing_id: listing.id, trade_id },
-      desc: `\u5E02\u96C6\u5356\u51FA\u7AF9\u7B80 ${plan.pieces} \u7247\uFF08${plan.pieces / PIECES_PER_BUNDLE} \u675F\uFF09\uFF0C\u624B\u7EED\u8D39 ${plan.fee_seeds} \u9897\u9500\u6BC1`
-    },
-    now
-  );
-  return { seed_lot_id: seed_lot ? seed_lot.id : null, seed_expires_at: seed_lot ? seed_lot.expires_at : null };
-}
-function applyOfficialPurchase(user, { bundles, now = /* @__PURE__ */ new Date() } = {}) {
-  const n = Math.max(1, Math.floor(Number(bundles) || 1));
-  const pieces = n * PIECES_PER_BUNDLE;
-  const lot = addLot(user, "bamboo", pieces, { ttl_days: OFFICIAL_BAMBOO_TTL_DAYS, source: "official_purchase", now });
-  recordTx(
-    user,
-    {
-      type: "official_buy",
-      delta: { bamboos: pieces },
-      ref: {},
-      desc: `\u5B98\u65B9\u7AF9\u7B80\u8D2D\u4E70 ${n} \u675F\uFF08${pieces} \u7247\uFF09`
-    },
-    now
-  );
-  return { lot, pieces, bundles: n };
-}
-function listingPayload(listing, now = /* @__PURE__ */ new Date()) {
-  const expMs = listing?.expires_at ? Date.parse(listing.expires_at) : NaN;
-  const days_left = Number.isFinite(expMs) ? Math.max(0, Math.ceil((expMs - toMs3(now)) / DAY_MS3)) : 0;
-  return { ...listing, days_left };
-}
-function officialPayload(official, release, now = /* @__PURE__ */ new Date()) {
-  const o = official || {};
-  const rel = release || releaseOfficial({ stock: {}, daily_stock: o.daily_stock, last_release_date: "" }, now);
-  return {
-    price_fen: Math.floor(Number(o.price_fen) || DEFAULT_PRICE_FEN),
-    daily_stock: Math.max(0, Math.floor(Number(o.daily_stock) || 0)),
-    stock_left_today: rel.stock_left_today,
-    release_at: RELEASE_AT,
-    released: rel.released_today
-  };
-}
-var marketLocks = /* @__PURE__ */ new Map();
-async function recordListingExpiryTx(expired, now) {
-  for (const l of expired) {
-    try {
-      await withAssets(
-        l.seller_phone,
-        (user) => {
-          sweep(user, now);
-          recordTx(
-            user,
-            {
-              type: "expire",
-              delta: {},
-              ref: { listing_id: l.id },
-              desc: `\u6302\u5355\u5230\u671F\u4E0B\u67B6 ${l.id}\uFF08\u91CA\u653E\u9501\u5B9A ${l.pieces} \u7247\uFF09`
-            },
-            now
-          );
-        }
-      );
-    } catch {
-    }
-  }
-}
-async function withMarket(mutator, now = /* @__PURE__ */ new Date()) {
-  const lock = marketLocks.get(MARKET_ID) || Promise.resolve();
-  const run = lock.then(async () => {
-    const base = await colGet(MARKET_COL, MARKET_ID);
-    const doc = base ? JSON.parse(JSON.stringify(base)) : blankMarketDoc();
-    doc.listings = Array.isArray(doc.listings) ? doc.listings : [];
-    doc.trades = Array.isArray(doc.trades) ? doc.trades : [];
-    const official = ensureOfficial(doc);
-    const expired = sweepListings(doc.listings, now);
-    const release = releaseOfficial(official, now);
-    const settled = expired.length > 0 || release.released;
-    const snapshot = settled ? JSON.parse(JSON.stringify(doc)) : null;
-    const ctx = { doc, now, dirty: settled, expired, release, official };
-    let result;
-    try {
-      result = await mutator(doc, ctx);
-    } catch (e) {
-      if (snapshot) {
-        await colSet(MARKET_COL, MARKET_ID, snapshot).catch(() => {
-        });
-        if (expired.length > 0)
-          await recordListingExpiryTx(expired, now);
-      }
-      throw e;
-    }
-    const committed = !!ctx.dirty;
-    if (committed)
-      await colSet(MARKET_COL, MARKET_ID, doc);
-    if (committed && expired.length > 0)
-      await recordListingExpiryTx(expired, now);
-    return result;
-  });
-  marketLocks.set(MARKET_ID, run.catch(() => {
-  }));
-  return run;
-}
-function findListing(doc, listingIdValue) {
-  const l = (doc.listings || []).find((x) => x && x.id === listingIdValue);
-  if (!l)
-    throw httpError2(404, ERR_LISTING_NOT_FOUND);
-  return l;
-}
-function assertOpen(l) {
-  if (l.status === "expired")
-    throw httpError2(409, ERR_LISTING_EXPIRED);
-  if (l.status !== "open")
-    throw httpError2(409, ERR_LISTING_CLOSED);
-}
-async function marketListings(status, now = /* @__PURE__ */ new Date()) {
-  let filter = "open";
-  if (status !== void 0 && status !== null && String(status).trim() !== "") {
-    filter = String(status).trim();
-    if (!LISTING_STATUSES.includes(filter))
-      throw httpError2(400, ERR_STATUS_INVALID);
-  }
-  return withMarket((doc, ctx) => {
-    const listings = (doc.listings || []).filter((l) => l && l.status === filter).map((l) => listingPayload(l, now));
-    return { listings, official: officialPayload(ctx.official, ctx.release, now) };
-  }, now);
-}
-async function myMarket(phone, status, now = /* @__PURE__ */ new Date()) {
-  let filter = null;
-  if (status !== void 0 && status !== null && String(status).trim() !== "") {
-    filter = String(status).trim();
-    if (!LISTING_STATUSES.includes(filter))
-      throw httpError2(400, ERR_STATUS_INVALID);
-  }
-  return withMarket(async (doc) => {
-    const rows = (doc.listings || []).filter((l) => l && l.seller_phone === phone && (filter ? l.status === filter : l.status !== "expired")).map((l) => listingPayload(l, now));
-    const locked = lockedPieces(phone, doc.listings);
-    const assets = await withAssets(phone, (user) => {
-      sweep(user, now);
-      const total = sumLots(user.bamboos);
-      return {
-        seeds_available: sumLots(user.seeds),
-        bamboo_total_pieces: total,
-        bamboo_locked_pieces: locked,
-        bamboo_available_pieces: Math.max(0, total - locked),
-        bamboo_available_bundles: Math.floor(Math.max(0, total - locked) / PIECES_PER_BUNDLE),
-        lots: (user.bamboos || []).map((l) => ({ ...l }))
-      };
-    });
-    return { listings: rows, assets };
-  }, now);
-}
-async function listBamboo(phone, input = {}, now = /* @__PURE__ */ new Date()) {
-  const { bundles, price_seeds, pieces } = validateListingInput(input);
-  return withMarket(async (doc, ctx) => {
-    const snap = await withAssets(phone, (user) => {
-      sweep(user, now);
-      return { bamboos: (user.bamboos || []).map((l) => ({ ...l })) };
-    });
-    const sellable = sellablePieces(phone, snap, doc.listings);
-    if (pieces > sellable) {
-      const available = availablePieces(phone, snap, doc.listings);
-      throw bambooInsufficient(
-        pieces,
-        available,
-        `\u53EF\u7528\u7AF9\u7247\u4E0D\u8DB3\uFF1A\u672C\u6B21\u6302\u5355\u9700 ${pieces} \u7247\uFF0C\u5F53\u524D\u53EF\u7528 ${available} \u7247\uFF08\u6574\u675F\u6302\u5355\uFF0C\u65E0\u53EF\u62FC\u675F\uFF09`
-      );
-    }
-    const listing = {
-      id: listingId(),
-      seller_phone: phone,
-      bundles,
-      pieces,
-      price_seeds,
-      status: "open",
-      created_at: isoOf2(now),
-      expires_at: isoOf2(new Date(toMs3(now) + LISTING_TTL_DAYS * DAY_MS3))
-    };
-    doc.listings.push(listing);
-    ctx.dirty = true;
-    await withAssets(phone, (user) => {
-      sweep(user, now);
-      recordTx(
-        user,
-        {
-          type: "market_list",
-          delta: {},
-          ref: { listing_id: listing.id },
-          desc: `\u5E02\u96C6\u6302\u5355 ${bundles} \u675F\uFF08${pieces} \u7247\uFF09\uFF0C\u6807\u4EF7 ${price_seeds} \u9897\u77F3\u69B4\u7C7D\uFF0C${LISTING_TTL_DAYS} \u5929\u672A\u6210\u4EA4\u81EA\u52A8\u4E0B\u67B6`
-        },
-        now
-      );
-    });
-    return {
-      ok: true,
-      listing_id: listing.id,
-      bundles,
-      pieces,
-      price_seeds,
-      fee_seeds: feeOf2(price_seeds),
-      created_at: listing.created_at,
-      expires_at: listing.expires_at,
-      days_left: LISTING_TTL_DAYS
-    };
-  }, now);
-}
-function validateListingInput(input = {}) {
-  const bundles = Number(input.bundles);
-  if (!Number.isInteger(bundles) || bundles < 1)
-    throw httpError2(400, ERR_BUNDLES_INVALID);
-  const price_seeds = Number(input.price_seeds);
-  if (!Number.isInteger(price_seeds) || price_seeds < 1)
-    throw httpError2(400, ERR_PRICE_INVALID);
-  return { bundles, price_seeds, pieces: bundles * PIECES_PER_BUNDLE };
-}
-async function cancelListing(phone, listingIdValue, now = /* @__PURE__ */ new Date()) {
-  if (!listingIdValue)
-    throw httpError2(400, ERR_LISTING_ID_MISSING);
-  return withMarket(async (doc, ctx) => {
-    const l = findListing(doc, listingIdValue);
-    if (l.seller_phone !== phone)
-      throw httpError2(403, ERR_NOT_OWNER);
-    assertOpen(l);
-    l.status = "cancelled";
-    l.cancelled_at = isoOf2(now);
-    ctx.dirty = true;
-    await withAssets(phone, (user) => {
-      sweep(user, now);
-      recordTx(user, { type: "market_cancel", delta: {}, ref: { listing_id: l.id }, desc: `\u64A4\u9500\u5E02\u96C6\u6302\u5355 ${l.id}\uFF08\u91CA\u653E\u9501\u5B9A ${l.pieces} \u7247\uFF09` }, now);
-    });
-    return { ok: true, listing_id: l.id, status: "cancelled" };
-  }, now);
-}
-async function buyListing(phone, listingIdValue, now = /* @__PURE__ */ new Date()) {
-  if (!listingIdValue)
-    throw httpError2(400, ERR_LISTING_ID_MISSING);
-  return withMarket(async (doc, ctx) => {
-    const l = findListing(doc, listingIdValue);
-    assertOpen(l);
-    if (l.seller_phone === phone)
-      throw httpError2(400, ERR_SELF_TRADE);
-    const trade_id = tradeId();
-    const sellerSnapshot = await withAssets(l.seller_phone, (user) => {
-      sweep(user, now);
-      return JSON.parse(JSON.stringify(user));
-    });
-    const buyerSnapshot = await withAssets(phone, (user) => {
-      sweep(user, now);
-      return JSON.parse(JSON.stringify(user));
-    });
-    const plan = planTrade({
-      listing: { ...l, seller_phone: l.seller_phone },
-      sellerUser: sellerSnapshot,
-      buyerUser: buyerSnapshot,
-      listings: doc.listings.filter((x) => x.id !== l.id),
-      // 本挂单自身占量不参与可用量
-      now
-    });
-    await withAssets(phone, (user) => {
-      sweep(user, now);
-      applyBuyerSide(user, plan, trade_id, now, l);
-    });
-    try {
-      await withAssets(l.seller_phone, (user) => {
-        sweep(user, now);
-        applySellerSide(user, plan, trade_id, now, l);
-      });
-    } catch (e) {
-      await withAssets(phone, (user) => Object.assign(user, buyerSnapshot)).catch(() => {
-      });
-      throw e;
-    }
-    l.status = "sold";
-    l.sold_at = isoOf2(now);
-    l.buyer_phone = phone;
-    const trade = {
-      id: trade_id,
-      listing_id: l.id,
-      buyer_phone: phone,
-      seller_phone: l.seller_phone,
-      pieces: plan.pieces,
-      price_seeds: plan.price_seeds,
-      fee_seeds: plan.fee_seeds,
-      ts: isoOf2(now)
-    };
-    doc.trades.push(trade);
-    ctx.dirty = true;
-    return {
-      ok: true,
-      trade_id,
-      listing_id: l.id,
-      pieces: plan.pieces,
-      bundles: plan.pieces / PIECES_PER_BUNDLE,
-      price_seeds: plan.price_seeds,
-      fee_seeds: plan.fee_seeds,
-      fee_waived: plan.waived,
-      seller_got: plan.seller_got,
-      destroyed: plan.destroyed,
-      buyer_receive: plan.receive,
-      status: "sold"
-    };
-  }, now);
-}
-async function officialPurchase(phone, input = {}, now = /* @__PURE__ */ new Date()) {
-  const raw = input.bundles === void 0 || input.bundles === null || String(input.bundles).trim() === "" ? 1 : Number(input.bundles);
-  if (!Number.isInteger(raw) || raw < 1)
-    throw httpError2(400, ERR_BUNDLES_INVALID);
-  const bundles = raw;
-  return withMarket(async (doc, ctx) => {
-    const o = ctx.official;
-    const rel = ctx.release;
-    if (!rel.is_open)
-      throw httpError2(409, ERR_NOT_OPEN_YET);
-    if (rel.stock_left_today < bundles)
-      throw httpError2(409, ERR_SOLD_OUT);
-    const amount_cents = o.price_fen * bundles;
-    const balance = await getUserBalance(phone);
-    if (balance < amount_cents) {
-      throw httpError2(
-        409,
-        `\u4EBA\u6C11\u5E01\u4F59\u989D\u4E0D\u8DB3\uFF1A\u5B98\u65B9\u7AF9\u7B80\u9700 \xA5${(amount_cents / 100).toFixed(2)}\uFF0C\u5F53\u524D\u4F59\u989D \xA5${(balance / 100).toFixed(2)}\uFF0C\u8BF7\u5148\u5145\u503C`
-      );
-    }
-    const snapshot = await getAssets(phone);
-    let granted = false;
-    let lot = null;
-    try {
-      const r = await withAssets(phone, (user) => {
-        sweep(user, now);
-        return applyOfficialPurchase(user, { bundles, now });
-      });
-      granted = true;
-      lot = r.lot;
-      const balance_cents = await deductUserBalance(phone, amount_cents, {
-        type: WALLET_TX_TYPE,
-        desc: `\u5B98\u65B9\u7AF9\u7B80 ${bundles} \u675F\uFF08${r.pieces} \u7247\uFF09\xA5${(amount_cents / 100).toFixed(2)}`
-      });
-      o.stock[rel.today] = rel.stock_left_today - bundles;
-      ctx.dirty = true;
-      return {
-        ok: true,
-        bundles,
-        pieces: r.pieces,
-        price_fen: o.price_fen,
-        amount_cents,
-        balance_cents,
-        stock_left_today: o.stock[rel.today],
-        lot_id: lot.id,
-        expires_at: lot.expires_at,
-        released: rel.released
-      };
-    } catch (e) {
-      if (granted) {
-        await withAssets(phone, (user) => Object.assign(user, JSON.parse(JSON.stringify(snapshot)))).catch(() => {
-        });
-      }
-      throw e;
-    }
-  }, now);
-}
-async function setOfficialStock(dailyStock, priceFen, now = /* @__PURE__ */ new Date()) {
-  const stock = Number(dailyStock);
-  if (!Number.isInteger(stock) || stock < 0)
-    throw httpError2(400, ERR_DAILY_STOCK_INVALID);
-  const hasPrice = !(priceFen === void 0 || priceFen === null || String(priceFen).trim() === "");
-  const price = hasPrice ? Number(priceFen) : null;
-  if (hasPrice && (!Number.isInteger(price) || price < 1))
-    throw httpError2(400, ERR_PRICE_FEN_INVALID);
-  return withMarket((doc, ctx) => {
-    const o = ensureOfficial(doc);
-    o.daily_stock = stock;
-    if (hasPrice)
-      o.price_fen = price;
-    ctx.dirty = true;
-    return { ok: true, daily_stock: o.daily_stock, price_fen: o.price_fen };
-  }, now);
-}
-async function hasOpenListing(phone, now = /* @__PURE__ */ new Date()) {
-  return withMarket((doc) => (doc.listings || []).some((l) => l && l.status === "open" && l.seller_phone === phone), now);
-}
-async function openListingGuard(phone, now = /* @__PURE__ */ new Date()) {
-  if (await hasOpenListing(phone, now))
-    throw httpError2(409, ERR_OPEN_LISTING_BLOCK_LOGOUT);
-  return { ok: true };
-}
-
-// cloudfunctions/compat-api/lib/economy-ops.js
-init_store();
-var MESSAGES_COL = "jiazu_messages";
-var MESSAGES_ID = "global";
-var OPS_LOGS_COL = "jiazu_ops_logs";
-var OPS_LOGS_ID = "global";
-var USERS_COL = "jiazu_users";
-var MESSAGE_KEEP_LIMIT = 200;
-var WARN_DAYS_30 = 30;
-var WARN_DAYS_7 = 7;
-var LOGS_LIMIT_DEFAULT = 50;
-var LOGS_LIMIT_MAX = 200;
-var DAY_MS4 = 864e5;
-var TX_ADMIN_GRANT = "admin_grant";
-var TX_ACCOUNT_CLEAR = "account_clear";
-var ERR_PHONE_FORMAT = "\u624B\u673A\u53F7\u683C\u5F0F\u4E0D\u6B63\u786E";
-var ERR_USER_NOT_FOUND = "\u7528\u6237\u4E0D\u5B58\u5728";
-var ERR_REASON_REQUIRED = "\u8BF7\u586B\u5199\u64CD\u4F5C\u539F\u56E0";
-var ERR_DELTA_ZERO = "\u8D44\u4EA7\u6570\u91CF\u4E0D\u80FD\u5168\u4E3A 0";
-var ERR_DELTA_INT = "\u8D44\u4EA7\u6570\u91CF\u5FC5\u987B\u4E3A\u6574\u6570";
-var ERR_MISSING_PHONE = "\u7F3A\u5C11 phone";
-var ERR_NOT_LOGGED_IN = "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F";
-var ERR_CHIEF_ONLY = "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650";
-var PHONE_RE = /^1\d{10}$/;
-function httpError3(status, message) {
-  const e = new Error(message);
-  e.status = status;
-  return e;
-}
-var M1_TEMPLATE = "\u3010\u8D44\u4EA7\u5230\u671F\u63D0\u9192\u3011\u60A8\u7684\u3010\u77F3\u69B4\u7C7D/\u7AF9\u7247\u3011\u5373\u5C06\u4E8EX\u65E5\u540E\u5230\u671F\u5931\u6548\uFF0C\u8BF7\u5C3D\u5FEB\u4F7F\u7528\u907F\u514D\u635F\u8017\u3002";
-var M2_TEXT = "\u3010\u5BB6\u65CF\u7075\u6C14\u9884\u8B66\u3011\u672C\u5BB6\u65CF\u3010\u65F6\u6D41\u5B50\u57DF\u3011\u7075\u6C14\u5269\u4F5930\u5929\uFF0C\u5373\u5C06\u5230\u671F\u3002\u8BF7\u53CA\u65F6\u704C\u6CE8\u7389\u9732\u7075\u6CFD\u7EED\u671F\uFF0C\u907F\u514D\u5B50\u57DF\u540D\u505C\u7528\u3002";
-var M3_TEXT = "\u3010\u5BB6\u65CF\u7F13\u51B2\u671F\u901A\u77E5\u3011\u672C\u5BB6\u65CF\u7075\u6C14\u5DF2\u8017\u5C3D\uFF0C\u73B0\u5DF2\u8FDB\u516530\u5929\u7F13\u51B2\u671F\u3002\u82E5\u672A\u53CA\u65F6\u7EED\u671F\uFF0C\u7F13\u51B2\u671F\u7ED3\u675F\u540E\u5B50\u57DF\u540D\u5C06\u81EA\u52A8\u5931\u6548\u3002";
-var M4_TEXT = "\u3010\u7D27\u6025\u901A\u77E5\u3011\u672C\u5BB6\u65CF\u3010\u65F6\u6D41\u5B50\u57DF\u3011\u7F13\u51B2\u671F\u4EC5\u52697\u5929\uFF0C\u672A\u704C\u6CE8\u7389\u9732\u7075\u6CFD\u7EED\u671F\u5C06\u6C38\u4E45\u505C\u7528\u5B50\u57DF\u540D\uFF0C\u8BF7\u5C3D\u5FEB\u64CD\u4F5C\uFF01";
-var MESSAGE_TITLES = {
-  m1: "\u8D44\u4EA7\u5230\u671F\u63D0\u9192",
-  m2: "\u5BB6\u65CF\u7075\u6C14\u9884\u8B66",
-  m3: "\u5BB6\u65CF\u7F13\u51B2\u671F\u901A\u77E5",
-  m4: "\u7D27\u6025\u901A\u77E5"
-};
-var ASSET_TEXT_LABEL = { seed: "\u77F3\u69B4\u7C7D", bamboo: "\u7AF9\u7247" };
-function m1Text(kind, days) {
-  const label = ASSET_TEXT_LABEL[kind] || ASSET_TEXT_LABEL.seed;
-  const d = Number(days) === WARN_DAYS_7 ? WARN_DAYS_7 : WARN_DAYS_30;
-  return M1_TEMPLATE.replace("\u3010\u77F3\u69B4\u7C7D/\u7AF9\u7247\u3011", `\u3010${label}\u3011`).replace("\u5373\u5C06\u4E8EX\u65E5\u540E", `\u5373\u5C06\u4E8E${d}\u65E5\u540E`);
-}
-function daysLeftUntil(expires_at, now = /* @__PURE__ */ new Date()) {
-  if (!expires_at)
-    return NaN;
-  const t = Date.parse(expires_at);
-  if (!Number.isFinite(t))
-    return NaN;
-  return Math.ceil((t - toMs4(now)) / DAY_MS4);
-}
-var toMs4 = (d) => d instanceof Date ? d.getTime() : new Date(d).getTime();
-var isoOf3 = (d) => new Date(toMs4(d)).toISOString();
-var rand62 = () => Math.random().toString(36).slice(2, 8).padEnd(6, "0").slice(0, 6);
-function messageId() {
-  return `msg_${Date.now()}_${rand62()}`;
-}
-function opsLogId() {
-  return `op_${Date.now()}_${rand62()}`;
-}
-function blankMessagesDoc() {
-  return { _id: MESSAGES_ID, items: {}, warned: {} };
-}
-function blankOpsLogsDoc() {
-  return { _id: OPS_LOGS_ID, logs: [] };
-}
-var trimmed = (v) => String(v === void 0 || v === null ? "" : v).trim();
-var warnKey = {
-  expiring30: (phone, lotId) => `expiring:${phone}:${lotId}@30`,
-  expiring7: (phone, lotId) => `expiring:${phone}:${lotId}@7`,
-  spirit30: (phone, treeId, spiritExpiresAt) => `spirit:${phone}:${treeId}@30@${spiritExpiresAt}`,
-  spiritBuffer: (phone, treeId, spiritExpiresAt) => `spirit:${phone}:${treeId}@buffer@${spiritExpiresAt}`,
-  spirit7: (phone, treeId, bufferUntil) => `spirit:${phone}:${treeId}@7@${bufferUntil}`
-};
-function expiringCandidates(phone, user, now = /* @__PURE__ */ new Date()) {
-  const out = [];
-  for (const [kind, bucket] of [
-    ["seed", "seeds"],
-    ["bamboo", "bamboos"]
-  ]) {
-    for (const lot of user?.[bucket] || []) {
-      if (!lot || !lot.id)
-        continue;
-      if (Math.floor(Number(lot.qty) || 0) <= 0)
-        continue;
-      const d = daysLeftUntil(lot.expires_at, now);
-      if (!Number.isFinite(d) || d <= 0)
-        continue;
-      if (d <= WARN_DAYS_30) {
-        out.push({ key: warnKey.expiring30(phone, lot.id), type: "expiring", title: MESSAGE_TITLES.m1, text: m1Text(kind, WARN_DAYS_30) });
-      }
-      if (d <= WARN_DAYS_7) {
-        out.push({ key: warnKey.expiring7(phone, lot.id), type: "expiring", title: MESSAGE_TITLES.m1, text: m1Text(kind, WARN_DAYS_7) });
-      }
-    }
-  }
-  return out;
-}
-function spiritCandidates(phone, treeId, entry, now = /* @__PURE__ */ new Date()) {
-  const out = [];
-  if (!phone || !treeId || !entry || !entry.jade)
+  if (state !== "valid")
+    return { ...out, reason: state };
+  out.inviter_nickname = await inviterDisplayName(doc.inviter_phone);
+  if (doc.kind !== "node" || !doc.tree_id || !doc.person_handle)
     return out;
-  if (entry.status === "active") {
-    const d = daysLeftUntil(entry.spirit_expires_at, now);
-    if (Number.isFinite(d) && d > 0 && d <= WARN_DAYS_30) {
-      out.push({
-        key: warnKey.spirit30(phone, treeId, entry.spirit_expires_at),
-        type: "spirit",
-        title: MESSAGE_TITLES.m2,
-        text: M2_TEXT
-      });
-    }
+  const labels = await treeLabels(doc.tree_id);
+  out.tree_name = labels.tree_name;
+  out.hall_name = labels.hall_name;
+  const tree = await getTree(doc.tree_id);
+  const person = tree?.people?.[doc.person_handle] || null;
+  if (person) {
+    out.person_name = person.name || `${person.surname || ""}${person.given || ""}` || doc.person_handle;
+    out.person_gender = person.gender || null;
   }
-  if (entry.status === "buffer") {
-    out.push({
-      key: warnKey.spiritBuffer(phone, treeId, entry.spirit_expires_at),
-      type: "spirit",
-      title: MESSAGE_TITLES.m3,
-      text: M3_TEXT
-    });
-    const d = daysLeftUntil(entry.buffer_until, now);
-    if (Number.isFinite(d) && d > 0 && d <= WARN_DAYS_7) {
-      out.push({
-        key: warnKey.spirit7(phone, treeId, entry.buffer_until),
-        type: "spirit",
-        title: MESSAGE_TITLES.m4,
-        text: M4_TEXT
-      });
-    }
-  }
+  out.can_bind = !!person && !await isPersonHandleTaken(doc.person_handle);
   return out;
 }
-function trimMessages(items, limit = MESSAGE_KEEP_LIMIT) {
-  const list = (items || []).slice();
-  while (list.length > limit) {
-    const idx = list.findIndex((m) => m && m.read === true);
-    if (idx < 0)
-      break;
-    list.splice(idx, 1);
-  }
-  return list;
+async function inviteCodeGrantsTree(raw, treeId, now = /* @__PURE__ */ new Date()) {
+  const code = normalizeInviteCode(raw);
+  if (!code || !treeId)
+    return false;
+  const doc = await getInviteCode(code);
+  if (!inviteCodeUsable(doc, now))
+    return false;
+  return !!doc.tree_id && String(doc.tree_id) === String(treeId);
 }
-var messageLocks = /* @__PURE__ */ new Map();
-async function withMessages(mutator) {
-  const lock = messageLocks.get(MESSAGES_ID) || Promise.resolve();
-  const run = lock.then(async () => {
-    const base = await colGet(MESSAGES_COL, MESSAGES_ID);
-    const doc = base ? JSON.parse(JSON.stringify(base)) : blankMessagesDoc();
-    doc.items = doc.items || {};
-    doc.warned = doc.warned || {};
-    const ctx = { doc, dirty: false };
-    const result = await mutator(doc, ctx);
-    if (ctx.dirty)
-      await colSet(MESSAGES_COL, MESSAGES_ID, doc);
-    return result;
-  });
-  messageLocks.set(MESSAGES_ID, run.catch(() => {
-  }));
-  return run;
-}
-async function ensureWarnings(viewer, now = /* @__PURE__ */ new Date()) {
-  const phone = typeof viewer === "string" ? viewer : viewer?.phone || "";
-  const role = typeof viewer === "string" ? "" : viewer?.role || "";
-  if (!phone)
-    return { created: [], keys: [] };
-  const candidates = await withAssets(phone, (user) => {
-    sweep(user, now);
-    return expiringCandidates(phone, user, now);
-  });
-  await settleAllTrees(now);
-  const spiritDoc = await colGet(SPIRIT_COL, SPIRIT_ID);
-  for (const treeId of await recipientTreeIds(phone, role, spiritDoc)) {
-    candidates.push(...spiritCandidates(phone, treeId, spiritDoc?.trees?.[treeId], now));
-  }
-  return putWarnings(phone, candidates, now);
-}
-async function recipientTreeIds(phone, role, spiritDoc) {
-  const treeIds = Object.keys(spiritDoc?.trees || {});
-  if (treeIds.length === 0)
-    return [];
-  if (role === "chief_editor")
-    return treeIds;
-  const anchor = await getAnchor(phone);
-  const tid = anchor?.tree_id;
-  return tid && treeIds.includes(tid) ? [tid] : [];
-}
-async function putWarnings(phone, candidates, now) {
-  const fresh = (candidates || []).filter(Boolean);
-  if (fresh.length === 0)
-    return { created: [], keys: [] };
-  return withMessages((doc, ctx) => {
-    const created = [];
-    const keys = [];
-    for (const c of fresh) {
-      if (doc.warned[c.key])
-        continue;
-      doc.items[phone] = doc.items[phone] || [];
-      doc.items[phone].push({
-        id: messageId(),
-        type: c.type,
-        title: c.title,
-        text: c.text,
-        created_at: isoOf3(now),
-        read: false
-      });
-      doc.warned[c.key] = true;
-      created.push(doc.items[phone][doc.items[phone].length - 1]);
-      keys.push(c.key);
+async function grantInviteBindRewards(doc, inviteePhone, now = /* @__PURE__ */ new Date()) {
+  const invitee = String(inviteePhone || "").trim();
+  const inviter = String(doc?.inviter_phone || "").trim();
+  const out = {
+    invitee: { fragments: INVITE_BIND_REWARD_INVITEE_FRAGMENTS, granted: false, reason: "" },
+    inviter: {
+      scroll_fragments: INVITE_BIND_REWARD_INVITER_SCROLL_FRAGMENTS,
+      bamboo_pieces: INVITE_BIND_REWARD_INVITER_BAMBOO_PIECES,
+      granted: false,
+      reason: ""
     }
-    if (created.length > 0) {
-      doc.items[phone] = trimMessages(doc.items[phone]);
-      ctx.dirty = true;
-    }
-    return { created, keys };
-  });
-}
-async function messagesOf(viewer, now = /* @__PURE__ */ new Date(), opts = {}) {
-  const phone = typeof viewer === "string" ? viewer : viewer?.phone || "";
-  if (!phone)
-    throw httpError3(401, ERR_NOT_LOGGED_IN);
-  await ensureWarnings(viewer, now);
-  const doc = await colGet(MESSAGES_COL, MESSAGES_ID);
-  const mine = (doc?.items?.[phone] || []).slice();
-  const unread = mine.filter((m) => !m.read).length;
-  const list = opts.unreadOnly ? mine.filter((m) => !m.read) : mine;
-  const ts = (m) => {
-    const t = Date.parse(m?.created_at || "");
-    return Number.isFinite(t) ? t : 0;
   };
-  const items = list.slice().map((m, index) => ({ m, index, ts: ts(m) })).sort((x, y) => y.ts - x.ts || y.index - x.index).map((entry) => entry.m);
-  return { items, unread };
-}
-async function readMessages(phone, ids, now = /* @__PURE__ */ new Date()) {
-  if (!phone)
-    throw httpError3(401, ERR_NOT_LOGGED_IN);
-  const want = Array.isArray(ids) && ids.length > 0 ? new Set(ids.map((x) => String(x))) : null;
-  return withMessages((doc, ctx) => {
-    const mine = doc.items[phone] = doc.items[phone] || [];
-    let marked = 0;
-    for (const m of mine) {
-      if (!m || want && !want.has(String(m.id)))
-        continue;
-      if (!m.read) {
-        m.read = true;
-        marked += 1;
-      }
-    }
-    if (marked > 0)
-      ctx.dirty = true;
-    return { ok: true, unread: mine.filter((m) => !m.read).length, marked };
-  });
-}
-var DELTA_KEYS = ["fragments", "seeds", "bamboos", "jades"];
-function normalizeDelta(raw) {
-  const src = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : null;
-  if (!src)
-    throw httpError3(400, ERR_DELTA_ZERO);
-  const delta = {};
-  let provided = 0;
-  for (const k of DELTA_KEYS) {
-    if (src[k] === void 0 || src[k] === null)
-      continue;
-    provided += 1;
-    const v = src[k];
-    if (typeof v !== "number" || !Number.isInteger(v))
-      throw httpError3(400, ERR_DELTA_INT);
-    delta[k] = v;
+  const inviteeSnap = await getAssets(invitee);
+  const already = (inviteeSnap.txs || []).some((t) => t && t.ref && t.ref.kind === INVITE_BIND_TX_REF);
+  if (already) {
+    out.invitee.reason = "already_rewarded";
+    out.inviter.reason = "already_rewarded";
+    return out;
   }
-  if (provided === 0)
-    throw httpError3(400, ERR_DELTA_ZERO);
-  if (DELTA_KEYS.every((k) => !delta[k]))
-    throw httpError3(400, ERR_DELTA_ZERO);
-  return delta;
-}
-function fragmentsInsufficient(need, current) {
-  const e = assetInsufficient(need, current, "fragment");
-  e.message = `\u8D44\u4EA7\u4E0D\u8DB3\uFF0C\u9700 ${need} \u4E2A\u788E\u7247\uFF0C\u5F53\u524D ${current} \u4E2A`;
-  e.unit = "fragments";
-  return e;
-}
-async function grantAssets(operator, input = {}, now = /* @__PURE__ */ new Date()) {
-  const targetPhone = trimmed(input?.target_phone);
-  if (!PHONE_RE.test(targetPhone))
-    throw httpError3(400, ERR_PHONE_FORMAT);
-  const target = await colGet(USERS_COL, targetPhone);
-  if (!target)
-    throw httpError3(404, `${ERR_USER_NOT_FOUND}: ${targetPhone}`);
-  const rawReason = trimmed(input?.reason);
-  if (!rawReason)
-    throw httpError3(400, ERR_REASON_REQUIRED);
-  const evidence = trimmed(input?.evidence);
-  const reason = evidence ? `${rawReason}\uFF5C\u4F9D\u636E\uFF1A${evidence}` : rawReason;
-  const delta = normalizeDelta(input?.delta);
-  const log = { id: opsLogId(), ts: isoOf3(now), operator, target_phone: targetPhone, delta: { ...delta }, reason };
-  const details = await withAssets(targetPhone, (user) => {
-    sweep(user, now);
-    if (delta.fragments < 0) {
-      const need = -delta.fragments;
-      const current = Math.max(0, Math.floor(Number(user.fragments) || 0));
-      if (current < need)
-        throw fragmentsInsufficient(need, current);
+  await withAssets(invitee, (user) => {
+    if ((user.txs || []).some((t) => t && t.ref && t.ref.kind === INVITE_BIND_TX_REF)) {
+      out.invitee.reason = "already_rewarded";
+      return;
     }
-    let jadeTaken = null;
-    if (delta.jades < 0) {
-      const need = -delta.jades;
-      const chargeable = (user.jades || []).filter((j) => j && !j.mounted_tree_id);
-      const current = chargeable.length;
-      if (current < need)
-        throw assetInsufficient(need, current, "jade");
-      jadeTaken = chargeable.slice().sort((a, b) => (a.expires_at ? Date.parse(a.expires_at) : Number.POSITIVE_INFINITY) - (b.expires_at ? Date.parse(b.expires_at) : Number.POSITIVE_INFINITY)).slice(0, need).map((j) => j.id);
-    }
-    let seedsTaken = null;
-    if (delta.seeds < 0)
-      seedsTaken = chargeLots(user.seeds, -delta.seeds, "seed").taken;
-    let bamboosTaken = null;
-    if (delta.bamboos < 0)
-      bamboosTaken = chargeLots(user.bamboos, -delta.bamboos, "bamboo").taken;
-    if (delta.seeds > 0)
-      addLot(user, "seed", delta.seeds, { ttl_days: SEED_TTL_DAYS, source: "admin", now });
-    if (delta.bamboos > 0)
-      addLot(user, "bamboo", delta.bamboos, { ttl_days: BAMBOO_TTL_DAYS, source: "admin", now });
-    if (delta.jades > 0) {
-      for (let i = 0; i < delta.jades; i += 1)
-        addLot(user, "jade", 1, { expires_at: null, source: "admin", now });
-    }
-    let synthesized = 0;
-    if (delta.fragments > 0)
-      synthesized = addFragments(user, delta.fragments, now).synthesized;
-    if (delta.fragments < 0)
-      user.fragments = Math.max(0, Math.floor(Number(user.fragments) || 0) + delta.fragments);
-    if (jadeTaken) {
-      const drop = new Set(jadeTaken);
-      user.jades = (user.jades || []).filter((j) => !drop.has(j.id));
-    }
-    if (seedsTaken || bamboosTaken) {
-      user.seeds = (user.seeds || []).filter((l) => Math.floor(Number(l.qty) || 0) > 0);
-      user.bamboos = (user.bamboos || []).filter((l) => Math.floor(Number(l.qty) || 0) > 0);
-    }
-    if (Math.floor(Number(user.fragments) || 0) >= FRAGMENT_SYNTH_THRESHOLD) {
-      synthesized += addFragments(user, 0, now).synthesized;
-    }
-    const tx = recordTx(
+    addFragments(user, INVITE_BIND_REWARD_INVITEE_FRAGMENTS, now);
+    recordTx(
       user,
       {
-        type: TX_ADMIN_GRANT,
-        delta,
-        ref: {},
-        desc: `\u8FD0\u8425\u53D1\u653E\uFF1A${reason}\uFF08log ${log.id}\uFF09`,
-        operator
+        type: INVITE_TX_TYPE,
+        delta: { fragments: INVITE_BIND_REWARD_INVITEE_FRAGMENTS },
+        ref: { kind: INVITE_BIND_TX_REF, code: String(doc?._id || ""), inviter: maskPhone3(inviter) },
+        desc: `\u9080\u8BF7\u7ED1\u5B9A\u5956\u52B1\uFF1A\u7ED1\u5B9A\u6210\u529F +${INVITE_BIND_REWARD_INVITEE_FRAGMENTS} \u77F3\u69B4\u7C7D\u788E\u7247`,
+        operator: invitee
       },
       now
     );
-    return {
-      summary: {
-        phone: targetPhone,
-        fragments: Math.max(0, Math.floor(Number(user.fragments) || 0)),
-        seeds_total: sumLots(user.seeds),
-        bamboos_total_pieces: sumLots(user.bamboos),
-        jades: (user.jades || []).length,
-        synthesized,
-        signin_date: user.signin_date || "",
-        log_id: log.id,
-        tx_id: tx.id
-      },
-      seed_lots: (user.seeds || []).length,
-      bamboo_lots: (user.bamboos || []).length,
-      jade_ids_granted: delta.jades > 0 ? (user.jades || []).slice(-delta.jades).map((j) => j.id) : []
-    };
+    out.invitee.granted = true;
+    out.invitee.reason = "granted";
   });
-  await appendOpsLog(log);
-  return { ok: true, summary: details.summary };
-}
-async function appendOpsLog(log) {
-  const base = await colGet(OPS_LOGS_COL, OPS_LOGS_ID);
-  const doc = base ? JSON.parse(JSON.stringify(base)) : blankOpsLogsDoc();
-  doc.logs = Array.isArray(doc.logs) ? doc.logs : [];
-  doc.logs.push({
-    id: log.id,
-    ts: log.ts,
-    operator: log.operator,
-    target_phone: log.target_phone,
-    delta: { ...log.delta || {} },
-    reason: log.reason
-  });
-  await colSet(OPS_LOGS_COL, OPS_LOGS_ID, doc);
-  return doc.logs[doc.logs.length - 1];
-}
-async function opsLogs(filters = {}) {
-  const operator = trimmed(filters.operator);
-  const phone = trimmed(filters.phone);
-  const raw = Number(filters.limit);
-  const limit = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), LOGS_LIMIT_MAX) : LOGS_LIMIT_DEFAULT;
-  const doc = await colGet(OPS_LOGS_COL, OPS_LOGS_ID);
-  let logs = Array.isArray(doc?.logs) ? doc.logs.slice() : [];
-  if (operator)
-    logs = logs.filter((l) => l?.operator === operator);
-  if (phone)
-    logs = logs.filter((l) => l?.target_phone === phone);
-  const tsOf = (entry) => {
-    const parsed = Date.parse(entry?.ts || 0);
-    return Number.isFinite(parsed) ? parsed : 0;
-  };
-  logs = logs.map((log, index) => ({ log, index, ts: tsOf(log) })).sort((x, y) => y.ts - x.ts || y.index - x.index).map((entry) => entry.log);
-  return { logs: logs.slice(0, limit) };
-}
-async function adminUserAssets(phone, now = /* @__PURE__ */ new Date()) {
-  const target = trimmed(phone);
-  if (!target)
-    throw httpError3(400, ERR_MISSING_PHONE);
-  const user = await colGet(USERS_COL, target);
-  if (!user)
-    throw httpError3(404, `${ERR_USER_NOT_FOUND}: ${target}`);
-  return withAssets(target, (assets) => {
-    sweep(assets, now);
-    const s = summarize(assets, now);
-    return {
-      phone: target,
-      fragments: s.fragments,
-      seeds_total: s.seeds_total,
-      bamboos_total_pieces: s.bamboos_total_pieces,
-      jades: s.jades_total,
-      seed_lots: s.seed_lots,
-      bamboo_lots: s.bamboo_lots,
-      jade_list: s.jades,
-      signin_date: s.signin_date
-    };
-  });
-}
-async function deleteAccount(phone, now = /* @__PURE__ */ new Date()) {
-  if (!phone)
-    throw httpError3(401, ERR_NOT_LOGGED_IN);
-  await openListingGuard(phone, now);
-  return withAssets(phone, (user) => {
-    sweep(user, now);
-    const cleared = {
-      fragments: Math.max(0, Math.floor(Number(user.fragments) || 0)),
-      seeds: sumLots(user.seeds),
-      bamboos: sumLots(user.bamboos),
-      jades: (user.jades || []).length
-    };
-    const tx = recordTx(
+  if (!inviter || inviter === invitee) {
+    out.inviter.reason = inviter ? "self_invite" : "no_inviter";
+    return out;
+  }
+  const inviterSnap = await getAssets(inviter);
+  if (countInviteRewardsToday(inviterSnap, now) >= INVITE_DAILY_LIMIT) {
+    out.inviter.reason = "daily_limit";
+    return out;
+  }
+  await withAssets(inviter, (user) => {
+    if (countInviteRewardsToday(user, now) >= INVITE_DAILY_LIMIT) {
+      out.inviter.reason = "daily_limit";
+      return;
+    }
+    addScrollFragments(user, INVITE_BIND_REWARD_INVITER_SCROLL_FRAGMENTS, now);
+    addLot(user, "bamboo", INVITE_BIND_REWARD_INVITER_BAMBOO_PIECES, { source: INVITE_BIND_TX_SOURCE, now });
+    recordTx(
       user,
       {
-        type: TX_ACCOUNT_CLEAR,
-        delta: { fragments: -cleared.fragments, seeds: -cleared.seeds, bamboos: -cleared.bamboos, jades: -cleared.jades },
-        ref: {},
-        desc: "\u8D26\u53F7\u6CE8\u9500\uFF1A\u6E05\u7A7A\u4E2A\u4EBA\u8D44\u4EA7\uFF08\u4E0D\u53EF\u6062\u590D\uFF09"
+        type: INVITE_TX_TYPE,
+        delta: {
+          scroll_fragments: INVITE_BIND_REWARD_INVITER_SCROLL_FRAGMENTS,
+          bamboos: INVITE_BIND_REWARD_INVITER_BAMBOO_PIECES
+        },
+        // ref.kind 仍是 `invite` ⇒ 与既有日限**同一计数器**（沿用 3 次/日）
+        ref: {
+          kind: INVITE_TX_REF_KIND,
+          source: INVITE_BIND_TX_SOURCE,
+          invitee: maskPhone3(invitee),
+          code: String(doc?._id || "")
+        },
+        desc: `\u9080\u8BF7\u7ED1\u5B9A\u52A0\u6210\uFF1A${maskPhone3(invitee)} \u901A\u8FC7\u60A8\u7684\u9080\u8BF7\u7801\u7ED1\u5B9A\u6210\u529F`,
+        operator: inviter
       },
       now
     );
-    user.fragments = 0;
-    user.seeds = [];
-    user.bamboos = [];
-    user.jades = [];
-    user.signin_date = "";
-    return { ok: true, phone, cleared, tx_id: tx.id, txs_kept: (user.txs || []).length };
+    out.inviter.granted = true;
+    out.inviter.reason = "granted";
   });
+  return out;
 }
+var fail3 = (status, error) => ({ ok: false, status, body: { error } });
+async function bindInviteCode(opts = {}) {
+  const now = opts.now || /* @__PURE__ */ new Date();
+  const me = String(opts.phone || "").trim();
+  const decision = String(opts.decision || "").trim();
+  const code = normalizeInviteCode(opts.c);
+  if (!me)
+    return fail3(401, "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F");
+  if (!code)
+    return fail3(400, "\u53C2\u6570\u9519\u8BEF\uFF1Ac \u5FC5\u586B");
+  if (!DECISIONS.includes(decision))
+    return fail3(400, "\u53C2\u6570\u9519\u8BEF\uFF1Adecision \u2208 accept/replace/skip");
+  const doc = await getInviteCode(code);
+  if (!doc)
+    return fail3(400, "\u9080\u8BF7\u7801\u4E0D\u5B58\u5728");
+  const boundBy = Array.isArray(doc.bound_by) ? doc.bound_by : [];
+  if (boundBy.includes(me))
+    return fail3(400, MSG_ALREADY_HANDLED);
+  const state = inviteCodeState(doc, now);
+  if (state === "revoked")
+    return fail3(400, "\u9080\u8BF7\u7801\u5DF2\u88AB\u64A4\u9500");
+  if (state === "expired")
+    return fail3(400, "\u9080\u8BF7\u7801\u5DF2\u8FC7\u671F");
+  if (state === "used")
+    return fail3(400, "\u9080\u8BF7\u7801\u5DF2\u4F7F\u7528");
+  let finalTree = null;
+  let finalHandle = null;
+  if (decision === "accept") {
+    if (doc.kind !== "node")
+      return fail3(400, "\u8BE5\u9080\u8BF7\u7801\u4E0D\u542B\u5EFA\u8BAE\u8282\u70B9\uFF0C\u8BF7\u9009\u62E9\u8282\u70B9\u6216\u6682\u4E0D\u7ED1\u5B9A");
+    finalTree = String(doc.tree_id || "");
+    finalHandle = String(doc.person_handle || "");
+  } else if (decision === "replace") {
+    finalTree = String(opts.treeId || "").trim();
+    finalHandle = String(opts.personHandle || "").trim();
+    if (!finalTree || !finalHandle)
+      return fail3(400, "\u53C2\u6570\u9519\u8BEF\uFF1A\u66F4\u6362\u8282\u70B9\u9700\u63D0\u4F9B tree_id + person_handle");
+  }
+  if (finalHandle) {
+    try {
+      await assertAnchorBindable(finalHandle, me, { treeId: finalTree, role: opts.role });
+    } catch (e) {
+      return fail3(e.status || 400, e.message);
+    }
+    await setAnchor(me, finalTree, finalHandle, { via_invite_code: code });
+  }
+  let invite_record = null;
+  try {
+    invite_record = await applyInvite(me, doc.inviter_phone, { now });
+  } catch (e) {
+    invite_record = { ok: false, reason: "apply_invite_error", error: String(e && e.message || e) };
+  }
+  const next = { ...doc };
+  next.bound_by = [...boundBy, me];
+  if ((decision === "accept" || decision === "replace") && doc.kind === "node") {
+    next.used_count = 1;
+    next.used_by = [...Array.isArray(doc.used_by) ? doc.used_by : [], me];
+    next.used_at = new Date(now).toISOString();
+  }
+  await colSet(INVITE_CODES_COL, doc._id, next);
+  const rewards = finalHandle ? await grantInviteBindRewards(doc, me, now) : null;
+  const body = {
+    ok: true,
+    bound: !!finalHandle,
+    anchor: finalHandle ? { tree_id: finalTree, person_handle: finalHandle } : null
+  };
+  if (rewards)
+    body.rewards = rewards;
+  return { ok: true, status: 200, body };
+}
+
+// cloudfunctions/compat-api/index.js
+init_scope();
 
 // cloudfunctions/compat-api/lib/marriage.js
-var import_node_crypto4 = __toESM(require("node:crypto"), 1);
+var import_node_crypto5 = __toESM(require("node:crypto"), 1);
 init_id_seq();
 var MIRROR_LINK_TYPE = "marriage";
 function genMarriageId() {
-  return import_node_crypto4.default.randomBytes(12).toString("hex");
+  return import_node_crypto5.default.randomBytes(12).toString("hex");
 }
 function genHandle2() {
-  return import_node_crypto4.default.randomBytes(12).toString("hex");
+  return import_node_crypto5.default.randomBytes(12).toString("hex");
 }
 function normalizeMarriageDate(v) {
   const s = String(v || "").trim();
@@ -30555,8 +34418,182 @@ function applyLegacyMarriageEnd({ tree, person, otherTree, otherPerson, kind, en
 }
 
 // cloudfunctions/compat-api/lib/child-write.js
-var import_node_crypto5 = __toESM(require("node:crypto"), 1);
+var import_node_crypto6 = __toESM(require("node:crypto"), 1);
 init_store();
+
+// cloudfunctions/compat-api/lib/family-population.js
+function treeKind(entry) {
+  if (!entry)
+    return "family";
+  if (entry.is_master === true || String(entry.kind || "") === "master")
+    return "master";
+  if (String(entry.kind || "") === "clan")
+    return "clan";
+  return "family";
+}
+function isMirrorNode(person) {
+  return !!person && String(person.external_mirror) === "true";
+}
+function genderOf(person) {
+  const g = person && typeof person.gender === "string" ? person.gender.trim() : "";
+  return g || "U";
+}
+function analyzeFamilyGraph(tree) {
+  const people = tree && tree.people || {};
+  const families = Object.values(tree && tree.families || {}).filter(Boolean);
+  const inPeople = (h) => !!h && Object.prototype.hasOwnProperty.call(people, h);
+  const fatherOf = /* @__PURE__ */ new Map();
+  const motherOf = /* @__PURE__ */ new Map();
+  for (const f of families) {
+    for (const c of f.child_handles || []) {
+      if (!inPeople(c))
+        continue;
+      if (inPeople(f.father_handle) && !fatherOf.has(c))
+        fatherOf.set(c, f.father_handle);
+      if (inPeople(f.mother_handle) && !motherOf.has(c))
+        motherOf.set(c, f.mother_handle);
+    }
+  }
+  const roots = /* @__PURE__ */ new Set();
+  for (const h of Object.keys(people))
+    if (!fatherOf.has(h))
+      roots.add(h);
+  const inLawRoots = /* @__PURE__ */ new Set();
+  for (const f of families) {
+    const fa = inPeople(f.father_handle) ? f.father_handle : "";
+    const mo = inPeople(f.mother_handle) ? f.mother_handle : "";
+    for (const [x, y] of [[fa, mo], [mo, fa]]) {
+      if (!x || !y)
+        continue;
+      if (!roots.has(x))
+        continue;
+      if (!fatherOf.has(y))
+        continue;
+      inLawRoots.add(x);
+    }
+  }
+  const kidsOf = /* @__PURE__ */ new Map();
+  for (const [c, fa] of fatherOf) {
+    if (!kidsOf.has(fa))
+      kidsOf.set(fa, []);
+    kidsOf.get(fa).push(c);
+  }
+  const clan = /* @__PURE__ */ new Set();
+  const queue = [];
+  for (const h of roots) {
+    if (inLawRoots.has(h))
+      continue;
+    clan.add(h);
+    queue.push(h);
+  }
+  while (queue.length) {
+    const h = queue.shift();
+    for (const c of kidsOf.get(h) || []) {
+      if (clan.has(c))
+        continue;
+      clan.add(c);
+      queue.push(c);
+    }
+  }
+  const marriedIn = /* @__PURE__ */ new Set();
+  for (const f of families) {
+    const fa = inPeople(f.father_handle) ? f.father_handle : "";
+    const mo = inPeople(f.mother_handle) ? f.mother_handle : "";
+    for (const [sp, other] of [[mo, fa], [fa, mo]]) {
+      if (!sp || !other)
+        continue;
+      if (clan.has(sp) || !clan.has(other))
+        continue;
+      if (genderOf(people[sp]) === "M")
+        continue;
+      marriedIn.add(sp);
+    }
+  }
+  const counted = /* @__PURE__ */ new Set([...clan, ...marriedIn]);
+  return { people, roots, inLawRoots, clan, marriedIn, counted, fatherOf, motherOf };
+}
+function resolveKind(entry, kindOrOptions) {
+  if (typeof kindOrOptions === "string") {
+    return treeKind({ kind: kindOrOptions, is_master: kindOrOptions === "master" });
+  }
+  if (kindOrOptions && typeof kindOrOptions === "object") {
+    return treeKind({
+      kind: kindOrOptions.kind === void 0 ? entry && entry.kind : kindOrOptions.kind,
+      is_master: kindOrOptions.is_master === void 0 ? !!(entry && entry.is_master) : kindOrOptions.is_master
+    });
+  }
+  return treeKind(entry);
+}
+function countFamilyMembers(tree, entry, kindOrOptions) {
+  const kind = resolveKind(entry, kindOrOptions);
+  const people = tree && tree.people || {};
+  if (kind !== "family")
+    return Object.keys(people).length;
+  return analyzeFamilyGraph(tree).counted.size;
+}
+
+// cloudfunctions/compat-api/lib/family-write-guard.js
+var MATERNAL_SUCCESSION_KEY = "maternal_succession";
+var MATERNAL_SUCCESSION_VALUE = "true";
+function genderOf2(person) {
+  const g = person && typeof person.gender === "string" ? person.gender.trim() : "";
+  return g || "U";
+}
+function firstSpouseFamily(tree, person) {
+  const fh = (person?.spouse_families || [])[0] || "";
+  return fh ? tree?.families?.[fh] || null : null;
+}
+function hasSpouseInTree(tree, handle) {
+  if (!handle)
+    return false;
+  const people = tree?.people || {};
+  for (const fam of Object.values(tree?.families || {})) {
+    if (!fam)
+      continue;
+    const fa = fam.father_handle || "";
+    const mo = fam.mother_handle || "";
+    if (fa === handle && mo && people[mo])
+      return true;
+    if (mo === handle && fa && people[fa])
+      return true;
+  }
+  return false;
+}
+function withMaternalSuccessionAttribute(attributes, maternalSuccession) {
+  const out = Array.isArray(attributes) ? [...attributes] : [];
+  if (!maternalSuccession)
+    return out;
+  if (out.some((a) => a && a.key === MATERNAL_SUCCESSION_KEY))
+    return out;
+  out.push({ key: MATERNAL_SUCCESSION_KEY, value: MATERNAL_SUCCESSION_VALUE, type: MATERNAL_SUCCESSION_KEY });
+  return out;
+}
+function assertChildWriteAllowed({ tree, kind = "family", personHandle, maternalSuccession = false }) {
+  if (kind !== "family")
+    return;
+  const people = tree?.people || {};
+  const attached = people[personHandle];
+  if (!attached)
+    return;
+  const { clan } = analyzeFamilyGraph(tree);
+  const family = firstSpouseFamily(tree, attached);
+  const fatherRef = family && people[family.father_handle] ? family.father_handle : "";
+  const father = fatherRef || (genderOf2(attached) === "M" ? attached.handle : "");
+  if (father && !isMirrorNode(people[father]) && !clan.has(father)) {
+    throw new Error(
+      `\u300C${people[father].name || father}\u300D\u4E0D\u662F\u672C\u65CF\u6210\u5458\uFF08\u5916\u59D3\u59FB\u4EB2\uFF09\uFF1A\u672C\u6811\u53EA\u5141\u8BB8\u672C\u65CF\u6210\u5458\u7684\u5B50\u5973\u5165\u8C31\uFF0C\u5176\u5B50\u5973\u5E94\u5728\u5BF9\u65B9\u5BB6\u65CF\u6811\u4E0A\u767B\u8BB0`
+    );
+  }
+  if (!fatherRef && genderOf2(attached) !== "M" && clan.has(attached.handle) && hasSpouseInTree(tree, attached.handle)) {
+    if (!maternalSuccession) {
+      throw new Error(
+        `\u300C${attached.name || attached.handle}\u300D\u5DF2\u5A5A\u914D\uFF1A\u672C\u65CF\u5973\u6027\u5A5A\u914D\u540E\u7684\u540E\u4EE3\u9ED8\u8BA4\u4E0D\u8FDB\u672C\u6811\uFF1B\u5982\u786E\u5C5E\u300C\u627F\u6BCD\u55E3\u300D\u7279\u4F8B\uFF0C\u8BF7\u52FE\u9009\u300C\u627F\u6BCD\u55E3\u300D\u540E\u91CD\u8BD5`
+      );
+    }
+  }
+}
+
+// cloudfunctions/compat-api/lib/child-write.js
 var MIRROR_CHILD_LINK_TYPE = "child";
 async function deceasedLockedTree(treeId, masterTreeId) {
   if (!treeId)
@@ -30566,7 +34603,7 @@ async function deceasedLockedTree(treeId, masterTreeId) {
   return treeKindOf(await metaEntryOf(treeId)) === "clan";
 }
 function genHandle3() {
-  return import_node_crypto5.default.randomBytes(12).toString("hex");
+  return import_node_crypto6.default.randomBytes(12).toString("hex");
 }
 function normalizeGender(g) {
   return ["M", "F", "U"].includes(g) ? g : "U";
@@ -30581,7 +34618,8 @@ function newPerson({ handle, grampsId, name, surname, given, gender, parentFamil
     gender,
     birth_date: "",
     death_date: "",
-    birth_place: "",
+    birth_place: { origin_code: "", note: "" },
+    residence_places: [],
     death_place: "",
     parent_family: parentFamily,
     spouse_families: [],
@@ -30608,13 +34646,13 @@ function mirrorParentOf(family, people) {
   const mother = family?.mother_handle ? people[family.mother_handle] || null : null;
   if (father && !isMirror(father))
     return null;
-  const owner = father || mother;
-  if (!isMirror(owner))
+  const owner2 = father || mother;
+  if (!isMirror(owner2))
     return null;
   if (isMirror(father) && isMirror(mother)) {
     throw new Error("\u8BE5\u5BB6\u5EAD\u7236\u6BCD\u53CC\u65B9\u5747\u4E3A\u5916\u6811\u955C\u50CF\u8282\u70B9\uFF0C\u65E0\u6CD5\u786E\u5B9A\u5B50\u5973\u5F52\u5C5E\uFF0C\u8BF7\u8054\u7CFB\u603B\u7F16\u8F91");
   }
-  return owner;
+  return owner2;
 }
 function findRealFamily(tree, parentHandle, mirror, localTreeId) {
   const parent = tree.people[parentHandle];
@@ -30647,7 +34685,8 @@ async function addChildNode({
   extraAttributes = [],
   maxDepth = 0,
   depthOf = null,
-  masterTreeId = ""
+  masterTreeId = "",
+  maternalSuccession = false
 }) {
   const tree0 = await getTree(treeId);
   if (!tree0)
@@ -30667,9 +34706,17 @@ async function addChildNode({
   const given = String(name || "").trim();
   const surnameClean = String(surname || "").trim();
   const childGender = normalizeGender(gender);
-  const attributes = cleanAttributes(extraAttributes);
+  const attributes = withMaternalSuccessionAttribute(cleanAttributes(extraAttributes), maternalSuccession);
   if (!mirror && !attach && !given)
     throw new Error("\u8BF7\u586B\u5199\u5B50\u8282\u70B9\u59D3\u540D");
+  if (!mirror) {
+    assertChildWriteAllowed({
+      tree: tree0,
+      kind: treeKindOf(await metaEntryOf(treeId)),
+      personHandle,
+      maternalSuccession
+    });
+  }
   let remoteTreeId = "";
   let remoteParentHandle = "";
   let remoteFamilyHandle = "";
@@ -30832,7 +34879,8 @@ async function addChildNode({
       gender: realPerson.gender,
       birth_date: "",
       death_date: "",
-      birth_place: "",
+      birth_place: { origin_code: "", note: "" },
+      residence_places: [],
       death_place: "",
       parent_family: fam.handle,
       spouse_families: [],
@@ -30866,7 +34914,7 @@ async function addChildNode({
 }
 
 // cloudfunctions/compat-api/lib/clan.js
-var import_node_crypto6 = __toESM(require("node:crypto"), 1);
+var import_node_crypto7 = __toESM(require("node:crypto"), 1);
 init_store();
 init_id_seq();
 var CLAN_REQUEST_COLLECTION = "jiazu_clan_requests";
@@ -30876,7 +34924,7 @@ var MAX_CHAIN_DEPTH = 12;
 var PENDING_CLAN_MESSAGE = "\u8BE5\u59D3\u5DF2\u6709\u5F85\u5BA1\u6279\u7684\u5EFA\u8C31\u7533\u8BF7\uFF0C\u8BF7\u7B49\u5F85\u603B\u7F16\u5BA1\u6279";
 var NO_MASTER_MESSAGE = "\u8BE5\u7956\u8C31\u672A\u8BA4\u7956\u4E16\u672C";
 function genHandle4() {
-  return import_node_crypto6.default.randomBytes(14).toString("hex");
+  return import_node_crypto7.default.randomBytes(14).toString("hex");
 }
 function badRequest2(message) {
   const e = new Error(message);
@@ -30935,19 +34983,26 @@ function assertClanFounderUnique({ entries, surname, masterTreeId, masterHandle,
   }
   return null;
 }
-function clanMirrorNodes(tree) {
+function isClanTopMirrorNode(person, treeId = "", upperTreeId = "") {
+  if (!isReadonlyMirror(person, treeId))
+    return false;
+  if (upperTreeId)
+    return String(person.external_tree || "") === String(upperTreeId);
+  return String(person.handle || "") === `${CLAN_MIRROR_PREFIX}${String(person.external_person_handle || "")}`;
+}
+function clanMirrorNodes(tree, upperTreeId = "") {
   if (!tree?.people)
     return [];
-  return Object.values(tree.people).filter((p) => isUpperMirror(p, tree.tree_id)).sort((a, b) => String(a.gramps_id || "").localeCompare(String(b.gramps_id || "")));
+  return Object.values(tree.people).filter((p) => isClanTopMirrorNode(p, tree.tree_id, upperTreeId)).sort((a, b) => String(a.gramps_id || "").localeCompare(String(b.gramps_id || "")));
 }
 function clanOwnNodes(tree) {
   if (!tree?.people)
     return [];
-  return Object.values(tree.people).filter((p) => !isUpperMirror(p, tree.tree_id)).sort((a, b) => String(a.gramps_id || "").localeCompare(String(b.gramps_id || "")));
+  return Object.values(tree.people).filter((p) => !isReadonlyMirror(p, tree.tree_id)).sort((a, b) => String(a.gramps_id || "").localeCompare(String(b.gramps_id || "")));
 }
-function clanStats(tree) {
+function clanStats(tree, upperTreeId = "") {
   const own = clanOwnNodes(tree).length;
-  const mirrors = clanMirrorNodes(tree).length;
+  const mirrors = clanMirrorNodes(tree, upperTreeId).length;
   return { own_count: own, mirror_count: mirrors, total: own + mirrors };
 }
 function firstChainChild(tree, handle) {
@@ -31009,8 +35064,8 @@ function planClanMirrorPerson({ handle, grampsId, masterPerson, masterTreeId, li
     ...requestedBy ? { external_founder_created_by: requestedBy } : {}
   };
 }
-function clearClanTopMirror(tree) {
-  const mirrors = clanMirrorNodes(tree);
+function clearClanTopMirror(tree, upperTreeId = "") {
+  const mirrors = clanMirrorNodes(tree, upperTreeId);
   if (!mirrors.length)
     return { removed_handles: [], removed_families: [] };
   const rm = new Set(mirrors.map((p) => p.handle));
@@ -31065,7 +35120,7 @@ function applyClanTopMirror({
   if (!tree?.people)
     throw badRequest2("\u7956\u8C31\u6811\u6570\u636E\u4E0D\u53EF\u7528");
   const masters = planClanTopMirrors({ masterTree, masterHandle, depth });
-  clearClanTopMirror(tree);
+  clearClanTopMirror(tree, masterTreeId);
   const newPersonId = typeof allocPersonId === "function" ? allocPersonId : null;
   const newFamilyId = typeof allocFamilyId === "function" && allocFamilyId || (() => "");
   let prevHandle = "";
@@ -31131,6 +35186,7 @@ function buildClanRequest({
   clanTitle = "",
   requestedBy = "",
   note = "",
+  originCode = "",
   now = (/* @__PURE__ */ new Date()).toISOString()
 }) {
   return {
@@ -31141,6 +35197,7 @@ function buildClanRequest({
     master_handle: masterHandle || "",
     master_name: masterName || "",
     clan_title: String(clanTitle || "").slice(0, 40),
+    origin_code: String(originCode || "").trim(),
     status: "pending",
     requested_by: requestedBy || "",
     note: String(note || "").slice(0, 200),
@@ -31150,9 +35207,9 @@ function buildClanRequest({
     created_at: now
   };
 }
-function filterPendingClanRequests(list, { chief = false, myTreeIds = [], myPhone = "" } = {}) {
+function filterPendingClanRequests(list2, { chief = false, myTreeIds = [], myPhone = "" } = {}) {
   const mine = new Set((myTreeIds || []).filter(Boolean));
-  return (list || []).filter((r) => r.status === "pending").filter((r) => chief || mine.has(r.tree_id) || !!myPhone && r.requested_by === myPhone).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  return (list2 || []).filter((r) => r.status === "pending").filter((r) => chief || mine.has(r.tree_id) || !!myPhone && r.requested_by === myPhone).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
 }
 async function safeMeta2() {
   try {
@@ -31239,8 +35296,9 @@ async function listClans({ meta = null, getTreeFn = getTree, listIdsFn = listTre
   const out = [];
   for (const e of entries) {
     const tree = await safeTree(getTreeFn, e.tree_id);
-    const founderMirror = tree ? clanMirrorNodes(tree).find((p) => p.external_link_type === FOUNDER_LINK_TYPE) : null;
-    const stats = tree ? clanStats(tree) : { own_count: 0, mirror_count: 0, total: 0 };
+    const upperTreeId = String(e.master_tree_id || "");
+    const founderMirror = tree ? clanMirrorNodes(tree, upperTreeId).find((p) => p.external_link_type === FOUNDER_LINK_TYPE) : null;
+    const stats = tree ? clanStats(tree, upperTreeId) : { own_count: 0, mirror_count: 0, total: 0 };
     out.push({
       tree_id: e.tree_id,
       tree_title: e.display_title || e.tree_id,
@@ -31261,7 +35319,8 @@ async function clanInfo({ treeId, meta = null, getTreeFn = getTree, listIdsFn = 
   const entry = entryOf(m, treeId) || { tree_id: treeId };
   const kind = treeKindOf(entry);
   const tree = await safeTree(getTreeFn, treeId);
-  const mirrors = tree ? clanMirrorNodes(tree) : [];
+  const upperTreeId = String(entry.master_tree_id || "");
+  const mirrors = tree ? clanMirrorNodes(tree, upperTreeId) : [];
   const own = tree ? clanOwnNodes(tree) : [];
   const founderMirror = mirrors.find((p) => p.external_link_type === FOUNDER_LINK_TYPE) || null;
   const branches = kind === TREE_KIND.CLAN ? await listClanBranches({ clanTreeId: treeId, meta: m, getTreeFn, listIdsFn }) : [];
@@ -31312,6 +35371,7 @@ async function createClanTree({
   chainDepth = DEFAULT_CHAIN_DEPTH,
   ownRootName = "",
   origin = "",
+  originCode = "",
   hallName = "",
   description = "",
   initiatorPhone = "",
@@ -31322,6 +35382,9 @@ async function createClanTree({
     throw badRequest2("\u8BF7\u586B\u5199\u5355\u4E2A\u6C49\u5B57\u59D3\u6C0F");
   if (!masterTreeId || !masterHandle)
     throw badRequest2("\u8BF7\u9009\u62E9\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u4E2D\u7684\u59CB\u7956\u8282\u70B9");
+  const code = String(originCode || "").trim();
+  if (code && !isKnownOriginCode(code))
+    throw badRequest2(`\u53D1\u6E90\u5730\u884C\u653F\u533A\u5212\u4EE3\u7801\u65E0\u6548\uFF1A${code}`);
   const meta = await getMeta();
   const masterEntry = entryOf(meta, masterTreeId);
   if (treeKindOf(masterEntry) !== TREE_KIND.MASTER)
@@ -31404,7 +35467,7 @@ async function createClanTree({
     });
   } catch {
   }
-  meta.trees[treeId] = {
+  const clanEntry = {
     tree_id: treeId,
     kind: TREE_KIND.CLAN,
     path_alias: `/z/${treeId}`,
@@ -31415,7 +35478,8 @@ async function createClanTree({
     genealogy_name: String(genealogyName || "").trim() || `${char}\u6C0F\u7956\u8C31`,
     archive_url: "",
     hall_name: String(hallName || "").trim() || `${char}\u6C0F\u5B97\u7960`,
-    origin: String(origin || "").trim(),
+    origin: code ? resolveOrigin(code).display : String(origin || "").trim(),
+    origin_code: code,
     description: String(description || "").trim() || `\u65B0\u5EFA\u7956\u8C31\uFF0C\u59CB\u7956\uFF1A${masterPerson.name || ""}\uFF08${kindLabel(TREE_KIND.MASTER)}\uFF09`,
     master_tree_id: masterTreeId,
     master_handle: masterHandle,
@@ -31425,14 +35489,14 @@ async function createClanTree({
     created_at: now,
     created_by: initiatorPhone || ""
   };
-  await saveMeta(meta);
+  await mutateTreeMeta(treeId, () => clanEntry);
   return {
     ok: true,
     tree_id: treeId,
     kind: TREE_KIND.CLAN,
     path_alias: `/z/${treeId}`,
     surname: char,
-    display_title: meta.trees[treeId].display_title,
+    display_title: clanEntry.display_title,
     master_tree_id: masterTreeId,
     master_handle: masterHandle,
     master_name: masterPerson.name || "",
@@ -31488,21 +35552,25 @@ async function attachClanToMaster({
       allocFamilyId: idAllocator(familyIds)
     })
   );
-  clanEntry.master_tree_id = masterTreeId;
-  clanEntry.master_handle = masterHandle;
-  clanEntry.master_name = masterPerson.name || "";
-  if (rootHandle)
-    clanEntry.founder_handle = rootHandle;
   let registered = null;
   if (founderMissing) {
     const node = (await getTree(treeId))?.people?.[rootHandle] || null;
     registered = planFounderRegister(clanEntry, node || { handle: rootHandle });
-    delete clanEntry.founder_state;
-    clanEntry.founder_handle = registered.founder_handle;
-    clanEntry.founder_gramps_id = registered.founder_gramps_id;
-    clanEntry.founder_name = registered.founder_name;
   }
-  await saveMeta(meta);
+  await mutateTreeMeta(treeId, (entry) => {
+    entry.master_tree_id = masterTreeId;
+    entry.master_handle = masterHandle;
+    entry.master_name = masterPerson.name || "";
+    if (rootHandle)
+      entry.founder_handle = rootHandle;
+    if (registered) {
+      delete entry.founder_state;
+      entry.founder_handle = registered.founder_handle;
+      entry.founder_gramps_id = registered.founder_gramps_id;
+      entry.founder_name = registered.founder_name;
+    }
+    return entry;
+  });
   return {
     ok: true,
     tree_id: treeId,
@@ -31530,22 +35598,25 @@ async function detachClanFromMaster({ treeId }) {
   const tree0 = await getTree(treeId);
   if (!tree0)
     throw notFound2(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
-  const mirrors = clanMirrorNodes(tree0);
+  const upperTreeId = String(entry.master_tree_id || "");
+  const mirrors = clanMirrorNodes(tree0, upperTreeId);
   if (!mirrors.length)
     throw badRequest2(NO_MASTER_MESSAGE);
-  const removed = await updateTrees([treeId], (trees) => clearClanTopMirror(trees[treeId]));
+  const removed = await updateTrees([treeId], (trees) => clearClanTopMirror(trees[treeId], upperTreeId));
   for (const h of removed.removed_handles) {
     try {
       await deleteDetail(treeId, h);
     } catch {
     }
   }
-  entry.master_tree_id = "";
-  entry.master_handle = "";
-  entry.master_name = "";
-  await saveMeta(meta);
+  await mutateTreeMeta(treeId, (entry2) => {
+    entry2.master_tree_id = "";
+    entry2.master_handle = "";
+    entry2.master_name = "";
+    return entry2;
+  });
   const after = await getTree(treeId);
-  const stats = after ? clanStats(after) : { own_count: 0, mirror_count: 0 };
+  const stats = after ? clanStats(after, upperTreeId) : { own_count: 0, mirror_count: 0 };
   return {
     ok: true,
     tree_id: treeId,
@@ -31558,9 +35629,10 @@ async function detachClanFromMaster({ treeId }) {
 }
 
 // cloudfunctions/compat-api/lib/branch-clan-ops.js
-var import_node_crypto7 = __toESM(require("node:crypto"), 1);
+var import_node_crypto8 = __toESM(require("node:crypto"), 1);
 init_store();
 init_id_seq();
+init_economy_spirit();
 var DEFAULT_BRANCH_FEE_SEEDS2 = FEE.branch_fee_seeds;
 var DEFAULT_CONVERGE_SPIRIT_RATIO2 = 0.5;
 var SCOPE_CHANGED_CODE = "DELETE_SCOPE_CHANGED";
@@ -31568,9 +35640,9 @@ var INTERNAL_ERROR_TEXT2 = "\u670D\u52A1\u5185\u90E8\u9519\u8BEF";
 var SHELL_RECONCILE_STATE = "empty_source_shell";
 var DAY_MS5 = 864e5;
 function genHandle5() {
-  return import_node_crypto7.default.randomBytes(12).toString("hex");
+  return import_node_crypto8.default.randomBytes(12).toString("hex");
 }
-function fail2(message, status = 400) {
+function fail4(message, status = 400) {
   const e = new Error(message);
   e.status = status;
   return e;
@@ -31737,7 +35809,7 @@ function applyAncestorChainMove({
     const fh = genHandle5();
     const grampsId = typeof allocFamilyId === "function" ? allocFamilyId() : "";
     if (!grampsId)
-      throw fail2("\u5BB6\u65CF\u7F16\u53F7\u9884\u7559\u4E0D\u8DB3\uFF1A\u7ACB\u652F\u767B\u8BB0\u5BB6\u65CF\u65E0\u6CD5\u94F8\u53F7", 500);
+      throw fail4("\u5BB6\u65CF\u7F16\u53F7\u9884\u7559\u4E0D\u8DB3\uFF1A\u7ACB\u652F\u767B\u8BB0\u5BB6\u65CF\u65E0\u6CD5\u94F8\u53F7", 500);
     clan.families[fh] = {
       handle: fh,
       gramps_id: grampsId,
@@ -31809,7 +35881,7 @@ function applyConvergeMove({ src, dst, targetHandle, newFamilyIds = [] }) {
   const moved = planConvergeMove({ src, dst, targetHandle, newFamilyIds });
   const problems = [...checkTreeIntegrity(dst), ...checkTreeIntegrity(src)];
   if (problems.length)
-    throw fail2(`\u6C47\u5B97\u540E\u7ED3\u6784\u6821\u9A8C\u5931\u8D25\uFF1A${problems.slice(0, 3).join("\uFF1B")}`, 500);
+    throw fail4(`\u6C47\u5B97\u540E\u7ED3\u6784\u6821\u9A8C\u5931\u8D25\uFF1A${problems.slice(0, 3).join("\uFF1B")}`, 500);
   return moved;
 }
 function spiritDaysLeft(spiritExpiresAt, now = /* @__PURE__ */ new Date()) {
@@ -31832,42 +35904,51 @@ async function applySpiritTransfer({
   ratio = DEFAULT_CONVERGE_SPIRIT_RATIO2,
   now = /* @__PURE__ */ new Date()
 }) {
-  return withSpirit(
-    sourceTreeId,
-    (entry, ctx) => {
-      const transfer = computeSpiritTransfer({ sourceExpiresAt: entry?.spirit_expires_at || null, now, ratio });
-      if (entry) {
-        entry.status = "expired";
-        ctx.dirty = true;
-      }
-      const tgt = ctx.doc.trees?.[targetTreeId] || null;
-      let targetExp = tgt ? tgt.spirit_expires_at || null : null;
-      let skippedReason = "";
-      if (!entry || !entry.jade) {
-        skippedReason = "\u6E90\u6811\u672A\u9576\u5D4C\u77F3\u69B4\u7C7D\u7389\uFF0C\u65E0\u7075\u6C14\u53EF\u6298\u635F";
-      } else if (!tgt || !tgt.jade) {
-        skippedReason = "\u76EE\u6807\u6811\u5C1A\u672A\u9576\u5D4C\u77F3\u69B4\u7C7D\u7389\uFF08\u65E0\u51F9\u69FD\uFF09\uFF0C\u6E90\u6811\u7075\u6C14\u4E0D\u5E76\u5165";
-      } else if (transfer.transferred_days <= 0) {
-        skippedReason = "\u6E90\u6811\u7075\u6C14\u5269\u4F59\u6709\u6548\u671F\u4E3A 0 \u5929\uFF08\u5DF2\u8FC7\u7F13\u51B2\u671F\uFF09\uFF0C\u65E0\u53EF\u5E76\u5165\u5929\u6570";
-      }
-      if (!skippedReason) {
-        const base = chargeBase(tgt.spirit_expires_at, now);
-        tgt.spirit_expires_at = new Date(base + transfer.transferred_days * DAY_MS5).toISOString();
-        tgt.buffer_until = null;
-        settle(tgt, now);
-        targetExp = tgt.spirit_expires_at;
-        ctx.dirty = true;
-      }
-      return {
-        ...transfer,
-        // 未并入时 transferred_days = 0（§10-1 用例 18：不并入 = 0 天，理由见 skipped_reason）
-        transferred_days: skippedReason ? 0 : transfer.transferred_days,
-        target_spirit_expires_at: targetExp,
-        skipped_reason: skippedReason
-      };
-    },
-    now
-  );
+  const source = await readSpiritEntry(sourceTreeId, now);
+  const target = await readSpiritEntry(targetTreeId, now);
+  const transfer = computeSpiritTransfer({ sourceExpiresAt: source?.spirit_expires_at || null, now, ratio });
+  let skippedReason = "";
+  if (!source || !source.jade) {
+    skippedReason = "\u6E90\u6811\u672A\u9576\u5D4C\u77F3\u69B4\u7C7D\u7389\uFF0C\u65E0\u7075\u6C14\u53EF\u6298\u635F";
+  } else if (!target || !target.jade) {
+    skippedReason = "\u76EE\u6807\u6811\u5C1A\u672A\u9576\u5D4C\u77F3\u69B4\u7C7D\u7389\uFF08\u65E0\u51F9\u69FD\uFF09\uFF0C\u6E90\u6811\u7075\u6C14\u4E0D\u5E76\u5165";
+  } else if (transfer.transferred_days <= 0) {
+    skippedReason = "\u6E90\u6811\u7075\u6C14\u5269\u4F59\u6709\u6548\u671F\u4E3A 0 \u5929\uFF08\u5DF2\u8FC7\u7F13\u51B2\u671F\uFF09\uFF0C\u65E0\u53EF\u5E76\u5165\u5929\u6570";
+  }
+  if (source) {
+    await withSpirit(
+      sourceTreeId,
+      (entry) => {
+        if (entry)
+          entry.status = "expired";
+        return null;
+      },
+      now
+    );
+  }
+  let targetExp = target ? target.spirit_expires_at || null : null;
+  if (!skippedReason && target) {
+    targetExp = await withSpirit(
+      targetTreeId,
+      (entry) => {
+        if (!entry)
+          return null;
+        const base = chargeBase(entry.spirit_expires_at, now);
+        entry.spirit_expires_at = new Date(base + transfer.transferred_days * DAY_MS5).toISOString();
+        entry.buffer_until = null;
+        settle(entry, now);
+        return entry.spirit_expires_at;
+      },
+      now
+    );
+  }
+  return {
+    ...transfer,
+    // 未并入时 transferred_days = 0（§10-1 用例 18：不并入 = 0 天，理由见 skipped_reason）
+    transferred_days: skippedReason ? 0 : transfer.transferred_days,
+    target_spirit_expires_at: targetExp,
+    skipped_reason: skippedReason
+  };
 }
 function refRefusal(hits, op, status, meta) {
   const scope = op === "\u7ACB\u652F" ? "\u4E0A\u7EA7\u94FE" : "\u5B50\u6811";
@@ -31875,7 +35956,7 @@ function refRefusal(hits, op, status, meta) {
     (r) => `${treeLabelOf(meta, r.tree_id)}\u300C${r.name || r.handle}\u300D${LINK_LABEL[r.link_type] ? `\uFF08${LINK_LABEL[r.link_type]}\uFF09` : ""}`
   ).join("\u3001");
   const more = hits.length > 3 ? ` \u7B49\u5171 ${hits.length} \u5904` : "";
-  return fail2(
+  return fail4(
     `\u8BE5\u8282\u70B9\u53CA\u5176${scope}\u5728\u5176\u5B83\u5BB6\u65CF\u6811\u4E2D\u5B58\u5728\u5173\u8054\uFF08\u59CB\u7956\u6302\u8F7D/\u955C\u50CF/\u8DE8\u6811\u5A5A\u59FB\uFF09\uFF0C\u8BF7\u5148\u5230\u5BF9\u5E94\u5BB6\u65CF\u6811\u89E3\u9664\u5173\u7CFB\u540E\u518D${op}\uFF1B\u6D89\u53CA\uFF1A${shown}${more}`,
     status
   );
@@ -31900,52 +35981,52 @@ async function establishBranch({
   now = /* @__PURE__ */ new Date()
 } = {}) {
   if (!treeId)
-    throw fail2("\u7F3A\u5C11 tree_id");
+    throw fail4("\u7F3A\u5C11 tree_id");
   const refText = String(personRef || "").trim();
   if (!refText)
-    throw fail2("\u7F3A\u5C11 person_handle");
+    throw fail4("\u7F3A\u5C11 person_handle");
   const amount = Number.isFinite(Number(feeSeeds)) && Number(feeSeeds) > 0 ? Math.floor(Number(feeSeeds)) : DEFAULT_BRANCH_FEE_SEEDS2;
   const m = meta || await getMeta();
   const entry = entryOf2(m, treeId);
   if (!entry)
-    throw fail2("\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728", 404);
+    throw fail4("\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728", 404);
   const kind = treeKindOf(entry);
   if (kind === TREE_KIND.MASTER)
-    throw fail2("\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u4E0D\u53EF\u7ACB\u652F");
+    throw fail4("\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u4E0D\u53EF\u7ACB\u652F");
   if (kind === TREE_KIND.CLAN)
-    throw fail2("\u7956\u8C31\u4E0D\u53EF\u7ACB\u652F");
+    throw fail4("\u7956\u8C31\u4E0D\u53EF\u7ACB\u652F");
   const tree0 = await getTree(treeId);
   if (!tree0)
-    throw fail2("\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728", 404);
+    throw fail4("\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728", 404);
   const hit = await resolveNode(refText, treeId, { listIdsFn });
   if (!hit)
-    throw fail2("\u8282\u70B9\u4E0D\u5B58\u5728", 404);
+    throw fail4("\u8282\u70B9\u4E0D\u5B58\u5728", 404);
   if (hit.tree_id !== treeId)
-    throw fail2(`\u8BE5\u8282\u70B9\u5C5E\u4E8E\u5BB6\u65CF\u6811 ${hit.tree_id}\uFF0C\u8BF7\u5728\u6240\u5C5E\u5BB6\u65CF\u6811\u5185\u7ACB\u652F`);
+    throw fail4(`\u8BE5\u8282\u70B9\u5C5E\u4E8E\u5BB6\u65CF\u6811 ${hit.tree_id}\uFF0C\u8BF7\u5728\u6240\u5C5E\u5BB6\u65CF\u6811\u5185\u7ACB\u652F`);
   const personHandle = hit.handle;
   const person = tree0.people[personHandle];
   if (!person)
-    throw fail2("\u8282\u70B9\u4E0D\u5B58\u5728", 404);
+    throw fail4("\u8282\u70B9\u4E0D\u5B58\u5728", 404);
   if (String(person.external_mirror || "") === "true") {
-    throw fail2("\u8BE5\u8282\u70B9\u662F\u5916\u6811\u955C\u50CF\u8282\u70B9\uFF0C\u8BF7\u5230\u5176\u771F\u8EAB\u6240\u5728\u5BB6\u65CF\u6811\u64CD\u4F5C");
+    throw fail4("\u8BE5\u8282\u70B9\u662F\u5916\u6811\u955C\u50CF\u8282\u70B9\uFF0C\u8BF7\u5230\u5176\u771F\u8EAB\u6240\u5728\u5BB6\u65CF\u6811\u64CD\u4F5C");
   }
   const founderHandle = resolveFounderHandle(tree0, entry);
   if (founderHandle && founderHandle === personHandle)
-    throw fail2("\u59CB\u7956\u8282\u70B9\u672C\u8EAB\u4E0D\u53EF\u7ACB\u652F");
+    throw fail4("\u59CB\u7956\u8282\u70B9\u672C\u8EAB\u4E0D\u53EF\u7ACB\u652F");
   const clanTreeId = clanAffiliationOf({ meta: m, entry, tree: tree0, founderHandle });
   if (!clanTreeId)
-    throw fail2("\u8BF7\u5148\u4E3A\u8BE5\u5BB6\u65CF\u5EFA\u7ACB\u6216\u8BA4\u7956\u5B97\u8C31");
+    throw fail4("\u8BF7\u5148\u4E3A\u8BE5\u5BB6\u65CF\u5EFA\u7ACB\u6216\u8BA4\u7956\u5B97\u8C31");
   const clanEntry = entryOf2(m, clanTreeId);
   const clanTree = await getTree(clanTreeId);
   if (!clanTree || treeKindOf(clanEntry) !== TREE_KIND.CLAN)
-    throw fail2("\u8BF7\u5148\u4E3A\u8BE5\u5BB6\u65CF\u5EFA\u7ACB\u6216\u8BA4\u7956\u5B97\u8C31");
+    throw fail4("\u8BF7\u5148\u4E3A\u8BE5\u5BB6\u65CF\u5EFA\u7ACB\u6216\u8BA4\u7956\u5B97\u8C31");
   const clanFounderHandle = String(clanEntry?.founder_handle || "");
   if (!clanFounderHandle || !clanTree.people[clanFounderHandle]) {
-    throw fail2("\u8BE5\u7956\u8C31\u5C1A\u672A\u8BBE\u7F6E\u8BA4\u7956\u843D\u70B9\uFF08founder_handle \u4E3A\u7A7A\uFF09\uFF0C\u8BF7\u5148\u5728\u7956\u8C31\u5185\u6307\u5B9A\u843D\u70B9\u540E\u518D\u7ACB\u652F");
+    throw fail4("\u8BE5\u7956\u8C31\u5C1A\u672A\u8BBE\u7F6E\u8BA4\u7956\u843D\u70B9\uFF08founder_handle \u4E3A\u7A7A\uFF09\uFF0C\u8BF7\u5148\u5728\u7956\u8C31\u5185\u6307\u5B9A\u843D\u70B9\u540E\u518D\u7ACB\u652F");
   }
   const plan = planAncestorChainMove({ tree: tree0, personHandle, founderHandle });
   if (!plan.ok)
-    throw fail2("\u8BE5\u8282\u70B9\u4E0D\u5728\u672C\u6811\u59CB\u7956\u94FE\u4E0A\uFF08\u65E0\u4E0A\u7EA7\u7956\u5148\uFF09\uFF0C\u65E0\u6CD5\u7ACB\u652F");
+    throw fail4("\u8BE5\u8282\u70B9\u4E0D\u5728\u672C\u6811\u59CB\u7956\u94FE\u4E0A\uFF08\u65E0\u4E0A\u7EA7\u7956\u5148\uFF09\uFF0C\u65E0\u6CD5\u7ACB\u652F");
   const movedInfo = new Map(
     plan.moved_people.map((h) => [
       h,
@@ -32013,9 +36094,9 @@ async function establishBranch({
     await createTreeFile(newTree);
     const applied = await updateTrees(
       [treeId, clanTreeId],
-      (trees2) => applyAncestorChainMove({
-        src: trees2[treeId],
-        clan: trees2[clanTreeId],
+      (trees) => applyAncestorChainMove({
+        src: trees[treeId],
+        clan: trees[clanTreeId],
         plan,
         newFounderHandle: personHandle,
         clanFounderHandle,
@@ -32060,21 +36141,22 @@ async function establishBranch({
     } catch {
     }
     const m2 = await getMeta();
-    const trees = { ...m2.trees || {} };
     const srcKey = keyOf(m2, treeId) || keyOf(m, treeId);
     if (!srcKey)
-      throw fail2("tree-meta \u4E2D\u627E\u4E0D\u5230\u539F\u6811\u6761\u76EE", 500);
-    const srcEntry = {
-      ...trees[srcKey],
-      founder_handle: personHandle,
-      founder_gramps_id: String(person.gramps_id || ""),
-      founder_name: person.name || "",
-      clan_handle: registrations[0].handle
-      // §13-5：clan_handle = 该树在宗谱的落点
-    };
-    delete srcEntry.founder_state;
-    trees[srcKey] = srcEntry;
-    trees[newTreeId] = {
+      throw fail4("tree-meta \u4E2D\u627E\u4E0D\u5230\u539F\u6811\u6761\u76EE", 500);
+    await mutateTreeMeta(treeId, (entry2) => {
+      const next = {
+        ...entry2,
+        founder_handle: personHandle,
+        founder_gramps_id: String(person.gramps_id || ""),
+        founder_name: person.name || "",
+        clan_handle: registrations[0].handle
+        // §13-5：clan_handle = 该树在宗谱的落点
+      };
+      delete next.founder_state;
+      return next;
+    });
+    await mutateTreeMeta(newTreeId, () => ({
       tree_id: newTreeId,
       kind: TREE_KIND.FAMILY,
       path_alias: `/${newTreeId}`,
@@ -32086,6 +36168,8 @@ async function establishBranch({
       archive_url: "",
       hall_name: entry.hall_name || "",
       origin: entry.origin || "",
+      origin_code: entry.origin_code || "",
+      // 整条复制路径必须同步带 origin_code（契约 §发源地）
       description: `\u7531 ${treeId} \u7ACB\u652F\u800C\u6765\uFF0C\u59CB\u7956\uFF1A${person.name || ""}\uFF08\u539F\u6811\u955C\u50CF\uFF09`,
       enable_custom_domain: false,
       created_at: now.toISOString(),
@@ -32095,8 +36179,7 @@ async function establishBranch({
       founder_name: person.name || "",
       clan_tree_id: clanTreeId,
       clan_handle: registrations[1].handle
-    };
-    await saveMeta({ ...m2, trees });
+    }));
     const out = {
       ok: true,
       original_tree_id: treeId,
@@ -32143,52 +36226,50 @@ async function convergeClan({
   now = /* @__PURE__ */ new Date()
 } = {}) {
   if (!treeId)
-    throw fail2("\u7F3A\u5C11 tree_id");
+    throw fail4("\u7F3A\u5C11 tree_id");
   const refText = String(targetRef || "").trim();
   if (!refText)
-    throw fail2("\u7F3A\u5C11 target_person_id");
+    throw fail4("\u7F3A\u5C11 target_person_id");
   if (confirmPeople === null || confirmPeople === void 0 || String(confirmPeople).trim() === "") {
-    throw fail2("\u7F3A\u5C11 confirm_people\uFF08\u8BF7\u5148\u5C55\u793A\u5C06\u8FC1\u79FB\u7684\u4EBA\u6570\u540E\u518D\u786E\u8BA4\uFF09");
+    throw fail4("\u7F3A\u5C11 confirm_people\uFF08\u8BF7\u5148\u5C55\u793A\u5C06\u8FC1\u79FB\u7684\u4EBA\u6570\u540E\u518D\u786E\u8BA4\uFF09");
   }
   const m = meta || await getMeta();
   const srcEntry = entryOf2(m, treeId);
   if (!srcEntry)
-    throw fail2("\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728", 404);
+    throw fail4("\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728", 404);
   const srcKind = treeKindOf(srcEntry);
   if (srcKind === TREE_KIND.MASTER)
-    throw fail2("\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u4E0D\u53EF\u6C47\u5B97");
+    throw fail4("\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u4E0D\u53EF\u6C47\u5B97");
   if (srcKind === TREE_KIND.CLAN)
-    throw fail2("\u7956\u8C31\u4E0D\u53EF\u6C47\u5B97");
+    throw fail4("\u7956\u8C31\u4E0D\u53EF\u6C47\u5B97");
   const src0 = await getTree(treeId);
   if (!src0)
-    throw fail2("\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728", 404);
+    throw fail4("\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728", 404);
   const srcFounderHandle = currentFounderHandle(src0, srcEntry);
   const srcFounder = srcFounderHandle ? src0.people[srcFounderHandle] : null;
-  const srcFounderUpper = String(srcFounder?.external_tree || "");
-  if (!srcFounder || srcFounder.external_link_type !== FOUNDER_LINK_TYPE || String(srcFounder.external_mirror || "") !== "true" || !srcFounderUpper || srcFounderUpper === treeId) {
-    throw fail2("\u8BE5\u5BB6\u65CF\u6811\u5F53\u524D\u59CB\u7956\u4E0D\u662F\u4E0A\u5C42\u955C\u50CF\uFF0C\u65E0\u6CD5\u6C47\u5B97");
-  }
+  if (!srcFounder)
+    throw fail4("\u8BE5\u5BB6\u65CF\u6811\u5F53\u524D\u6CA1\u6709\u59CB\u7956\u8282\u70B9\uFF0C\u65E0\u6CD5\u6C47\u5B97");
   const hit = await resolveNode(refText, treeId, { listIdsFn });
   if (!hit)
-    throw fail2(`\u627E\u4E0D\u5230\u7F16\u53F7/\u53E5\u67C4\u4E3A\u300C${refText}\u300D\u7684\u8282\u70B9`, 404);
+    throw fail4(`\u627E\u4E0D\u5230\u7F16\u53F7/\u53E5\u67C4\u4E3A\u300C${refText}\u300D\u7684\u8282\u70B9`, 404);
   if (hit.tree_id === treeId)
-    throw fail2("\u6C47\u5B97\u76EE\u6807\u987B\u662F\u53E6\u4E00\u68F5\u666E\u901A\u5BB6\u65CF\u6811\u4E2D\u7684\u666E\u901A\u8282\u70B9");
+    throw fail4("\u6C47\u5B97\u76EE\u6807\u987B\u662F\u53E6\u4E00\u68F5\u666E\u901A\u5BB6\u65CF\u6811\u4E2D\u7684\u666E\u901A\u8282\u70B9");
   if (treeKindOf(entryOf2(m, hit.tree_id)) !== TREE_KIND.FAMILY) {
-    throw fail2("\u6C47\u5B97\u76EE\u6807\u987B\u662F\u53E6\u4E00\u68F5\u666E\u901A\u5BB6\u65CF\u6811\u4E2D\u7684\u666E\u901A\u8282\u70B9");
+    throw fail4("\u6C47\u5B97\u76EE\u6807\u987B\u662F\u53E6\u4E00\u68F5\u666E\u901A\u5BB6\u65CF\u6811\u4E2D\u7684\u666E\u901A\u8282\u70B9");
   }
   const dst0 = await getTree(hit.tree_id);
   const target = dst0?.people?.[hit.handle];
   if (!target || String(target.external_mirror || "") === "true" || String(target.external_link_type || "")) {
-    throw fail2("\u6C47\u5B97\u76EE\u6807\u987B\u662F\u53E6\u4E00\u68F5\u666E\u901A\u5BB6\u65CF\u6811\u4E2D\u7684\u666E\u901A\u8282\u70B9");
+    throw fail4("\u6C47\u5B97\u76EE\u6807\u987B\u662F\u53E6\u4E00\u68F5\u666E\u901A\u5BB6\u65CF\u6811\u4E2D\u7684\u666E\u901A\u8282\u70B9");
   }
   const movedHandles = new Set(
     Object.values(src0.people || {}).filter((p) => String(p?.external_mirror || "") !== "true").map((p) => p.handle)
   );
   if (!movedHandles.size)
-    throw fail2("\u8BE5\u5BB6\u65CF\u6811\u6CA1\u6709\u53EF\u8FC1\u79FB\u7684\u771F\u5B9E\u8282\u70B9\uFF0C\u65E0\u6CD5\u6C47\u5B97");
+    throw fail4("\u8BE5\u5BB6\u65CF\u6811\u6CA1\u6709\u53EF\u8FC1\u79FB\u7684\u771F\u5B9E\u8282\u70B9\uFF0C\u65E0\u6CD5\u6C47\u5B97");
   await assertNoExternalRefs({ treeId, handles: movedHandles, listIdsFn, meta: m, op: "\u6C47\u5B97", status: 409 });
   if (Number(confirmPeople) !== movedHandles.size) {
-    const e = fail2(
+    const e = fail4(
       `\u6C47\u5B97\u8303\u56F4\u5DF2\u53D8\u5316\uFF08\u5F53\u524D ${movedHandles.size} \u4EBA\uFF0C\u786E\u8BA4\u65F6 ${Number(confirmPeople)} \u4EBA\uFF09\uFF0C\u8BF7\u91CD\u65B0\u786E\u8BA4`,
       409
     );
@@ -32237,25 +36318,20 @@ async function convergeClan({
     stageError = e;
   }
   try {
-    const m2 = await getMeta();
-    const trees = { ...m2.trees || {} };
-    const srcKey = keyOf(m2, treeId);
-    if (srcKey)
-      delete trees[srcKey];
-    await saveMeta({ ...m2, trees });
+    await removeTreeMeta(treeId);
   } catch (e) {
     stageError = stageError || e;
   }
   if (stageError) {
     await markShellSource(treeId, srcEntry, stageError);
-    throw fail2(INTERNAL_ERROR_TEXT2, 500);
+    throw fail4(INTERNAL_ERROR_TEXT2, 500);
   }
   let spiritResult;
   try {
     spiritResult = await applySpiritTransfer({ sourceTreeId: treeId, targetTreeId: hit.tree_id, ratio, now });
   } catch (e) {
     await markShellSource(treeId, srcEntry, e);
-    throw fail2(INTERNAL_ERROR_TEXT2, 500);
+    throw fail4(INTERNAL_ERROR_TEXT2, 500);
   }
   const spirit = {
     ratio: spiritResult.ratio,
@@ -32278,17 +36354,15 @@ async function convergeClan({
 async function markShellSource(treeId, entrySnapshot, cause) {
   try {
     const m = await getMeta();
-    const trees = { ...m.trees || {} };
     const key = keyOf(m, treeId) || keyOf(m, entrySnapshot) || treeId;
-    const base = trees[key] || entrySnapshot || { tree_id: treeId };
-    trees[key] = {
+    const base = m.trees && m.trees[key] || entrySnapshot || { tree_id: treeId };
+    await mutateTreeMeta(treeId, () => ({
       ...base,
       kind: base.kind || TREE_KIND.FAMILY,
       reconcile_state: SHELL_RECONCILE_STATE,
       reconcile_note: `\u6C47\u5B97\u540E\u6E05\u7406\u5931\u8D25\uFF08${cause?.message || cause}\uFF09\uFF0C\u8BE5\u6811\u5DF2\u65E0\u771F\u5B9E\u8282\u70B9\uFF0C\u5F85 reconcile`,
       reconcile_at: (/* @__PURE__ */ new Date()).toISOString()
-    };
-    await saveMeta({ ...m, trees });
+    }));
   } catch {
     console.log(`[branch-clan-ops] \u6C47\u5B97\u540E\u6E90\u6811 ${treeId} \u767B\u8BB0 reconcile \u5931\u8D25\uFF08\u539F\u59CB\u9519\u8BEF\uFF1A${cause?.message || cause}\uFF09`);
   }
@@ -32506,6 +36580,110 @@ function accessToPayload(access, totalGenerations) {
   };
 }
 
+// cloudfunctions/compat-api/lib/geo-hot.js
+init_store();
+var HOT_TTL_MS = 24 * 60 * 60 * 1e3;
+var HOT_VERSION = 1;
+var EMPTY = Object.freeze({ v: HOT_VERSION, generated_at: null, counts: Object.freeze({}), direct: Object.freeze({}) });
+function prefixCodes(code) {
+  const out = [];
+  for (const c of [code, `${code.slice(0, 2)}0000`, `${code.slice(0, 4)}00`]) {
+    if (out.includes(c) || !isKnownOriginCode(c))
+      continue;
+    out.push(c);
+  }
+  return out;
+}
+function countTicket(counts, direct, raw) {
+  if (!isKnownOriginCode(raw))
+    return;
+  const code = String(raw).trim();
+  direct.set(code, (direct.get(code) || 0) + 1);
+  for (const c of prefixCodes(code))
+    counts.set(c, (counts.get(c) || 0) + 1);
+}
+function toCountsObject(map2) {
+  const rows = [...map2.entries()].filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+  const out = {};
+  for (const [code, n] of rows)
+    out[code] = n;
+  return out;
+}
+function createGeoHotReader({ listTreeIds: listIds, getTree: readTree, getMeta: readMeta, now = Date.now } = {}) {
+  let cached = null;
+  let cachedAt = 0;
+  let inflight = null;
+  async function scan() {
+    const counts = /* @__PURE__ */ new Map();
+    const direct = /* @__PURE__ */ new Map();
+    const failed = [];
+    const ids = await listIds();
+    for (const id of ids) {
+      let tree;
+      try {
+        tree = await readTree(id);
+      } catch {
+        failed.push(id);
+        continue;
+      }
+      if (!tree)
+        continue;
+      const people = tree.people || {};
+      for (const handle of Object.keys(people)) {
+        const person = people[handle];
+        if (!person)
+          continue;
+        countTicket(counts, direct, person.birth_place?.origin_code);
+        const residences = person.residence_places;
+        if (!Array.isArray(residences))
+          continue;
+        for (const item of residences)
+          countTicket(counts, direct, item?.origin_code);
+      }
+    }
+    try {
+      const meta = await readMeta();
+      for (const entry of Object.values(meta?.trees || {}))
+        if (entry)
+          countTicket(counts, direct, entry.origin_code);
+    } catch {
+    }
+    return { counts: toCountsObject(counts), direct: toCountsObject(direct), failed };
+  }
+  return {
+    /** `GET /geo/hot` 取值入口：TTL 内直接返回缓存，过期才重扫（并发单飞） */
+    async getGeoHot() {
+      if (cached && now() - cachedAt < HOT_TTL_MS)
+        return cached;
+      if (inflight)
+        return inflight;
+      inflight = (async () => {
+        try {
+          const r = await scan();
+          cached = {
+            v: HOT_VERSION,
+            generated_at: new Date(now()).toISOString(),
+            counts: r.counts,
+            direct: r.direct,
+            ...r.failed.length ? { failed: r.failed } : {}
+          };
+          cachedAt = now();
+          return cached;
+        } catch {
+          return cached || EMPTY;
+        } finally {
+          inflight = null;
+        }
+      })();
+      return inflight;
+    }
+  };
+}
+var defaultReader = createGeoHotReader({ listTreeIds, getTree, getMeta });
+function getGeoHot() {
+  return defaultReader.getGeoHot();
+}
+
 // cloudfunctions/compat-api/index.js
 var MASTER_TREE_ID2 = process.env.MASTER_TREE_ID || "zhonghua";
 var MAX_DEPTH = 72;
@@ -32628,10 +36806,19 @@ function toRawPerson(tree, person, detail) {
     event_ref_list: (detail?.events || []).map((e) => ({ ref: e.handle })),
     family_list: person.spouse_families || [],
     parent_family_list: person.parent_family ? [person.parent_family] : [],
+    // 居住地（契约 v2 C7）：顶层数组，`{ place, place_code, place_note }`，顺序即展示顺序，无则 `[]`
+    residence_places: residenceViewOf(person.residence_places),
     profile: {}
   };
-  if (person.birth_date)
-    raw.profile.birth = { date: person.birth_date, place: person.birth_place || "" };
+  const birthPlace = placeViewOf(person.birth_place);
+  if (person.birth_date || hasPlaceContent(person.birth_place)) {
+    raw.profile.birth = {
+      date: person.birth_date || "",
+      place: birthPlace.place,
+      place_code: birthPlace.place_code,
+      place_note: birthPlace.place_note
+    };
+  }
   if (person.death_date)
     raw.profile.death = { date: person.death_date, place: person.death_place || "" };
   const spouseFams = (person.spouse_families || []).map((fh) => profileFamily(tree, tree.families[fh])).filter(Boolean);
@@ -32725,19 +36912,19 @@ var SYSTEM_ERRNO = /* @__PURE__ */ new Set([
   "ENFILE",
   "ENAMETOOLONG"
 ]);
-var LOCAL_PATH_RE = /\/(?:Users|tmp|var|private|home|opt|etc|usr)\//;
+var LOCAL_PATH_RE2 = /\/(?:Users|tmp|var|private|home|opt|etc|usr)\//;
 function isSystemFailure(e) {
   const err = e || {};
   const errno = String(err.code || err.name || "");
-  return SYSTEM_ERRNO.has(errno) || LOCAL_PATH_RE.test(String(err.message || ""));
+  return SYSTEM_ERRNO.has(errno) || LOCAL_PATH_RE2.test(String(err.message || ""));
 }
 function safeError(e, fallbackStatus = 400, prefix = "") {
   const err = e || {};
   if (isSystemFailure(err))
     return send(500, { error: INTERNAL_ERROR_TEXT, status: 500 });
   const status = Number(err.status);
-  const text = String(err.message || "");
-  return send(Number.isFinite(status) ? status : fallbackStatus, { error: prefix ? `${prefix}: ${text}` : text });
+  const text2 = String(err.message || "");
+  return send(Number.isFinite(status) ? status : fallbackStatus, { error: prefix ? `${prefix}: ${text2}` : text2 });
 }
 function errorStatusOf(e, payload) {
   const own = Number((e || {}).status);
@@ -32755,6 +36942,21 @@ async function resolveTreeAccess(headers, treeId, tree) {
     isMaster: treeId === MASTER_TREE_ID2,
     role: u?.role || null,
     anchorTreeId: anchor?.tree_id || null,
+    people: tree?.people || {},
+    families: tree?.families || {}
+  });
+}
+async function resolveInviteCodeAccess(rawCode, treeId, tree) {
+  const code = String(rawCode || "").trim();
+  if (!code)
+    return null;
+  if (!await inviteCodeGrantsTree(code, treeId, /* @__PURE__ */ new Date()))
+    return null;
+  return computeAccess({
+    treeId,
+    isMaster: false,
+    role: null,
+    anchorTreeId: treeId,
     people: tree?.people || {},
     families: tree?.families || {}
   });
@@ -32811,12 +37013,107 @@ async function handleRequest(event) {
         return send(400, { error: "\u624B\u673A\u53F7\u683C\u5F0F\u4E0D\u6B63\u786E" });
       if (await colGet("jiazu_users", phone))
         return send(409, { error: "\u8BE5\u624B\u673A\u53F7\u5DF2\u6CE8\u518C\uFF0C\u8BF7\u76F4\u63A5\u767B\u5F55" });
+      const inviteCode = body.invite_code;
+      const inviteCheck = await resolveInvite(inviteCode, phone);
+      if (!inviteCheck.ok)
+        return send(inviteCheck.status, { error: inviteCheck.error, code: inviteCheck.code });
       const v = await verifyCode(phone, code);
       if (!v.ok)
         return send(401, { error: v.message });
       const user = await findOrCreateUser(phone, nickname || void 0);
+      await applyInvite(phone, inviteCode, { now: /* @__PURE__ */ new Date() });
       const token = signJwt({ sub: phone, phone, role: user.role }, 7 * 24 * 3600);
       return send(201, { token, phone, nickname: user.nickname, role: user.role });
+    }
+    if (pathname === "/invite/me" && method === "GET") {
+      const u = await authUser(headers);
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      return send(200, await inviteStats(u.phone, /* @__PURE__ */ new Date()));
+    }
+    if (pathname === "/invite/accept" && method === "POST") {
+      const u = await authUser(headers);
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      const r = await applyInvite(u.phone, parseBody(event).invite_code, { required: true, now: /* @__PURE__ */ new Date() });
+      if (!r.ok)
+        return send(r.status, { error: r.error, code: r.code });
+      return send(200, r);
+    }
+    if (pathname === "/invite/code" && method === "POST") {
+      const u = await authUser(headers);
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      const body = parseBody(event);
+      const kind = String(body.kind || "").trim();
+      if (!INVITE_KINDS.includes(kind))
+        return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Akind \u2208 node/plain" });
+      let issueTree = null;
+      let issueHandle = null;
+      if (kind === "node") {
+        issueTree = String(body.tree_id || "").trim();
+        issueHandle = String(body.person_handle || "").trim();
+        if (!issueTree || !issueHandle)
+          return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Anode \u578B\u9700\u63D0\u4F9B tree_id + person_handle" });
+        const issueTargetTree = await getTree(issueTree);
+        if (!issueTargetTree)
+          return send(404, { error: `\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728: ${issueTree}` });
+        if (!issueTargetTree.people || !issueTargetTree.people[issueHandle]) {
+          return send(404, { error: `\u8BE5\u5BB6\u65CF\u6811\u4E2D\u627E\u4E0D\u5230\u6B64\u8282\u70B9: ${issueHandle}\uFF08tree_id=${issueTree}\uFF09` });
+        }
+        try {
+          await assertAnchorBindable(issueHandle, "", { tree: issueTargetTree, treeId: issueTree, role: u.role });
+        } catch (e) {
+          if (e.status === 409)
+            return send(409, { error: "\u8BE5\u4EBA\u7269\u8282\u70B9\u5DF2\u88AB\u7ED1\u5B9A\uFF0C\u65E0\u6CD5\u7B7E\u53D1\u9080\u8BF7" });
+          return send(e.status || 400, { error: e.message });
+        }
+        if (u.role !== "chief_editor") {
+          const myAnchor = await getAnchor(u.phone);
+          if (!myAnchor || myAnchor.tree_id !== issueTree) {
+            return send(403, { error: "\u4EC5\u8BE5\u5BB6\u65CF\u6811\u6210\u5458\u53EF\u9080\u8BF7\u4ED6\u4EBA\u52A0\u5165\u672C\u6811" });
+          }
+        }
+      }
+      let issued;
+      try {
+        issued = await issueInviteCode({
+          inviterPhone: u.phone,
+          kind,
+          treeId: issueTree,
+          personHandle: issueHandle,
+          now: /* @__PURE__ */ new Date()
+        });
+      } catch (e) {
+        return send(e.status || 500, { error: e.message });
+      }
+      return send(200, {
+        ok: true,
+        code: issued.code,
+        kind: issued.kind,
+        tree_id: issued.tree_id,
+        person_handle: issued.person_handle,
+        expires_at: issued.expires_at
+      });
+    }
+    if (pathname === "/invite/code/resolve" && method === "GET") {
+      return send(200, await resolveInviteCodeInfo(query.c, /* @__PURE__ */ new Date()));
+    }
+    if (pathname === "/invite/bind" && method === "POST") {
+      const u = await authUser(headers);
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      const body = parseBody(event);
+      const r = await bindInviteCode({
+        phone: u.phone,
+        role: u.role,
+        c: body.c,
+        decision: body.decision,
+        treeId: body.tree_id,
+        personHandle: body.person_handle,
+        now: /* @__PURE__ */ new Date()
+      });
+      return send(r.status, r.body);
     }
     if (pathname === "/auth/me" && method === "GET") {
       const u = await authUser(headers);
@@ -32841,27 +37138,80 @@ async function handleRequest(event) {
       if (!user || user.role !== "chief_editor")
         return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
       const body = parseBody(event);
-      const { tree_id, display_title, genealogy_name, archive_url, hall_name, origin, description } = body;
+      const { tree_id, display_title, genealogy_name, archive_url, hall_name, origin, origin_code, description } = body;
       if (!tree_id)
         return send(400, { error: "\u7F3A\u5C11 tree_id" });
+      const code = origin_code === void 0 ? void 0 : String(origin_code ?? "").trim();
+      if (code && !isKnownOriginCode(code))
+        return send(400, { error: `\u53D1\u6E90\u5730\u884C\u653F\u533A\u5212\u4EE3\u7801\u65E0\u6548\uFF1A${code}` });
       const meta = await getMeta();
-      const entry = Object.values(meta.trees).find((t) => t.tree_id === tree_id);
-      if (!entry)
+      const found = Object.values(meta.trees).find((t) => t.tree_id === tree_id);
+      if (!found)
         return send(404, { error: `\u672A\u627E\u5230 tree: ${tree_id}` });
-      if (display_title !== void 0)
-        entry.display_title = display_title;
-      if (genealogy_name !== void 0)
-        entry.genealogy_name = genealogy_name;
-      if (archive_url !== void 0)
-        entry.archive_url = archive_url;
-      if (hall_name !== void 0)
-        entry.hall_name = hall_name;
-      if (origin !== void 0)
-        entry.origin = origin;
-      if (description !== void 0)
-        entry.description = description;
-      await saveMeta(meta);
+      const entry = await mutateTreeMeta(tree_id, (e) => {
+        if (display_title !== void 0)
+          e.display_title = display_title;
+        if (genealogy_name !== void 0)
+          e.genealogy_name = genealogy_name;
+        if (archive_url !== void 0)
+          e.archive_url = archive_url;
+        if (hall_name !== void 0)
+          e.hall_name = hall_name;
+        if (origin !== void 0)
+          e.origin = origin;
+        if (code !== void 0) {
+          e.origin_code = code;
+          if (code)
+            e.origin = resolveOrigin(code).display;
+        }
+        if (description !== void 0)
+          e.description = description;
+        return e;
+      });
       return send(200, { ok: true, entry });
+    }
+    if (pathname === "/admin/set-tree-origin" && method === "POST") {
+      const u = await authUser(headers);
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      const user = await colGet("jiazu_users", u.phone);
+      if (!user || user.role !== "chief_editor")
+        return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
+      const body = parseBody(event);
+      const wantTreeId = String(body.tree_id || "").trim();
+      const wantHandle = String(body.person_handle || "").trim();
+      const meta = await getMeta();
+      const entry = Object.values(meta?.trees || {}).find((t) => t && t.tree_id === wantTreeId);
+      if (!entry)
+        return send(404, { error: `\u672A\u627E\u5230 tree: ${wantTreeId}` });
+      const srcTree = await getTree(wantTreeId);
+      if (!srcTree)
+        return send(404, { error: `\u6811\u4E0D\u5B58\u5728: ${wantTreeId}` });
+      const person = wantHandle ? srcTree.people?.[wantHandle] : null;
+      if (!person)
+        return send(400, { error: "\u8BE5\u8282\u70B9\u4E0D\u5C5E\u4E8E\u672C\u6811" });
+      const founderHit = resolveOriginFounder(srcTree, entry);
+      if (!founderHit)
+        return send(400, { error: founderUndecidedMessage(srcTree) });
+      const inScope = founderThreeGenerations(srcTree, founderHit.handle).some((c) => c.handle === wantHandle);
+      if (!inScope)
+        return send(400, { error: "\u8BE5\u8282\u70B9\u4E0D\u5728\u672C\u6811\u59CB\u7956\u4E09\u4EE3\u8303\u56F4\u5185\uFF08\u4EC5\u59CB\u7956\u53CA\u5176\u4E0B\u4E24\u4EE3\u53EF\u4F5C\u4E3A\u53D1\u6E90\u5730\uFF09" });
+      const srcCode = placeViewOf(person.birth_place).place_code;
+      if (!srcCode)
+        return send(400, { error: "\u8BE5\u8282\u70B9\u672A\u586B\u5199\u51FA\u751F\u5730\u884C\u653F\u533A\u5212\u4EE3\u7801" });
+      if (!isKnownOriginCode(srcCode))
+        return send(400, { error: unknownOriginCodeMessage(srcCode) });
+      const patch = treeOriginPatchOf(person.birth_place);
+      await mutateTreeMeta(wantTreeId, (e) => ({ ...e, origin_code: patch.origin_code, origin: patch.origin }));
+      return send(200, {
+        ok: true,
+        origin_code: patch.origin_code,
+        origin: patch.origin,
+        source: { handle: person.handle, gramps_id: person.gramps_id || "", name: person.name || "" }
+      });
+    }
+    if (pathname === "/geo/hot" && method === "GET") {
+      return send(200, await getGeoHot());
     }
     if (pathname === "/tree/rank" && method === "GET") {
       if (!treeId)
@@ -32876,9 +37226,12 @@ async function handleRequest(event) {
         if (g)
           gens.set(d.handle, parseInt(g.value, 10) || 0);
       }
-      const { totalGenerations, personCount, explicit } = computeTreeDepth(tree2, gens);
+      const { totalGenerations, explicit } = computeTreeDepth(tree2, gens);
       const rank = rankFromDepth(totalGenerations);
       const access = await resolveTreeAccess(headers, treeId, tree2);
+      const rankMeta = await getMeta();
+      const metaEntry = Object.values(rankMeta?.trees || {}).find((t) => t && t.tree_id === treeId) || null;
+      const personCount = countFamilyMembers(tree2, metaEntry, { kind: metaEntry?.kind, is_master: !!metaEntry?.is_master });
       const activity = await treeActivity(treeId, { now: /* @__PURE__ */ new Date() });
       return send(200, {
         tree_id: treeId,
@@ -32891,6 +37244,10 @@ async function handleRequest(event) {
         max_depth: MAX_DEPTH,
         root_count: Object.values(tree2.people).filter((p) => !p.parent_family).length,
         person_count: personCount,
+        // mirror_count：本树 people 中「外树镜像」节点数（`String(external_mirror) === 'true'`，
+        // 纯计数、不涉权限裁剪）。**保留字段**：首页卡片已不再使用「N 人（含外树 M）」说明，
+        // 新前端只读 person_count；三档排序归一化继续用 person_count（新口径）。
+        mirror_count: Object.values(tree2.people).filter((p) => String(p.external_mirror) === "true").length,
         explicit,
         activity,
         updated_at: tree2.updated_at === void 0 || tree2.updated_at === null ? "" : String(tree2.updated_at),
@@ -32951,6 +37308,27 @@ async function handleRequest(event) {
         }
         out.converge_spirit_ratio = await setConvergeSpiritRatio(ratio);
       }
+      if (has("signin_pool") || Array.isArray(body.signin_pool)) {
+        try {
+          out.signin_pool = await setSigninPool(body.signin_pool);
+        } catch (e) {
+          return send(400, { error: e?.message || "\u8BF7\u8F93\u5165\u6B63\u786E\u7684\u7B7E\u5230\u5956\u52B1\u6C60\uFF08\u975E\u7A7A\u6570\u7EC4\uFF0C\u542B kind / qty / weight\uFF09" });
+        }
+      }
+      if (has("signin_makeup_cost_bamboos")) {
+        const cost = Number(body.signin_makeup_cost_bamboos);
+        if (!Number.isFinite(cost) || cost <= 0 || Math.floor(cost) !== cost) {
+          return send(400, { error: "\u8BF7\u8F93\u5165\u6B63\u786E\u7684\u8865\u7B7E\u8D39\u7528\uFF08\u6B63\u6574\u6570\uFF0C\u7247\u7AF9\u7247\uFF09" });
+        }
+        out.signin_makeup_cost_bamboos = await setSigninMakeupCostBamboos(cost);
+      }
+      if (has("signin_day7_fragments")) {
+        const day7 = Number(body.signin_day7_fragments);
+        if (!Number.isFinite(day7) || day7 < 0 || Math.floor(day7) !== day7) {
+          return send(400, { error: "\u8BF7\u8F93\u5165\u6B63\u786E\u7684\u7B2C 7 \u5929\u5956\u52B1\uFF08\u975E\u8D1F\u6574\u6570\uFF0C\u4E2A\u77F3\u69B4\u7C7D\u788E\u7247\uFF09" });
+        }
+        out.signin_day7_fragments = await setSigninDay7Fragments(day7);
+      }
       if (Object.keys(out).length === 1)
         return send(400, { error: "\u8BF7\u8F93\u5165\u6B63\u786E\u7684\u8D39\u7528" });
       return send(200, out);
@@ -32960,9 +37338,15 @@ async function handleRequest(event) {
       if (!u)
         return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const now = /* @__PURE__ */ new Date();
+      const tc = await Promise.resolve().then(() => (init_task_center(), task_center_exports));
+      const day7 = await getSigninDay7Fragments();
+      const makeupCost = await getSigninMakeupCostBamboos();
       const summary = await mutateAssets(u.phone, (user) => {
         sweep(user, now);
-        return summarize(user, now);
+        const s = summarize(user, now);
+        s.signin_calendar = tc.signinCalendarOf(user, now, { day7_fragments: day7 });
+        s.signin_makeup_cost_bamboos = makeupCost;
+        return s;
       });
       return send(200, summary);
     }
@@ -32984,18 +37368,55 @@ async function handleRequest(event) {
       const u = await authUser(headers);
       if (!u)
         return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      const now = /* @__PURE__ */ new Date();
-      const today = beijingDate(now);
-      const r = await mutateAssets(u.phone, (user) => {
-        sweep(user, now);
-        if (user.signin_date === today)
-          throw httpError4(409, "\u4ECA\u65E5\u5DF2\u7B7E\u5230");
-        user.signin_date = today;
-        recordTx(user, { type: "signin", delta: { fragments: 1 }, desc: "\u6BCF\u65E5\u7B7E\u5230 +1 \u788E\u7247" }, now);
-        const added = addFragments(user, 1, now);
-        return { fragments: added.fragments, synthesized: added.synthesized, seed_lot: added.seed_lots[0] || null, signin_date: today };
-      });
-      return send(200, { ok: true, ...r });
+      try {
+        const tc = await Promise.resolve().then(() => (init_task_center(), task_center_exports));
+        const r = await tc.claimTask(u.phone, "signin", /* @__PURE__ */ new Date());
+        return send(200, {
+          ok: true,
+          fragments: r.detail.fragments,
+          synthesized: r.detail.synthesized,
+          seed_lot: r.detail.seed_lot,
+          signin_date: r.detail.signin_date,
+          task: r.task,
+          day: r.day,
+          state: r.state,
+          state_text: r.state_text,
+          reward: r.reward,
+          streak: r.streak,
+          cycle_day: r.cycle_day,
+          items: r.items,
+          calendar: r.calendar
+        });
+      } catch (e) {
+        if (isSystemFailure(e))
+          return send(500, { error: INTERNAL_ERROR_TEXT, status: 500 });
+        if (e?.code === "TASK_ALREADY_CLAIMED")
+          return send(409, { error: "\u4ECA\u65E5\u5DF2\u7B7E\u5230" });
+        return send(Number(e?.status) || 409, { error: e?.message || "\u7B7E\u5230\u5931\u8D25" });
+      }
+    }
+    if (pathname === "/assets/signin/makeup" && method === "POST") {
+      const u = await authUser(headers);
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      try {
+        const tc = await Promise.resolve().then(() => (init_task_center(), task_center_exports));
+        const r = await tc.signinMakeup(u.phone, parseBody(event).date, /* @__PURE__ */ new Date());
+        return send(200, {
+          ok: true,
+          date: r.date,
+          streak: r.streak,
+          cycle_day: r.cycle_day,
+          cost_bamboos: r.cost_bamboos,
+          calendar: r.calendar
+        });
+      } catch (e) {
+        if (isSystemFailure(e))
+          return send(500, { error: INTERNAL_ERROR_TEXT, status: 500 });
+        if (e?.code === "ASSET_INSUFFICIENT")
+          return send(Number(e?.status) || 409, errorPayload(e));
+        return send(Number(e?.status) || 400, { error: e?.message || "\u8865\u7B7E\u5931\u8D25" });
+      }
     }
     if (pathname === "/spirit" && method === "GET") {
       try {
@@ -33122,6 +37543,172 @@ async function handleRequest(event) {
         return send(e.status || 400, errorPayload(e));
       }
     }
+    if (pathname === "/friends" || pathname.startsWith("/friends/") || pathname === "/assets/scroll/decompose" || pathname === "/assets/scroll/synthesize") {
+      const friendOps = await Promise.resolve().then(() => (init_friend_ops(), friend_ops_exports));
+      const friendShell = (res) => {
+        if (res && res.ok) {
+          const { ok: _ok, message, ...data } = res;
+          return send(200, { ok: true, message: message || "\u64CD\u4F5C\u6210\u529F", data });
+        }
+        const err = res && res.error || {};
+        const status = Number(err.status) || 400;
+        const body = { ok: false, error: { code: err.code || "FRIEND_OPS_FAILED", status, message: err.message || "\u597D\u53CB\u57DF\u64CD\u4F5C\u5931\u8D25" } };
+        if (err.reason !== void 0)
+          body.error.reason = err.reason;
+        return send(status, body);
+      };
+      if (pathname === "/friends" && method === "GET") {
+        const u = await authUser(headers);
+        if (!u)
+          return send(401, { ok: false, error: { code: "FRIEND_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
+        await friendOps.sweepFriends(/* @__PURE__ */ new Date());
+        return friendShell(await friendOps.listFriends(u.phone, /* @__PURE__ */ new Date()));
+      }
+      if (pathname === "/friends/invite" && method === "POST") {
+        const u = await authUser(headers);
+        if (!u)
+          return send(401, { ok: false, error: { code: "FRIEND_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
+        return friendShell(await friendOps.sendFriendInvite(u.phone, parseBody(event).to, /* @__PURE__ */ new Date()));
+      }
+      const FRIEND_TOKEN_ROUTES = {
+        "/friends/accept": (ops, u, token) => ops.acceptFriendInvite(token, u.phone, /* @__PURE__ */ new Date()),
+        "/friends/reject": (ops, u, token) => ops.rejectFriendInvite(token, u.phone, /* @__PURE__ */ new Date()),
+        "/friends/cancel": (ops, u, token) => ops.cancelFriendInvite(token, u.phone, /* @__PURE__ */ new Date()),
+        "/friends/renew/request": (ops, u, token) => ops.requestRenewal(token, u.phone, /* @__PURE__ */ new Date()),
+        "/friends/renew/confirm": (ops, u, token) => ops.confirmRenewal(token, u.phone, /* @__PURE__ */ new Date()),
+        "/friends/renew/cancel": (ops, u, token) => ops.cancelRenewal(token, u.phone, /* @__PURE__ */ new Date()),
+        "/friends/dissolve": (ops, u, token) => ops.dissolveFriend(token, u.phone, /* @__PURE__ */ new Date())
+      };
+      if (method === "POST" && FRIEND_TOKEN_ROUTES[pathname]) {
+        const u = await authUser(headers);
+        if (!u)
+          return send(401, { ok: false, error: { code: "FRIEND_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
+        return friendShell(await FRIEND_TOKEN_ROUTES[pathname](friendOps, u, parseBody(event).relation_token));
+      }
+      if (pathname === "/assets/scroll/decompose" && method === "POST") {
+        const u = await authUser(headers);
+        if (!u)
+          return send(401, { ok: false, error: { code: "FRIEND_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
+        const raw = parseBody(event).count;
+        const count = raw === void 0 || String(raw).trim() === "" ? 1 : Number(raw);
+        if (!Number.isInteger(count) || count <= 0) {
+          return send(400, { ok: false, error: { code: "INVALID_COUNT", status: 400, message: "count \u5FC5\u987B\u4E3A\u6B63\u6574\u6570\uFF081 \u5F20 = 100 \u7247\uFF09" } });
+        }
+        try {
+          const now = /* @__PURE__ */ new Date();
+          let locked = { pieces: 0, locks: [] };
+          try {
+            locked = await friendOps.lockedScrollPieces(u.phone, now);
+          } catch (le) {
+            if (isSystemFailure(le)) {
+              return send(500, { ok: false, error: { code: "INTERNAL_ERROR", status: 500, message: INTERNAL_ERROR_TEXT } });
+            }
+            return send(409, {
+              ok: false,
+              error: { code: "SCROLL_LOCKED_CHECK_FAILED", status: 409, message: "\u65E0\u6CD5\u6821\u9A8C\u7EED\u7EA6\u9501\u5B9A\u72B6\u6001\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5" }
+            });
+          }
+          const lockedPieces2 = Math.max(0, Math.floor(Number(locked?.pieces) || 0));
+          const r = await mutateAssets(u.phone, (user) => {
+            sweep(user, now);
+            const totalPieces = sumLots(user.scrolls || []);
+            const availablePieces2 = Math.max(0, totalPieces - lockedPieces2);
+            const capacity = Math.floor(availablePieces2 / SCROLL_PIECES_PER_SCROLL);
+            if (count > capacity) {
+              const e = httpError4(
+                409,
+                `\u53EF\u7528\u5170\u5E16\u4E0D\u8DB3\uFF1A\u5171 ${totalPieces} \u7247\uFF0C\u5176\u4E2D ${lockedPieces2} \u7247\u5DF2\u88AB\u7EED\u7EA6\u9501\u5B9A\uFF08\u53EA\u5360\u7528\u672A\u6263\u9664\uFF09\uFF0C\u53EF\u7528 ${availablePieces2} \u7247 \u21D2 \u6700\u591A\u53EF\u5206\u89E3 ${capacity} \u5F20\uFF0C\u672C\u6B21\u8BF7\u6C42\u5206\u89E3 ${count} \u5F20`
+              );
+              e.code = "SCROLL_LOCKED_INSUFFICIENT";
+              e.detail = { total_pieces: totalPieces, locked_pieces: lockedPieces2, available_pieces: availablePieces2, capacity, requested: count };
+              throw e;
+            }
+            const decomposed = decomposeScroll(user, count, now);
+            return { ...decomposed, locked_pieces: lockedPieces2, available_pieces: availablePieces2, capacity };
+          });
+          return send(200, { ok: true, message: "\u5170\u5E16\u5DF2\u5206\u89E3", data: r });
+        } catch (e) {
+          if (isSystemFailure(e)) {
+            return send(500, { ok: false, error: { code: "INTERNAL_ERROR", status: 500, message: INTERNAL_ERROR_TEXT } });
+          }
+          const body = {
+            ok: false,
+            error: { code: e?.code || "SCROLL_DECOMPOSE_FAILED", status: Number(e?.status) || 409, message: e?.message || "\u5170\u5E16\u5206\u89E3\u5931\u8D25" }
+          };
+          if (e?.detail !== void 0)
+            body.error.detail = e.detail;
+          return send(Number(e?.status) || 409, body);
+        }
+      }
+      if (pathname === "/assets/scroll/synthesize" && method === "POST") {
+        const u = await authUser(headers);
+        if (!u)
+          return send(401, { ok: false, error: { code: "FRIEND_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
+        const raw = parseBody(event).count;
+        const count = raw === void 0 || String(raw).trim() === "" ? 1 : Number(raw);
+        if (!Number.isInteger(count) || count <= 0) {
+          return send(400, { ok: false, error: { code: "INVALID_COUNT", status: 400, message: "count \u5FC5\u987B\u4E3A\u6B63\u6574\u6570\uFF081 \u5F20 = 100 \u7247\uFF09" } });
+        }
+        try {
+          const now = /* @__PURE__ */ new Date();
+          const r = await mutateAssets(u.phone, (user) => {
+            sweep(user, now);
+            return synthesizeScroll(user, count, now);
+          });
+          return send(200, { ok: true, message: "\u5170\u5E16\u5DF2\u5408\u6210", data: r });
+        } catch (e) {
+          if (isSystemFailure(e)) {
+            return send(500, { ok: false, error: { code: "INTERNAL_ERROR", status: 500, message: INTERNAL_ERROR_TEXT } });
+          }
+          const body = {
+            ok: false,
+            error: { code: e?.code || "SCROLL_SYNTHESIZE_FAILED", status: Number(e?.status) || 409, message: e?.message || "\u5170\u5E16\u5408\u6210\u5931\u8D25" }
+          };
+          if (e?.detail !== void 0)
+            body.error.detail = e.detail;
+          return send(Number(e?.status) || 409, body);
+        }
+      }
+      return send(404, { ok: false, error: { code: "FRIEND_ROUTE_NOT_FOUND", status: 404, message: `\u672A\u77E5\u597D\u53CB\u57DF\u8DEF\u7531\uFF1A${method} ${pathname}` } });
+    }
+    if (pathname === "/tasks/today" || pathname === "/tasks/claim") {
+      const tc = await Promise.resolve().then(() => (init_task_center(), task_center_exports));
+      const taskFail = (e, fallbackCode, fallbackMessage) => {
+        if (isSystemFailure(e)) {
+          return send(500, { ok: false, error: { code: "INTERNAL_ERROR", status: 500, message: INTERNAL_ERROR_TEXT } });
+        }
+        const status = Number(e?.status) || 409;
+        const body = { ok: false, error: { code: e?.code || fallbackCode, status, message: e?.message || fallbackMessage } };
+        if (e?.reason !== void 0)
+          body.error.reason = e.reason;
+        if (e?.detail !== void 0)
+          body.error.detail = e.detail;
+        return send(status, body);
+      };
+      if (pathname === "/tasks/today" && method === "GET") {
+        const u = await authUser(headers);
+        if (!u)
+          return send(401, { ok: false, error: { code: "TASK_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
+        try {
+          const view = await tc.tasksToday(u.phone, /* @__PURE__ */ new Date());
+          return send(200, { ok: true, message: "\u5F53\u65E5\u4EFB\u52A1\u5DF2\u8BFB\u53D6", data: view });
+        } catch (e) {
+          return taskFail(e, "TASK_READ_FAILED", "\u4EFB\u52A1\u8BFB\u53D6\u5931\u8D25");
+        }
+      }
+      if (pathname === "/tasks/claim" && method === "POST") {
+        const u = await authUser(headers);
+        if (!u)
+          return send(401, { ok: false, error: { code: "TASK_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
+        try {
+          const r = await tc.claimTask(u.phone, parseBody(event).task, /* @__PURE__ */ new Date());
+          return send(200, { ok: true, message: `\u4EFB\u52A1\u300C${r.title}\u300D\u5956\u52B1\u5DF2\u9886\u53D6`, data: r });
+        } catch (e) {
+          return taskFail(e, "TASK_CLAIM_FAILED", "\u4EFB\u52A1\u9886\u53D6\u5931\u8D25");
+        }
+      }
+      return send(404, { ok: false, error: { code: "TASK_ROUTE_NOT_FOUND", status: 404, message: `\u672A\u77E5\u4EFB\u52A1\u4E2D\u5FC3\u8DEF\u7531\uFF1A${method} ${pathname}` } });
+    }
     if (pathname === "/messages" && method === "GET") {
       try {
         const u = await authUser(headers);
@@ -33206,8 +37793,8 @@ async function handleRequest(event) {
         return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward)
         return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
-      const list = (await colAll("jiazu_users")).map((usr) => ({ phone: usr.phone, nickname: usr.nickname, role: usr.role, created_at: usr.created_at }));
-      return send(200, list);
+      const list2 = (await colAll("jiazu_users")).map((usr) => ({ phone: usr.phone, nickname: usr.nickname, role: usr.role, created_at: usr.created_at }));
+      return send(200, list2);
     }
     if (pathname === "/admin/set-role" && method === "POST") {
       const u = await authUser(headers);
@@ -33253,8 +37840,19 @@ async function handleRequest(event) {
         return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Aphone + tree_id + person_handle \u5FC5\u586B" });
       if (!await colGet("jiazu_users", targetPhone))
         return send(404, { error: `\u7528\u6237\u4E0D\u5B58\u5728: ${targetPhone}` });
+      let bindable;
+      try {
+        bindable = await assertAnchorBindable(personHandle, targetPhone, {
+          treeId: targetTree,
+          force: body.force === true,
+          role: u.role,
+          operator: u.phone
+        });
+      } catch (e) {
+        return send(e.status || 400, { error: e.message });
+      }
       await setAnchor(targetPhone, targetTree, personHandle);
-      return send(200, { ok: true });
+      return send(200, { ok: true, reassigned_from: bindable.reassigned_from || null });
     }
     if (pathname === "/admin/get-anchor" && method === "GET") {
       const u = await authUser(headers);
@@ -33323,8 +37921,8 @@ async function handleRequest(event) {
       if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward)
         return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
       const myTree = u.role === "chief_editor" ? null : (await getAnchor(u.phone))?.tree_id || null;
-      const list = await colAll("jiazu_join_requests");
-      const out = list.filter((r) => myTree === null || r.tree_id === myTree).map((r) => ({ id: r._id, ...r }));
+      const list2 = await colAll("jiazu_join_requests");
+      const out = list2.filter((r) => myTree === null || r.tree_id === myTree).map((r) => ({ id: r._id, ...r }));
       const depthCache = /* @__PURE__ */ new Map();
       for (const item of out) {
         if (!item.reference_handle || !item.tree_id)
@@ -33352,9 +37950,8 @@ async function handleRequest(event) {
         return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
       const body = parseBody(event);
       const id = String(body.id || "").trim();
-      const personHandle = String(body.person_handle || "").trim();
-      if (!id || !personHandle)
-        return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Aid + person_handle \u5FC5\u586B" });
+      if (!id)
+        return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Aid \u5FC5\u586B" });
       const jr = await colGet("jiazu_join_requests", id);
       if (!jr)
         return send(404, { error: "\u7533\u8BF7\u4E0D\u5B58\u5728" });
@@ -33365,9 +37962,20 @@ async function handleRequest(event) {
         if (myTree && jr.tree_id !== myTree)
           return send(403, { error: "\u53EA\u80FD\u5BA1\u6279\u81EA\u5DF1\u5BB6\u65CF\u6811\u7684\u52A0\u5165\u7533\u8BF7" });
       }
-      const tree2 = await getTree(jr.tree_id);
-      if (!tree2?.people?.[personHandle])
-        return send(400, { error: "\u8BE5\u5BB6\u65CF\u6811\u4E2D\u627E\u4E0D\u5230\u6B64\u8282\u70B9" });
+      const personHandle = String(body.person_handle || "").trim() || String(jr.reference_handle || "").trim();
+      if (!personHandle)
+        return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1A\u8BE5\u7533\u8BF7\u7F3A\u5C11 reference_handle\uFF0C\u8BF7\u663E\u5F0F\u6307\u5B9A person_handle" });
+      let bindable;
+      try {
+        bindable = await assertAnchorBindable(personHandle, jr.phone, {
+          treeId: jr.tree_id,
+          force: body.force === true,
+          role: u.role,
+          operator: u.phone
+        });
+      } catch (e) {
+        return send(e.status || 400, { error: e.message });
+      }
       if (await getAnchor(jr.phone))
         return send(400, { error: "\u7533\u8BF7\u4EBA\u5DF2\u7ED1\u5B9A\u5BB6\u65CF\u6811\uFF0C\u65E0\u6CD5\u91CD\u590D\u7ED1\u5B9A" });
       await setAnchor(jr.phone, jr.tree_id, personHandle);
@@ -33375,7 +37983,7 @@ async function handleRequest(event) {
       jr.handled_by = u.phone;
       jr.handled_at = (/* @__PURE__ */ new Date()).toISOString();
       await colSet("jiazu_join_requests", jr._id, jr);
-      return send(200, { ok: true, status: "approved" });
+      return send(200, { ok: true, status: "approved", reassigned_from: bindable.reassigned_from || null });
     }
     if (pathname === "/admin/reject-join" && method === "POST") {
       const u = await authUser(headers);
@@ -33429,9 +38037,9 @@ async function handleRequest(event) {
         return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward)
         return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
-      const list = await colAll("jiazu_leave_requests");
+      const list2 = await colAll("jiazu_leave_requests");
       const myTree = u.role === "chief_editor" ? null : (await getAnchor(u.phone))?.tree_id;
-      const out = list.filter((r) => myTree === null || r.tree_id === myTree).map((r) => ({ id: r._id, ...r }));
+      const out = list2.filter((r) => myTree === null || r.tree_id === myTree).map((r) => ({ id: r._id, ...r }));
       return send(200, out);
     }
     if (pathname === "/admin/approve-leave" && method === "POST") {
@@ -33494,7 +38102,9 @@ async function handleRequest(event) {
           name: body.name || "",
           surname: body.surname || "",
           gender: body.gender || "U",
-          extraAttributes: body.attributes || []
+          extraAttributes: body.attributes || [],
+          // 「承母嗣」特例（本族已婚女性的后代）：勾选后挂在本人名下，详情文档记 maternal_succession='true'
+          maternalSuccession: body.maternal_succession === true
         });
         return send(200, result);
       } catch (e) {
@@ -33608,8 +38218,8 @@ async function handleRequest(event) {
       const anchor = chief ? null : await getAnchor(u.phone);
       const myTree = anchor?.tree_id || "";
       const all = await colAll("jiazu_marriage_requests");
-      const list = all.filter((r) => r.status === "pending").filter((r) => chief || r.to_tree === myTree).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-      return send(200, { list, can_approve_all: chief, my_tree: myTree });
+      const list2 = all.filter((r) => r.status === "pending").filter((r) => chief || r.to_tree === myTree).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+      return send(200, { list: list2, can_approve_all: chief, my_tree: myTree });
     }
     if ((pathname === "/admin/approve-marriage" || pathname === "/admin/reject-marriage") && method === "POST") {
       const approve = pathname === "/admin/approve-marriage";
@@ -33821,11 +38431,11 @@ async function handleRequest(event) {
       const chief = user.role === "chief_editor";
       const anchor = chief ? null : await getAnchor(u.phone);
       const myTree = anchor?.tree_id || "";
-      const list = filterPendingRequests(await colAll(FOUNDER_REQUEST_COLLECTION), { chief, myTree });
+      const list2 = filterPendingRequests(await colAll(FOUNDER_REQUEST_COLLECTION), { chief, myTree });
       const masterHandle = String(query.master_handle || "").trim();
       const attachments = masterHandle ? attachedTreesOf(await listAttachedTrees({ masterTreeId: MASTER_TREE_ID2 }), masterHandle) : [];
       const clans = chief ? await listClans() : [];
-      return send(200, { list, can_approve_all: chief, my_tree: myTree, attachments, clans });
+      return send(200, { list: list2, can_approve_all: chief, my_tree: myTree, attachments, clans });
     }
     if (pathname === "/admin/decide-founder" && method === "POST") {
       const body = parseBody(event);
@@ -34049,8 +38659,8 @@ async function handleRequest(event) {
     if (pathname === "/admin/clans" && method === "GET") {
       const surname = String(query.surname || "").trim();
       const all = await listClans();
-      const list = surname ? all.filter((c) => c.surname === surname) : all;
-      return send(200, { ok: true, list });
+      const list2 = surname ? all.filter((c) => c.surname === surname) : all;
+      return send(200, { ok: true, list: list2 });
     }
     if (pathname === "/admin/clan-info" && method === "GET") {
       const want = String(query.tree_id || treeId || "").trim();
@@ -34103,6 +38713,10 @@ async function handleRequest(event) {
           return send(e.status || 400, { error: e.message });
         }
         const id = genRequestId();
+        const originCode = String(body.origin_code ?? "").trim();
+        if (originCode && !isKnownOriginCode(originCode)) {
+          return send(400, { error: `\u53D1\u6E90\u5730\u884C\u653F\u533A\u5212\u4EE3\u7801\u65E0\u6548\uFF1A${originCode}` });
+        }
         const request = buildClanRequest({
           id,
           surname,
@@ -34112,7 +38726,8 @@ async function handleRequest(event) {
           masterName: masterPerson.name || "",
           clanTitle: body.clan_title,
           requestedBy: u.phone,
-          note: body.note
+          note: body.note,
+          originCode
         });
         await colSet(CLAN_REQUEST_COLLECTION, id, request);
         return send(200, {
@@ -34137,12 +38752,12 @@ async function handleRequest(event) {
         return send(401, { error: "\u7528\u6237\u4E0D\u5B58\u5728" });
       const chief = user.role === "chief_editor";
       const anchor = chief ? null : await getAnchor(u.phone);
-      const list = filterPendingClanRequests(await colAll(CLAN_REQUEST_COLLECTION), {
+      const list2 = filterPendingClanRequests(await colAll(CLAN_REQUEST_COLLECTION), {
         chief,
         myTreeIds: anchor?.tree_id ? [anchor.tree_id] : [],
         myPhone: u.phone
       });
-      return send(200, { ok: true, list, can_approve_all: chief, my_tree: anchor?.tree_id || "" });
+      return send(200, { ok: true, list: list2, can_approve_all: chief, my_tree: anchor?.tree_id || "" });
     }
     if (pathname === "/admin/decide-clan" && method === "POST") {
       const body = parseBody(event);
@@ -34181,7 +38796,9 @@ async function handleRequest(event) {
           masterHandle: request.master_handle,
           chainDepth: body.chain_depth,
           ownRootName: body.founder_name,
-          initiatorPhone: request.requested_by
+          initiatorPhone: request.requested_by,
+          // 结构化发源地：申请单上的码带过来（历史申请无该字段 → undefined → lib 层按空串处理）
+          originCode: request.origin_code
         });
         await colSet(CLAN_REQUEST_COLLECTION, rid, {
           ...request,
@@ -34222,6 +38839,43 @@ async function handleRequest(event) {
         return send(200, result);
       } catch (e) {
         return send(e.status || 400, errorPayload(e, gate?.refunded ? { fee_refunded: true } : {}));
+      }
+    }
+    if (pathname === "/admin/sibling-reorder" && method === "POST") {
+      const body = parseBody(event);
+      const reorderFam = String(body.family_handle || "").trim();
+      const reorderPerson = String(body.person_handle || "").trim();
+      if (!reorderFam)
+        return send(400, { error: "\u7F3A\u5C11 family_handle" });
+      if (!reorderPerson)
+        return send(400, { error: "\u7F3A\u5C11 person_handle" });
+      if (!Array.isArray(body.child_handles))
+        return send(400, { error: "\u7F3A\u5C11 child_handles\uFF08\u987B\u4E3A\u6570\u7EC4\uFF09" });
+      const reorderTreeId = String(body.tree_id || treeId || "").trim();
+      if (!reorderTreeId)
+        return send(400, { error: "\u7F3A\u5C11 tree_id" });
+      let gate = null;
+      try {
+        const u = await requireWriteUser(headers, reorderTreeId, pathname, reorderPerson, false);
+        await assertFounderEditable(await getTree(reorderTreeId), reorderPerson, MASTER_TREE_ID2);
+        gate = feeGate(u.phone, "sibling_reorder");
+        const result = await reorderChildren({
+          treeId: reorderTreeId,
+          familyHandle: reorderFam,
+          personHandle: reorderPerson,
+          childHandles: body.child_handles.map((h) => String(h ?? "")),
+          masterTreeId: MASTER_TREE_ID2,
+          charge: gate.charge,
+          refund: gate.refund
+        });
+        if (result.noop) {
+          const q = await quoteBamboo(u.phone, 0);
+          return send(200, { ...result, fee: { unit: "bamboos", pieces: 0, balance: q.current, balance_after: q.current } });
+        }
+        return send(200, result);
+      } catch (e) {
+        const payload = errorPayload(e, gate?.refunded ? { fee_refunded: true } : {});
+        return send(errorStatusOf(e, payload), payload);
       }
     }
     if (pathname === "/admin/delete-node" && method === "POST") {
@@ -34339,6 +38993,7 @@ async function handleRequest(event) {
           genealogyName: body.genealogy_name,
           hallName: body.hall_name,
           origin: body.origin,
+          originCode: body.origin_code,
           description: body.description,
           initiatorPhone: u.phone,
           // 校验全部通过后、落库前扣 9颗石榴籽（不足 409 → 不建树、不扣籽）
@@ -34459,7 +39114,7 @@ async function handleRequest(event) {
       const limit = Number.isFinite(parsedLimit) ? Math.min(100, Math.max(1, parsedLimit)) : 30;
       const qNorm = raw.replace(/\s+/g, "").toLowerCase();
       const qNum = numberOfId(raw);
-      const isMirrorNode = (p) => String(p?.external_mirror) === "true" && !!p?.external_person_handle;
+      const isMirrorNode2 = (p) => String(p?.external_mirror) === "true" && !!p?.external_person_handle;
       const ctx = { treeCache: /* @__PURE__ */ new Map(), accessCache: /* @__PURE__ */ new Map(), realCache: /* @__PURE__ */ new Map() };
       const ctxTree = async (id) => {
         const key = String(id || "");
@@ -34516,7 +39171,7 @@ async function handleRequest(event) {
         if (ctx.realCache.has(ck))
           return ctx.realCache.get(ck);
         const walk = async () => {
-          if (!isMirrorNode(p))
+          if (!isMirrorNode2(p))
             return { treeId: t.id, person: p };
           let cur = p;
           let last = null;
@@ -34534,7 +39189,7 @@ async function handleRequest(event) {
             }
             if (!hit)
               return last;
-            if (!isMirrorNode(hit.person))
+            if (!isMirrorNode2(hit.person))
               return hit;
             last = hit;
             cur = hit.person;
@@ -34615,7 +39270,7 @@ async function handleRequest(event) {
       const groups = /* @__PURE__ */ new Map();
       for (const h of hits) {
         const rel = await resolveRealBody(h.t, h.p);
-        const key = rel?.person?.handle || (isMirrorNode(h.p) ? String(h.p.external_person_handle) : String(h.p.handle));
+        const key = rel?.person?.handle || (isMirrorNode2(h.p) ? String(h.p.external_person_handle) : String(h.p.handle));
         if (!groups.has(key))
           groups.set(key, []);
         groups.get(key).push(h);
@@ -34625,8 +39280,8 @@ async function handleRequest(event) {
         const bi = b.matched === "id" ? 0 : 1;
         if (ai !== bi)
           return ai - bi;
-        const am = isMirrorNode(a.p) ? 1 : 0;
-        const bm = isMirrorNode(b.p) ? 1 : 0;
+        const am = isMirrorNode2(a.p) ? 1 : 0;
+        const bm = isMirrorNode2(b.p) ? 1 : 0;
         if (am !== bm)
           return am - bm;
         if (a.t.id !== b.t.id)
@@ -34639,14 +39294,14 @@ async function handleRequest(event) {
       for (const members of groups.values()) {
         const best = members.slice().sort(cmpRep)[0];
         const tier = best.matched === "id" ? best.pinned ? 0 : 1 : 2;
-        const realMembers = members.filter((m) => !isMirrorNode(m.p));
+        const realMembers = members.filter((m) => !isMirrorNode2(m.p));
         if (realMembers.length > 0) {
           const realBest = realMembers.slice().sort(cmpRep)[0];
           picked.push({ t: realBest.t, p: realBest.p, matched: best.matched, restricted: false, tier });
           continue;
         }
         const rel = await resolveRealBody(best.t, best.p);
-        const real = rel && !isMirrorNode(rel.person) ? rel : null;
+        const real = rel && !isMirrorNode2(rel.person) ? rel : null;
         const realTree = real ? treeRefOf(real.treeId) : null;
         const realVisible = realTree ? !(await ctxAccess(realTree.id, realTree.tree)).isHiddenPerson(real.person.handle) : false;
         if (realVisible) {
@@ -34685,14 +39340,14 @@ async function handleRequest(event) {
         return send(404, { error: `\u6811\u4E0D\u5B58\u5728: ${targetTreeId}` });
       const qNorm = raw.replace(/\s+/g, "").toLowerCase();
       const qNum = numberOfId(raw);
-      const isMirrorNode = (p) => String(p?.external_mirror) === "true";
+      const isMirrorNode2 = (p) => String(p?.external_mirror) === "true";
       const genderOk = (p) => {
         const g = String(p?.gender ?? "").trim().toUpperCase();
         if (g !== "M" && g !== "F")
           return false;
         return wantGender ? g === wantGender : true;
       };
-      const eligible = (p) => !!p && !!p.handle && !isMirrorNode(p) && genderOk(p);
+      const eligible = (p) => !!p && !!p.handle && !isMirrorNode2(p) && genderOk(p);
       const shapeCand = (p) => ({
         handle: p.handle,
         gramps_id: p.gramps_id || "",
@@ -34752,9 +39407,24 @@ async function handleRequest(event) {
       const u = await requireWriteUser(headers, treeId, pathname, peMatch[1], false);
       const body = parseBody(event);
       const putTree = await getTree(treeId);
-      await assertFounderEditable(putTree, peMatch[1], MASTER_TREE_ID2);
+      try {
+        assertPlaceFieldShapes(body);
+      } catch (e) {
+        return send(errorStatusOf(e, 400), { error: e.message });
+      }
+      try {
+        assertResidencePlacesLimit(body.residence_places);
+      } catch (e) {
+        return send(errorStatusOf(e, 400), { error: e.message });
+      }
+      try {
+        assertKnownOriginCodes(body);
+      } catch (e) {
+        return send(errorStatusOf(e, 400), { error: e.message });
+      }
+      await assertFounderEditable(putTree, peMatch[1], MASTER_TREE_ID2, null, body);
       if (!hasPersonChanges(body)) {
-        return send(400, { error: "\u8BF7\u6C42\u4F53\u4E0D\u5305\u542B\u53EF\u4FEE\u6539\u5185\u5BB9\uFF08\u59D3\u540D / \u6027\u522B / \u751F\u5352 / \u5065\u5728 / \u79F0\u53F7\uFF09" });
+        return send(400, { error: "\u8BF7\u6C42\u4F53\u4E0D\u5305\u542B\u53EF\u4FEE\u6539\u5185\u5BB9\uFF08\u59D3\u540D / \u6027\u522B / \u751F\u5352 / \u5065\u5728 / \u79F0\u53F7 / \u51FA\u751F\u5730 / \u5C45\u4F4F\u5730\uFF09" });
       }
       const putPerson = putTree?.people?.[peMatch[1]];
       if (putPerson) {
@@ -34817,6 +39487,29 @@ async function handleRequest(event) {
       return send(200, { ok: true });
     }
     const readAccess = await resolveTreeAccess(headers, treeId, tree);
+    if (pathname === "/tree/origin-candidates" && method === "GET") {
+      const meta = await getMeta();
+      const entry = Object.values(meta?.trees || {}).find((t) => t && t.tree_id === treeId) || null;
+      const hit = resolveOriginFounder(tree, entry);
+      const founderHandle = hit && !readAccess.isHiddenPerson(hit.handle) ? hit.handle : "";
+      const shape = (p) => ({ handle: p.handle, gramps_id: p.gramps_id || "", name: p.name || `${p.surname || ""}${p.given || ""}` });
+      const candidates = founderHandle ? founderThreeGenerations(tree, founderHandle).filter((c) => !readAccess.isHiddenPerson(c.handle)).map((c) => {
+        const p = tree.people[c.handle];
+        const view = placeViewOf(p.birth_place);
+        return {
+          ...shape(p),
+          generation: c.generation,
+          birth_place: view,
+          is_current: !!entry?.origin_code && view.place_code === String(entry.origin_code)
+        };
+      }) : [];
+      return send(200, {
+        tree_id: treeId,
+        founder: founderHandle ? shape(tree.people[founderHandle]) : null,
+        current: { origin_code: String(entry?.origin_code ?? ""), origin: String(entry?.origin ?? "") },
+        candidates
+      });
+    }
     const evMatch = pathname.match(/^\/events\/([^/]+)$/);
     if (evMatch && method === "GET") {
       const index = await getEventIndex(treeId);
@@ -34835,13 +39528,15 @@ async function handleRequest(event) {
       return send(200, toRawPerson(tree, person, detail));
     }
     if (pathname === "/people" && method === "GET") {
+      const access = await resolveInviteCodeAccess(header("x-invite-code"), treeId, tree) || readAccess;
       const details = await getAllDetails(treeId);
       const detailMap = new Map(details.map((d) => [d.handle, d]));
-      const out = Object.values(tree.people).filter((p) => !readAccess.isHiddenPerson(p.handle)).map((p) => toRawPerson(tree, p, detailMap.get(p.handle)));
+      const out = Object.values(tree.people).filter((p) => !access.isHiddenPerson(p.handle)).map((p) => toRawPerson(tree, p, detailMap.get(p.handle)));
       return send(200, out);
     }
     if (pathname === "/families" && method === "GET") {
-      const out = Object.values(tree.families).filter((f) => !isHiddenFamily(readAccess, f)).map((f) => ({
+      const access = await resolveInviteCodeAccess(header("x-invite-code"), treeId, tree) || readAccess;
+      const out = Object.values(tree.families).filter((f) => !isHiddenFamily(access, f)).map((f) => ({
         handle: f.handle,
         gramps_id: f.gramps_id || "",
         father_handle: f.father_handle || "",

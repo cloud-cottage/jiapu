@@ -1,5 +1,5 @@
 /**
- * 市集 + 官方竹简每日限量发售内核（P3）— 集合 jiazu_market（单文档 `_id='global'`）
+ * 市集 + 官方竹简每日限量发售内核（P3）— 集合 jiazu_market（**每档一文档 · 存储形态 v2**）
  *
  * 唯一真源：docs/economy-market.spec.md（市集分册）+ docs/economy.spec.md（总纲）
  *   §2 存储契约（jiazu_market.listings / trades / official）/ §3 资产流转总表（4 行：挂单 / 撤单 / 成交 / 官方购买）
@@ -9,10 +9,20 @@
  *   §7 官方发售（¥9.90/束 · 每日 21:00 惰性释放 · 当日不结转 · 售罄即止）
  *   总纲 §4-3 字段表 / §4-6 Tx.type / §5-4 惰性结算 / §5-7 并发与唯一写入路径 / §6-1 §6-2 接口 / §8 权限（`GET /market/listings` guest 可读）
  *
+ * **存储形态 v2（2026-10-03 Zang 裁定 · 路 B 第 2 期·B 路）**：`jiazu_market` 由「全体共用单文档
+ * `_id='global'`（内嵌 `listings` / `trades` 数组 + `official`）」改为：
+ *   · 挂单 = **每挂单一档**（`_id = listing.id`，即 `lst_<毫秒>_<rand6>`）；
+ *   · 成交 = **每成交一档**（`_id = trade.id`，即 `trd_<毫秒>_<rand6>`）；
+ *   · 官方发售配置 = **单档 `_id='official'`**（`OFFICIAL_ID`，配置类，允许保留单文档）。
+ * 每档带 `version`（非负整数、自 1 起）。写入协议 = `store.mutateDoc` 的 **CAS**：读当前档 → 纯函数 mutator →
+ * `version+1` → 条件写 → **读回比对**；冲突重读重放（上限 5 次 + 退避），耗尽抛错 ⇒ 云端多实例并发不再丢更新。
+ * 业务字段名 / 数值 / 计费口径一字不改；列表 / 查询路径 = `store.listAll` 分页枚举 + **原样过滤排序**，
+ * 语义与改造前逐字一致；元字段（`_id` / `version`）**不泄漏给接口调用方**。
+ *
  * 分层（纯函数与 IO 分离，便于单测）：
  *   - 纯函数：feeOf / feeBreakdown / sweepListings / lockedPieces / availablePieces / sellablePieces /
  *     releaseOfficial / planTrade / applyBuyerSide / applySellerSide / applyOfficialPurchase / listingPayload
- *   - IO 层：withMarket（**全局串行队列**，模式照 economy-spirit.js 的 spiritLocks）+
+ *   - IO 层：withMarket（**全局串行队列**，模式照 economy-ledger.js 的 assetsLocks + store.mutateDoc 的 CAS）+
  *     marketListings / myMarket / listBamboo / cancelListing / buyListing / officialPurchase /
  *     setOfficialStock / hasOpenListing / openListingGuard
  *
@@ -21,14 +31,11 @@
  * assetInsufficient / beijingDate）；本模块只做「市集判定 + 官方发售判定 + 编排」。
  * ¥ 钱包（jiazu_wallets）只经 lib/wallet.js（人民币只用于购买官方竹简，§7 / §10 反变现约束）。
  *
- * 锁顺序（**不得颠倒**，防死锁）：`market(global) → assets(phone)`；无任何路径先持 assets 锁再取 market 锁。
+ * 锁顺序（**不得颠倒**，防死锁）：`market(全局) → assets(phone)`；无任何路径先持 assets 锁再取 market 锁。
  * 跨集合（jiazu_market + jiazu_assets + jiazu_wallets）无事务 API：先写一侧，后续失败 → 用快照回滚（同
  * economy-spirit.chargeSpirit 与 store.updateTrees 的「顺序写 + 失败回滚」口径）。
- *
- * 已知限制（与 economy-ledger / economy-spirit 同批）：`jiazu_market` 同为单文档 + 仅进程内串行锁，
- * 云端多实例并发可丢更新（登记 docs/PENDING_DEPLOY.md，部署前随资产集合一并重构）。
  */
-import { colGet, colSet } from './store.js';
+import { colGet, listAll, mutateDoc } from './store.js';
 import {
   BAMBOO_TTL_DAYS,
   addLot,
@@ -47,7 +54,15 @@ import * as wallet from './wallet.js';
 // ---- 集合与常量（§2-1 / §11-25：改动先改规格） ----
 
 export const MARKET_COL = 'jiazu_market';
-export const MARKET_ID = 'global';
+/**
+ * 官方发售配置档 `_id`（**单档，配置类**；§2-1）。存储形态 v2：挂单 / 成交各一档一文档，官方配置保留单档。
+ * 旧「单文档 `_id='global'`（内嵌 `listings` / `trades` / `official`）」已废弃（迁后 `global` 键消失）。
+ */
+export const OFFICIAL_ID = 'official';
+/** 挂单档 `_id` 前缀（= `listingId()` 产出前缀；枚举 / 判别用） */
+const LISTING_PREFIX = 'lst_';
+/** 成交档 `_id` 前缀（= `tradeId()` 产出前缀；枚举 / 判别用） */
+const TRADE_PREFIX = 'trd_';
 /** 挂单时限（天，K9 定稿）：`expires_at = created_at + LISTING_TTL_DAYS 天` */
 export const LISTING_TTL_DAYS = 7;
 /** 1 束 = 100 片（恒等，市集与官方发售唯一计量口径；**碎片 / 零散竹片 / 籽 / 玉均不可上架**） */
@@ -118,11 +133,11 @@ function bambooInsufficient(need, current, message) {
 // ---- id（§5-2：沿用 wallet.js 既有口径 `lst_` / `trd_`；正确性不依赖 id 唯一） ----
 
 const rand6 = () => Math.random().toString(36).slice(2, 8).padEnd(6, '0').slice(0, 6);
-/** 挂单 id：`lst_<毫秒时间戳>_<6 位随机>` */
+/** 挂单 id：`lst_<毫秒时间戳>_<6 位随机>`（= 挂单档 `_id`） */
 export function listingId() {
   return `lst_${Date.now()}_${rand6()}`;
 }
-/** 成交 id：`trd_<毫秒时间戳>_<6 位随机>` */
+/** 成交 id：`trd_<毫秒时间戳>_<6 位随机>`（= 成交档 `_id`） */
 export function tradeId() {
   return `trd_${Date.now()}_${rand6()}`;
 }
@@ -216,25 +231,31 @@ export function sweepListings(listings, now = new Date()) {
 
 // ---- §7 官方发售：定价 / 惰性释放 / 时点判定（纯函数） ----
 
-/** 空市集文档（§2-1） */
-export function blankMarketDoc() {
+/** 空官方配置档（§2-1；单档 `_id='official'` 的业务记录） */
+export function blankOfficial() {
   return {
-    _id: MARKET_ID,
-    listings: [],
-    trades: [],
-    official: {
-      price_fen: DEFAULT_PRICE_FEN,
-      daily_stock: DEFAULT_DAILY_STOCK,
-      stock: {},
-      last_release_date: '',
-    },
+    price_fen: DEFAULT_PRICE_FEN,
+    daily_stock: DEFAULT_DAILY_STOCK,
+    stock: {},
+    last_release_date: '',
   };
 }
 
-/** `official` 字段收口（缺省 / 脏值就地补全；不新增字段） */
-export function ensureOfficial(doc) {
-  doc.official = doc.official || {};
-  const o = doc.official;
+/** 空市集**读模型**（聚合视图，非单个存储档；§2-1） */
+export function blankMarketDoc() {
+  return {
+    listings: [],
+    trades: [],
+    official: blankOfficial(),
+  };
+}
+
+/**
+ * `official` 记录收口（缺省 / 脏值就地补全；不新增字段）。
+ * 入参 = 官方配置档**业务记录**（已剥离 `_id` / `version`）；返回同一对象（就地补全）。
+ */
+export function ensureOfficial(official) {
+  const o = official && typeof official === 'object' ? official : {};
   o.stock = o.stock && typeof o.stock === 'object' ? o.stock : {};
   o.price_fen = Number.isFinite(Number(o.price_fen)) && Number(o.price_fen) > 0 ? Math.floor(Number(o.price_fen)) : DEFAULT_PRICE_FEN;
   o.daily_stock = Number.isFinite(Number(o.daily_stock)) && Number(o.daily_stock) >= 0 ? Math.floor(Number(o.daily_stock)) : DEFAULT_DAILY_STOCK;
@@ -463,9 +484,68 @@ export function hasTreeField(listing) {
   return Object.keys(listing || {}).some((k) => /tree|anchor/i.test(k));
 }
 
-// ---- IO 层：全局串行队列（模式照 economy-ledger.assetsLocks / economy-spirit.spiritLocks） ----
+// ---- IO 层：全局串行队列 + 每档 CAS（模式照 economy-ledger.js 的 assetsLocks / store.mutateDoc） ----
+//
+// 存储形态 v2（见文件头）：挂单 = 每挂单一档（`_id = listing.id`）；成交 = 每成交一档（`_id = trade.id`）；
+// 官方配置 = 单档 `_id='official'`。写入一律走 `store.mutateDoc` 的 CAS；列表 / 查询一律 `store.listAll` 枚举。
 
 const marketLocks = new Map();
+/** 全局市集锁键（不再依赖单文档 `_id`；同一进程内所有市集读改写串行） */
+const MARKET_LOCK_KEY = 'market';
+
+/** 剥离存储元字段（`_id` / `version`）→ 返回业务记录本身（对外形状与旧 `global` 内记录一字不差） */
+function stripMeta(doc) {
+  const r = { ...doc };
+  delete r._id;
+  delete r.version;
+  return r;
+}
+
+/** 该档是否为挂单档（`_id` 前缀 `lst_`） */
+const isListingDoc = (d) => !!d && typeof d._id === 'string' && d._id.startsWith(LISTING_PREFIX);
+/** 该档是否为成交档（`_id` 前缀 `trd_`） */
+const isTradeDoc = (d) => !!d && typeof d._id === 'string' && d._id.startsWith(TRADE_PREFIX);
+
+/**
+ * 枚举全部挂单记录（分页拉齐；`_id = listing.id`）。返回业务记录（已剥离元字段）。
+ * **过滤 / 排序与改造前逐字一致**（改造前 = 单数组顺序；此处枚举序 = local 落盘键序 / 云端 `_id` 升序）。
+ */
+async function loadListings() {
+  return (await listAll(MARKET_COL)).filter(isListingDoc).map(stripMeta);
+}
+
+/** 读 + 收口官方配置档（`_id='official'`；不存在 → 默认档） */
+async function loadOfficial() {
+  const doc = await colGet(MARKET_COL, OFFICIAL_ID);
+  return ensureOfficial(doc ? stripMeta(doc) : {});
+}
+
+/** 市集读模型（聚合视图：listings + trades + official；一次枚举） */
+async function loadMarketSnapshot() {
+  const listings = [];
+  const trades = [];
+  let official = null;
+  for (const d of await listAll(MARKET_COL)) {
+    if (!d || typeof d._id !== 'string') continue;
+    if (d._id === OFFICIAL_ID) official = stripMeta(d);
+    else if (isListingDoc(d)) listings.push(stripMeta(d));
+    else if (isTradeDoc(d)) trades.push(stripMeta(d));
+  }
+  return { listings, trades, official: ensureOfficial(official || {}) };
+}
+
+/** 挂单档读取（404 语义）：`_id` 必须确为挂单档（前缀 `lst_`），否则视为不存在 */
+async function getListingOr404(listingIdValue) {
+  const doc = await colGet(MARKET_COL, listingIdValue);
+  if (!isListingDoc(doc)) throw httpError(404, ERR_LISTING_NOT_FOUND);
+  return stripMeta(doc);
+}
+
+/** 挂单状态守卫（成交 / 撤单**仅对 `open` 有效**；`expired` → 409「挂单已过期」） */
+function assertOpen(l) {
+  if (l.status === 'expired') throw httpError(409, ERR_LISTING_EXPIRED);
+  if (l.status !== 'open') throw httpError(409, ERR_LISTING_CLOSED);
+}
 
 /** 挂单到期下架留痕（best-effort：写卖方 `Tx{type:'expire'}`；失败不影响挂单 sweep 结果） */
 async function recordListingExpiryTx(expired, now) {
@@ -494,73 +574,79 @@ async function recordListingExpiryTx(expired, now) {
 }
 
 /**
- * 市集读改写（唯一 IO 入口）：读 `jiazu_market` 单文档 → 深拷贝 → **入口惰性结算**（挂单 sweep + 官方库存
- * 释放，先于业务逻辑）→ mutator → 整体回写一次 `colSet`。
- * - mutator 抛错 → **业务改动一字节都不回写**（整单拒绝语义）；但**时间驱动的惰性结算仍单独落库**
- *   （§5-4 / §6-1 / §7-2：结算与业务结果无关，否则过期挂单会一直挂在 `open` 上直到下一次成功调用）
- * - 全局串行化（`marketLocks`）：并发调用按到达顺序排队 → **同一挂单并发购买只有一个成功**（§5-2 / §5-7-3）
- * - 仅在结算有变化或 mutator 显式置 `ctx.dirty = true` 时才写回（纯读入口无副作用）
- * - 锁顺序：本函数持 `market` 锁期间可再取 `assets(phone)` 锁；**反向顺序不存在**
- * @param {(doc:object, ctx:{doc:object, now:Date, dirty:boolean, expired:object[],
- *   release:object, official:object}) => any} mutator
+ * 挂单到期下架（IO 版：逐档 CAS 条件写 —— **仅当仍为 `open` 才置 `expired`**）。
+ * 保留原行（不物理删）、不改 `sold_at` / `buyer_phone`；`expires_at` 缺失 / 非法视为不过期（不误杀脏数据）。
+ * @returns {Promise<object[]>} 本次被置为 `expired` 的挂单（业务记录）
+ */
+async function sweepExpiredListings(now = new Date()) {
+  const nowMs = toMs(now);
+  const expired = [];
+  for (const l of await loadListings()) {
+    if (!l || l.status !== 'open') continue;
+    const expMs = l.expires_at ? Date.parse(l.expires_at) : NaN;
+    if (!Number.isFinite(expMs) || expMs > nowMs) continue;
+    try {
+      const written = await mutateDoc(MARKET_COL, l.id, (doc) => {
+        if (doc.status === 'open') doc.status = 'expired'; // 临界区：仍 open 才下架
+        return doc;
+      });
+      const rec = stripMeta(written);
+      if (rec.status === 'expired') expired.push(rec);
+    } catch {
+      /* 冲突耗尽：本次不下架，下一次市集入口重判（不阻塞业务） */
+    }
+  }
+  return expired;
+}
+
+/** 官方库存惰性释放（IO 版：释放有变化 → 写回单档 `_id='official'`） */
+async function settleOfficial(now = new Date()) {
+  const official = await loadOfficial();
+  const release = releaseOfficial(official, now);
+  if (release.released) {
+    const written = await mutateDoc(MARKET_COL, OFFICIAL_ID, () => official);
+    return { official: ensureOfficial(stripMeta(written)), release };
+  }
+  return { official, release };
+}
+
+/**
+ * 市集读改写入口（唯一 IO 入口：全局串行 + 入口惰性结算）。
+ *
+ * - 入口惰性结算（先于业务逻辑）：挂单到期下架（逐档 CAS）+ 官方库存释放（21:00 后，单档）；
+ *   结算与业务结果无关，**即便 mutator 抛错也已单独落库**（§5-4 / §6-1 / §7-2），
+ *   否则过期挂单会一直挂在 `open` 上直到下一次成功调用。
+ * - 全局串行化（`marketLocks`）：并发调用按到达顺序排队 → 同一挂单并发购买只有一个成功（§5-2 / §5-7-3）。
+ * - 锁顺序：本函数持 market 锁期间可再取 `assets(phone)` 锁；**反向顺序不存在**。
+ * - mutator 收到 `ctx = { now, expired, release, official }`；业务写入由 mutator 自行走 `mutateDoc` /
+ *   `withAssets`（每档一文档、CAS 条件写；不再提供「整体回写」）。
+ * @param {(ctx:{now:Date, expired:object[], release:object, official:object}) => any} mutator
  */
 export async function withMarket(mutator, now = new Date()) {
-  const lock = marketLocks.get(MARKET_ID) || Promise.resolve();
+  const lock = marketLocks.get(MARKET_LOCK_KEY) || Promise.resolve();
   const run = lock.then(async () => {
-    const base = await colGet(MARKET_COL, MARKET_ID);
-    const doc = base ? JSON.parse(JSON.stringify(base)) : blankMarketDoc();
-    doc.listings = Array.isArray(doc.listings) ? doc.listings : [];
-    doc.trades = Array.isArray(doc.trades) ? doc.trades : [];
-    const official = ensureOfficial(doc);
-    // 入口惰性结算：挂单到期下架（释放派生锁定）+ 官方库存释放（21:00 后）
-    const expired = sweepListings(doc.listings, now);
-    const release = releaseOfficial(official, now);
-    const settled = expired.length > 0 || release.released;
-    const snapshot = settled ? JSON.parse(JSON.stringify(doc)) : null;
-    const ctx = { doc, now, dirty: settled, expired, release, official };
-    let result;
-    try {
-      result = await mutator(doc, ctx);
-    } catch (e) {
-      // 业务拒绝：只落「结算结果」快照（业务改动不写），并补挂单到期留痕
-      if (snapshot) {
-        await colSet(MARKET_COL, MARKET_ID, snapshot).catch(() => {});
-        if (expired.length > 0) await recordListingExpiryTx(expired, now);
-      }
-      throw e;
-    }
-    const committed = !!ctx.dirty;
-    if (committed) await colSet(MARKET_COL, MARKET_ID, doc);
-    if (committed && expired.length > 0) await recordListingExpiryTx(expired, now);
-    return result;
+    const expired = await sweepExpiredListings(now);
+    const { official, release } = await settleOfficial(now);
+    if (expired.length > 0) await recordListingExpiryTx(expired, now);
+    return mutator({ now, expired, release, official });
   });
-  marketLocks.set(MARKET_ID, run.catch(() => {}));
+  marketLocks.set(MARKET_LOCK_KEY, run.catch(() => {}));
   return run;
 }
 
-/** 只读快照（挂单 sweep 的变化会写回；无业务副作用） */
+/** 只读快照（挂单 sweep / 官方释放的变化会写回；无业务副作用） */
 export async function readMarket(now = new Date()) {
-  return withMarket((doc) => JSON.parse(JSON.stringify(doc)), now);
-}
-
-/** 挂单查找（404 语义，§3 撤单 / 成交行） */
-function findListing(doc, listingIdValue) {
-  const l = (doc.listings || []).find((x) => x && x.id === listingIdValue);
-  if (!l) throw httpError(404, ERR_LISTING_NOT_FOUND);
-  return l;
-}
-
-/** 挂单状态守卫（成交 / 撤单**仅对 `open` 有效**；`expired` → 409「挂单已过期」） */
-function assertOpen(l) {
-  if (l.status === 'expired') throw httpError(409, ERR_LISTING_EXPIRED);
-  if (l.status !== 'open') throw httpError(409, ERR_LISTING_CLOSED);
+  return withMarket(async (ctx) => {
+    const snap = await loadMarketSnapshot();
+    return { ...snap, official: ctx.official };
+  }, now);
 }
 
 // ---- §6-1 `GET /market/listings`（guest 可读） ----
 
 /**
- * 市集首页数据（**guest 可读**）：先挂单 sweep + 官方库存惰性释放 → 按 `status` 过滤（默认 `open`，
- * **`expired` 默认不展示**，显式传才返回）。
+ * 市集首页数据（**guest 可读**）：先挂单 sweep + 官方库存惰性释放（`withMarket` 入口）→ 按 `status` 过滤
+ * （默认 `open`，**`expired` 默认不展示**，显式传才返回）。
  */
 export async function marketListings(status, now = new Date()) {
   let filter = 'open';
@@ -568,10 +654,11 @@ export async function marketListings(status, now = new Date()) {
     filter = String(status).trim();
     if (!LISTING_STATUSES.includes(filter)) throw httpError(400, ERR_STATUS_INVALID);
   }
-  return withMarket((doc, ctx) => {
+  return withMarket(async (ctx) => {
     // 官方库存惰性释放已在 withMarket 入口完成（§7-2：访问市集入口即判定）
-    const listings = (doc.listings || []).filter((l) => l && l.status === filter).map((l) => listingPayload(l, now));
-    return { listings, official: officialPayload(ctx.official, ctx.release, now) };
+    const { listings } = await loadMarketSnapshot();
+    const rows = listings.filter((l) => l && l.status === filter).map((l) => listingPayload(l, now));
+    return { listings: rows, official: officialPayload(ctx.official, ctx.release, now) };
   }, now);
 }
 
@@ -584,11 +671,12 @@ export async function myMarket(phone, status, now = new Date()) {
     filter = String(status).trim();
     if (!LISTING_STATUSES.includes(filter)) throw httpError(400, ERR_STATUS_INVALID);
   }
-  return withMarket(async (doc) => {
-    const rows = (doc.listings || [])
+  return withMarket(async (ctx) => {
+    const { listings } = await loadMarketSnapshot();
+    const rows = listings
       .filter((l) => l && l.seller_phone === phone && (filter ? l.status === filter : l.status !== 'expired'))
       .map((l) => listingPayload(l, now));
-    const locked = lockedPieces(phone, doc.listings);
+    const locked = lockedPieces(phone, listings);
     const assets = await withAssets(phone, (user) => {
       sweep(user, now);
       const total = sumLots(user.bamboos);
@@ -611,22 +699,24 @@ export async function myMarket(phone, status, now = new Date()) {
  * 挂单（§3 行 1）：仅**整束**（`pieces = bundles × 100`）可上架；标价自由（**平台不设最低/最高价**）；
  * 与**家族树无关**（不传、不派生、不校验）；锁定为派生占量（不写 `BambooLot` 字段）。
  * 状态：`status='open'`、`expires_at = now + LISTING_TTL_DAYS 天`（K9）；写 `Tx{type:'market_list'}`。
+ * 存储：新挂单 = **独立一档**（`_id = listing.id`，CAS 写入）。
  * @returns {Promise<{ok:true, listing_id:string, bundles:number, pieces:number, price_seeds:number,
  *   expires_at:string, days_left:number, fee_seeds:number}>}
  */
 export async function listBamboo(phone, input = {}, now = new Date()) {
   const { bundles, price_seeds, pieces } = validateListingInput(input);
-  return withMarket(async (doc, ctx) => {
+  return withMarket(async (ctx) => {
     // 资产侧读（含 sweep）：可用量 = 未过期片数 − 本方 open 挂单占量（挂单 sweep 已在 withMarket 内完成）
     const snap = await withAssets(phone, (user) => {
       sweep(user, now);
       return { bamboos: (user.bamboos || []).map((l) => ({ ...l })) };
     });
-    const sellable = sellablePieces(phone, snap, doc.listings);
+    const { listings } = await loadMarketSnapshot();
+    const sellable = sellablePieces(phone, snap, listings);
     if (pieces > sellable) {
       // F2：文案（与 `current`）报**真实可用片数**（未按整束取整）——
       // 持 80 片时不得提示「当前可用 0 片」；「整束挂单」的口径说明保留。
-      const available = availablePieces(phone, snap, doc.listings);
+      const available = availablePieces(phone, snap, listings);
       throw bambooInsufficient(
         pieces,
         available,
@@ -643,8 +733,7 @@ export async function listBamboo(phone, input = {}, now = new Date()) {
       created_at: isoOf(now),
       expires_at: isoOf(new Date(toMs(now) + LISTING_TTL_DAYS * DAY_MS)),
     };
-    doc.listings.push(listing);
-    ctx.dirty = true;
+    // 照改造前次序：先写 `market_list` 留痕、再落挂单档（Tx 先于挂单可见）
     await withAssets(phone, (user) => {
       sweep(user, now);
       recordTx(
@@ -658,6 +747,7 @@ export async function listBamboo(phone, input = {}, now = new Date()) {
         now,
       );
     });
+    await mutateDoc(MARKET_COL, listing.id, () => ({ ...listing }));
     return {
       ok: true,
       listing_id: listing.id,
@@ -686,18 +776,23 @@ export function validateListingInput(input = {}) {
 /** 撤单（§3 行 2）：**仅 `open` 可撤**；本人挂单（403）；`expired` → 409「挂单已过期」；写 `Tx{type:'market_cancel'}` */
 export async function cancelListing(phone, listingIdValue, now = new Date()) {
   if (!listingIdValue) throw httpError(400, ERR_LISTING_ID_MISSING);
-  return withMarket(async (doc, ctx) => {
-    const l = findListing(doc, listingIdValue);
-    if (l.seller_phone !== phone) throw httpError(403, ERR_NOT_OWNER);
-    assertOpen(l);
-    l.status = 'cancelled';
-    l.cancelled_at = isoOf(now);
-    ctx.dirty = true;
+  return withMarket(async (ctx) => {
+    // 404 / 403 前置（只读）；状态转移在 CAS 临界区内二次校验（并发只有一单成功）
+    const existing = await getListingOr404(listingIdValue);
+    if (existing.seller_phone !== phone) throw httpError(403, ERR_NOT_OWNER);
+    const written = await mutateDoc(MARKET_COL, listingIdValue, (doc) => {
+      if (doc.seller_phone !== phone) throw httpError(403, ERR_NOT_OWNER);
+      assertOpen(doc);
+      doc.status = 'cancelled';
+      doc.cancelled_at = isoOf(now);
+      return doc;
+    });
+    const rec = stripMeta(written);
     await withAssets(phone, (user) => {
       sweep(user, now);
-      recordTx(user, { type: 'market_cancel', delta: {}, ref: { listing_id: l.id }, desc: `撤销市集挂单 ${l.id}（释放锁定 ${l.pieces} 片）` }, now);
+      recordTx(user, { type: 'market_cancel', delta: {}, ref: { listing_id: rec.id }, desc: `撤销市集挂单 ${rec.id}（释放锁定 ${rec.pieces} 片）` }, now);
     });
-    return { ok: true, listing_id: l.id, status: 'cancelled' };
+    return { ok: true, listing_id: rec.id, status: 'cancelled' };
   }, now);
 }
 
@@ -708,16 +803,43 @@ export async function cancelListing(phone, listingIdValue, now = new Date()) {
  * 竹片按整束从卖方**最早到期批次**起取用，买方接收批次 `expires_at` **继承卖方原值（不重置、不续命）**；
  * 卖方所得籽 = 新批次（365 天、`source='market'`）。
  * 守卫：登录 / 404 / 409 已成交或已撤 / 409 已过期 / **400 自买自卖（K8）** / 409 籽不足 / 409 竹片不足。
- * 并发：以 `status='open'` 条件更新为临界区（`withMarket` 全局串行）→ 同一挂单只有一个成功，其余 409。
+ * 并发：以挂单档 `status='open'` 的 **CAS 条件写（open→sold）为临界区** → 同一挂单只有一个成功，其余 409；
+ * 资产写入若失败 → 释放认领（sold→open）并回滚已写的买方扣款，挂单与资产回到改造前「整单拒绝」的状态。
  */
 export async function buyListing(phone, listingIdValue, now = new Date()) {
   if (!listingIdValue) throw httpError(400, ERR_LISTING_ID_MISSING);
-  return withMarket(async (doc, ctx) => {
-    const l = findListing(doc, listingIdValue);
-    assertOpen(l);
+  return withMarket(async (ctx) => {
+    const l = await getListingOr404(listingIdValue);
     if (l.seller_phone === phone) throw httpError(400, ERR_SELF_TRADE);
+    assertOpen(l);
     const trade_id = tradeId();
-    // 双方资产快照（含 sweep）+ 计划（全部校验前置；此处不写任何东西）
+
+    // ① 认领（CAS 临界区）：open → sold；并发重放后 assertOpen 抛 409「挂单已成交或已撤单」
+    await mutateDoc(MARKET_COL, listingIdValue, (doc) => {
+      if (doc.seller_phone === phone) throw httpError(400, ERR_SELF_TRADE);
+      assertOpen(doc);
+      doc.status = 'sold';
+      doc.sold_at = isoOf(now);
+      doc.buyer_phone = phone;
+      return doc;
+    });
+    // 认领释放（资产写入失败 → 整单拒绝：sold → open，清 sold_at / buyer_phone）
+    const releaseClaim = async () => {
+      try {
+        await mutateDoc(MARKET_COL, listingIdValue, (doc) => {
+          if (doc.status === 'sold' && doc.buyer_phone === phone) {
+            doc.status = 'open';
+            delete doc.sold_at;
+            delete doc.buyer_phone;
+          }
+          return doc;
+        });
+      } catch {
+        /* best-effort 释放：耗尽后挂单仍 sold（极端并发下以 CAS 赢家为准） */
+      }
+    };
+
+    // ② 双方资产快照（含 sweep）+ 计划（全部校验前置；此处不写任何东西）
     const sellerSnapshot = await withAssets(l.seller_phone, (user) => {
       sweep(user, now);
       return JSON.parse(JSON.stringify(user));
@@ -726,19 +848,31 @@ export async function buyListing(phone, listingIdValue, now = new Date()) {
       sweep(user, now);
       return JSON.parse(JSON.stringify(user));
     });
-    const plan = planTrade({
-      listing: { ...l, seller_phone: l.seller_phone },
-      sellerUser: sellerSnapshot,
-      buyerUser: buyerSnapshot,
-      listings: doc.listings.filter((x) => x.id !== l.id), // 本挂单自身占量不参与可用量
-      now,
-    });
-    // ① 买方扣籽 + 接收竹片（失败 → 一字节不写）
-    await withAssets(phone, (user) => {
-      sweep(user, now);
-      applyBuyerSide(user, plan, trade_id, now, l);
-    });
-    // ② 卖方交竹片 + 入账籽（扣手续费后）；失败 → 用快照回滚买方
+    let plan;
+    try {
+      const { listings } = await loadMarketSnapshot();
+      plan = planTrade({
+        listing: { ...l, seller_phone: l.seller_phone },
+        sellerUser: sellerSnapshot,
+        buyerUser: buyerSnapshot,
+        listings: listings.filter((x) => x.id !== l.id), // 本挂单自身占量不参与可用量
+        now,
+      });
+    } catch (e) {
+      await releaseClaim();
+      throw e;
+    }
+    // ③ 买方扣籽 + 接收竹片（失败 → 一字节不写；释放认领）
+    try {
+      await withAssets(phone, (user) => {
+        sweep(user, now);
+        applyBuyerSide(user, plan, trade_id, now, l);
+      });
+    } catch (e) {
+      await releaseClaim();
+      throw e;
+    }
+    // ④ 卖方交竹片 + 入账籽（扣手续费后）；失败 → 用快照回滚买方 + 释放认领
     try {
       await withAssets(l.seller_phone, (user) => {
         sweep(user, now);
@@ -746,12 +880,10 @@ export async function buyListing(phone, listingIdValue, now = new Date()) {
       });
     } catch (e) {
       await withAssets(phone, (user) => Object.assign(user, buyerSnapshot)).catch(() => {});
+      await releaseClaim();
       throw e;
     }
-    // ③ 状态转移 + Trade 追加（**同一文档、同一次写**：状态转移只可能成功一次，§5-2）
-    l.status = 'sold';
-    l.sold_at = isoOf(now);
-    l.buyer_phone = phone;
+    // ⑤ 追加成交档（每成交一档；`_id = trade.id`）
     const trade = {
       id: trade_id,
       listing_id: l.id,
@@ -762,8 +894,7 @@ export async function buyListing(phone, listingIdValue, now = new Date()) {
       fee_seeds: plan.fee_seeds,
       ts: isoOf(now),
     };
-    doc.trades.push(trade);
-    ctx.dirty = true;
+    await mutateDoc(MARKET_COL, trade_id, () => ({ ...trade }));
     return {
       ok: true,
       trade_id,
@@ -787,14 +918,15 @@ export async function buyListing(phone, listingIdValue, now = new Date()) {
  * 官方购买（§3 行 4 / §7-3）：惰性释放 → **21:00 时点**（未到 → 409「未到发售时间」）→ 当日库存
  * （不足 → 409「今日已售罄」）→ ¥ 余额（不足 → 409，引导充值）→ 入 `BambooLot{100×bundles, now+365d,
  * source='official_purchase'}` + `Tx{type:'official_buy'}` → ¥ 钱包扣 `price_fen × bundles` 分
- * （`jiazu_wallets.transactions` 一条 `official_bamboo` 流水）→ `official.stock[today] -= bundles`。
+ * （`jiazu_wallets.transactions` 一条 `official_bamboo` 流水）→ `official.stock[today] -= bundles`
+ * （单档 CAS；重放后按最新档重新校验库存）。
  * 顺序写 + 校验前置：竹片写入失败则**不扣 ¥**（§3 官方购买行）；扣款作为最后一步，失败即回滚竹片。
  */
 export async function officialPurchase(phone, input = {}, now = new Date()) {
   const raw = input.bundles === undefined || input.bundles === null || String(input.bundles).trim() === '' ? 1 : Number(input.bundles);
   if (!Number.isInteger(raw) || raw < 1) throw httpError(400, ERR_BUNDLES_INVALID);
   const bundles = raw;
-  return withMarket(async (doc, ctx) => {
+  return withMarket(async (ctx) => {
     const o = ctx.official;
     const rel = ctx.release; // 入口惰性释放（§7-2，已在 withMarket 内完成并落库）
     if (!rel.is_open) throw httpError(409, ERR_NOT_OPEN_YET); // 21:00 前
@@ -821,8 +953,15 @@ export async function officialPurchase(phone, input = {}, now = new Date()) {
         type: WALLET_TX_TYPE,
         desc: `官方竹简 ${bundles} 束（${r.pieces} 片）¥${(amount_cents / 100).toFixed(2)}`,
       });
-      o.stock[rel.today] = rel.stock_left_today - bundles;
-      ctx.dirty = true;
+      // 官方库存递减（单档 CAS；冲突重放后按最新档重新校验库存，绝不超卖）
+      const updated = await mutateDoc(MARKET_COL, OFFICIAL_ID, (doc) => {
+        const rec = ensureOfficial(stripMeta(doc));
+        const left = toNonNegInt(rec.stock ? rec.stock[rel.today] : 0);
+        if (left < bundles) throw httpError(409, ERR_SOLD_OUT);
+        rec.stock[rel.today] = left - bundles;
+        return rec;
+      });
+      const o2 = ensureOfficial(stripMeta(updated));
       return {
         ok: true,
         bundles,
@@ -830,7 +969,7 @@ export async function officialPurchase(phone, input = {}, now = new Date()) {
         price_fen: o.price_fen,
         amount_cents,
         balance_cents,
-        stock_left_today: o.stock[rel.today],
+        stock_left_today: toNonNegInt(o2.stock[rel.today]),
         lot_id: lot.id,
         expires_at: lot.expires_at,
         released: rel.released,
@@ -854,11 +993,14 @@ export async function setOfficialStock(dailyStock, priceFen, now = new Date()) {
   const hasPrice = !(priceFen === undefined || priceFen === null || String(priceFen).trim() === '');
   const price = hasPrice ? Number(priceFen) : null;
   if (hasPrice && (!Number.isInteger(price) || price < 1)) throw httpError(400, ERR_PRICE_FEN_INVALID);
-  return withMarket((doc, ctx) => {
-    const o = ensureOfficial(doc);
-    o.daily_stock = stock;
-    if (hasPrice) o.price_fen = price;
-    ctx.dirty = true;
+  return withMarket(async () => {
+    const written = await mutateDoc(MARKET_COL, OFFICIAL_ID, (doc) => {
+      const o = ensureOfficial(stripMeta(doc));
+      o.daily_stock = stock;
+      if (hasPrice) o.price_fen = price;
+      return o;
+    });
+    const o = ensureOfficial(stripMeta(written));
     return { ok: true, daily_stock: o.daily_stock, price_fen: o.price_fen };
   }, now);
 }
@@ -871,7 +1013,10 @@ export async function setOfficialStock(dailyStock, priceFen, now = new Date()) {
  * @returns {Promise<boolean>}
  */
 export async function hasOpenListing(phone, now = new Date()) {
-  return withMarket((doc) => (doc.listings || []).some((l) => l && l.status === 'open' && l.seller_phone === phone), now);
+  return withMarket(async () => {
+    const { listings } = await loadMarketSnapshot();
+    return listings.some((l) => l && l.status === 'open' && l.seller_phone === phone);
+  }, now);
 }
 
 /** 注销前置守卫（供 P4 路由直接调用）：存在 `open` 挂单 → 409「请先撤销未成交挂单」 */

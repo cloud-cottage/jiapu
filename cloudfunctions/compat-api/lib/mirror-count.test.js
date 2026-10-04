@@ -14,7 +14,7 @@
  *
  * 覆盖：
  *   M1 真源 gu_39038_01（树 + details 副本）→ 200，`mirror_count` 与真源树文件动态推导一致，`person_count`
- *      快照 21 + 不变量（people 总数 − 显式点名的被排除 handle 数：I000292 / I000293 / I000294），既有出参字段逐字段仍在；
+ *      快照 22 + 不变量（people 总数 − 显式点名的被排除 handle 数：I000292 / I000293 / I000294），既有出参字段逐字段仍在；
  *   M2 真源 gu 树源文件中 `external_mirror==='true'` 的 handle 集合**动态推导**，且**包含式点名**
  *      I000292 / I000293 / I000294 / I000367（不写死总数，真源再漂不再假红；原 I000143 顾清学 已在真源
  *      就地反转为非镜像，见下方点名集合注释）；
@@ -23,8 +23,9 @@
  *   M5 权限档位变化（guest / 已登录非成员 / 树成员）`mirror_count` 与 `person_count` 恒定不变 —— 且用 computeAccess
  *      直证这些镜像节点在 guest 档确实被裁掉（证明计数与权限裁剪解耦）；真源 gu 的镜像数同样动态推导；
  *   M6 真源 ji_23395_01 → `mirror_count` 动态一致（包含式点名 I000253 / I000291 / I000365）、
- *      `person_count` 快照 61 + 不变量（people 总数 − 排除集：**2026-09-19 清理后 ji 排除集为空** ——
- *      姑父 I000238 / 妹夫 I000240 等 28 个非成员真节点已从真源删除，故不变量右项即真源 people 总数本身）；
+ *      `person_count` 快照 58 + 不变量（people 总数 − 排除集：**2026-09-19 清理后 ji 排除集为空** ——
+ *      2026-10-03 再删 3 个源侧孤立节点（I000211 Dushengzi的母亲 / I000212 1的母亲 / I000230 四婶，
+ *      people 61 → 58）；姑父 I000238 / 妹夫 I000240 等 28 个非成员真节点已从真源删除，故不变量右项即真源 people 总数本身）；
  *   M7 真源体检：config/tree-meta.json + migrate-output/{trees,collections} 逐字节未变。
  *
  * 数据安全：`COMPAT_OUT_DIR` / `COMPAT_META_FILE` 一律指向 /tmp 副本（真源只读复制）；真源 md5 文末断言未变。
@@ -208,14 +209,26 @@ const GU_EXCLUDED_GIDS = ['I000292', 'I000293', 'I000294'];
 /**
  * 真源 ji 被新口径（纯血缘图）排除的 handle 点名：**当前为空**。
  * 2026-09-19 真源清理：原需剔除的姑父 I000238 / 妹夫 I000240 等 28 个非成员真节点已删除，
- * ji 现存 61 人全为血缘图成员、无姻亲/镜像需剔除 → people 总数 61 = person_count 61。
+ * ji 现存 58 人全为血缘图成员、无姻亲/镜像需剔除 → people 总数 58 = person_count 58。
+ * 2026-10-03：Kevin 裁定删除 3 个源侧孤立节点（I000211 Dushengzi的母亲 / I000212 1的母亲 / I000230 四婶，
+ * 原始 Gramps 导入即无任何 FAMS/FAMC 的孤儿，**非被拆散**）→ people 61 → 58；详情档同步删除。
  * 若日后真源再增删姻亲，必须在此重新点名并同步不变量右项与 M6 快照值。
  */
 const JI_EXCLUDED_GIDS = [];
 
+/**
+ * 快照重同步 · M1（追加 · 2026-10-03）：Kevin 本人当日对真源 `gu_39038_01` 做了一次**跨树联姻**
+ * （顾纯江 × 刘佳华），新增一位**婚入妇**镜像（handle `f5733061ae45d3ff41cf1b4e` = I000406）
+ * ⇒ 真源 people 总数 **24 → 25**、`person_count` 快照 **21 → 22**（婚入妇按「纯血缘图」口径计入）。
+ * **基线口径不变**：`GU_EXCLUDED_GIDS` 三点名（I000292 / I000293 / I000294）不动、
+ * 不变量断言 `person_count === realPeopleCount() − GU_EXCLUDED_GIDS.length` **一字未改**；
+ * 断言**零放宽**（不改为范围 / `>=` / 动态推导、不删任何断言）—— 体例同 `AGENTS.md` §7 先例
+ * （2026-09-23 `GU_MIRROR_GIDS` 5 → 4 / `JI_MIRROR_GIDS` 4 → 3）。
+ */
+
 // ================= M1. 真源 gu 树：mirror_count 动态推导 + person_count 快照 =================
 
-test('M1 真源 gu_39038_01：mirror_count 与真源动态一致、person_count 快照 21，既有字段逐字段仍在', async () => {
+test('M1 真源 gu_39038_01：mirror_count 与真源动态一致、person_count 快照 22，既有字段逐字段仍在', async () => {
   const mirrors = realMirrors('gu_39038_01');
   const { status, body } = await rankOf('gu_39038_01');
   assert.equal(status, 200);
@@ -225,7 +238,7 @@ test('M1 真源 gu_39038_01：mirror_count 与真源动态一致、person_count 
     "mirror_count = 真源树文件里 String(p.external_mirror) === 'true' 的 handle 数（动态推导）",
   );
   assert.equal(typeof body.mirror_count, 'number', 'mirror_count 必须是 number');
-  assert.equal(body.person_count, 21, 'person_count 真源数据快照（24 − 季清昆 I000292 − 季庭亦 I000293 − 季贺为 I000294），随真源增长需同步');
+  assert.equal(body.person_count, 22, 'person_count 真源数据快照（25 − 季清昆 I000292 − 季庭亦 I000293 − 季贺为 I000294），随真源增长需同步');
 
   // 不变量：person_count === people 总数 − 被排除 handle 数（排除集合用例显式点名，不由实现函数反推）
   assertGidsInRealTree('gu_39038_01', GU_EXCLUDED_GIDS);
@@ -327,9 +340,20 @@ test('M5 权限档位（guest / 已登录非成员 / 树成员）下 mirror_coun
   assert.equal(guGuest.body.mirror_count, realMirrors('gu_39038_01').length, '权限档位不改变 mirror_count');
 });
 
+/**
+ * 快照重同步 · M6（追加 · 2026-10-03）：Kevin 本人当日裁定删除真源 `ji_23395_01` 的 **3 个源侧孤立节点**
+ * —— I000211 Dushengzi的母亲 / I000212 1的母亲 / I000230 四婶（原始 Gramps 导入即无任何 FAMS/FAMC 的孤儿，
+ * **非被拆散**）。三者无 `parent_family`、`spouse_families` 为空、不在任何 family 槽位、全站数据层零引用、
+ * 非镜像；`families` 一字不动。⇒ 真源 people 总数 **61 → 58**、`person_count` 快照 **61 → 58**。
+ * **基线口径不变**：`JI_EXCLUDED_GIDS`（= []）不动、不变量断言
+ * `person_count === realPeopleCount() − JI_EXCLUDED_GIDS.length` **一字未改**；断言**零放宽**
+ * （不改为范围 / `>=` / 动态推导、不删任何断言）—— 体例同 M1（2026-10-03 gu 联姻重同步）与
+ * `AGENTS.md` §7 先例。数据手术脚本 = `scripts/delete-isolated-nodes-2026-10.mjs`。
+ */
+
 // ================= M6. 真源 ji 树 =================
 
-test('M6 真源 ji_23395_01：mirror_count 动态一致、person_count 快照 61 + 不变量', async () => {
+test('M6 真源 ji_23395_01：mirror_count 动态一致、person_count 快照 58 + 不变量', async () => {
   const mirrors = realMirrors('ji_23395_01');
   const { status, body } = await rankOf('ji_23395_01');
   assert.equal(status, 200);
@@ -341,8 +365,8 @@ test('M6 真源 ji_23395_01：mirror_count 动态一致、person_count 快照 61
   }
   assert.equal(
     body.person_count,
-    61,
-    'person_count 真源数据快照（2026-09-19 清理 28 个非成员真节点后 ji = 61，排除集为空），随真源增长需同步',
+    58,
+    'person_count 真源数据快照（2026-09-19 清理 28 个非成员真节点后 ji = 58，排除集为空），随真源增长需同步',
   );
   // 不变量：person_count === people 总数 − 被排除 handle 数（排除集合用例显式点名）
   // ji 当前排除集为空（2026-09-19 清理后：姑父 I000238 / 妹夫 I000240 等非成员真节点已删）

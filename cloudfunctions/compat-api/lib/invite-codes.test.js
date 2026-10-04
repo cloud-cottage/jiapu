@@ -162,7 +162,7 @@ fs.writeFileSync(path.join(TMP, 'trees', `${OTHER_TREE_ID}.json`), JSON.stringif
 
 const { handleRequest } = await import('../index.js');
 const { signJwt } = await import('./auth.js');
-const { colGet } = await import('./store.js');
+const { colGet, listAll } = await import('./store.js');
 const { getAssets } = await import('./economy-ledger.js');
 const invc = await import('./invite-codes.js');
 
@@ -178,7 +178,13 @@ const call = (p, method = 'GET', headers = {}, body = null, query = {}) =>
 const json = (res) => JSON.parse(res.body);
 const treeHeaders = (extra = {}) => ({ 'X-Tree-Id': TREE_ID, ...extra });
 const anchorOf = async (phone) => json(await call('/api/admin/get-anchor', 'GET', bearer(U.chief, 'chief_editor'), null, { phone })).anchor;
-const logsOf = async () => (await colGet('jiazu_ops_logs', 'global'))?.logs || [];
+const logsOf = async () =>
+  (await listAll('jiazu_ops_logs')).map((d) => {
+    const rec = { ...d };
+    delete rec._id;
+    delete rec.version;
+    return rec;
+  });
 const codeDocs = () => JSON.parse(fs.readFileSync(path.join(TMP, 'collections', 'jiazu_invite_codes.json'), 'utf8'));
 const txsOf = async (phone) => (await getAssets(phone)).txs || [];
 const issue = (who, r, payload) => call('/api/invite/code', 'POST', bearer(who, r), payload);

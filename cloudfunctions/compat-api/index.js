@@ -48,7 +48,7 @@
  *   GET /people | /families 支持可选请求头 `X-Invite-Code`（同树有效码 ⇒ 该次列表不裁剪；定点例外，其余读路由不认）
  *   POST /people/ | PUT /people/<handle> | POST /families/ | PUT /families/<handle>
  */
-import { getMeta, saveMeta, getTree, getAllDetails, getDetail, getEventIndex, colGet, colAll, colSet, updateTrees } from './lib/store.js';
+import { getMeta, mutateTreeMeta, getTree, getAllDetails, getDetail, getEventIndex, colGet, colAll, colSet, updateTrees } from './lib/store.js';
 import { signJwt, authUser, requestCode, verifyCode, findOrCreateUser, ROLE_LEVEL } from './lib/auth.js';
 import * as wallet from './lib/wallet.js';
 import * as ledger from './lib/economy-ledger.js';
@@ -634,23 +634,26 @@ async function handleRequest(event) {
       const code = origin_code === undefined ? undefined : String(origin_code ?? '').trim();
       if (code && !isKnownOriginCode(code)) return send(400, { error: `发源地行政区划代码无效：${code}` });
       const meta = await getMeta();
-      const entry = Object.values(meta.trees).find((t) => t.tree_id === tree_id);
-      if (!entry) return send(404, { error: `未找到 tree: ${tree_id}` });
-      if (display_title !== undefined) entry.display_title = display_title;
-      if (genealogy_name !== undefined) entry.genealogy_name = genealogy_name;
-      if (archive_url !== undefined) entry.archive_url = archive_url;
-      if (hall_name !== undefined) entry.hall_name = hall_name;
-      // legacy 直写分支（未结构化调用方 / 存量前端）：保留原样
-      if (origin !== undefined) entry.origin = origin;
-      // 结构化分支（docs/geo-origin.spec.md §6-1/§6-2 W1）：
-      //   · 非空码 → `origin` 由名称表**反查覆盖**（软冗余以真源为准，禁止前端手改）；
-      //   · 空串 = 合法「未结构化」→ 只落 `origin_code=''`，**不覆写** `origin`（legacy 兼容）。
-      if (code !== undefined) {
-        entry.origin_code = code;
-        if (code) entry.origin = resolveOrigin(code).display;
-      }
-      if (description !== undefined) entry.description = description;
-      await saveMeta(meta);
+      const found = Object.values(meta.trees).find((t) => t.tree_id === tree_id);
+      if (!found) return send(404, { error: `未找到 tree: ${tree_id}` });
+      // 定向写：只写该树档（校验全部先于写入；不再整份 saveMeta）
+      const entry = await mutateTreeMeta(tree_id, (e) => {
+        if (display_title !== undefined) e.display_title = display_title;
+        if (genealogy_name !== undefined) e.genealogy_name = genealogy_name;
+        if (archive_url !== undefined) e.archive_url = archive_url;
+        if (hall_name !== undefined) e.hall_name = hall_name;
+        // legacy 直写分支（未结构化调用方 / 存量前端）：保留原样
+        if (origin !== undefined) e.origin = origin;
+        // 结构化分支（docs/geo-origin.spec.md §6-1/§6-2 W1）：
+        //   · 非空码 → `origin` 由名称表**反查覆盖**（软冗余以真源为准，禁止前端手改）；
+        //   · 空串 = 合法「未结构化」→ 只落 `origin_code=''`，**不覆写** `origin`（legacy 兼容）。
+        if (code !== undefined) {
+          e.origin_code = code;
+          if (code) e.origin = resolveOrigin(code).display;
+        }
+        if (description !== undefined) e.description = description;
+        return e;
+      });
       return send(200, { ok: true, entry });
     }
 
@@ -685,9 +688,8 @@ async function handleRequest(event) {
       //     （与 PUT /tree-meta 同一判据、同一逐字文案）
       if (!isKnownOriginCode(srcCode)) return send(400, { error: unknownOriginCodeMessage(srcCode) });
       const patch = treeOriginPatchOf(person.birth_place);
-      entry.origin_code = patch.origin_code;
-      entry.origin = patch.origin;
-      await saveMeta(meta);
+      // 定向写：只写该树档（不再整份 saveMeta）
+      await mutateTreeMeta(wantTreeId, (e) => ({ ...e, origin_code: patch.origin_code, origin: patch.origin }));
       return send(200, {
         ok: true,
         origin_code: patch.origin_code,

@@ -11,6 +11,8 @@
  *  ④-2 sweep 脏数据收口：qty 非法 / NaN / 负数一律剔除，removed 与 expire 流水无 null / NaN
  *  ⑤ 签到日切（UTC+8 自然日）与同日重复 409（资产与 signin_date 不变）
  *  ⑥ 并发两次扣费不超扣（Promise.all）
+ *  ⑥-1 存储形态 v2（R1）：每手机号一文档（_id=手机号 / version≥1 / 无 global 单文档）
+ *  ⑥-2 CAS 并发（R2）：条件写冲突被重读重放，零丢更新；并以「无条件写」反证断言可判负
  *  ⑦ GET /assets/summary | /assets/expiring 读口径与 401；POST /assets/signin 满 10 联动
  *  ⑧ 不变量收口 + 真源 md5 逐字节未变
  *
@@ -525,11 +527,97 @@ test('并发两次扣费（Promise.all）：同一手机号只成功一次，绝
   assertInvariants(await readAssets(USER), '并发');
 });
 
+// ---- ⑥-2 存储形态 v2（R1）：每手机号一文档 + CAS 并发（R2） ----
+
+test('存储形态 v2：seedAssets 后集合文件顶层键 = 手机号明文（_id=手机号、version≥1），无 global 单文档；getAssets 对外形状不含 _id/version', async () => {
+  await seedAssets(USER, { fragments: 1, seeds: [], bamboos: [], jades: [], txs: [], signin_date: '' });
+  const raw = JSON.parse(fs.readFileSync(path.join(TMP, 'collections', 'jiazu_assets.json'), 'utf8'));
+  assert.equal('global' in raw, false, '旧单文档 _id=global 必须消失');
+  assert.ok(raw[USER], '必须存在以手机号为键的资产档');
+  assert.equal(raw[USER]._id, USER, '档 _id = 手机号明文');
+  assert.ok(Number.isInteger(raw[USER].version) && raw[USER].version >= 1, '每档必须带 version（非负整数，自 1 起）');
+  assert.equal(raw[USER].fragments, 1, '业务字段名照旧（fragments）');
+  const u = await readAssets(USER);
+  assert.equal('_id' in u, false, 'getAssets 对外形状不含 _id（与旧 global.users[phone] 一致）');
+  assert.equal('version' in u, false, 'getAssets 对外形状不含 version');
+});
+
+test('CAS 并发（R2）：同一档两路读改写（绕开进程内锁，直击 store.mutateDoc）→ 条件写冲突被重读重放，零丢更新、txs 条数与批次量精确', async () => {
+  const CASPHONE = '16600008877';
+  // 起点档（version=1）：两路各写一次 → 期望 version=3（+1 建 +1 +1）
+  await store.mutateDoc(el.ASSETS_COL, CASPHONE, (d) => {
+    d.seeds = [];
+    d.txs = [];
+    d.fragments = 0;
+    return d;
+  });
+
+  let aRead;
+  const aReadP = new Promise((r) => { aRead = r; });
+  let releaseA;
+  const gateA = new Promise((r) => { releaseA = r; });
+  // A：读到后阻塞（保证 B 先完整提交 → 制造一次真实 version 冲突）
+  const writerA = store.mutateDoc(el.ASSETS_COL, CASPHONE, async (d) => {
+    aRead();
+    await gateA;
+    el.addLot(d, 'seed', 1, { source: 'admin', now: NOW });
+    el.recordTx(d, { type: 'admin_grant', delta: { seeds: 1 }, desc: 'cas-a' }, NOW);
+    return d;
+  });
+  await aReadP; // A 已读到 v1 并进入 mutator（阻塞中）
+  // B：独立完成一次读改写（v1 → v2）
+  await store.mutateDoc(el.ASSETS_COL, CASPHONE, (d) => {
+    el.addLot(d, 'seed', 1, { source: 'admin', now: NOW });
+    el.recordTx(d, { type: 'admin_grant', delta: { seeds: 1 }, desc: 'cas-b' }, NOW);
+    return d;
+  });
+  releaseA(); // A 恢复：其条件写（期望 v1）必落空 → 重读重放 → v3
+  await writerA;
+
+  const doc = await store.colGet(el.ASSETS_COL, CASPHONE);
+  assert.equal(el.sumLots(doc.seeds), 2, '两路各加 1 颗籽：零丢更新（若无条件写此处会少 1）');
+  assert.equal(doc.seeds.length, 2, '两个籽批次都在（失败重放的那次不留残批）');
+  assert.equal((doc.txs || []).filter((t) => t.type === 'admin_grant').length, 2, '两条流水都在（未吞、未重复）');
+  assert.equal(doc.version, 3, 'version 精确递增：1（起点）→2（B）→3（A 重放）');
+});
+
+test('CAS 断言有效性（反证）：同序下「无条件写」丢更新 —— 证明上一条并发断言不是摆设', async () => {
+  const NPHONE = '16600008878';
+  const COL = 'jiazu_cas_probe';
+  await store.colSet(COL, NPHONE, { _id: NPHONE, version: 1, n: 0, txs: [] });
+
+  let aRead;
+  const aReadP = new Promise((r) => { aRead = r; });
+  let releaseA;
+  const gateA = new Promise((r) => { releaseA = r; });
+  // 朴素写路径：读到快照 → 阻塞 → 无条件整体回写（无 version 条件校验）
+  const naiveA = (async () => {
+    const base = JSON.parse(JSON.stringify(await store.colGet(COL, NPHONE)));
+    aRead();
+    await gateA;
+    base.n += 1;
+    base.txs = [...base.txs, 'a'];
+    await store.colSet(COL, NPHONE, base);
+  })();
+  await aReadP;
+  const baseB = JSON.parse(JSON.stringify(await store.colGet(COL, NPHONE)));
+  baseB.n += 1;
+  baseB.txs = [...baseB.txs, 'b'];
+  await store.colSet(COL, NPHONE, baseB); // B 先提交
+  releaseA();
+  await naiveA; // A 用陈旧快照覆盖 → B 丢失
+
+  const doc = await store.colGet(COL, NPHONE);
+  assert.equal(doc.n, 1, '无条件写：最终只留 1 次（丢了一次更新）——此即 CAS 并发断言要判负的坏结果');
+  assert.deepEqual(doc.txs, ['a'], 'B 的流水被 A 的陈旧快照覆盖吞掉');
+  // 对照：同样的坏结果若出现在上一条 CAS 场景（n=2/txs=2/version=3），断言必红
+  assert.notEqual(doc.n, 2, '坏结果与 CAS 正确结果（n=2）明确可区分 ⇒ 上一条断言有判别力');
+});
+
 // ==================== ⑨ 运营后台资产运维 / 注销（docs/economy-ops.spec.md §5 · §7 · P4） ====================
 
 const store = await import('./store.js');
 const ops = await import('./economy-ops.js');
-const mk = await import('./economy-market.js');
 
 const CHIEF = '16600008803'; // chief_editor（运营侧唯一有权的角色）
 const STEWARD = '16600008804'; // tree_steward（非总编 → 403）
@@ -548,21 +636,36 @@ const bearerAs = (phone, role) => {
   const scheme = ['Bear', 'er'].join(''); // 避免字面量被外部工具误判为凭据
   return { authorization: `${scheme} ${signJwt({ sub: phone, phone, role }, 3600)}` };
 };
-const logsDoc = () => store.colGet('jiazu_ops_logs', 'global');
-const logsOf = async () => (await logsDoc())?.logs || [];
+const logsOf = async () =>
+  (await store.listAll('jiazu_ops_logs')).map((d) => {
+    const rec = { ...d };
+    delete rec._id;
+    delete rec.version;
+    return rec;
+  });
 const txsOf = (phone) => readAssets(phone).then((u) => u.txs || []);
 const grant = (payload, headers = bearerAs(CHIEF, 'chief_editor')) => call('/admin/assets/grant', 'POST', headers, {}, payload);
 const jsonBody = (res) => JSON.parse(res.body);
 
-/** 市集（注销前置夹具）：只写 listings，official 用官方缺省 */
+/** 市集（注销前置夹具）：**每挂单一档**（`_id = listing.id`）；先清空非 official 档再逐笔写入 */
 async function setMarket(listings = []) {
-  const doc = mk.blankMarketDoc();
-  doc.listings = listings;
-  await store.colSet('jiazu_market', 'global', doc);
-  return doc;
+  for (const d of await store.listAll('jiazu_market')) {
+    const id = String(d?._id || '');
+    if (id && id !== 'official') await store.colDelete('jiazu_market', id);
+  }
+  for (const l of listings) await store.colSet('jiazu_market', l.id, { _id: l.id, version: 1, ...l });
+  return listings;
 }
-const listingsOf = async () => (await store.colGet('jiazu_market', 'global'))?.listings || [];
-const listing = (seller, status, id = `ls_${++seq}`) => ({
+const listingsOf = async () =>
+  (await store.listAll('jiazu_market'))
+    .filter((d) => d && d._id !== 'official')
+    .map((d) => {
+      const rec = { ...d };
+      delete rec._id;
+      delete rec.version;
+      return rec;
+    });
+const listing = (seller, status, id = `lst_${++seq}`) => ({
   id,
   seller_phone: seller,
   pieces: 100,

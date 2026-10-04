@@ -16,14 +16,17 @@
  *
  * 分层（纯函数与 IO 分离，便于单测）：
  *   - 纯函数：expiringCandidates / spiritCandidates / trimMessages / m1Text / daysLeftUntil / upsert 判定
- *   - IO 层：withMessages（按单文档串行化）+ ensureWarnings / messagesOf / readMessages /
- *     grantAssets / opsLogs / adminUserAssets / deleteAccount / spiritRecipients
+ *   - IO 层：withMessages（**每手机号一档** + CAS）+ ensureWarnings / messagesOf / readMessages /
+ *     grantAssets / appendOpsLog（**每笔一档**） / opsLogs（枚举 + 定序）/ adminUserAssets / deleteAccount /
+ *     spiritRecipients
  *
- * 已知限制（与 economy-ledger / economy-spirit 同批）：`jiazu_messages` / `jiazu_ops_logs` 同为单文档
- * `_id='global'` + 仅进程内串行锁，云端多实例并发可丢更新（登记 docs/PENDING_DEPLOY.md，随资产集合一并重构）。
+ * **存储形态 v2（R1/R2，2026-10-03 Zang 裁定 · 路 B）**：`jiazu_messages` 改**每手机号一文档**
+ * （`_id = 手机号明文`；文档体 `{ items: Message[], warned: {...} }`）、`jiazu_ops_logs` 改**每笔一文档**
+ * （`_id = 该条日志的 id`）；灵石枚举型路径（全体 / 日志列表）改走 `store.listAll` 分页枚举。
+ * 写入一律走 `store.mutateDoc` 的 **CAS**（冲突重读重放，上限 5 次），不再有单文档丢更新面。
  */
 
-import { colAll, colGet, colSet } from './store.js';
+import { colAll, colGet, listAll, mutateDoc } from './store.js';
 import {
   BAMBOO_TTL_DAYS,
   FRAGMENT_SYNTH_THRESHOLD,
@@ -42,16 +45,14 @@ import {
   toNonNegInt,
   withAssets,
 } from './economy-ledger.js';
-import { SPIRIT_COL, SPIRIT_ID, settleAllTrees } from './economy-spirit.js';
+import { SPIRIT_COL, settleAllTrees } from './economy-spirit.js';
 import { openListingGuard } from './economy-market.js';
 import { getAnchor } from './scope.js';
 
 // ---- 集合（§4-5 存储契约；改动先改总册） ----
 
 export const MESSAGES_COL = 'jiazu_messages';
-export const MESSAGES_ID = 'global';
 export const OPS_LOGS_COL = 'jiazu_ops_logs';
-export const OPS_LOGS_ID = 'global';
 export const USERS_COL = 'jiazu_users';
 export const ANCHORS_COL = 'jiazu_anchors';
 
@@ -153,14 +154,9 @@ export function opsLogId() {
   return `op_${Date.now()}_${rand6()}`;
 }
 
-/** 空集合文档（§4-5） */
+/** 空站内信档（**每手机号一档**的文档体；`items` = 该手机号消息数组） */
 export function blankMessagesDoc() {
-  return { _id: MESSAGES_ID, items: {}, warned: {} };
-}
-
-/** 空日志文档 */
-export function blankOpsLogsDoc() {
-  return { _id: OPS_LOGS_ID, logs: [] };
+  return { items: [], warned: {} };
 }
 
 const trimmed = (v) => String(v === undefined || v === null ? '' : v).trim();
@@ -258,41 +254,50 @@ export function trimMessages(items, limit = MESSAGE_KEEP_LIMIT) {
   return list;
 }
 
-// ==================== IO 层：jiazu_messages（单文档 + 串行化） ====================
+// ==================== IO 层：jiazu_messages（每手机号一档 + CAS） ====================
 
 const messageLocks = new Map();
 
 /**
- * 站内信读改写（唯一 IO 入口）：`warned` 去重标记与消息写入**同一次 `colSet`**（避免重复投递）。
- * mutator 抛错 → 一字节都不回写。
- * @param {(doc:object, ctx:{doc:object, dirty:boolean}) => any} mutator
+ * 站内信读改写（唯一 IO 入口）：**每手机号一档**（`_id = 手机号明文`），经 `store.mutateDoc` 的 CAS 提交。
+ * `warned` 去重标记与消息写入**同一次 CAS**（避免重复投递）；mutator 抛错 → 一字节都不回写。
+ * mutator 见到的 `rec` = 该手机号文档体 `{ items: Message[], warned: {...} }`（不含 `_id`/`version`）。
+ * @param {string} phone
+ * @param {(rec:object, ctx:{dirty:boolean}) => any} mutator
  */
-export async function withMessages(mutator) {
-  const lock = messageLocks.get(MESSAGES_ID) || Promise.resolve();
+export async function withMessages(phone, mutator) {
+  const id = String(phone == null ? '' : phone).trim();
+  const lock = messageLocks.get(id) || Promise.resolve();
   const run = lock.then(async () => {
-    const base = await colGet(MESSAGES_COL, MESSAGES_ID);
-    const doc = base ? JSON.parse(JSON.stringify(base)) : blankMessagesDoc();
-    doc.items = doc.items || {};
-    doc.warned = doc.warned || {};
-    const ctx = { doc, dirty: false };
-    const result = await mutator(doc, ctx);
-    if (ctx.dirty) await colSet(MESSAGES_COL, MESSAGES_ID, doc);
+    let result;
+    await mutateDoc(MESSAGES_COL, id, async (doc) => {
+      const rec = { ...doc };
+      delete rec._id;
+      delete rec.version;
+      rec.items = Array.isArray(rec.items) ? rec.items : [];
+      rec.warned = rec.warned && typeof rec.warned === 'object' ? rec.warned : {};
+      const ctx = { dirty: false };
+      result = await mutator(rec, ctx);
+      return rec;
+    });
     return result;
   });
-  messageLocks.set(MESSAGES_ID, run.catch(() => {}));
+  messageLocks.set(id, run.catch(() => {}));
   return run;
 }
 
-/** 只读快照（不落盘） */
+/** 只读快照（不落盘）：本人消息数组 */
 export async function getMessages(phone) {
-  const doc = await colGet(MESSAGES_COL, MESSAGES_ID);
-  return JSON.parse(JSON.stringify((doc?.items?.[phone] || []).slice()));
+  const doc = await colGet(MESSAGES_COL, String(phone == null ? '' : phone).trim());
+  return JSON.parse(JSON.stringify(Array.isArray(doc?.items) ? doc.items.slice() : []));
 }
 
-/** 去重键集合快照（单测断言「同次落库」用） */
+/** 去重键集合快照（**枚举全部手机号档聚合**；单测断言「同次落库」用） */
 export async function warnedKeys() {
-  const doc = await colGet(MESSAGES_COL, MESSAGES_ID);
-  return { ...(doc?.warned || {}) };
+  const docs = await listAll(MESSAGES_COL);
+  const out = {};
+  for (const d of docs) Object.assign(out, d?.warned || {});
+  return out;
 }
 
 /**
@@ -313,19 +318,20 @@ export async function ensureWarnings(viewer, now = new Date()) {
     return expiringCandidates(phone, user, now);
   });
 
-  // ② 灵气先 settle（§4.4：预警生成只读状态，推进由状态机负责）→ 再读记录判定三条
+  // ② 灵气先 settle（§4.4：预警生成只读状态，推进由状态机负责）→ 再**枚举全部树档**判定三条
   await settleAllTrees(now);
-  const spiritDoc = await colGet(SPIRIT_COL, SPIRIT_ID);
-  for (const treeId of await recipientTreeIds(phone, role, spiritDoc)) {
-    candidates.push(...spiritCandidates(phone, treeId, spiritDoc?.trees?.[treeId], now));
+  const spiritDocs = await listAll(SPIRIT_COL);
+  const entries = new Map(spiritDocs.map((d) => [String(d._id), d]));
+  for (const treeId of await recipientTreeIds(phone, role, entries)) {
+    candidates.push(...spiritCandidates(phone, treeId, entries.get(treeId), now));
   }
 
   return putWarnings(phone, candidates, now);
 }
 
 /** 当前请求人**有接收权**的树（§11-6：anchor 用户 + 该树 tree_steward + 全部 chief_editor） */
-async function recipientTreeIds(phone, role, spiritDoc) {
-  const treeIds = Object.keys(spiritDoc?.trees || {});
+async function recipientTreeIds(phone, role, entries) {
+  const treeIds = [...entries.keys()];
   if (treeIds.length === 0) return [];
   if (role === 'chief_editor') return treeIds;
   const anchor = await getAnchor(phone);
@@ -333,32 +339,29 @@ async function recipientTreeIds(phone, role, spiritDoc) {
   return tid && treeIds.includes(tid) ? [tid] : [];
 }
 
-/** 去重写入：`warned` 未命中才 push（消息与 `warned[key]` 同一次 colSet） */
+/** 去重写入：`warned` 未命中才 push（消息与 `warned[key]` 同一次 CAS） */
 async function putWarnings(phone, candidates, now) {
   const fresh = (candidates || []).filter(Boolean);
   if (fresh.length === 0) return { created: [], keys: [] };
-  return withMessages((doc, ctx) => {
+  return withMessages(phone, (rec) => {
     const created = [];
     const keys = [];
     for (const c of fresh) {
-      if (doc.warned[c.key]) continue;
-      doc.items[phone] = doc.items[phone] || [];
-      doc.items[phone].push({
+      if (rec.warned[c.key]) continue;
+      const item = {
         id: messageId(),
         type: c.type,
         title: c.title,
         text: c.text,
         created_at: isoOf(now),
         read: false,
-      });
-      doc.warned[c.key] = true;
-      created.push(doc.items[phone][doc.items[phone].length - 1]);
+      };
+      rec.items.push(item);
+      rec.warned[c.key] = true;
+      created.push(item);
       keys.push(c.key);
     }
-    if (created.length > 0) {
-      doc.items[phone] = trimMessages(doc.items[phone]);
-      ctx.dirty = true;
-    }
+    if (created.length > 0) rec.items = trimMessages(rec.items);
     return { created, keys };
   });
 }
@@ -375,8 +378,8 @@ export async function messagesOf(viewer, now = new Date(), opts = {}) {
   const phone = typeof viewer === 'string' ? viewer : viewer?.phone || '';
   if (!phone) throw httpError(401, ERR_NOT_LOGGED_IN);
   await ensureWarnings(viewer, now);
-  const doc = await colGet(MESSAGES_COL, MESSAGES_ID);
-  const mine = (doc?.items?.[phone] || []).slice();
+  const doc = await colGet(MESSAGES_COL, phone);
+  const mine = (Array.isArray(doc?.items) ? doc.items : []).slice();
   const unread = mine.filter((m) => !m.read).length;
   const list = opts.unreadOnly ? mine.filter((m) => !m.read) : mine;
   const ts = (m) => {
@@ -404,8 +407,8 @@ export async function messagesOf(viewer, now = new Date(), opts = {}) {
 export async function readMessages(phone, ids, now = new Date()) {
   if (!phone) throw httpError(401, ERR_NOT_LOGGED_IN);
   const want = Array.isArray(ids) && ids.length > 0 ? new Set(ids.map((x) => String(x))) : null;
-  return withMessages((doc, ctx) => {
-    const mine = (doc.items[phone] = doc.items[phone] || []);
+  return withMessages(phone, (rec) => {
+    const mine = rec.items;
     let marked = 0;
     for (const m of mine) {
       if (!m || (want && !want.has(String(m.id)))) continue;
@@ -414,7 +417,6 @@ export async function readMessages(phone, ids, now = new Date()) {
         marked += 1;
       }
     }
-    if (marked > 0) ctx.dirty = true;
     return { ok: true, unread: mine.filter((m) => !m.read).length, marked };
   });
 }
@@ -667,16 +669,17 @@ export async function grantAssets(operator, input = {}, now = new Date()) {
 }
 
 /**
- * 追加一条 `OpsLog`（§5.3；保留符号，负值原样记录）。
+ * 追加一条 `OpsLog`（§5.3；保留符号，负值原样记录）—— **每笔一文档**（`_id = 该条日志的 id`）。
  * `log.ref`（可选）：**附加上文对象**（批 C-1 引入 —— 锚点 force 覆盖审计要落「目标节点 / 被移除者」）；
  * 不给 ref 时落库形状与既往**逐字相同**（不新增空字段，既有调用方零影响）。
+ * `log.id` 缺失时按 Zang 裁定生成 `<ts毫秒>-<6位随机>` 并**写回条目 `id`**（保证 `_id === entry.id`）。
  */
 export async function appendOpsLog(log) {
-  const base = await colGet(OPS_LOGS_COL, OPS_LOGS_ID);
-  const doc = base ? JSON.parse(JSON.stringify(base)) : blankOpsLogsDoc();
-  doc.logs = Array.isArray(doc.logs) ? doc.logs : [];
+  const tsMs = Date.parse(log?.ts ?? '');
+  const fallbackId = `${Number.isFinite(tsMs) ? tsMs : Date.now()}-${rand6()}`;
+  const id = String(log?.id || fallbackId);
   const entry = {
-    id: log.id,
+    id,
     ts: log.ts,
     operator: log.operator,
     target_phone: log.target_phone,
@@ -684,27 +687,32 @@ export async function appendOpsLog(log) {
     reason: log.reason,
   };
   if (log.ref && typeof log.ref === 'object') entry.ref = { ...log.ref };
-  doc.logs.push(entry);
-  await colSet(OPS_LOGS_COL, OPS_LOGS_ID, doc);
-  return doc.logs[doc.logs.length - 1];
+  await mutateDoc(OPS_LOGS_COL, id, () => entry); // 每笔一档：写入即该条日志自身
+  return entry;
 }
 
 /**
  * `GET /admin/assets/logs`（§5.3）：仅 `chief_editor`（路由层鉴权）；
  * `operator?` / `phone?` 过滤可叠加；`limit?` 默认 50、上限 200。
- * 定序**完全确定**：先按 `ts` 倒序，**同刻（同一毫秒）时后写入者在前**（插入下标倒序）——
- * 不依赖 `Array#sort` 的稳定性，避免同毫秒两次 `grant` 的日志顺序随机。
+ * 定序**完全确定**：先按 `ts` 倒序，**同刻（同一毫秒）时后写入者在前**——
+ * 下标 = `listAll` 的枚举序（local = 落盘插入序；云端 = `orderBy('_id')`），不依赖 `Array#sort` 的稳定性。
  */
 export async function opsLogs(filters = {}) {
   const operator = trimmed(filters.operator);
   const phone = trimmed(filters.phone);
   const raw = Number(filters.limit);
   const limit = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), LOGS_LIMIT_MAX) : LOGS_LIMIT_DEFAULT;
-  const doc = await colGet(OPS_LOGS_COL, OPS_LOGS_ID);
-  let logs = Array.isArray(doc?.logs) ? doc.logs.slice() : [];
+  // 枚举全部每笔档，剥离存储元字段（`_id`/`version` 绝不泄漏给调用方）
+  const docs = await listAll(OPS_LOGS_COL);
+  let logs = docs.map((d) => {
+    const rec = { ...d };
+    delete rec._id;
+    delete rec.version;
+    return rec;
+  });
   if (operator) logs = logs.filter((l) => l?.operator === operator);
   if (phone) logs = logs.filter((l) => l?.target_phone === phone);
-  // 定序完全确定：给每条日志带上插入下标，按「ts 倒序 → 同刻下标倒序」比较，再脱掉下标。
+  // 定序完全确定：给每条日志带上**枚举下标**，按「ts 倒序 → 同刻下标倒序」比较，再脱掉下标。
   // 绝不依赖 JS 稳定排序的隐式「保留插入序」（那会让同毫秒日志的顺序变成实现巧合）。
   const tsOf = (entry) => {
     const parsed = Date.parse(entry?.ts || 0);

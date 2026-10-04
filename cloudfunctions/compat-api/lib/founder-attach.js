@@ -33,7 +33,7 @@
  * attachFounder/detachFounder/listAttachedTrees 负责读树 → 事务写（store.updateTrees）。
  */
 import crypto from 'node:crypto';
-import { getMeta, getTree, getDetail, updateTrees, saveMeta, deleteDetail, listTreeIds, nextPersonId } from './store.js';
+import { getMeta, getTree, getDetail, updateTrees, mutateTreeMeta, deleteDetail, listTreeIds, nextPersonId } from './store.js';
 // 始祖可编辑性例外（契约 v2 C6）：请求体只含出生地 / 居住地两项时放行
 import { isPlaceFieldsOnly } from './person-places.js';
 
@@ -868,8 +868,8 @@ export async function registerFounderInMeta(treeId, person) {
   const key = Object.keys(trees).find((k) => trees[k]?.tree_id === treeId) || '';
   if (!key) return null;
   const entry = planFounderRegister(trees[key], person);
-  await saveMeta({ ...m, trees: { ...trees, [key]: entry } });
-  return entry;
+  // 定向写：只写该树档
+  return mutateTreeMeta(treeId, () => entry);
 }
 
 /**
@@ -891,18 +891,12 @@ export async function registerClanFounderIfVacant(clanTreeId) {
   const regs = clanRegistrations(clanTree, clanTreeId).filter((p) => kindOfId(p.external_tree) === TREE_KIND.FAMILY);
   if (!regs.length) return false;
   const primary = regs.sort((a, b) => String(a.gramps_id || '').localeCompare(String(b.gramps_id || '')))[0];
-  await saveMeta({
-    ...m,
-    trees: {
-      ...m.trees,
-      [key]: {
-        ...entry,
-        founder_handle: primary.handle,
-        founder_gramps_id: primary.gramps_id || '',
-        founder_name: primary.name || '',
-      },
-    },
-  });
+  await mutateTreeMeta(clanTreeId, (entry) => ({
+    ...entry,
+    founder_handle: primary.handle,
+    founder_gramps_id: primary.gramps_id || '',
+    founder_name: primary.name || '',
+  }));
   return true;
 }
 
@@ -986,17 +980,19 @@ async function restoreClanFounderAfterRemoval(clanTreeId, registration) {
   if (String(entry?.founder_handle || '') !== String(registration.handle || '')) return false;
   const clanTree = await getTree(clanTreeId);
   const prev = String(registration.external_prev_clan_founder_handle || '');
-  const next = { ...entry };
-  if (prev && clanTree?.people?.[prev]) {
-    next.founder_handle = prev;
-    next.founder_gramps_id = String(clanTree.people[prev].gramps_id || '');
-    next.founder_name = String(clanTree.people[prev].name || '');
-  } else {
-    delete next.founder_handle;
-    delete next.founder_gramps_id;
-    delete next.founder_name;
-  }
-  await saveMeta({ ...m, trees: { ...m.trees, [key]: next } });
+  await mutateTreeMeta(clanTreeId, (entry) => {
+    const next = { ...entry };
+    if (prev && clanTree?.people?.[prev]) {
+      next.founder_handle = prev;
+      next.founder_gramps_id = String(clanTree.people[prev].gramps_id || '');
+      next.founder_name = String(clanTree.people[prev].name || '');
+    } else {
+      delete next.founder_handle;
+      delete next.founder_gramps_id;
+      delete next.founder_name;
+    }
+    return next;
+  });
   return true;
 }
 
@@ -1025,8 +1021,9 @@ export async function resetFounder({ treeId, meta = null } = {}) {
   }
   const previous = assertFounderResettable({ entry: trees[key], tree });
 
-  const nextMeta = { ...m, trees: { ...trees, [key]: planFounderReset(trees[key]) } };
-  await saveMeta(nextMeta);
+  // 定向写：只写该树档（planFounderReset 在 mutator 外算好，纯 mutator 供 CAS 重放）
+  const resetEntry = planFounderReset(trees[key]);
+  await mutateTreeMeta(treeId, () => resetEntry);
 
   return {
     ok: true,

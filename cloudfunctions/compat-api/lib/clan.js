@@ -18,7 +18,7 @@
 import crypto from 'node:crypto';
 import {
   getMeta,
-  saveMeta,
+  mutateTreeMeta,
   getTree,
   getDetail,
   saveDetail,
@@ -726,7 +726,7 @@ export async function createClanTree({
     /* 详情为展示副本，best-effort */
   }
 
-  meta.trees[treeId] = {
+  const clanEntry = {
     tree_id: treeId,
     kind: TREE_KIND.CLAN,
     path_alias: `/z/${treeId}`,
@@ -748,7 +748,8 @@ export async function createClanTree({
     created_at: now,
     created_by: initiatorPhone || '',
   };
-  await saveMeta(meta);
+  // 定向写：只写本树档（_id=treeId），不再整份 saveMeta
+  await mutateTreeMeta(treeId, () => clanEntry);
 
   return {
     ok: true,
@@ -756,7 +757,7 @@ export async function createClanTree({
     kind: TREE_KIND.CLAN,
     path_alias: `/z/${treeId}`,
     surname: char,
-    display_title: meta.trees[treeId].display_title,
+    display_title: clanEntry.display_title,
     master_tree_id: masterTreeId,
     master_handle: masterHandle,
     master_name: masterPerson.name || '',
@@ -816,21 +817,26 @@ export async function attachClanToMaster({
     }),
   );
 
-  clanEntry.master_tree_id = masterTreeId;
-  clanEntry.master_handle = masterHandle;
-  clanEntry.master_name = masterPerson.name || '';
-  if (rootHandle) clanEntry.founder_handle = rootHandle;
   let registered = null;
   if (founderMissing) {
     const node = (await getTree(treeId))?.people?.[rootHandle] || null;
     registered = planFounderRegister(clanEntry, node || { handle: rootHandle });
-    // 注意：clanEntry 是 meta.trees 里的对象引用 —— 删除状态位要显式 delete
-    delete clanEntry.founder_state;
-    clanEntry.founder_handle = registered.founder_handle;
-    clanEntry.founder_gramps_id = registered.founder_gramps_id;
-    clanEntry.founder_name = registered.founder_name;
   }
-  await saveMeta(meta);
+  // 定向写：只写本树档（不再整份 saveMeta）；registered 在 mutator 外算好（纯 mutator 供 CAS 重放）
+  await mutateTreeMeta(treeId, (entry) => {
+    entry.master_tree_id = masterTreeId;
+    entry.master_handle = masterHandle;
+    entry.master_name = masterPerson.name || '';
+    if (rootHandle) entry.founder_handle = rootHandle;
+    if (registered) {
+      // 注意：条目是持久对象 —— 删除状态位要显式 delete
+      delete entry.founder_state;
+      entry.founder_handle = registered.founder_handle;
+      entry.founder_gramps_id = registered.founder_gramps_id;
+      entry.founder_name = registered.founder_name;
+    }
+    return entry;
+  });
 
   return {
     ok: true,
@@ -871,10 +877,12 @@ export async function detachClanFromMaster({ treeId }) {
       /* best-effort */
     }
   }
-  entry.master_tree_id = '';
-  entry.master_handle = '';
-  entry.master_name = '';
-  await saveMeta(meta);
+  await mutateTreeMeta(treeId, (entry) => {
+    entry.master_tree_id = '';
+    entry.master_handle = '';
+    entry.master_name = '';
+    return entry;
+  });
 
   const after = await getTree(treeId);
   const stats = after ? clanStats(after, upperTreeId) : { own_count: 0, mirror_count: 0 };

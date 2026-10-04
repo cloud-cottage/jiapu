@@ -19,7 +19,7 @@ import {
   saveDetail,
   deleteDetail,
   getMeta,
-  saveMeta,
+  mutateTreeMeta,
   listTreeIds,
   nextPersonId,
   nextFamilyId,
@@ -1178,7 +1178,7 @@ export async function createTree({
     updated_at: now,
   });
 
-  meta.trees[treeId] = {
+  const createdEntry = {
     tree_id: treeId,
     path_alias: `/${treeId}`,
     surname_char: char,
@@ -1194,7 +1194,8 @@ export async function createTree({
     created_at: now,
     created_by: initiatorPhone || '',
   };
-  await saveMeta(meta);
+  // 定向写：只写本树档（不再整份 saveMeta）
+  await mutateTreeMeta(treeId, () => createdEntry);
 
   return {
     ok: true,
@@ -1202,8 +1203,8 @@ export async function createTree({
     founder_handle: handle,
     founder_gramps_id: founderGrampsId,
     surname_char: char,
-    display_title: meta.trees[treeId].display_title,
-    message: `已创建「${meta.trees[treeId].display_title}」（${treeId}）`,
+    display_title: createdEntry.display_title,
+    message: `已创建「${createdEntry.display_title}」（${treeId}）`,
   };
 }
 
@@ -1218,6 +1219,7 @@ export async function splitTree({ treeId, ancestorHandle, ancestorName = '', ini
 
   let newTreeId = null;
   let movedPeople = 0;
+  let newTreeSurname = '';
 
   await updateTree(treeId, async (tree) => {
     const ancestor = tree.people[ancestorHandle];
@@ -1265,9 +1267,9 @@ export async function splitTree({ treeId, ancestorHandle, ancestorName = '', ini
 
     movedPeople = people.size;
 
-    // 新树注册 + 保存（新树无版本检查）
+    // 新树注册 + 保存（新树无版本检查）；meta 定向写：只写新树档
     await saveTree(newTree);
-    meta.trees[newTreeId] = {
+    const newEntry = {
       tree_id: newTreeId,
       path_alias: `/${newTreeId}`,
       surname_char: surnameChar,
@@ -1282,14 +1284,15 @@ export async function splitTree({ treeId, ancestorHandle, ancestorName = '', ini
       enable_custom_domain: false,
       created_at: new Date().toISOString(),
     };
-    await saveMeta(meta);
+    await mutateTreeMeta(newTreeId, () => newEntry);
+    newTreeSurname = newEntry.surname_char;
     return { ok: true, newTreeId, movedPeople };
   });
 
   return {
     ok: true,
     newTreeId,
-    surname: meta.trees[newTreeId].surname_char,
+    surname: newTreeSurname,
     movedPeople,
     message: `已拆分 ${movedPeople} 人到新家族树 ${newTreeId}`,
   };
@@ -2569,12 +2572,11 @@ export async function refreshTreeMetaStats(treeIds) {
   const ids = [...new Set((treeIds || []).filter(Boolean))];
   if (!ids.length) return false;
   const m = await getMeta();
-  const trees = { ...(m?.trees || {}) };
-  let changed = false;
+  const changedIds = [];
   for (const id of ids) {
-    const key = Object.keys(trees).find((k) => trees[k]?.tree_id === id);
+    const key = Object.keys(m?.trees || {}).find((k) => m.trees[k]?.tree_id === id);
     if (!key) continue;
-    const entry = trees[key];
+    const entry = m.trees[key];
     if (!META_STAT_KEYS.some((k) => k in entry)) continue;
     const tree = await getTree(id);
     if (!tree) continue;
@@ -2583,9 +2585,9 @@ export async function refreshTreeMetaStats(treeIds) {
     if ('people_count' in entry) patch.people_count = Object.keys(tree.people || {}).length;
     if ('node_count' in entry) patch.node_count = Object.keys(tree.people || {}).length;
     if ('family_count' in entry) patch.family_count = Object.keys(tree.families || {}).length;
-    trees[key] = { ...entry, ...patch };
-    changed = true;
+    // 定向写：只写该树档（不再整份 saveMeta）
+    await mutateTreeMeta(id, (e) => ({ ...e, ...patch }));
+    changedIds.push(id);
   }
-  if (changed) await saveMeta({ ...m, trees });
-  return changed;
+  return changedIds.length > 0;
 }
