@@ -16,7 +16,8 @@
       "hall_name": "",
       "origin": "黑龙江省绥化市安达市",
       "description": "民国年间始居于黑龙江省绥化地区安达市。",
-      "origin_code": "231281"
+      "origin_code": "231281",
+      "version": 1
     },
     "ji_23395_01": {
       "tree_id": "ji_23395_01",
@@ -35,7 +36,8 @@
       "clan_handle": "3c95530f8bd4f84dc0b87edc",
       "genealogy_name": "季氏费县白露家谱",
       "archive_url": "",
-      "origin_code": "371325"
+      "origin_code": "371325",
+      "version": 1
     },
     "liu_21016_01": {
       "display_title": "刘氏安达家族",
@@ -46,18 +48,28 @@
       "hall_name": "",
       "origin": "山东省",
       "description": "上世纪自山东省迁入黑龙江省安达市",
-      "origin_code": "370000"
+      "origin_code": "370000",
+      "founder_handle": "103f95b8799f102e2934a2522162",
+      "founder_gramps_id": "I000258",
+      "founder_name": "刘芳池",
+      "version": 1
     },
     "qin_31206_01": {
       "display_title": "秦氏鸡西家族",
       "tree_id": "qin_31206_01",
       "kind": "family",
+      "founder_handle": "103f95b87c1d1fbf033bb67e8420",
+      "founder_gramps_id": "I000275",
+      "founder_name": "秦老太爷",
+      "clan_tree_id": "qin_31206",
+      "clan_handle": "659fc2bb58edeccbe6b137d4",
       "genealogy_name": "",
       "archive_url": "",
       "hall_name": "",
       "origin": "山东省临沂市沂水县",
       "description": "解放前自山东省临沂市沂水县迁入黑龙江省鸡西市梨树区",
-      "origin_code": "371323"
+      "origin_code": "371323",
+      "version": 1
     },
     "shen_27784_01": {
       "display_title": "沈氏临沂家族",
@@ -68,7 +80,11 @@
       "hall_name": "",
       "origin": "黑龙江省鸡西市梨树区",
       "description": "解放前后自山东省临沂市迁入黑龙江省鸡西市梨树区。",
-      "origin_code": "230305"
+      "origin_code": "230305",
+      "founder_handle": "103f95b8762b433c7159c8ea1006",
+      "founder_gramps_id": "I000277",
+      "founder_name": "沈克强",
+      "version": 1
     },
     "zhonghua": {
       "tree_id": "zhonghua",
@@ -83,7 +99,8 @@
       "custom_domains": [
         "shiben.jiazutong.cn"
       ],
-      "kind": "master"
+      "kind": "master",
+      "version": 1
     },
     "ji_23395": {
       "tree_id": "ji_23395",
@@ -105,7 +122,8 @@
       "founder_name": "季花",
       "enable_custom_domain": false,
       "created_at": "2026-09-15T12:34:41.727Z",
-      "created_by": "16601061656"
+      "created_by": "16601061656",
+      "version": 1
     },
     "gu_39038": {
       "tree_id": "gu_39038",
@@ -127,7 +145,8 @@
       "founder_name": "顾清学",
       "enable_custom_domain": false,
       "created_at": "2026-09-15T13:11:22.930Z",
-      "created_by": "16601061656"
+      "created_by": "16601061656",
+      "version": 1
     },
     "qin_31206": {
       "tree_id": "qin_31206",
@@ -144,10 +163,13 @@
       "master_tree_id": "zhonghua",
       "master_handle": "3382fa53ef677c058a5ec559",
       "master_name": "姬搢",
-      "founder_handle": "",
+      "founder_handle": "659fc2bb58edeccbe6b137d4",
+      "founder_gramps_id": "I000408",
+      "founder_name": "秦老太爷",
       "enable_custom_domain": false,
       "created_at": "2026-09-16T05:56:24.838Z",
-      "created_by": "16601061656"
+      "created_by": "16601061656",
+      "version": 1
     },
     "liu_21016": {
       "tree_id": "liu_21016",
@@ -167,7 +189,8 @@
       "founder_handle": "",
       "enable_custom_domain": false,
       "created_at": "2026-09-18T06:31:37.089Z",
-      "created_by": "16601061656"
+      "created_by": "16601061656",
+      "version": 1
     },
     "li_26446_01": {
       "tree_id": "li_26446_01",
@@ -182,7 +205,8 @@
       "enable_custom_domain": false,
       "created_at": "2026-09-19T02:01:00.248Z",
       "created_by": "16601061656",
-      "origin_code": "230303"
+      "origin_code": "230303",
+      "version": 1
     },
     "ji_32426_01": {
       "tree_id": "ji_32426_01",
@@ -198,7 +222,8 @@
       "enable_custom_domain": false,
       "created_at": "2026-09-19T02:04:04.985Z",
       "created_by": "16601061656",
-      "origin_code": "230303"
+      "origin_code": "230303",
+      "version": 1
     },
     "rong_23481_01": {
       "tree_id": "rong_23481_01",
@@ -213,7 +238,8 @@
       "description": "文革后居于黑龙江省鸡西市梨树区中北村",
       "enable_custom_domain": false,
       "created_at": "2026-09-19T02:05:12.286Z",
-      "created_by": "16601061656"
+      "created_by": "16601061656",
+      "version": 1
     },
     "long_40857_01": {
       "tree_id": "long_40857_01",
@@ -227,7 +253,8 @@
       "description": "新建家族树，始祖：龙未知",
       "enable_custom_domain": false,
       "created_at": "2026-09-19T02:06:59.317Z",
-      "created_by": "16601061656"
+      "created_by": "16601061656",
+      "version": 1
     },
     "heng_24658_01": {
       "tree_id": "heng_24658_01",
@@ -243,7 +270,8 @@
       "enable_custom_domain": false,
       "created_at": "2026-09-19T03:08:57.453Z",
       "created_by": "16601061656",
-      "origin_code": "210900"
+      "origin_code": "210900",
+      "version": 1
     },
     "li_26446_02": {
       "tree_id": "li_26446_02",
@@ -259,7 +287,8 @@
       "enable_custom_domain": false,
       "created_at": "2026-09-19T06:44:10.764Z",
       "created_by": "16601061656",
-      "origin_code": "231085"
+      "origin_code": "231085",
+      "version": 1
     },
     "li_26446_03": {
       "tree_id": "li_26446_03",
@@ -274,7 +303,8 @@
       "description": "新建家族树，始祖：李未知",
       "enable_custom_domain": false,
       "created_at": "2026-09-19T12:37:02.678Z",
-      "created_by": "16601061656"
+      "created_by": "16601061656",
+      "version": 1
     },
     "ji_23395_02": {
       "tree_id": "ji_23395_02",
@@ -290,7 +320,8 @@
       "description": "新建家族树，始祖：季未知",
       "enable_custom_domain": false,
       "created_at": "2026-09-22T02:45:17.015Z",
-      "created_by": "16601061656"
+      "created_by": "16601061656",
+      "version": 1
     },
     "pan_28504_01": {
       "tree_id": "pan_28504_01",
@@ -306,7 +337,8 @@
       "description": "约光绪年间迁至河北省唐山市丰润区大刘庄村。",
       "enable_custom_domain": false,
       "created_at": "2026-09-23T00:53:27.438Z",
-      "created_by": "16601061656"
+      "created_by": "16601061656",
+      "version": 1
     }
   }
 }

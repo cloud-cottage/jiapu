@@ -145,6 +145,7 @@ CB_ENV=liwu-d8gek6jjdab1d087c CB_KEY=<云开发 API Key> \
 cd frontend
 VITE_API_BASE=https://<云函数 HTTP 域名> npm run build:h5
 # 产物 frontend/dist/build/h5 → 按现有 hosting 流程部署（tcb hosting deploy <dir> -e liwu-d8gek6jjdab1d087c）
+# ⚠️ 已取代（2026-10-03）：上行缺路径参数（未给 cloudPath）⇒ 按字面执行会把 jiazu 前端铺到「静态托管根」、覆盖 liwu 线上站点（`assets/*` / `__auth/*`）。正确形态 = `tcb hosting deploy <dir> /jiazu -e <envId>`（子路径必填；执行时以 `tcb hosting deploy -h` 实测语法为准 = `Usage: tcb hosting deploy [options] [filePath] [cloudPath]`）。详见本册 §50-2（原行原文保留、不回改 —— `AGENTS.md` §0-4）。
 ```
 
 本批前端变更（均已本地验证）：
@@ -5051,3 +5052,428 @@ wc -c < cloudfunctions/deploy/compat-api/index.js; md5 -q cloudfunctions/deploy/
 ## §44 家族树锚点邀请链路批次（**云函数重打包 + H5 / 小程序两产物重打 + 新集合 `jiazu_invite_codes` 需同步上传脚本 `COLLECTIONS`** · **无数据修正** · 2026-09-30 · **只追加 · 不改 §0–§43 任何行**）（Jing 制度员）
 
 > **本行即本批上云登记（单行 · Kevin 2026-09-30 当面逐条拍定）**：本批上云动作面 = **① 云函数 `compat-api` 重打包 + `tcb fn deploy`**（邀请码签发 / 校验与撤销、落地页放行判定、锚点**全站唯一键闸（冲突 ⇒ 409）**与 **`force` 例外（仅 `chief_editor`；覆盖时清空原占用者锚点 + 写审计）**、绑定前节点存在校验、绑定奖励发放）；**② 前端 H5 + 小程序两产物重打**（节点详情页邀请入口 / 【我的】页邀请入口 / 邀请落地页 / 世系图**首屏居中本人锚点 + 「我」标记**）；**③ 新集合 `jiazu_invite_codes`（一码一文档）必须同步进 `scripts/upload-migrated-to-cloudbase.mjs` 的 `COLLECTIONS` 列表**（**漏登记 ⇒ 云端对应路由首写报错**，门槛同 §34 的 `jiazu_invites`）；**④ 集合 / 云端数据修正 = 本轮无**（**无存量迁移、无数据回写、无删除旧键动作**）；**⑤ 锚点数据修正 = 已由批 A 走运行中的 3100 API（`POST /api/admin/set-anchor`）完成**（对象 = `migrate-output/collections/jiazu_anchors.json`；备份 = `~/jiazu-backups/2026-09-30-anchor-write/`；内容 md5 `bd574de640e1ff907ecbfd5ec654452c` → `3f6521ff11511dbb039a899dde6f7af2`；手机号 `16601061656` 的 `person_handle` 由 `103f95b875d632a1f5c64098dc0d`（该树内不存在）改为 `7146eadb86a0af696614b36d`（= `I000254`「季清昆」））⇒ **上云时须一并确认云端锚点集合与本地同值**（登记 = `AGENTS.md` **§7 追加行**）。**口径真源** = `docs/permission-tier.spec.md` **§12** · `docs/friend-domain.spec.md` **§28** · `docs/economy-ops.spec.md` **§17**。**⚠️ 档位待定（逐字）**：**D7 绑定奖励数值待 Kevin 定档 · 当前实现取 Zang 建议档乙**（邀请人 **+1 兰帖残页 +10 竹片** / 被邀请人 **+30 石榴籽碎片**）—— **未定档前不得据任一档位判任何实现负**；**本节只登记上云动作与判据、不含任何实现状态读数**（打包产物字节 / 路由条数 / 测试条数**一律以执行时实测为准**）。
+
+---
+
+## §45 2026-10-03 真源写入登记（**人工前端操作 · H5 `5199`** · **归 Kevin 本人 · 已当面确认（2026-10-03）**）+ 秦氏批「`legacy_gramps_id` 不补」标差登记（**纯数据登记 · 本轮无云函数代码改动** · 2026-10-03 · **只追加 · 不改 §0–§44 任何行**）（Jing 制度员）
+
+> **本节 = 2026-10-03 窗口内一次真源写入的登记（**归 Kevin 本人 · 已当面确认（2026-10-03）**）+ 本批秦氏标差裁定登记**。口径真源 = 本次派单；对照行 = `AGENTS.md` **§7 追加行**。**本节不含任何实现现状读数**（测试条数 / 构建字节 / 产物 md5 / 路由条数一律**以对应命令的实际输出为准**）。**本阶段不上云、只登记**。
+
+### §45-0 写入面（逐文件 · Jing 只读实测）
+
+| # | 文件 | 现盘 `md5` | 前值（`~/jiazu-backups/2026-09-30-anchor-write/`） | 变化面 |
+|---|---|---|---|---|
+| ① | `migrate-output/collections/jiazu_assets.json` | `4b2b60538ceb6c76005f4b94a8f429bf` | `8be0dade4dd1815153a19188ef13774d` | 4 笔窗口流水（`txs` 191 → 195） |
+| ② | `migrate-output/collections/jiazu_invite_codes.json` | `c8a30c9a747db52a5962cd9a6d218eda` | **快照中不存在 = 新集合首落** | 码 `73EMZ5`（`kind:'plain'`） |
+| ③ | `migrate-output/collections/jiazu_marriage_requests.json` | `fa60f22659fc7f15a96ecbc9adccdcc3` | `226565fb0a327ec04c8464e822564fc0` | +1 跨树联姻 `d90fb0d826fde29a2bc82b4d` |
+| ④ | `migrate-output/trees/gu_39038_01.json` | `10d7d5a968eff45c57a75a239c66ec19` | `d3669b730b655bbf9a9bfe7f485bdcfc` | `version` 21 → 22 · `people` 24 → 25 · `families` 9 不变 |
+| ⑤ | `migrate-output/trees/liu_21016_01.json` | `628897a21b62ebec662c2ab63fe37f37` | `21a774241acff544481d38088c6c6ece` | `version` 15 → 16 · `people` 18 → 19 · `families` 12 → 13 |
+| ⑥ | `migrate-output/collections/jiazu_id_seq.json` | `9f3c1a191c68405fd664fb08a676c3fa` | `4b2a229862fa4c7f797601b89d5c6327` | 铸 `I000406` / `I000407` ⇒ `person.next` 406 → 408 |
+| ⑦ | `config/tree-meta.json` | `bf722b612948335640fddd443abad74c` | — | **本窗口零触碰**（`mtime` 仍 `2026-09-30 21:27:07`） |
+
+- **写入窗口 = `2026-10-03T11:04:02.551Z` – `2026-10-03T11:05:58.934Z`**（= **2026-10-03 19:04:02 – 19:05:58 CST**）；**触发方 = 人工前端操作（H5 `5199`）**；**归属 = 归 Kevin 本人 · 已当面确认（2026-10-03）**。
+- **跨树联姻条目逐字**（`_id` = `d90fb0d826fde29a2bc82b4d`）：`action:'marry'` / `direction:'in'` / `from_tree:'gu_39038_01'` / `from_person_name:'顾纯江'` / `to_tree:'liu_21016_01'` / `to_person_name:'刘佳华'` / `status:'approved'` / `requested_by` = `decided_by` = `16601061656` / `created_at` = `2026-10-03T11:05:54.875Z` / `decided_at` = `2026-10-03T11:05:58.934Z`；`result.mirror_a = '5f109ed9090b27011101f674'` / `mirror_b = 'f5733061ae45d3ff41cf1b4e'` / `family_a = '103f95b878f5662ccd3875b0993a'` / `family_b = '692c9a083d3c3ad4e0cb7ebf'`。
+- **邀请码逐字**（`collections/jiazu_invite_codes.json` 唯一一条）：码 `73EMZ5` / `kind:'plain'` / `inviter_phone:'16601061656'` / `tree_id` = `person_handle` = `null` / `expires_at:'2026-11-02T11:04:24.326Z'`。
+
+### §45-1 结论（可直接引用）
+
+- **全为走 UI / API 的正常自助操作**（**补签 / 签到 / 好友奖励 / 签邀请码 / 跨树联姻**）⇒ **无需回滚 / 无需退费**；**零越权写入 / 零绕过闸门 / 零直改文件痕迹**。
+
+### §45-2 本批秦氏标差登记（**已裁定接受 · 不得据此判实现负**）
+
+- **差异面（唯一）** = **新建镜像不带 `legacy_gramps_id`**（**祖谱登记镜像与「季 / 顾」样板的唯一差异**）；**裁定 = 「不补」= 已裁定接受**。
+- **依据（三条现证）**：
+  1. **同树先例** —— `migrate-output/trees/qin_31206.json` 顶端镜像 **`mir_3382fa53ef677c058a5ec559`（姬搢 · `I000289`）由 `createClanTree` 新建即无此键**（Jing 现证：该节点无 `legacy_gramps_id`）。
+  2. **权威工厂** —— `cloudfunctions/compat-api/lib/founder-attach.js` 的 **`planFounderMirror`（现证 `NR==447`）** 产出的字段集合**不含此键**（展开 + `name` / `surname` / `given` / `gender` / `birth_date` / `death_date` / `external_*` / `external_relation_note` 等）。
+  3. **ji / gu 的 `legacy_gramps_id`（如 `I0002`）= 节点本就存在时继承的旧号**（**非镜像新建所加**）—— 例：`ji_23395_01` 的 `季清昆`（`I000254`）`legacy_gramps_id:'I500059'`、`gu_39038_01` 的 `顾纯江`（`I000141`）`legacy_gramps_id:'I0037'` 均为**既有节点**；**本窗口新建的两条镜像 `f5733061ae45d3ff41cf1b4e`（刘佳华）/ `5f109ed9090b27011101f674`（顾纯江）现证均无此键**（与样板一致）。
+- **口径 = 「与样板差异 = 已裁定接受」⇒ 不得据此判实现负**（**未裁任何其它项**）。
+
+### §45-3 上云动作（**数据批次** · 本阶段不上云、只登记）
+
+- **必做 ①**：**重传变更树 JSON**（`gu_39038_01` / `liu_21016_01`）+ **重传变更集合**（`jiazu_marriage_requests` / `jiazu_id_seq` / `jiazu_invite_codes`）—— 命令同 **§3**（现证 `NR==122`）/ **§12-1**（现证 `NR==718`）。
+- **必做 ②**：**`jiazu_invite_codes` 已在 `COLLECTIONS` 列表内**（现证 **14 项**；承 **§44**）⇒ **无新增同步项**；**上传前须现证**列表仍含该集合。
+- **判据（部署后读回）**：树 `version` = **22 / 16**；`jiazu_marriage_requests` 含 `d90fb0d826fde29a2bc82b4d`（`status:'approved'`）；`jiazu_invite_codes` 含码 `73EMZ5`；`jiazu_id_seq.person.next` = **408**。
+- **顺序纪律（硬）**：承 **§12-2**（现证 `NR==740`）/ **§29-3**（现证 `NR==3271`）—— **先重传树 JSON / 详情新键 → 再手工删旧详情键**（云端详情 `doc(_id).set()` = upsert、只增不删）。
+- **本轮无云函数重打包需求**（本批写入全为数据面；云函数重打包的全局硬阻塞见 **§46**）。
+
+### §45-4 本节未做（**如实登记**）
+
+- **未打包 / 未部署 / 未上传 / 未重传 / 未建集合**（**本阶段不上云、只登记**）；**未跑测试 / 未跑构建**；**本节不写任何实现读数**。
+- **未改任何代码 / `migrate-output/` / `config/`**（**真源只读**）；**未改 §0–§44 任何历史行**（**纯追加 · 删除行 = 0**）；**未碰任何 `.qa.md`**（`AGENTS.md` **§0-5**）；**未 `git add` / `commit` / `push`**。
+- **未裁任何【待裁】/【未决】项**（**含 `docs/economy-ops.spec.md` §14-7 注销清空四类/六类、`§17-0` 绑定奖励档位、`docs/economy.spec.md` §24-8-4 残留四点**）。
+
+---
+
+## §46 上云前 must-do 清单（**跨批次 · 一次性按序执行**）（Jing 制度员 · 2026-10-03 · **只追加 · 不改 §0–§45 任何行**）
+
+> **本节 = 「上云前 must-do 清单」的唯一落点**（**不新建独立文档** —— 承 `AGENTS.md` **§2.3**：规格归 `docs/*.spec.md`、上云归本册）。**本节只登记动作与判据、不含任何实现状态读数**（测试条数 / 构建字节 / 产物 md5 / 路由条数一律**以执行时实测为准**）；**每条注明「为什么需要」与「本地验证证据位」**。
+
+- **① 唯一硬阻塞：重构 `jiazu_assets` 并发模型**（**单文档 `_id='global'` + 进程内锁 → 每手机号一文档 + `version` 乐观锁 CAS 重试**；`jiazu_spirit` / `jiazu_market` / `jiazu_messages` / `jiazu_ops_logs` **同形态一并评估**）。
+  - **为什么需要**：云端 `compat-api` 可水平多实例 ⇒ 各自 `colGet` 同一份快照、各自整份 `colSet` ⇒ **丢更新 / 双花**；**本地单实例测不出**。
+  - **本地验证证据位**：本册 **§7-7**（现证 `NR==314`，「唯一部署阻塞项」）/ **§10-2**（现证 `NR==562`，同形态集合清单）；现证 `migrate-output/collections/jiazu_assets.json` 顶层 = **`{"global":{"_id":"global","users":{…}}}`**（**单文档**）。
+- **② 云函数 `compat-api` 必须重打包**（`esbuild --bundle` → `cloudfunctions/deploy/compat-api/index.js` → `tcb fn deploy compat-api -e <envId>`）。
+  - **为什么需要**：产物停在 **2026-09-19 12:50**（**md5 `d61a8aebfb3f3095baae4e1e731fd675`**），落后 P0–P4 等**已登记的新路由**（派单给定「**21+ 条**」）⇒ **不重打包 = 云端 404 / 静默旧口径**。
+  - **本地验证证据位**：现证 —— 产物 `mtime` = **2026-09-19 12:50:59** / `md5` = **`d61a8aebfb3f3095baae4e1e731fd675`**；源 `cloudfunctions/compat-api/index.js` = **`md5 a7a7418206d4ecafded8dd83e6a9bfde` / mtime 2026-09-30 23:09:26**；判据形态 = **§42-1**（对产物 `grep` 关键路由 / 字段字面 **≥ 1** = 已打包；**0 命中 = 判负**）。
+- **③ 全批次一次性按序执行**（P0–P5 + 各数据批次）；**硬顺序 = 先重传树 JSON / 详情新键 → 再手工删旧详情键**。
+  - **为什么需要**：云端详情为 `doc(_id).set()`（**upsert、只增不删**）⇒ **先删后传**会出现「树里已有节点 / 详情 404」空窗。
+  - **本地验证证据位**：本册 **§12-2**（现证 `NR==740`）/ **§29-3**（现证 `NR==3271`）/ **§16-3**（现证 `NR==1183`，含「upsert → 必须显式删」）。
+- **④ 上传脚本 `COLLECTIONS` 同步**（**现证 14 项**）。
+  - **为什么需要**：**漏登记集合 ⇒ 云端对应路由首写报错**（门槛同 §34 / §44）。
+  - **本地验证证据位**：`scripts/upload-migrated-to-cloudbase.mjs`（现证 `COLLECTIONS` = **14 项**，含 `jiazu_invite_codes` / `jiazu_invites`）；**`AGENTS.md` §8（现证 `NR==403`）旧写「12 项」= 陈旧读数**（**现证 14；旧行原文保留、不回改** · 承 `AGENTS.md` §0-4）。
+- **⑤ 前端两产物重打**（H5 + 小程序）+ hosting 部署。
+  - **为什么需要**：**不得只打一端**（H5 与小程序同批改动须两端一致）。
+  - **本地验证证据位**：本册 **§4**（现证 `NR==142`）/ **§8-4**（现证 `NR==408`）/ **§11-4**（现证 `NR==646`，H5 + 小程序双产物）。
+- **⑥ 待 Kevin 确认项：`cloudbaserc.json` 的 `envId` = `liwu-d8gek6jjdab1d087c`**。
+  - **为什么需要**：**共用环境 vs 当年从 liwu 拷配置残留** —— **待确认**（**未裁前不得据任一读法判实现负**）。
+  - **本地验证证据位**：`cloudbaserc.json`（现证 `envId` = **`liwu-d8gek6jjdab1d087c`**）；**现证同串全仓引用 = 除本节外 70 处**（**自证检索式**：`grep -rn --exclude-dir=node_modules 'liwu-d8gek6jjdab1d087c' . | wc -l` **现证 = `72` 行**；**本节自身占 2 行**（⑥ 标题行 + 本证据位行；`grep -n 'liwu-d8gek6jjdab1d087c' docs/PENDING_DEPLOY.md | awk -F: '$1>=5106'` 现证 = **5125 / 5127**）⇒ **除本节外 = 72 − 2 = 70 处**：`cloudbaserc.json` 1 + `docs/PENDING_DEPLOY.md` 61 + 其余 docs 8；**⚠️ 自指注**：派单原式 `… | grep -v node_modules | wc -l` **会连本证据位行自身（行内含字面 `node_modules`）一并滤掉** ⇒ 现证 = **71 行**，故本行改用 `--exclude-dir=node_modules`（只剪目录、不按行内容过滤）；**计数自指漂移口径同 `AGENTS.md` 勘误 9**）—— **派单给定「20 处」为旧读数，一律以现证为准**（承 `AGENTS.md` §0-3）。
+- **⑦ 数据修正收口**。
+  - **为什么需要**：**本秦氏批**（状态 = **已实现、待独立质检**；真源 **已 apply**、随上云动作面见本册 **§47**）+ **待裁的「孤儿详情档」**须一并收口。
+  - **本地验证证据位**：**秦氏批 = 本册 §45**（指路）；**孤儿详情档 = `migrate-output/details/shen_27784_01:103f95b875d632a1f5c64098dc0d.json`**（现证 **1985 B / mtime 2026-09-14 15:46**）—— **待裁**。
+- **⑧ 边界（硬）**：**本节不新建独立文档**（承 `AGENTS.md` §2.3）；**未裁任何【待裁】/【未决】项**；**行号 / md5 一律现证、不推算、不预填**；**本节对应文件均未改**（`cloudbaserc.json` / `scripts/**` / `cloudfunctions/deploy/**` **一字未动**）。
+
+---
+
+## §47 秦氏始祖真源反转批（跨树搬迁回迁 · 变体 A）本地真源 **已 apply** + 上云动作面（**数据批次** · 本阶段不上云、只登记）（Jing 制度员 · 2026-10-03 · **只追加 · 不改 §0–§46 任何行**（**例外 = §46-⑥ / §46-⑦ 两处按本批派单定点就地改写，登记见 `AGENTS.md` §7 追加行**））
+
+> **本节 = 「秦氏始祖真源反转（跨树搬迁）」批的本地执行登记 + 上云动作面**。**本地真源已由 Zang 代 Kevin 执行的派单内写入 apply 完毕**（2026-10-03 20:07 CST · **`APPLY_EXIT=0`**）；**本阶段不上云、只登记**。**本节不含任何实现现状读数**（测试条数 / 构建字节 / 产物 md5 / 路由条数一律**以对应命令的实际输出为准**）。口径真源 = 本次派单；本手册侧对照 = `AGENTS.md` **§7 追加行**。
+
+### §47-0 本地执行（逐对象 · Jing 只读实测）
+
+| # | 对象 | 现盘 `md5` | 前值（`~/jiazu-backups/2026-10-03-qin-founder-reversal/`） | 变化面 |
+|---|---|---|---|---|
+| ① | `migrate-output/trees/qin_31206_01.json` | `73fd619597f01138936bb56aa48eaa90` | `e7b319df5145e5c3603fe917fd756700` | `people` 0 → 2 · `families` 0 → 1 · 新增 `founder_gramps_id` = `I000275` · `version` 4 → 5 |
+| ② | `migrate-output/trees/qin_31206.json` | `4eeb7dc82155a6345e6fda9f6f5ce052` | `3fdded7e836bd97ef7d7b1053c0f6bac` | `people` 4 → 3 · `families` 3 → 2（删真身 + 建登记镜像 `I000408`） |
+| ③ | `config/tree-meta.json` | `c4deb21e2d88e9b05f92825b1e3e93fd` | `bf722b612948335640fddd443abad74c` | 两树补 `founder_*` / `clan_*` |
+| ④ | `migrate-output/collections/jiazu_id_seq.json` | `441011890a6fa5e6cde1d2361c3d52fc` | `9f3c1a191c68405fd664fb08a676c3fa` | 铸 `I000408` ⇒ `person.next` 408 → 409 |
+| ⑤ | `migrate-output/details/qin_31206_01:103f95b87c1d1fbf033bb67e8420.json`（**新键**） | `e305dc94ccf268459499ed3b657dbbbf` | 不存在（新写） | 始祖详情（真身） |
+| ⑥ | `migrate-output/details/qin_31206_01:103f95b87713767b1d9a8e0e4672.json`（**新键**） | `43ecaf64cf1091e5c92cee81af2b0ffe` | 不存在（新写） | 子节点详情 |
+| ⑦ | `migrate-output/details/qin_31206:103f95b87c1d1fbf033bb67e8420.json`（**旧键**） | **已删** | `6d7ec2de734dd484c6d011d1d36ed812` | 删除（备份副本现证同值） |
+| ⑧ | `migrate-output/details/qin_31206:103f95b87713767b1d9a8e0e4672.json`（**旧键**） | **已删** | `d78a6c7d6c994e3fd06b1e93de9af38c` | 删除（备份副本现证同值） |
+
+- **执行方式 = 走 ctrl 面板 API 停 / 起 `jiazu-api`（`3100`）→ `env -u NODE_OPTIONS node scripts/migrate-qin-founder-reversal-2026-10.mjs --apply`**（`APPLY_EXIT=0`）；**面板 `POST http://127.0.0.1:5555/api/start` body `{"sid":"jiazu-api"}`**；**`5199` 未动**；**执行时点 = 2026-10-03 20:07 CST**（`summary.json.at` = `2026-10-03T12:07:38.167Z`）；**未直改 JSON 文件**。
+- **执行者 / 归属 = Zang 代 Kevin 执行的派单内写入**（**Kevin 已当面下令「全部同意，执行」**）。
+- **备份 = `~/jiazu-backups/2026-10-03-qin-founder-reversal/`**（含 `config/tree-meta.json` + `migrate-output/trees/{qin_31206,qin_31206_01}.json` + `migrate-output/collections/jiazu_id_seq.json` + `deleted-source-details/`（`md5.txt` + 2 个旧详情副本）+ `md5-before.txt` + `summary.json`）。
+- **未动点位（逐字）**：`details/qin_31206:mir_3382fa53ef677c058a5ec559.json`（姬搢镜像 · `I000289`）与 `details/qin_31206:3ecfaedeff52a021d12c96a7.json`（秦某 · `I000290`）**未动**。
+
+### §47-1 上云动作面（**数据批次** · 本阶段不上云、只登记）
+
+- **必做 ①（先）**：**重传两棵树 JSON**（`qin_31206` / `qin_31206_01`）+ **重传变更集合**（`jiazu_id_seq`）—— 命令同 **§3**（现证 `NR==122`）/ **§12-1**（现证 `NR==718`）。
+- **必做 ②（先）**：**新传 2 个新详情键**（`qin_31206_01:103f95b87c1d1fbf033bb67e8420` / `qin_31206_01:103f95b87713767b1d9a8e0e4672`）。
+- **必做 ③（后）**：**手工删 2 个旧详情键**（`qin_31206:103f95b87c1d1fbf033bb67e8420` / `qin_31206:103f95b87713767b1d9a8e0e4672`）。
+- **顺序纪律（硬）**：**先重传树 JSON / 新传详情新键 → 再手工删旧详情键**（云端详情 `doc(_id).set()` = upsert、只增不删；承 **§12-2** / **§29-3** / **§45-3**）。
+- **判据（部署后读回）**：`qin_31206_01` 树 `version` = **5** / `people` = **2** / `families` = **1** / `founder_gramps_id` = **`I000275`**；`qin_31206` 树 `version` = **4** / `people` = **3** / `families` = **2**；`jiazu_id_seq.person.next` = **409**；`tree-meta` 两树 `founder_*` / `clan_*` 与本地同值；云端 `qin_31206_01:*` 两详情键在位、`qin_31206:*` 两旧详情键已删。
+- **本轮无云函数重打包需求**（本批写入全为数据面；云函数重打包的全局硬阻塞见 **§46-① / §46-②**）。
+
+### §47-2 验收读数（**用户面已可见** · Jing 只读现证 · 2026-10-03 CST）
+
+- 首页「秦氏鸡西家族 **2 人**」；
+- `/qin_31206_01` 由「该家族暂无世系数据」→「**共 2 人 · 始祖：秦老太爷**」（现证：`GET /api/tree/rank?tree_id=qin_31206_01` 带 `X-Tree-Id` ⇒ `person_count` = **2**）；
+- `/z/qin_31206` 支系入口列表由「暂无」→「**1 支：秦氏鸡西家族 · 2 人 · 始祖 秦老太爷**」（现证：`GET /admin/clan-info?tree_id=qin_31206` ⇒ `branch_count` = **1**）；
+- `clan-info` = `founder_handle` **非空**（现证 `659fc2bb58edeccbe6b137d4`）/ `own_count` = **1** / `branch_count` = **1**（`own` = `I000290` 秦某）。
+
+### §47-3 本节未做（**如实登记**）
+
+- **未打包 / 未部署 / 未上传 / 未重传 / 未删云端键**（**本阶段不上云、只登记**）；**未跑测试 / 未跑构建**；**本节不写任何实现读数**（测试面读数归另单）。
+- **未改任何代码 / `migrate-output/` / `config/`**（**真源只读**）；**未改 §0–§45 任何历史行**（**纯追加**）；**§46 仅 ⑥ / ⑦ 两处按本批派单定点就地改写**（登记 = `AGENTS.md` **§7 追加行**）；**未碰任何 `.qa.md`**（`AGENTS.md` **§0-5**）；**未 `git add` / `commit` / `push`**。
+- **未裁任何【待裁】/【未决】项**（含 **§46-⑦** 的「孤儿详情档」，**原样保留**）。
+
+## §48 删 `ji_23395_01` 三个源侧孤立节点批（真源 **已删** · **数据修正**）本地已执行 + 上云动作面（**数据批次** · 本阶段不上云、只登记）（Jing 制度员 · 2026-10-03 · **只追加 · 不改 §0–§47 任何行**）
+
+> **本节 = 「删 `ji_23395_01` 三个源侧孤立节点」批的本地执行登记 + 上云动作面**。**本地真源已由 Zang 代 Kevin 执行的派单内写入删毕**（2026-10-03 20:26–20:32 CST）；**本阶段不上云、只登记**。**本批状态 = 已实现（Kong）、待独立质检（Neng）**（**状态类口径 = 三段式；不写通过类结论、不预写下一段**）。**本节不含任何实现现状读数**（测试条数 / 构建字节 / 产物 md5 / 路由条数一律**以对应命令的实际输出为准**）。口径真源 = 本次派单；本手册侧对照 = `AGENTS.md` **§7 追加行**。
+
+### §48-0 本地执行（逐对象 · Jing 只读实测 · 2026-10-03 CST）
+
+> **对象** = 三个**原始 Gramps 导入即无任何 `FAMS`/`FAMC`** 的源侧孤立节点（**非被拆散**；经核实零引用：无 `parent_family`、`spouse_families` 为空、不在任何 family 的 father/mother/child 槽位、全站数据层无外部引用、非镜像）。
+
+| # | 对象 | 现盘 `md5` | 前值（`~/jiazu-backups/2026-10-03-ji-isolated-delete/`） | 变化面 |
+|---|---|---|---|---|
+| ① | `migrate-output/trees/ji_23395_01.json` | `94d17163ae5155e4c34b8acbcc83ab67` | `eea4ff4c7f072343f20713b7726aa73d` | `people` 61 → 58 · `families` 33 不变 · `version` 71 → 72 · `updated_at` = `2026-10-03T12:29:26.656Z` |
+| ② | `migrate-output/details/ji_23395_01:103f95b87ac97de5ad865af2b37c.json`（`I000211`「Dushengzi的母亲」· 旧号 `I0061`） | **已删** | `cece277ab590597b4ba5abca23364e9a` | 删除（备份副本现证同值） |
+| ③ | `migrate-output/details/ji_23395_01:103f95b87ae81433e3b3300bc7a2.json`（`I000212`「1的母亲」· 旧号 `I0063`） | **已删** | `2c44960d58939686148514a554a4cb4a` | 删除（备份副本现证同值） |
+| ④ | `migrate-output/details/ji_23395_01:103f95b87d475208a028b0374af.json`（`I000230`「四婶」· 旧号 `I500022`） | **已删** | `423246228dc8542017c32d5676d93a8d` | 删除（备份副本现证同值） |
+
+- **执行方式 = 走 ctrl 面板 API 停 / 起 `jiazu-api`（`3100`）→ `env -u NODE_OPTIONS node scripts/delete-isolated-nodes-2026-10.mjs --apply --backup-dir=~/jiazu-backups/2026-10-03-ji-isolated-delete`**（写盘退出码 = 0）；面板 `POST http://127.0.0.1:5555/api/stop` / `start` body `{"sid":"jiazu-api"}`；**`5199` 未动**；**执行窗口 = 2026-10-03 20:26–20:32 CST**（`summary.json.at` = `2026-10-03T12:29:26.656Z`）；**未直改 JSON 文件**。
+- **执行者 / 归属 = Zang 代 Kevin 执行的派单内写入**（**Kevin 已当面裁定「删除三个孤立节点」**；**真源手术脚本、非 API** ⇒ **无计费、无 `Tx` 流水 = 操作员数据清理批次**，同「世本清理」/「批 A 锚点修正」先例）。
+- **备份 = `~/jiazu-backups/2026-10-03-ji-isolated-delete/`**（含 `migrate-output/` 全量 + `config/` + `MD5-LEDGER.txt` + `md5-before.txt` + `summary.json` + `deleted-source-details/`（3 档 + `md5.txt`））。
+- **未动点位（逐字）**：`families` **一字未动**（`summary.json.verdict ②` = 「目标树 families 逐深度相等」）；`migrate-output/id-migration.json` = `1b3016fed3ca7aca51c33b3c43418a34` / `migrate-output/id-migration.report.json` = `65faa363f7423ba8fbba582737190bd5`（**删前删后同值** · **该报告仍列这三个 handle，按 §0-4 不改**）；`config/tree-meta.json` = `c4deb21e2d88e9b05f92825b1e3e93fd`（**未写**）。
+- **聚合 md5 口径标注（⚠️ 两法须分辨）**：**制度台账法（shell 管道）** `find migrate-output config -type f | sort | xargs md5 -q | md5 -q` = `e9812dc058b1884c99acd00e3788cc09`（前 · 343 文件）→ **`25b3fda9ad7a34a065ae99086345ddd2`（后 · 340 文件）**；**备份 `summary.json` / `MD5-LEDGER.txt` 的 `aggregate_md5` = `bc0b297577203e6dc55c5cebc1f8a2f1` → `c9f7840fd22b2434e90b05a03a50508b`** —— 系脚本内部 `aggregateMd5()` 的**另一序列化法**（`md5`(各文件 `md5` 十六进制串**首尾相接、无分隔**)），与上列 shell 管道法（`md5`(各 `md5 -q` 行、含换行)）**不同**；**两法各自前后自洽**（Jing 现盘双法复算均符）⇒ **非数据异常，仅口径标注**。
+- **验收读数（用户面已可见 · Jing 只读现证）**：`3100` 停前 PID = `29338` → 起后 **现证 PID = `61421`**；`5199` **现证 PID = `21519`**（**未动**）；**`GET /api/tree/rank`（带 `X-Tree-Id: ji_23395_01`）⇒ `person_count` = `58` / `mirror_count` = `4`**；首页「季氏费县白露家族 **58 人**」（原 61）。
+
+### §48-1 上云动作面（**数据批次** · 本阶段不上云、只登记）
+
+- **必做 ①（先）**：**重传 `ji_23395_01` 树 JSON**（`migrate-output/trees/ji_23395_01.json` · **含新 `version` = 72 / `people` = 58**）—— 命令同 **§3**（现证 `NR==122`）/ **§12-1**（现证 `NR==718`）。
+- **必做 ②（后）**：**手工删 3 个旧详情键** —— 云端 `jiazu_person_details` 集合中 `_id` = **`ji_23395_01:103f95b87ac97de5ad865af2b37c`** / **`ji_23395_01:103f95b87ae81433e3b3300bc7a2`** / **`ji_23395_01:103f95b87d475208a028b0374af`**（三 handle）。
+- **顺序纪律（硬）**：**先重传树 JSON → 再手工删旧详情键**。理由（沿用 **§12-2** 逐字口径）：上传脚本对详情是 `doc(_id).set()`（**upsert、只增不删**）⇒ 只写新键、不删旧键；**先删后传**会出现「树里已有节点、详情 404」的空窗。**承 §12-2**（现证 `NR==740`）/ **§13-2** / **§16-3**（现证 `NR==1183`，含「upsert → 必须显式删」）。
+- **判据（部署后读回）**：云端 `trees/ji_23395_01.json` 的 `version` = **72** / `people` = **58** / `families` = **33**；云端 `ji_23395_01:*` 三旧详情键**均不存在**；`GET /api/tree/rank`（带 `X-Tree-Id: ji_23395_01`）⇒ `person_count` = **58** / `mirror_count` = **4**。
+- **本轮无云函数重打包需求**（本批写入全为数据面；云函数重打包的全局硬阻塞见 **§46-①②**）。
+
+### §48-2 测试端随真源漂移重同步（另单 · 登记项）
+
+> **本条 = 「测试端随真源漂移重同步」登记**（**测试文件改动 · 非真源写入**；两处均为**另单**、不在本单交付面内）。**状态类口径 = 三段式**（本批 = **已实现（Kong）、待独立质检（Neng）**；**不写通过类结论、不预写下一段**）。**断言零放宽**（不改为范围 / `>=` / 动态推导、不删任何断言 —— 体例同 `AGENTS.md` §7 先例）。
+
+| # | 文件 | 重同步内容（现盘 `git diff` 实证） | 状态 |
+|---|---|---|---|
+| ① | `cloudfunctions/compat-api/lib/mirror-count.test.js` | **M6** `person_count` 快照 **61 → 58**（**四处**：文件头注释 + `JI_EXCLUDED_GIDS` 注释 + test 标题 + 断言值）；`JI_EXCLUDED_GIDS`（= `[]`）与不变量断言**一字未改** | **已实现（Kong）、待独立质检（Neng）** |
+| ② | `cloudfunctions/compat-api/lib/friend-ops.test.js` | **⑰ 真源零写入** 文件数定额 **343 → 340**（`fp.count` 与 `REAL_FP.count` 两处）；`REAL_FP.digest` vs `fp.digest` 逐字节比对**仍是真不变量**、**一字未改** | **已实现（Kong）、待独立质检（Neng）** |
+
+- **基线口径不变**：两处**精确等值断言原样保留**（**不放宽、不删除任何断言**）；重同步只因真源 `ji_23395_01` 删 3 个孤立节点（树 `people` −3、详情档 −3 ⇒ 文件集 −3）。
+- **另单指路**：**M1** `gu_39038_01` 快照 `21 → 22`（2026-10-03 跨树联姻批）同属 `mirror-count.test.js` 同一文件、**亦为另单**，**不在本条两处点名内**。
+
+### §48-3 本节未做（**如实登记**）
+
+- **未打包 / 未部署 / 未上传 / 未重传 / 未删云端键**（**本阶段不上云、只登记**）；**未跑测试 / 未跑构建**；**本节不写任何实现读数**（测试面读数归另单）。
+- **未改任何代码 / `migrate-output/` / `config/`**（**真源只读**）；**未改 §0–§47 任何历史行**（**纯追加**）；**未碰任何 `.qa.md`**（`AGENTS.md` **§0-5**）；**未 `git add` / `commit` / `push`**。
+- **未裁任何【待裁】/【未决】项**。
+
+---
+
+## §49 清孤儿详情档 + 两树补始祖登记批（真源 **已写** · **数据修正** · 孤儿档清理）本地已执行 + 上云动作面（**数据批次** · 本阶段不上云、只登记）（Jing 制度员 · 2026-10-03 · **只追加 · 不改 §0–§48 任何行**）
+
+> **本节 = 「清孤儿详情档 + 两树补始祖登记」批的本地执行登记 + 上云动作面**。**本地真源已由 Zang 代 Kevin 执行的派单内写入完成**（2026-10-03 20:41–20:47 CST）；**本阶段不上云、只登记**。**本批状态 = 已实现（Kong）、待独立质检（Neng）**（**状态类口径 = 三段式；不写通过类结论、不预写下一段**）。**本节不含任何实现现状读数**（测试条数 / 构建字节 / 产物 md5 / 路由条数一律**以对应命令的实际输出为准**）。口径真源 = 本次派单；本手册侧对照 = `AGENTS.md` **§7 追加行**。
+
+### §49-0 本地执行（逐对象 · Jing 只读实测 · 2026-10-03 CST）
+
+> **对象 A** = 1 个源侧孤儿详情档（handle 在任何树 / family 槽位 / `external_*` / `tree-meta` 中均不存在）。**对象 B** = 两树补始祖登记（两树原本树 JSON 无 `founder_gramps_id`、tree-meta 无 founder 字段 ⇒ 前端无认祖入口的死锁）。
+
+| # | 对象 | 现盘 `md5` | 前值（`~/jiazu-backups/2026-10-03-founders-and-orphan-detail/`） | 变化面 |
+|---|---|---|---|---|
+| ① | `migrate-output/details/shen_27784_01:103f95b875d632a1f5c64098dc0d.json`（handle `103f95b875d632a1f5c64098dc0d` · 旧号 `I0003`「季清昆」） | **已删** | `80321c818428d1189a3b29e2920fcf7b` | 删除（归档副本现证同值；全站 `details` 298 → 297） |
+| ② | `migrate-output/trees/liu_21016_01.json` | `20b2aeaead7dacbbf6268aa8a7ef4525` | `628897a21b62ebec662c2ab63fe37f37` | 仅新增 `founder_gramps_id = 'I000258'`；`people` 19 / `families` 13 / `version` 16 / `updated_at` 不变 |
+| ③ | `migrate-output/trees/shen_27784_01.json` | `6a2df5b6f37879ae28292f19a8c050ee` | `5162df7d884c64e54fa00f3b8a50f9cc` | 仅新增 `founder_gramps_id = 'I000277'`；`people` 15 / `families` 7 / `version` 26 / `updated_at` 不变 |
+| ④ | `config/tree-meta.json` | `e4afa2716b682af3468c9492b37868e4` | `c4deb21e2d88e9b05f92825b1e3e93fd` | 两树各仅新增 `founder_handle` / `founder_gramps_id` / `founder_name`（liu = `103f95b8799f102e2934a2522162` / `I000258` / `刘芳池`；shen = `103f95b8762b433c7159c8ea1006` / `I000277` / `沈克强`）；未写 `founder_state`；其它 17 树条目逐字段不变 |
+
+- **始祖选定依据（硬门槛 · 读数逐字引 `summary.json.verdict`）**：闭包覆盖必须 = **100% 非镜像节点** —— liu **17/17**（遗漏 **0**）· shen **闭包 10 ∩ 非镜像 9/9**（遗漏 **0**）；两树镜像候选（liu **2** 个、shen **6** 个）**均正确排除**；Kong 另做「**打断一条边 ⇒ 无 100% 候选**」的离线副本，脚本 **exit 1 零写**并列出遗漏节点（**硬门槛真会判负**）。
+- **执行方式 = 真源手术脚本 `scripts/fix-founders-and-orphan-detail-2026-10.mjs`（`summary.json.at` = `2026-10-03T12:45:13.566Z` = 2026-10-03 20:45 CST）→ 走 ctrl 面板 API 停 / 起 `jiazu-api`（`3100`）**（**执行窗口 = 2026-10-03 20:41–20:47 CST**）；**`5199` 未动**；**未直改 JSON 文件**（写盘由脚本完成）。
+- **执行者 / 归属 = Zang 代 Kevin 执行的派单内写入**（**Kevin 已授权的两件遗留事**；**真源手术脚本、非 API** ⇒ **无计费、无 `Tx` 流水 = 操作员数据清理 / 数据修正批次**，同「世本清理」/「批 A 锚点修正」/「删孤立节点」先例）。
+- **备份 = `~/jiazu-backups/2026-10-03-founders-and-orphan-detail/`**（含 `migrate-output/` 全量 + `config/` + `MD5-LEDGER.txt` + `md5-before.txt` + `summary.json` + `deleted-source-details/`（1 档 + `md5.txt`））；**快照内三关键文件 md5 = 上表前值** ⇒ **快照时点 = 写入前、可作回滚基线**；**原文件未改 / 未移 / 未删**（`cp -a` 只读拷贝，**源侧零写入**）。
+- **聚合 md5 口径标注（⚠️ 两法须分辨）**：**制度台账法（shell 管道）** `find migrate-output config -type f | sort | xargs md5 -q | md5 -q` = `25b3fda9ad7a34a065ae99086345ddd2`（前 · 340 文件）→ **`1c5d10aaaa21d312c7a4c7ae4a6f9aab`（后 · 339 文件）**；**`summary.json.aggregate_md5`**（脚本内部另一序列化法：`md5`(各文件 `md5` 十六进制串**首尾相接、无分隔**)）= `c9f7840fd22b2434e90b05a03a50508b` → `5d85ccf397fbcb502219dbc7e6963b8b` —— **两法口径不同、各自前后自洽**（**以 shell 管道法为制度台账口径**；口径标注同 **§48-0**）。
+- **验收读数（用户面已可见 · Jing 只读现证）**：`3100` 停前 PID = `61421`（派单给定）→ 起后 **现证 PID = `85836`**；`5199` **现证 PID = `21519`**（**未动**）；**`GET /api/tree/rank`（带 `X-Tree-Id`）⇒ `liu_21016_01` `person_count` = `17` / `mirror_count` = `2`、`shen_27784_01` `person_count` = `11` / `mirror_count` = `6`**（**均不变**）；`GET /api/tree-meta` 现证两树 `founder_*` 与本地同值。
+
+### §49-1 上云动作面（**数据批次** · 本阶段不上云、只登记）
+
+- **必做 ①（先）**：**重传 `liu_21016_01` 与 `shen_27784_01` 两树 JSON 与 `config/tree-meta.json`** —— `node scripts/upload-migrated-to-cloudbase.mjs`（树 JSON 经 `trees/*.json` 上传；`config/tree-meta.json` 经该上传脚本一并重传，见现证 `NR==136`「若要重传以本地为准」）；命令同 **§3**（现证 `NR==122`）/ **§12-1**（现证 `NR==718`）。
+- **必做 ②（后）**：**手工删云端 `jiazu_person_details` 的 1 个旧键** —— `_id` = **`shen_27784_01:103f95b875d632a1f5c64098dc0d`**。
+- **顺序纪律（硬）**：**先重传树 JSON 与 tree-meta → 再手工删旧详情键**。理由（沿用 **§12-2** 逐字口径）：上传脚本对详情是 `doc(_id).set()`（**upsert、只增不删**）⇒ 只写新键、不删旧键；**先删后传**会出现「树里已有节点、详情 404」的空窗。**承 §12-2**（现证 `NR==740`）/ **§13-2** / **§16-3**（现证 `NR==1183`，含「upsert → 必须显式删」）。
+- **判据（部署后读回）**：云端 `trees/liu_21016_01.json` 与 `trees/shen_27784_01.json` 各含新 `founder_gramps_id`（`I000258` / `I000277`）；云端 `config/tree-meta.json` 两树含 `founder_handle` / `founder_gramps_id` / `founder_name`（与本地同值）；云端 `jiazu_person_details` 的 `_id = shen_27784_01:103f95b875d632a1f5c64098dc0d` **不存在**；`GET /api/tree/rank`（带 `X-Tree-Id`）⇒ liu `person_count` = `17`、shen `person_count` = `11`。
+- **本轮无云函数重打包需求**（本批写入全为数据面；云函数重打包的全局硬阻塞见 **§46-①②**）。
+
+### §49-2 测试端随真源漂移重同步（另单 · 登记项）
+
+> **本条 = 「测试端随真源漂移重同步」登记**（**测试文件改动 · 非真源写入**；两处均为**另单**、不在本单交付面内）。**状态类口径 = 三段式**（本批 = **已实现（Kong）、待独立质检（Neng）**；**不写通过类结论、不预写下一段**）。**断言零放宽**（不改为范围 / `>=` / 动态推导、不删任何断言 —— 体例同 **§48-2**）。
+
+| # | 文件 | 重同步内容（现盘 `git diff` 实证） | 状态 |
+|---|---|---|---|
+| ① | `cloudfunctions/compat-api/lib/friend-ops.test.js` | **⑰ 真源零写入** 文件数定额 **340 → 339**（`fp.count` 与 `REAL_FP.count` 两处）；`REAL_FP.digest` vs `fp.digest` 逐字节比对**仍是真不变量**、**一字未改** | **已实现（Kong）、待独立质检（Neng）** |
+| ② | `cloudfunctions/compat-api/lib/family-population.test.js` | **第 11 行「真源验收数值」注释加注**（现盘 `git diff` = **`1/1`**）：历史值（ji 87 / gu 21 / liu 17 / shen 10）**保留** + 注明 **2026-09-19 时点** + 现测 **ji 58 / gu 22 / liu 17 / shen 11** + 「不得据本行历史值判当前实现负」；**断言零改** | **已实现（Kong）、待独立质检（Neng）** |
+
+- **基线口径不变**：① 精确等值断言原样保留（**不放宽、不删除任何断言**）；② 为**注释加注**（历史值保留、不删行）。
+- **另单指路**：**M6** `ji_23395_01` 快照 `61 → 58` 与 **M1** `gu_39038_01` 快照 `21 → 22` 同属 `mirror-count.test.js`、**亦为另单**，登记见 **§48-2**，**不在本条两处点名内**。
+
+### §49-3 本节未做（**如实登记**）
+
+- **未打包 / 未部署 / 未上传 / 未重传 / 未删云端键**（**本阶段不上云、只登记**）；**未跑构建**；**本节不写任何实现读数**。
+- **未改任何代码 / `migrate-output/` / `config/`**（**真源只读**）；**未改 §0–§48 任何历史行**（**纯追加**）；**未碰任何 `.qa.md`**（`AGENTS.md` **§0-5**）；**未 `git add` / `commit` / `push`**。
+- **未裁任何【待裁】/【未决】项**。
+
+---
+
+## §50 上云 · 共用环境纪律 + 路 B 前置（**共用 CloudBase 环境 `liwu` · 三撞车面 · §4 hosting 命令定点纠正 · 云端 `compat-api` 现状读数 · 旧 `global` 文档待删清单**）（Jing 制度员 · 2026-10-03 · **只追加 · 不改 §0–§49 任何行**（**唯一例外 = §4 原行之后紧接一行取代标注，原行原文保留、未删行**））
+
+> **本节 = 上云共用环境纪律 + 路 B（写一致性 v2）前置读数的登记落点**。**本阶段不上云、只登记**（承 §3 现证 `NR==122` 头部「约定」）。**行号 / md5 / 数值一律现取、不推算、不预填**；**状态类口径 = 三段式**（本批 = **已实现（Kong）、待独立质检（Neng）**；**不写「已通过」、不预写下段**）。口径真源 = Zang 裁定 R（2026-10-03 · 路 B）；规格落点 = `docs/data-model.md` **§7.2**（现证 `NR==336`）；本手册侧对照 = `AGENTS.md` §7 追加行。
+
+### §50-0 共用环境事实（现取）
+
+- **env 名 = `liwu`**；**envId = `liwu-d8gek6jjdab1d087c`**；**套餐 = 标准版**；**创建 = 2026-08-05 10:43:58**。
+- **Kevin 已当面确认：「是 liwu 的环境，jiazu 有意共用」**。
+- **静态域名 = `https://liwu-d8gek6jjdab1d087c-1463728495.tcloudbaseapp.com`（已上线）**。
+- 现取命令与读数（2026-10-03 CST，**均 exit 0**）：`tcb env:list` ⇒ `liwu` | `liwu-d8gek6jjdab1d087c` | 标准版 | 云开发 | `2026-08-05 10:43:58` | 正常；`tcb hosting detail -e liwu-d8gek6jjdab1d087c` ⇒ 静态网站域名（上行）+ 状态【已上线】；`curl -sI <域名>` ⇒ **HTTP/1.1 200 OK**（`server: tcbgw`）。
+- 另：`cloudbaserc.json` 现证 `envId` = `liwu-d8gek6jjdab1d087c`（同值）。
+
+### §50-1 三撞车面（硬）
+
+ⅰ. **静态托管根是 liwu 的线上站点**：`tcb hosting list -e liwu-d8gek6jjdab1d087c`（现证 exit 0）根目录含 liwu 线上站点的 **`assets/*`**（例 `assets/api.Cf_tPrur.js` / `assets/button-C_nx03YK.css`）与 **`__auth/*`**（例 `__auth/index.html` / `__auth/env/login.config.json`）⇒ **jiazu 前端一律部署到子路径 `/jiazu/`（Kevin 已裁定），绝不得铺根**。
+
+> ⚠️ **已修正（2026-10-04）**：**托管根 = `jiazu` 自己的旧版 H5**（现网 `GET /` 返 `<title>家族历史数字馆</title>`，847 B、主机 `script src="/assets/index-BBQOnYiU.js"`），**不是** liwu 站点；**子路径 `/jiazu` 的裁定继续有效**（避免覆盖旧版 / 保留回滚参照）。**上列 ⅰ 行原文保留、不回改**（§0-4；事实修正与现网顶层键读数见 **§52-1**）。
+ⅱ. **环境里另有 liwu（`meditation-*`）与玺爱/印源（`xiai-*-token`）的函数** ⇒ **只部署 `compat-api` 一个函数，不得碰其它**（现证函数清单见下）。
+ⅲ. **HTTP 访问服务是 `/api/` → `compat-api`**。
+
+现证函数清单（`tcb fn list -e liwu-d8gek6jjdab1d087c` · exit 0）：
+
+| 函数 Id | 名称 | 运行时 | 创建时间 | 修改时间 | 归属 |
+|---|---|---|---|---|---|
+| `lam-q949cajz` | `xiai-user-token` | Nodejs18.15 | 2026-09-30 22:42:24 | 2026-10-01 08:52:34 | 玺爱/印源（**不得碰**） |
+| `lam-lda5f0ud` | `xiai-admin-token` | Nodejs18.15 | 2026-09-30 21:29:54 | 2026-10-01 08:52:26 | 玺爱/印源（**不得碰**） |
+| `lam-l454cdfz` | `meditation-transcoder` | Nodejs18.15 | 2026-09-29 10:04:38 | 2026-10-03 15:52:27 | liwu（**不得碰**） |
+| `lam-ksuqnan5` | `meditation-read` | Nodejs18.15 | 2026-09-29 10:03:57 | 2026-09-29 10:03:57 | liwu（**不得碰**） |
+| `lam-hj5axttv` | `compat-api` | Nodejs16.13 | 2026-08-15 15:53:57 | 2026-09-29 09:31:10 | **jiazu（本册 · 唯一可动）** |
+
+### §50-2 定点纠正：本册 §4 的 hosting 部署命令（**原行保留 + 紧接取代标注**）
+
+> 体例同 `AGENTS.md` **§0-4**：**原行原文保留 + 紧接一行加「⚠️ 已取代」标注**（**不删行、不上移、不回改**）。
+
+- **被取代行** = 本册 **§4**（节标题现证 `NR==142`）内、现证 **`NR==147`**（`awk 'NR==147'`）：`# 产物 frontend/dist/build/h5 → 按现有 hosting 流程部署（tcb hosting deploy <dir> -e liwu-d8gek6jjdab1d087c）`。
+- **问题** = **缺路径参数**（未给 `cloudPath`）⇒ 按字面执行会把 `frontend/dist/build/h5` 铺到**静态托管根**，即 **覆盖 liwu 线上站点**（`assets/*` / `__auth/*`，见 §50-1 ⅰ）。
+- **现证落点** = **§4 内、原行 `NR==147` 之后紧接一行**（现证 **`NR==148`**，逐字以 **`# ⚠️ 已取代（2026-10-03）：…`** 起、以「**详见本册 §50-2（原行原文保留、不回改 —— `AGENTS.md` §0-4）。**」结）。
+- **正确形态** = `tcb hosting deploy <dir> /jiazu -e <envId>`（**子路径必填**）；**执行时以 `tcb hosting deploy -h` 实测语法为准** —— 现证 `tcb hosting deploy -h`（exit 0）= **`Usage: tcb hosting deploy [options] [filePath] [cloudPath]`**（**第二个位置参数 = `cloudPath`**）。
+- **同类缺路径行（只登记、本批不动）**：本册另一处**逐字相同**的 `<dir>` 写法在 **§7-4**（节标题现证 `NR==287`；该行现证 **`NR==292`**）；另多处 full-path 写法（如 §11-4 / §25-4 / §32-2 / §36-1 的 `tcb hosting deploy frontend/dist/build/h5 -e …`）**同样缺 `cloudPath`** —— **本批只对 §4 那一行加标注**，**其余同串行一律原文保留、不回改**；**不得据本行推定它们已改写**。
+
+### §50-3 云端 `compat-api` 现状读数（实取）
+
+现取 = `tcb fn detail compat-api -e liwu-d8gek6jjdab1d087c`（exit 0）+ `tcb fn list`（exit 0），读数（2026-10-03 CST）：
+
+| 项 | 读数 |
+|---|---|
+| 函数 Id / 名称 | **`lam-hj5axttv`** / `compat-api` |
+| 运行时 | **Nodejs16.13** |
+| 创建 | **2026-08-15 15:53:57** |
+| **最后修改** | **2026-09-29 09:31:10** |
+| 代码大小 | **5903651 B** |
+| 环境变量 | **`MASTER_TREE_ID=zhonghua; COMPAT_SOURCE=cloud`** |
+| 触发器 | **无** |
+| 状态 | 部署完成 |
+
+- **Kevin 口径 = 「按云端可能是旧版处理」** ⇒ **部署前必重打包 + 用行为探针验「新路由真的在线」**；**不得只看 pid / 修改时间**（修改时间只证「某次部署发生过」，不证「含本批路由」；判据形态同 **§42-1**，现证 `NR==4962`）。
+- 跨批次背景 = **§46-②**（现证 `NR==5114`）；**唯一硬阻塞（写一致性 v2）= §46-①**（现证 `NR==5111`）→ 规格落点 = `docs/data-model.md` **§7.2**。
+
+### §50-4 tcb 登录态位置
+
+- 位置 = **`~/.config/.cloudbase/auth.json`**（**用户级全局**）。
+- **现取**：`mtime` = **2026-10-03 21:57:03**（现盘实测）；`expired` 字段（ms 时间戳 `1793160257024`）换算 = **2026-10-28 12:04:17 CST**；`tcb env:list` 现证 **exit 0** ⇒ **无需单独登录**。
+- **凭据值一律不写进文档**（只登记路径 / 时点 / `expired` 换算值；**不打印、不粘贴任何密钥值**）。
+
+### §50-5 云端旧 `global` 文档待删清单（路 B 上云时执行）
+
+- 云端 **5 个集合各一条**旧单文档 `_id='global'` 待删：**`jiazu_assets`** / **`jiazu_spirit`** / **`jiazu_messages`** / **`jiazu_ops_logs`** / **`jiazu_market`**。
+- **顺序（硬）** = **先上传新形态 → 再手工删旧键**（口径同「**先传新键 → 再删旧键**」，承 **§12-2**（现证 `NR==741`）/ **§46-③**（现证 `NR==5117`））。
+- 本地对应真源文件（**现取 · 5 个顶层键现证均 = `["global"]`**）：
+
+| 集合 | 本地文件 | size(B) | md5（前值 · 待迁） |
+|---|---|---|---|
+| `jiazu_assets` | `migrate-output/collections/jiazu_assets.json` | 127437 | `4b2b60538ceb6c76005f4b94a8f429bf` |
+| `jiazu_spirit` | `migrate-output/collections/jiazu_spirit.json` | 3351 | `922767bba12674671b7b4b9d83489abe` |
+| `jiazu_messages` | `migrate-output/collections/jiazu_messages.json` | 1017 | `f8bd7ae19f97947f4a97ebb3463e37f1` |
+| `jiazu_ops_logs` | `migrate-output/collections/jiazu_ops_logs.json` | 2357 | `52948ab8fc6d0ff5e9ed298450a6d254` |
+| `jiazu_market` | `migrate-output/collections/jiazu_market.json` | 244 | `8243cd377f630ea518f6c261b7a3e50f` |
+
+- **判据**：迁后**本地与云端**该 5 集合的 `global` 键**均必须消失**（新形态 = `docs/data-model.md` **§7.2** R1 / R4）。
+- **云端不留独立迁移脚本** —— 上云时由**既有上传脚本按新形态覆盖写入**（`docs/data-model.md` §7.2 R4）。
+
+### §50-6 状态词与边界
+
+- **本批状态 = 已实现（Kong）、待独立质检（Neng）**（三段式；**不得写「已通过」、不得预写下段**）。
+- **规格落点 = `docs/data-model.md` §7.2**（现证 `NR==336`）。
+- 边界（硬）：本节**不新建独立文档**（承 `AGENTS.md` §2.3）；**未打包 / 未部署 / 未上传 / 未重传 / 未删云端键**（**本阶段不上云、只登记**）；**未 `export` 任何环境变量**；**未改代码 / `cloudfunctions/deploy/**`**；**行号 / md5 / 数值一律现取**；**未改 §0–§49 任何历史行**（**纯追加**；**唯一例外 = §4 原行之后紧接一行取代标注 —— 原行原文保留、未删行**）。
+- 上云动作项清单 = **§46**（现证 `NR==5107`；其中 ①=5111 / ②=5114 / ③=5117 / ⑤=5123）；**本节只补「共用环境纪律 + 路 B 前置读数」**，**不重复 §46 的动作项**。
+
+---
+
+## §51 路 B 上云动作面（**账本存储形态 v2 · 七集合单文档 `global` → 主体系档 + `version` CAS**）（Jing 制度员 · 2026-10-03 · **只追加 · 不改 §0–§50 任何行**）
+
+> **本节 = 路 B（写一致性 v2）的上云动作面落点**。**本地真源已 apply**（登记 = `AGENTS.md` **§7 追加行**；前置读数 = 本册 **§50**）；**本阶段不上云、只登记**。**状态 = 已实现（Kong）、已质检（Neng）**（三段式；**不得写「已上云」、不预写下段**）。**行号 / md5 / 数值一律现取、不推算、不预填**。规格落点 = `docs/data-model.md` **§7.2**（含本批追加子条）；质检证据 = `docs/ledger-v2.qa.md`。
+
+### §51-0 云端旧 `global` 文档待删清单（**扩至 7 个 · 补足 §50-5 的 5 个**）
+
+- **§50-5 名单只列 5 个**（`jiazu_assets` / `jiazu_spirit` / `jiazu_messages` / `jiazu_ops_logs` / `jiazu_market`）；**本批补足 2 个 §7-7 漏网** ⇒ **共 7 个** = **六集合 + `jiazu_tree_meta`**：
+  ① `jiazu_assets` ② `jiazu_spirit` ③ `jiazu_messages` ④ `jiazu_ops_logs` ⑤ `jiazu_market` ⑥ **`jiazu_wallets`** ⑦ **`jiazu_tree_meta`**。
+- **旧档形态** = 各集合**单文档 `_id='global'`**（`jiazu_tree_meta` 旧档亦 `_id='global'`，云端探针实取见 §50-3 / §7.2 追加子条）；**新形态** = `docs/data-model.md` **§7.2**（R1 + 追加清单）。
+- **顺序（硬）** = **先上传新形态 → 再逐集合核对删除旧 `global` 档**（口径同「**先传新键 → 再删旧键**」，承 **§12-2** / **§46-③**）。**上传脚本已支持幂等删旧 `global`**（现证 `scripts/upload-migrated-to-cloudbase.mjs` **`NR==125`** 对 `jiazu_tree_meta` 打印「旧 global 档已清」，该集合已在 `COLLECTIONS` 内 **`NR==33`**）—— **但仍须逐集合核对**（脚本动作与云端实际删除**分别取证**）。
+- **判据**：迁后**云端**该 7 集合的 `global` 键**均不存在**；每集合出现新形态档（`_id===键` / `version≥1`），`jiazu_tree_meta` 出现 **`_meta` 单档 + 每树一档**。
+
+### §51-1 上云六步（一次性按序）
+
+1. **云函数重打包**：`esbuild --bundle` → `cloudfunctions/deploy/compat-api/index.js`（现产物读见 §51-3）。
+2. **部署云函数**：`tcb fn deploy compat-api -e liwu-d8gek6jjdab1d087c`（**只部署 `compat-api` 一个函数**；共用环境纪律见 §50-1）。
+3. **H5 重打**：`cd frontend && VITE_API_BASE=https://liwu-d8gek6jjdab1d087c.service.tcloudbase.com/api npm run build:h5`（**API base = HTTP 访问服务域名**，**非**静态域名）。
+4. **H5 部署**：`tcb hosting deploy <dir> /jiazu -e liwu-d8gek6jjdab1d087c`（**子路径 `/jiazu` 必填、绝不铺根**；纪律见 §50-1 ⅰ / §50-2）。
+
+   > ⚠️ **已修正（2026-10-04）**：**托管根 = `jiazu` 自己的旧版 H5**，**不是** liwu 站点；**子路径 `/jiazu` 的裁定继续有效**（避免覆盖旧版 / 保留回滚参照）。**上列第 4 步原文保留、不回改**（§0-4；事实修正见 **§52-1**）。
+5. **小程序重打**：`cd frontend && npm run build:mp-weixin`（**人工在开发者工具上传**）。
+6. **删云端旧档 → 冒烟**：按 §51-0 逐集合删 **7 个**旧 `global` 档，再跑 §51-2。
+
+### §51-2 冒烟判据
+
+- **新路由行为探针**：命中本批新路由（`jiazu_wallets` / `jiazu_tree_meta` 相关）⇒ 判据形态同 **§42-1**（对产物 `grep` 字段字面 ≥1；**0 命中 = 判负**）+ **线上行为探针**（**不得只看部署时间**）。
+- **写一个读回**：走线上写一条（钱包 / 资产）→ 云端读回同值。
+- **鉴权**：未带凭据 / 越权 ⇒ **401 / 403**。
+
+### §51-3 本批产物读数（**现取 · 上云前基线**）
+
+- **云函数产物**：`cloudfunctions/deploy/compat-api/index.js` **md5 `8edcabf0f0eae407c15c69c9059efa5b` / 1,395,711 B / Oct 3 23:44**（旧 `d61a8aebfb3f3095baae4e1e731fd675` / 998,338 B）。
+- **H5 产物**：**2,274,121 B / 84 文件**（**API base = `https://liwu-d8gek6jjdab1d087c.service.tcloudbase.com/api`**）。
+- **小程序产物**：总 **2,153,675 B**、**主包 2,038,642 B**（裁包后余 58,510 B；新 subPackages roots = `pages/admin` / `pages/spirit` / `pages/market`）；`frontend/src/pages.json` **18/18**。
+
+### §51-4 状态词与边界
+
+- **状态 = 已实现（Kong）、已质检（Neng）**；**上云未执行**（**不得写「已上云」**）。
+
+  > ⚠️ **已就地更新（2026-10-04）**：本批上云已执行 ⇒ 状态改读 = **「已实现·已质检·已部署（函数 + H5 `/jiazu`）；小程序产物已构建待人工上传；写路径冒烟待做」**（**不得写「全部完成」**）。**上行原文保留、语义自本行起覆盖**（§0-4；完整登记 = **§52**）。
+- 边界（硬）：**未打包 / 未部署 / 未上传 / 未重传 / 未删云端键**（**本阶段不上云、只登记**）；**未 `export` 任何环境变量**；**未改代码 / `cloudfunctions/deploy/**`**；**未改 §0–§50 任何历史行**（**纯追加**）；**未碰任何既有 `.qa.md`**（§0-5）。
+- 上云动作项清单 = **§46**；本节只补「路 B 上云动作面 + 7 个旧 `global` 待删清单」，**§50 为前置读数、二者叠用**。
+
+---
+
+## §52 上云已执行登记（**共用环境 `liwu` · 路 B 写一致性 v2 上云落地** · 数据上传 / 云函数部署 / H5 子路径 `/jiazu` / 冒烟读数 / 断档窗口 / 两坑）（Jing 制度员 · 2026-10-04 · **只追加 · 不改 §0–§51 任何历史行**（**唯一例外 = 三处就地标注**：§50-1 ⅰ 之后 / §51-1 第 4 步之后 / §51-4 状态之后 —— **均原行原文保留、紧接一行标注**））
+
+> **本节 = 本次上云执行的登记落点**（前置 = 本册 **§46** 上云清单 / **§50** 共用环境纪律 / **§51** 路 B 上云动作面）。**上云动作已由 Kevin 发令「上云」+「继续」执行**（执行方 = 主代理，非本节作者）；**本节作者（Jing）= 制度员，只登记、不执行任何上云命令**。**读数分两类、逐项标注来源**：**① 现盘**（本机只读现证 · 本节落笔时实测）；**② 现网**（派单给定 · 由执行方实测）—— **行号 / md5 / 数值一律以对应来源的实际读数为准，不推算**（§0-3）。
+
+### §52-0 环境（承 §50-0，现取）
+
+- **env 名 = `liwu`**；**envId = `liwu-d8gek6jjdab1d087c`**（同值）。
+- **静态域名 = `https://liwu-d8gek6jjdab1d087c-1463728495.tcloudbaseapp.com`**；**API 基址（HTTP 访问服务）= `https://liwu-d8gek6jjdab1d087c.service.tcloudbase.com/api`**。
+- **只写 `jiazu_*` 命名空间**。
+
+### §52-1 事实修正（重要 · 「托管根 = liwu 站点」措辞更正）
+
+- **更正（2026-10-04）= 托管根 = `jiazu` 自己的旧版 H5，不是 liwu 站点**：现网 `GET /` 返 **`<title>家族历史数字馆</title>`**（**847 B**，主机 `script src="/assets/index-BBQOnYiU.js"`）。**子路径 `/jiazu` 的裁定继续有效**（**避免覆盖旧版 H5 / 保留回滚参照**）。
+- **同一处更正已就地加标注（原行原文保留 —— §0-4）**：**① §50-1 ⅰ 行之后** · **② §51-1 第 4 步之后**（另 **§51-4 状态之后** = 状态就地更新）。
+- **同类旧措辞的其它落点（本批不加标注、只登记）** = **§50-2** 内「覆盖 liwu 线上站点」句 · **§4 `NR==148`** 内「覆盖 liwu 线上站点」句 —— **两行原文一律保留**；其语义自 **§52-1** 起按「根 = jiazu 旧版 H5」读取。
+- **现网顶层键读数（派单给定）** = **`assets/` 58** + **`static/` 3** + **`index.html`** + **`__auth/` 5** + **`cloud-admin`** + **新增 `jiazu/` 84**。
+- **环境里另有 liwu（`meditation-*`）/ 玺爱·印源（`xiai-*-token`）的函数**（承 §50-1 ⅱ），**但它们的站点不在这个托管里**。
+
+### §52-2 云端数据上传（现网 · 派单给定）
+
+- **树 JSON = 19**；**详情 = 297**；**六业务集合** = `jiazu_assets` **2** · `jiazu_spirit` **4** · `jiazu_messages` **1** · `jiazu_ops_logs` **8** · `jiazu_market` **1** · `jiazu_wallets` **2**（**旧 `global` 档已清** —— 承 §51-0 七集合清单）。
+- **`jiazu_tree_meta`** = **`_meta` 单档 + 19 树档**（**旧 `global` 已清**）。
+- **只写 `jiazu_*` 命名空间**。
+- ⚠️ **遗留（未删 · 待裁）**：云端 **`jiazu_person_details` 393 档 vs 本地 297**（**96 条陈旧档**；**上传前即存在、upsert 清不掉**）⇒ **未删、待裁**。
+
+### §52-3 云函数重打包 + 部署（现盘 + 现网）
+
+- **打包产物** = `cloudfunctions/deploy/compat-api/index.js` **md5 `8edcabf0f0eae407c15c69c9059efa5b` / 1,395,711 B**（**现盘实测同值**；旧 = `d61a8aebfb3f3095baae4e1e731fd675` / 998,338 B）。
+- **部署后云端函数读数（现网 · 派单给定）**：**代码大小 `5,903,651 → 6,288,987 B`** · **修改时间 `2026-10-04 07:46:55`**（对照 §50-3 部署前基线：5,903,651 B / `2026-09-29 09:31:10`）。
+- **只部署 `compat-api` 一个函数**（共用环境纪律 · 承 §50-1 ⅱ）。
+- ⚠️ **坑 ①（供后续批次复用）**：`tcb fn deploy`（**同名函数已存在时**）**会弹交互确认**；**无人应答 ⇒ 默认按 N 静默不部署、且 `exit 0`** ⇒ **必须加 `--force`**（否则「部署成功」是假绿）。
+
+### §52-4 H5 部署到子路径 `/jiazu`（现盘 + 现网）
+
+- **产物** = `frontend/dist/build/h5`（**现盘实测 = 84 文件**）。
+- **落盘 = 托管子路径 `/jiazu`**（**落盘键 `jiazu/...`，84 键 = 84 产物**）。
+- **前端须 `H5_BASE=/jiazu/` 重打**：`frontend/vite.config.ts` 新增 **`base: process.env.H5_BASE || '/'`**（**现盘 `git diff --numstat` = 3/0**）。
+- **hash 路由自证（现盘实测）**：产物 `assets/index-BJ9Z51p1.js` 内 **`routerBase:"/jiazu/"`**；产物 `index.html` 引用 **`/jiazu/assets/uni.6b1cdd99.css`** 与 **`/jiazu/assets/index-BJ9Z51p1.js`**，**`<title>家族历史数字馆</title>`**。
+- **`VITE_API_BASE`** = **`https://liwu-d8gek6jjdab1d087c.service.tcloudbase.com/api`**（**HTTP 访问服务域名，非静态域名** —— 承 §51-1 第 3 步）。
+- ⚠️ **坑 ②（供后续批次复用）**：**H5 产物用绝对路径** ⇒ **子路径部署前必须先设 `base`**（本例 = **`H5_BASE=/jiazu/`**；否则资源前缀仍 `/assets/...`，在 `/jiazu/` 下 404）。
+
+### §52-5 冒烟读数（已做 · 现网 · 派单给定）
+
+- **`GET /jiazu/` = 200** + `<title>家族历史数字馆</title>` + 引用 `/jiazu/assets/...`。
+- **资产** = `uni.6b1cdd99.css` **200** / `index-BJ9Z51p1.js` **200**（**309019 B** —— **现盘实测同值**）。
+- **`GET /api/tree-meta`（service 域名）= 200** / **19 树** / **`_schema 1.0`** / **`storage_files` 19**。
+- **`GET /api/tree/rank`（`X-Tree-Id: ji_23395_01`）= 200** / **`person_count` 58** / **`mirror` 4**（与 §51-3 基线一致）。
+- **权限探针**（**旧版均会 404 ⇒ 新路由确已上线**）：`POST /admin/sibling-reorder` **400** · `POST /admin/delete-node` **400** · `POST /assets/signin/makeup` **401**。
+
+### §52-6 断档窗口（如实登记）
+
+- **窗口 ≈ 5 分钟**：**旧函数读被清掉的 `global` ⇒ 返 `{"error":"tree-meta 缺失"}` 500**；**新函数部署后恢复**。
+
+### §52-7 本节未做（如实登记）
+
+- **§5-3「写一个人云上读回」未做**：**需 chief 登录**，**待 Kevin 授权**。
+- **小程序上传未做**：**需微信开发者工具人工**（**产物已构建**）。
+
+### §52-8 状态词与边界
+
+- **状态 = 已实现·已质检·已部署（函数 + H5 `/jiazu`）；小程序产物已构建待人工上传；写路径冒烟待做**（**不得写「全部完成」**；**§51-4 状态已就地覆盖** —— 旧行原文保留、§0-4）。
+- **本批未写本地真源** ⇒ **`AGENTS.md` §7 无需新行**；**真源聚合仍 = `7ae08c653d85f223ce23db5a20435aab` / 339 文件**（**现盘实测同值** —— `find migrate-output config -type f | sort | xargs md5 -q | md5 -q`）。
+- **边界（硬）**：本节作者（Jing）**只登记、不执行** —— **未打包 / 未部署 / 未上传 / 未重传 / 未删云端键**（**本轮零上云命令**）；**未 `export` 任何环境变量**；**未改代码 / `cloudfunctions/deploy/**`**；**未改 §0–§51 任何历史行**（**纯追加**；**唯一例外 = 三处就地标注** —— §50-1 ⅰ / §51-1 第 4 步 / §51-4 状态，**均原行原文保留、紧接一行标注**）；**未碰任何既有 `.qa.md`**（§0-5）。
+- **读类来源声明**：**现网读数**（云端上传 / 云端函数 / 冒烟 / 顶层键）= **派单给定 · 由执行方实测**（本节作者**未跑任何 `tcb` 命令**）；**现盘读数**（产物 md5 / 字节 / 文件数 / 聚合 md5）= **本节落笔时实测**。
+

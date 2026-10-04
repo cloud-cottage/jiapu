@@ -333,6 +333,82 @@ body = Gramps RawPerson 形状 + 编辑表单约定顶层字段（仅 compat 消
 3. **详情侧**：详情目录只读（首写 `EACCES`）→ 整批不写 + 详情字节不变；树成功 + 详情失败 → 200 + `detail_warning` + 扣费生效；
 4. 上述用例均在 `/tmp` 副本上跑，**真源零写入**（前后聚合 md5 一致）。
 
+### 7.2 写一致性 v2 · 多主体文档 + version CAS（**Zang 裁定 R · 2026-10-03 · 路 B · Kevin 已拍板「先重构再上云」**）
+
+> **本节 = 多主体业务集合**（`jiazu_assets` / `jiazu_spirit` / `jiazu_messages` / `jiazu_ops_logs` / `jiazu_market`）**的并发写规格**。**本册 = 存储形态的单一规格落点** —— 经济域（`docs/economy.spec.md`）/ 好友域（`docs/friend-domain.spec.md`）/ 任务中心（`docs/task-center.spec.md`）**各册只加指路行**（指向本节），**不复制本节口径**（避免第二套真源）。
+>
+> **旧行一律原文保留**（`AGENTS.md` §0-4）：本节**不取代** §7 正文与 **§7.1**（单树写路径的不变量）—— §7.1 对**单树**（`saveTree` / `updateTree`）写路径继续有效，本节新增的是**多主体文档**的并发写规格；两节**叠用**。
+>
+> **触发 = 现盘部署阻塞项**：5 个集合**单文档 `_id='global'`** 承载多主体 ⇒ 云端多实例并发**丢更新 / 双花**（登记 = `docs/PENDING_DEPLOY.md` **§7-7**，现证 `NR==315`；跨批次 **§10-2**，现证 `NR==563`）。**本批范围 = 变体 B（一次到位）**。
+>
+> **范围（硬）= 只改存储形态与写入协议；不改业务语义 / 数值 / 计费口径；字段名一律沿用原字段名。**
+
+**R1 · 存储形态 v2（主体系）**
+
+| 集合 | v1 形态（旧 · 原文保留） | v2 形态（本批） | 文档 `_id` |
+|---|---|---|---|
+| `jiazu_assets` | 单文档 `_id='global'`（内嵌 `users` 映射） | **每手机号一文档** | **手机号明文** |
+| `jiazu_spirit` | 单文档 `_id='global'` | **每树一文档** | **`tree_id`** |
+| `jiazu_messages` | 单文档 `_id='global'` | **每手机号一文档** | **手机号明文** |
+| `jiazu_ops_logs` | 单文档 `_id='global'` | **每笔一文档** | **该条日志的 `id`** |
+| `jiazu_market` | 单文档 `_id='global'` | **listings 每挂单一档**（`_id = listing.id`）· **trades 每成交一档**（`_id = trade.id`）· **`official` 为配置类** | 前两者见左；**`official` 允许保留单文档 `_id='official'`** |
+
+- **每文档必须带 `version`**（非负整数，自 **1** 起）。
+- **字段名一律沿用原字段名**；本批只改存储形态，**不改业务语义 / 数值 / 计费口径**。
+
+**R2 · CAS 协议**
+
+- `lib/store.js` **新增原语（语义）** = **读 → `mutator`（纯函数，可重放）→ `version + 1` → 条件写**（云端 `where({ _id, version })`）→ **成功判定一律读回比对**（**不得只信云端 updated 计数**）。
+- **冲突重放，上限 5 次**（退避 **20 / 50 / 120 / 300 / 700 ms**）；**耗尽 ⇒ 抛明确错误**（**不静默成功、不吞**）。
+- **五集合所有写路径一律走该原语，不允许绕过**。
+
+**R3 · 列举原语与枚举型路径**
+
+- `lib/store.js` **新增分页列举原语**（云端单次 `get()` 有上限 ⇒ **必须分页拉全量**）。
+- 受影响**枚举型路径**（**语义必须与改造前逐字一致**）：
+  1. 运营后台「**给全体用户发消息 / 发资产**」（**全体 = 枚举 `jiazu_users` 手机号**）；
+  2. `GET /admin/assets/user` 类汇总；
+  3. 市集挂单列表；
+  4. 运营日志列表（含排序 / 分页 / 上限）。
+
+**R4 · 迁移与切换**
+
+- **单轨、无兼容期**（云端尚无真实流量）。
+- 本地 5 个 `migrate-output/collections/*.json` 用**幂等脚本**迁：**dry-run** / **`--apply`** / **写前备份 `~/jiazu-backups/<日期>-ledger-v2/`** / **登记前后 md5**。
+- **迁后 `global` 键必须消失**。
+- **云端不留独立迁移脚本** —— 上云时由**既有上传脚本按新形态覆盖写入**，再**手工删各集合残留的旧 `_id='global'` 文档**（口径同「**先传新键 → 再删旧键**」，承 `docs/PENDING_DEPLOY.md` **§12-2**，现证 `NR==741`）。
+
+**R5 · 边界**
+
+- **不动** `trees/**` · `details/**` · `config/tree-meta.json` · `cloudfunctions/deploy/**`。
+- **前端本批零改动**（若接口出参形状被迫变，须**报回 Zang 裁**，**不得自行改前端**）。
+- 测试**断言本体零放宽**，且**必须新增并发断言**。
+
+**上云面（只指向）** = `docs/PENDING_DEPLOY.md` **§50**（共用环境纪律 + 路 B 前置）。
+
+**§7.2 追加 · 本批落地口径（追加 · 2026-10-03 · 路 B 全链完成 · 上文 R1–R5 与「上云面」一行一律原文保留、不回改 · 承 `AGENTS.md` §0-4）**
+
+- **七集合完整清单（本批一并纳入 v2 · 补 R1 表未列的 `jiazu_wallets` 与 `jiazu_tree_meta`）**：
+
+| # | 集合 | v2 文档 `_id` | 期次 |
+|---|---|---|---|
+| ① | `jiazu_assets` | 每手机号明文 | 一期 |
+| ② | `jiazu_spirit` | `tree_id` | 二期 |
+| ③ | `jiazu_messages` | 每手机号明文 | 二期 |
+| ④ | `jiazu_ops_logs` | 日志 `id` | 二期 |
+| ⑤ | `jiazu_market` | `listing.id` / `trade.id`；`official` 单档 | 二期 |
+| ⑥ | `jiazu_wallets` | **每手机号明文**（`{balance_cents,txs}`）+ **`config` 单档** | **三期** |
+| ⑦ | `jiazu_tree_meta` | **每树一档 `_id=tree_id`** + **`_meta` 单档** | **四期** |
+
+- **两处 §7-7 名单漏网项（本批补入 · 就地登记）**：
+  - **`jiazu_wallets`（三期 · 漏网 ①）**：旧名单（本节 R1 表 / `AGENTS.md` §8 / `docs/PENDING_DEPLOY.md` §50-5）**未列** —— 云端同形（单文档 `_id='global'`）⇒ **同属并发丢更新面**。v2 = **每手机号 `{balance_cents,txs}` + `config` 单档 + `_platform`**；**关键不变量 = 改余额与记流水在同一个 CAS mutator 内原子完成**（**不可分两步**）。现迁后档数 = **2**（`16601061656` + `config`，无 `global`）。
+  - **`jiazu_tree_meta`（四期 · 漏网 ②）**：同类漏网 —— **云端旧形 = 单档 `_id='global'`**（云端探针实取 `GET /api/tree-meta` 返 `{_id:'global',_schema:'1.1',_root_domain,trees:6}`）；v2 = **每树一档 `_id=tree_id` + `_meta` 单档**（`lib/store.js` 现证 `META_DOC_ID='_meta'` / `META_COL='jiazu_tree_meta'`）。**本地形状不变、每树加 `version`**（现证 **19/19**）；新增原语 **`mutateTreeMeta` / `removeTreeMeta` / `mutateMetaDoc` / `META_DOC_ID`**；**17 处 `saveMeta(整份)` 全改定向写、消 TOCTOU**；**`getMeta()` 出参不变 ⇒ 读点零改**。
+
+- **CAS 原语落地（现证 `lib/store.js`）**：`CAS_MAX_RETRIES = 5`（现证 `NR==202`）· `CAS_BACKOFF_MS = [20, 50, 120, 300, 700]`（现证 `NR==204`）；原语 = `mutateDoc` / `list` / `listAll`（五集合写路径一律走该原语）。
+- **五个迁移脚本（本批 · 本地真源已 apply）**：`scripts/migrate-assets-to-per-user-2026-10.mjs` · `scripts/migrate-messaging-and-logs-to-v2-2026-10.mjs` · `scripts/migrate-market-to-v2-2026-10.mjs` · `scripts/migrate-wallets-to-per-user-2026-10.mjs` · `scripts/migrate-tree-meta-to-per-tree-2026-10.mjs`。
+- **就地加标注（承 §0-4 · 旧行不回改）**：① **R5 原行「**不动** `config/tree-meta.json`」对本批（四期）已不成立** —— 四期对该文件**每树加 `version`**（现证 19/19）；**原行原文保留**。② **上文「**上云面（只指向）** = `docs/PENDING_DEPLOY.md` **§50**」** → **本批上云动作面 = 同册 **§51（新节）**；**§50 为共用环境纪律 + 路 B 前置读数、二者叠用**；**原行原文保留**。
+- **证据位**：本地真源写入登记 = `AGENTS.md` **§7 追加行**；质检证据 = `docs/ledger-v2.qa.md`（新册）；**状态 = 已实现（Kong）、已质检（Neng）**；**未上云**。
+
 ---
 
 ## 8. 迁移路径（Gramps → 自有存储）
