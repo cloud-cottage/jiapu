@@ -60,7 +60,73 @@ const COLLECTIONS = [
   'jiazu_invites',
   // 邀请码链路（批 C-1）：一码一文档（_id = 6 位短码）—— 漏了云端首写直接报错（AGENTS.md §8）
   'jiazu_invite_codes',
+  // 关系 / 归属 / 婚姻申请 + 编号计数器（补漏：以下 6 项曾被名单遗漏）。
+  // 本仓历史：名单漏项 ⇒ 云端缺集合 ⇒ 对应路由「首次写入」才报 DATABASE_COLLECTION_NOT_EXIST
+  //（例：POST /assets/signin 发放任务奖励写 jiazu_friends 返 409）。启动自检（见下）即为此而设。
+  'jiazu_friends',
+  'jiazu_clan_requests',
+  'jiazu_founder_requests',
+  'jiazu_id_seq',
+  'jiazu_join_requests',
+  'jiazu_marriage_requests',
 ];
+
+// ---- 启动自检：代码引用的 jiazu_* 集合必须全部列入 COLLECTIONS ----
+// 目的：从根上堵住「名单漏项 ⇒ 云端缺集合」这一类缺陷。
+// 扫描 cloudfunctions/compat-api 下全部 .js 中形如 'jiazu_xxx' / "jiazu_xxx" 的字面量（精确集合名），
+// 与 COLLECTIONS 求差集；差集中若有「未列入且不在探针白名单」的名字 ⇒ 明确告警并 exit 1（提示补名单）。
+//
+// 说明：**跳过 `*.test.js`** —— 单测离线运行、不进云函数，其中的测试探针集合（如
+// jiazu_cas_probe / jiazu_guard_probe / jiazu_wallet_cas_probe / jiazu_f3_probe）不会导致云端首写失败，
+// 若一并扫描会造成「每次上传都被自身单测探针判红」的误报。探针白名单保留作为兜底：
+// 一旦探针名混入运行时代码（非 .test.js），仍会被放行而不误伤。
+const PROBE_WHITELIST = new Set([
+  'jiazu_cas_probe', // lib/assets.test.js
+  'jiazu_guard_probe', // lib/meta-guard.test.js
+  'jiazu_wallet_cas_probe', // lib/wallet.test.js
+]);
+
+/** 扫描 compat-api 运行时代码（非 *.test.js）中被引用的全部 jiazu_* 集合名 */
+function collectJiazuCollectionsInCode() {
+  const root = path.join(REPO, 'cloudfunctions', 'compat-api');
+  const names = new Set();
+  const walk = (dir) => {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        walk(p);
+        continue;
+      }
+      if (!e.name.endsWith('.js') || e.name.endsWith('.test.js')) continue;
+      const src = fs.readFileSync(p, 'utf8');
+      const re = /['"](jiazu_[A-Za-z0-9_]+)['"]/g; // 精确集合名字面量（不匹配 'jiazu_x.json' 之类）
+      let m;
+      while ((m = re.exec(src))) names.add(m[1]);
+    }
+  };
+  walk(root);
+  return names;
+}
+
+function assertCollectionsCoverCode() {
+  const referenced = collectJiazuCollectionsInCode();
+  const listed = new Set(COLLECTIONS);
+  const missing = [...referenced].filter((n) => !listed.has(n) && !PROBE_WHITELIST.has(n)).sort();
+  if (missing.length) {
+    console.error('✖ 启动自检失败：以下 jiazu_* 集合被代码引用，却不在 COLLECTIONS 名单内：');
+    for (const n of missing) console.error(`    - ${n}`);
+    console.error('  → 若不补名单，云端不会建这些集合，对应路由「首次写入」将报 DATABASE_COLLECTION_NOT_EXIST。');
+    console.error('  → 请把上述名字加入 scripts/upload-migrated-to-cloudbase.mjs 的 COLLECTIONS 后重跑。');
+    process.exit(1);
+  }
+  console.log(`✓ 启动自检：代码引用的 ${referenced.size} 个 jiazu_* 集合均已列入 COLLECTIONS。`);
+}
 
 // 路 B（写一致性 v2）业务集合：单文档 _id='global' → 主体系档（每主体一档）。
 // 上云由本脚本「按新形态覆盖写入」，随后幂等删掉残留的旧 `_id='global'` 档
@@ -193,6 +259,8 @@ async function uploadTreeMeta(fileIds) {
 }
 
 async function main() {
+  // 启动自检（在任何网络调用之前）：代码引用的 jiazu_* 集合必须都在名单内，否则 exit 1
+  assertCollectionsCoverCode();
   console.log(`环境: ${ENV}`);
   console.log(`凭据路径: ${hasKey ? 'CB_KEY(accessKey)' : 'TCB STS(secretId/sessionToken)'}`);
   console.log('--- 1/5 确保集合存在 ---');

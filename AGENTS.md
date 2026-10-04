@@ -453,6 +453,7 @@ cd frontend && npm run type-check      # vue-tsc --noEmit
 - 典型三件套：**云函数重打包 + `tcb fn deploy`**（`cloudbaserc.json` 已配 `functionRoot=./cloudfunctions/deploy`、`envId`）→ **前端 `build:h5`（带 `VITE_API_BASE`）+ `tcb hosting deploy`** → **`build:mp-weixin` + 开发者工具上传**；纯数据批次只需重跑 `node scripts/upload-migrated-to-cloudbase.mjs` **加上手工删旧详情键**。
 - 云函数环境变量：`MASTER_TREE_ID=zhonghua`、`COMPAT_SOURCE=cloud`（`cloudbaserc.json` / `docs/PENDING_DEPLOY.md` §1）。
 - 上传脚本 `COLLECTIONS` 现为 **12 项**；新增集合必须同步该列表，否则云端对应路由首写报错（§11-2）。
+  - 已更正（2026-10-04）：**现证 20 项**（含 `jiazu_friends` / 四类申请集合 / `jiazu_id_seq`）—— 名单漏项曾导致云端缺集合、对应路由首写报错；上传脚本已加漏项自检（`exit 1`）。**上行原文保留、语义自本行起覆盖**（`docs/PENDING_DEPLOY.md` §53-2）。
 - ⚠️ **部署阻塞项（未解除前不得上云）**：`jiazu_assets` 为全体用户共用单文档（`_id='global'`）+ 仅进程内锁 → 云端多实例可丢更新 / 双花；**部署前必须重构为「每手机号一文档 + `version` 乐观锁 CAS 重试」**（`docs/PENDING_DEPLOY.md` §7-7，跨批次登记见 §10-2）——`jiazu_spirit` / `jiazu_market` / `jiazu_messages` / `jiazu_ops_logs` 同形态，一并评估。
 - `auth-server/`、`scripts/*` 一次性修复脚本、`migrate-output/` 中间报告、`/tmp/jiazu-*` **明确不进云**（§6 / §7-6 / §12-7 等「不需要上云」小节）。
 
