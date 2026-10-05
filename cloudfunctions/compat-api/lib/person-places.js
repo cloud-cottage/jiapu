@@ -16,6 +16,19 @@
  *   R1 非空 `origin_code` 必须是已登记码 —— 未知码 → 400「出生地行政区划代码无效：<码>」
  *      （`birth_place` 与 `residence_places` 每条同判；见 `assertKnownOriginCodes`）。
  *
+ * —— 契约 v3（2026-10-05 追加；规格 = `docs/person-places.spec.md` §20；**v2 条文字面一字不改**）——
+ *   F1 `residence_places[]` 每条新增 `start_year`（字符串，同 `birth_date` 口径：`''` 或 `'1960'`；
+ *      缺键 / 空串 = 未填，**老数据零迁移**）；`birth_place` **不加**此字段（F2）。
+ *   F3 非空 `start_year` 必须 `^\d{4}$` 且 `1000 <= N <= 2100` → 否则 400
+ *      （`startYearFormatMessage` / `startYearRangeMessage`；见 `assertStartYears`）。
+ *   F4 非空 `start_year` 且**卒年有值时**不得晚于卒年 → 否则 400（`startYearAfterDeathMessage`）；
+ *      卒年取值 = `body.death_date` 显式传入则用它、否则节点现值；年份 = 前 4 位数字；
+ *      卒年缺失 / 取不到 4 位 ⇒ **放行**；**不做出生年下限校验**（见 `assertStartYearNotAfterDeath`）。
+ *   F5 读响应逐项新增 `place_start_year`（缺值 → `''`）—— 由 `placeViewOf` 输出；
+ *      出生地响应处（`index.js` `profile.birth`）按**显式逐键**构造剥离该键（不得改 spread）。
+ *   F7 `sameResidencePlaces` 纳入 `start_year`（**逐项 + 顺序敏感不变**）—— 否则「只改年份」被判无改动。
+ *   F8 `PERSON_PLACE_FIELDS` / `isPlaceFieldsOnly` / 上限 / 码校验**一律不变**（`start_year` 在**条目内**，不新增顶层键）。
+ *
  * 展示串口径（C7）：`place` = 码反查展示串，**空码则空串**（备注落在 `place_note`，不冒充展示串）；
  * tree-meta 的 `origin`（C8）另有兜底口径：无码时用备注兜底（`note || ''`）。
  */
@@ -33,6 +46,25 @@ export const RESIDENCE_SHAPE_MESSAGE = '居住地格式无效，应为数组';
 /** 出生地形状拒绝文案（写路径 C1′：显式提供但非对象 → 400） */
 export const BIRTH_PLACE_SHAPE_MESSAGE = '出生地格式无效，应为对象';
 
+/** 居住地开始年份范围（契约 v3 F3） */
+const START_YEAR_MIN = 1000;
+const START_YEAR_MAX = 2100;
+
+/** 居住地开始年份「格式」拒绝文案（契约 v3 F3）：非空但非 4 位数字 → 400 */
+export function startYearFormatMessage(value) {
+  return `居住地开始年份格式无效：${value}`;
+}
+
+/** 居住地开始年份「范围」拒绝文案（契约 v3 F3）：4 位但不在 1000–2100 → 400 */
+export function startYearRangeMessage(value) {
+  return `居住地开始年份超出范围（1000–2100）：${value}`;
+}
+
+/** 居住地开始年份「不得晚于卒年」拒绝文案（契约 v3 F4） */
+export function startYearAfterDeathMessage(startYear, deathYear) {
+  return `居住地开始年份不得晚于卒年：${startYear}（卒年 ${deathYear}）`;
+}
+
 /** 树 JSON 里参与出生地 / 居住地的字段名（写路径白名单 / 始祖放行白名单共用同一份） */
 export const PERSON_PLACE_FIELDS = ['birth_place', 'residence_places'];
 
@@ -44,6 +76,10 @@ const text = (v) => (v === null || v === undefined ? '' : String(v).trim());
  *   · 字符串（历史形态）→ `{ origin_code:'', note:<原串> }`；
  *   · 对象 → 取 `origin_code` / `note` 字段（缺字段 / 非法值 → 空串）；
  *   · `null` / 未定义 / 数字 / 布尔 / 数组 → `{ origin_code:'', note:'' }`。
+ *
+ * 契约 v3 §20-2：「**出生地不加** `start_year`」 ⇒ 本函数（出生地归一 + 居住地条目归一的公共部分）
+ * **恒不产出 `start_year` 键**（否则 `tree-write` 落库的 `birth_place` 会多出该键，违反 §20-2）；
+ * `start_year` 只在 `normalizeResidencePlaces()` 的**居住地条目**上附加。
  */
 export function normalizeBirthPlace(raw) {
   if (typeof raw === 'string') return { origin_code: '', note: raw.trim() };
@@ -51,10 +87,13 @@ export function normalizeBirthPlace(raw) {
   return { origin_code: text(raw.origin_code), note: text(raw.note) };
 }
 
-/** 居住地数组归一 → 恒为数组（非数组 → `[]`，逐项归一同上）；**不截断**（上限由 assertResidencePlacesLimit 拦） */
+/**
+ * 居住地数组归一 → 恒为数组（非数组 → `[]`，逐项归一同上）；**不截断**（上限由 assertResidencePlacesLimit 拦）。
+ * 契约 v3 F1：**每条附加 `start_year`**（同 `text()` 口径；`null` / 缺键 → `''`，即「未填」）。
+ */
 export function normalizeResidencePlaces(raw) {
   if (!Array.isArray(raw)) return [];
-  return raw.map((item) => normalizeBirthPlace(item));
+  return raw.map((item) => ({ ...normalizeBirthPlace(item), start_year: text(item?.start_year) }));
 }
 
 /** C10：第 10 条 → `status=400` 抛错（写路径与路由共用同一判据与文案） */
@@ -113,17 +152,19 @@ export function sameBirthPlace(a, b) {
   return x.origin_code === y.origin_code && x.note === y.note;
 }
 
-/** 居住地是否相同（规范化后**逐项 + 长度**，顺序敏感 —— 顺序即展示顺序） */
+/** 居住地是否相同（规范化后**逐项 + 长度**，顺序敏感 —— 顺序即展示顺序）。
+ * 契约 v3 F7：纳入 `start_year` —— 否则「只改年份」会被判**无改动**（不落库、不扣费）。 */
 export function sameResidencePlaces(a, b) {
   const x = normalizeResidencePlaces(a);
   const y = normalizeResidencePlaces(b);
   if (x.length !== y.length) return false;
-  return x.every((v, i) => v.origin_code === y[i].origin_code && v.note === y[i].note);
+  return x.every((v, i) => v.origin_code === y[i].origin_code && v.note === y[i].note && v.start_year === y[i].start_year);
 }
 
 /**
- * 读响应形状（C7）：`{ place, place_code, place_note }`。
+ * 读响应形状（C7 / v3 F5）：`{ place, place_code, place_note, place_start_year }`。
  * `place` = 码反查展示串（`resolveOrigin().display`），**空码 / 未知码 → 空串**（备注不冒充展示串）。
+ * `place_start_year`（v3）：条目 `start_year`，缺值 → `''`。**出生地响应处由 index.js 显式逐键构造剥离此键。**
  */
 export function placeViewOf(raw) {
   const p = normalizeBirthPlace(raw);
@@ -131,6 +172,7 @@ export function placeViewOf(raw) {
     place: p.origin_code ? resolveOrigin(p.origin_code).display : '',
     place_code: p.origin_code,
     place_note: p.note,
+    place_start_year: text(raw?.start_year),
   };
 }
 
@@ -181,6 +223,55 @@ export function assertKnownOriginCodes(body) {
     const err = new Error(unknownOriginCodeMessage(bad[0]));
     err.status = 400;
     throw err;
+  }
+  return true;
+}
+
+/** 取字符串前 4 位数字（`'2020'` / `'2020-05-01'` → `'2020'`；取不到 4 位数字 → `''`） */
+function leadingYear(v) {
+  const m = text(v).match(/^\d{4}/);
+  return m ? m[0] : '';
+}
+
+/**
+ * 契约 v3 F3：`residence_places` 每条非空 `start_year` 必须 `^\d{4}$` 且 `1000 <= N <= 2100`。
+ * 失败 → `status=400`，逐字文案见 `startYearFormatMessage`（格式）/ `startYearRangeMessage`（越界）。
+ * **出生地不参与**（§20-2 出生地不加此字段）；`residence_places` 未提供 / `null` → 放行。
+ * @returns {true} 通过
+ * @throws {Error} `status=400`
+ */
+export function assertStartYears(body) {
+  const b = body || {};
+  if (b.residence_places === undefined || b.residence_places === null) return true;
+  for (const item of normalizeResidencePlaces(b.residence_places)) {
+    const y = item.start_year;
+    if (!y) continue;
+    if (!/^\d{4}$/.test(y)) throw shapeError(startYearFormatMessage(y));
+    const n = Number(y);
+    if (n < START_YEAR_MIN || n > START_YEAR_MAX) throw shapeError(startYearRangeMessage(y));
+  }
+  return true;
+}
+
+/**
+ * 契约 v3 F4：非空 `start_year` 且**卒年有值时**，`start_year <= 卒年`；否则 → `status=400`（文案逐字）。
+ * 卒年取值 = `body.death_date` **显式传入**（非 `undefined` / 非 `null`）则用它，否则 `fallbackDeathDate`（节点现值）；
+ * 年份 = 该值**前 4 位数字**（`'2020'` 与 `'2020-05-01'` 都取到 `2020`）；**取不到 4 位 → 放行（不判）**。
+ * **不做出生年下限校验**。校验依赖节点现值 ⇒ 在写路径中**最后**执行。
+ * @param {object} body 请求体
+ * @param {string} [fallbackDeathDate] 节点现值 `death_date`（请求体未显式提供时用）
+ * @returns {true} 通过
+ * @throws {Error} `status=400`
+ */
+export function assertStartYearNotAfterDeath(body, fallbackDeathDate) {
+  const b = body || {};
+  const deathRaw = b.death_date !== undefined && b.death_date !== null ? b.death_date : fallbackDeathDate;
+  const deathYear = leadingYear(deathRaw);
+  if (!deathYear) return true;
+  for (const item of normalizeResidencePlaces(b.residence_places)) {
+    const y = item.start_year;
+    if (!y) continue;
+    if (Number(y) > Number(deathYear)) throw shapeError(startYearAfterDeathMessage(y, deathYear));
   }
   return true;
 }

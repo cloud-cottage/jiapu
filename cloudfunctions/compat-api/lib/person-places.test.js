@@ -17,6 +17,11 @@
  *   R1    未知码 → 400 逐字「出生地行政区划代码无效：<码>」（`birth_place` 与 `residence_places` 每条）
  *   R2    `GET /tree/origin-candidates` 全列（含无码节点 `place_code==''`/`place==''`）；
  *         始祖无法认定 → `founder:null` + `candidates:[]` 且**不报 400**
+ *   契约 v3（§20）居住地开始年份：F1 条目 `start_year` 归一（数字/null/缺键 → ''）；F3 格式/范围 400
+ *         （逐字「居住地开始年份格式无效：<值>」/「居住地开始年份超出范围（1000–2100）：<值>」）；F4 卒年交叉 400
+ *         （逐字「居住地开始年份不得晚于卒年：<start_year>（卒年 <death_year>）」；卒年取 body.death_date 优先、
+ *         否则节点现值，前 4 位；缺失 / 取不到 4 位放行）；F5 读响应 `place_start_year`（出生地响应**无**该键）；
+ *         F7 `sameResidencePlaces` 纳入 `start_year`（仅年份变 = 变更）；写路径校验顺序 形状→上限→年份→码→卒年
  *   C1′/C2′ 写路径形状闸门：`residence_places` 显式提供但非数组 / `birth_place` 显式提供但非对象
  *         → 400 逐字（不扣费、不落盘、原值不变）；`null`/未提供仍按既有「无可修改内容」口径
  *   F5    显式 `null` 一律等同未提供：写路径不写、不清空、不计入变更判定（同批改其他字段照收 1 片，
@@ -200,11 +205,16 @@ test('C1/C2 形状：birth_place 恒为两段对象、residence_places 恒为数
   const two = pp.normalizeBirthPlace({ origin_code: '370000', note: '鲁地', extra: '丢弃' });
   assert.deepEqual([...Object.keys(two)].sort(), ['note', 'origin_code']);
   assert.deepEqual(two, { origin_code: '370000', note: '鲁地' });
-  // C2 数组逐项归一；顺序保持（顺序即展示顺序）
+  // C2 数组逐项归一；顺序保持（顺序即展示顺序）；v3 F1：每条附加 start_year（缺键 → ''）
   assert.deepEqual(pp.normalizeResidencePlaces([{ origin_code: '370000', note: '' }, '临淄']), [
-    { origin_code: '370000', note: '' },
-    { origin_code: '', note: '临淄' },
+    { origin_code: '370000', note: '', start_year: '' },
+    { origin_code: '', note: '临淄', start_year: '' },
   ]);
+  // v3 F1：显式 start_year 原样（trim 口径），出生地归一**不含该键**（§20-2）
+  assert.deepEqual(pp.normalizeResidencePlaces([{ origin_code: '370000', note: '', start_year: ' 1960 ' }]), [
+    { origin_code: '370000', note: '', start_year: '1960' },
+  ]);
+  assert.deepEqual([...Object.keys(pp.normalizeBirthPlace({ origin_code: '370000', note: 'x', start_year: '1960' }))].sort(), ['note', 'origin_code'], '§20-2：出生地归一恒不产出 start_year');
   // 新建节点的初值（C1/C2 的「无内容」形态）
   assert.deepEqual(pp.normalizeBirthPlace(undefined), { origin_code: '', note: '' });
   assert.deepEqual(pp.normalizeResidencePlaces(undefined), []);
@@ -234,7 +244,17 @@ test('C3 读侧容错：历史字符串 → {origin_code:"",note:原串}；null/
     assert.deepEqual(pp.normalizeResidencePlaces(bad), [], `非数组 ${JSON.stringify(bad)} → []`);
   }
   assert.deepEqual(pp.normalizeResidencePlaces([]), []);
-  assert.deepEqual(pp.normalizeResidencePlaces([null, 3, ['x']]), [{ origin_code: '', note: '' }, { origin_code: '', note: '' }, { origin_code: '', note: '' }]);
+  assert.deepEqual(pp.normalizeResidencePlaces([null, 3, ['x']]), [
+    { origin_code: '', note: '', start_year: '' },
+    { origin_code: '', note: '', start_year: '' },
+    { origin_code: '', note: '', start_year: '' },
+  ]);
+  // v3 F1 读侧容错：start_year 为数字 / null / 缺键 → ''，且不抛错
+  assert.equal(pp.normalizeResidencePlaces([{ note: 'x', start_year: 1960 }])[0].start_year, '1960', '数字 → 字符串');
+  assert.equal(pp.normalizeResidencePlaces([{ note: 'x', start_year: null }])[0].start_year, '', 'null → 空串');
+  assert.equal(pp.normalizeResidencePlaces([{ note: 'x' }])[0].start_year, '', '缺键 → 空串');
+  assert.equal(pp.placeViewOf({ origin_code: '', note: 'x' }).place_start_year, '', 'placeViewOf 缺 start_year → 空串');
+  assert.equal(pp.placeViewOf({ origin_code: '', note: 'x', start_year: 1960 }).place_start_year, '1960');
   // 不抛错（逐类输入全过一遍）
   assert.doesNotThrow(() => {
     for (const v of [null, undefined, '', 0, 1, true, [], {}, ['a'], { origin_code: {} }, { origin_code: '999998', note: 3 }]) {
@@ -488,7 +508,7 @@ test('C6 始祖锁例外：只提 birth_place/residence_places 放行；夹带 p
   assert.equal(after.surname, '季');
   assert.equal(after.given, '始祖公');
   assert.deepEqual(after.birth_place, { origin_code: '370000', note: '备注A' });
-  assert.deepEqual(after.residence_places, [{ origin_code: '371325', note: '祖居' }]);
+  assert.deepEqual(after.residence_places, [{ origin_code: '371325', note: '祖居', start_year: '' }]);
   // 非始祖节点照旧可编辑
   const kidOk = await put('mp_founder', 'kid', { primary_name: { first_name: '子明', surname_list: [{ surname: '季' }] } });
   assert.equal(kidOk.statusCode, 200);
@@ -505,7 +525,7 @@ test('C7 读响应：profile.birth.{date,place,place_code,place_note}（place=�
     people: {
       pp1: node('pp1', 'I0001', '甲一', '甲', '一', {
         birth_place: { origin_code: '370000', note: '备注A' },
-        residence_places: [{ origin_code: '371325', note: '祖居' }, { origin_code: '', note: '某地' }],
+        residence_places: [{ origin_code: '371325', note: '祖居', start_year: '1960' }, { origin_code: '', note: '某地' }],
       }),
       pp2: node('pp2', 'I0002', '甲二', '甲', '二', { birth_place: { origin_code: '', note: '只有备注' } }),
       pp3: node('pp3', 'I0003', '甲三', '甲', '三', { birth_date: '1949', birth_place: '' }),
@@ -518,12 +538,13 @@ test('C7 读响应：profile.birth.{date,place,place_code,place_note}（place=�
   const b1 = json(r1);
   assert.deepEqual(b1.profile.birth, { date: '', place: '山东省', place_code: '370000', place_note: '备注A' });
   assert.deepEqual(b1.residence_places, [
-    { place: '山东省临沂市费县', place_code: '371325', place_note: '祖居' },
-    { place: '', place_code: '', place_note: '某地' },
+    { place: '山东省临沂市费县', place_code: '371325', place_note: '祖居', place_start_year: '1960' },
+    { place: '', place_code: '', place_note: '某地', place_start_year: '' },
   ]);
-  // 四键逐字（顺序无关，键集必须完全一致）
+  // 四键逐字（顺序无关，键集必须完全一致）——出生地**不得**多出 place_start_year（§20-2，显式逐键构造）
   assert.deepEqual([...Object.keys(b1.profile.birth)].sort(), ['date', 'place', 'place_code', 'place_note']);
-  assert.deepEqual([...Object.keys(b1.residence_places[0])].sort(), ['place', 'place_code', 'place_note']);
+  // 居住地逐项五键（v3 F5：place_start_year 逐项）
+  assert.deepEqual([...Object.keys(b1.residence_places[0])].sort(), ['place', 'place_code', 'place_note', 'place_start_year']);
 
   // 空码：place 空串，备注落 place_note（不冒充展示串）；有出生地内容即输出 profile.birth
   const b2 = json(await getPerson('mp_plain', 'pp2'));
@@ -710,8 +731,8 @@ test('R2 GET /tree/origin-candidates：全列（含无码节点 place_code==="" 
   assert.deepEqual(body.candidates.map((c) => c.generation), [1, 2, 3]);
   // 无码节点也在列，且 place_code==='' / place===''
   const noCode = body.candidates.find((c) => c.handle === 'cd_2');
-  assert.deepEqual(noCode.birth_place, { place: '', place_code: '', place_note: '' }, '无码节点必须全列（前端据此标「未填写」）');
-  assert.deepEqual([...Object.keys(noCode.birth_place)].sort(), ['place', 'place_code', 'place_note']);
+  assert.deepEqual(noCode.birth_place, { place: '', place_code: '', place_note: '', place_start_year: '' }, '无码节点必须全列（前端据此标「未填写」）');
+  assert.deepEqual([...Object.keys(noCode.birth_place)].sort(), ['place', 'place_code', 'place_note', 'place_start_year']);
   // is_current = 出生地码 == tree-meta 当前 origin_code
   assert.equal(body.current.origin_code, '370000');
   assert.equal(body.candidates.find((c) => c.handle === 'cd_f').is_current, true);
@@ -776,12 +797,15 @@ test('C1′/C2′ 形状闸门：residence_places 非数组 / birth_place 非对
   assert.equal(assetPieces(assetsAfter), assetPieces(assetsBefore), '被拒请求不得扣费');
   // ⑤ 原值不变（树内 + 读响应）
   const p = readTree('mp_shape').people.sp1;
-  assert.deepEqual(p.residence_places, [{ origin_code: '371300', note: '居住地一条' }, { origin_code: '', note: '无码一条' }]);
+  assert.deepEqual(p.residence_places, [
+    { origin_code: '371300', note: '居住地一条', start_year: '' },
+    { origin_code: '', note: '无码一条', start_year: '' },
+  ]);
   assert.deepEqual(p.birth_place, { origin_code: '230305', note: '备注甲' });
   const view = json(await getPerson('mp_shape', 'sp1'));
   assert.deepEqual(view.residence_places, [
-    { place: '山东省临沂市', place_code: '371300', place_note: '居住地一条' },
-    { place: '', place_code: '', place_note: '无码一条' },
+    { place: '山东省临沂市', place_code: '371300', place_note: '居住地一条', place_start_year: '' },
+    { place: '', place_code: '', place_note: '无码一条', place_start_year: '' },
   ]);
   assert.deepEqual(view.profile.birth, { date: '', place: '黑龙江省鸡西市梨树区', place_code: '230305', place_note: '备注甲' });
 
@@ -867,8 +891,8 @@ test('F5 显式 null 一律等同未提供：单独提交 → 400 原值保留�
   assert.equal(view.profile.birth.place_code, '371325');
   assert.equal(view.profile.birth.place_note, '费县老宅');
   assert.deepEqual(view.residence_places, [
-    { place: '山东省', place_code: '370000', place_note: '济南' },
-    { place: '', place_code: '', place_note: '无码一条' },
+    { place: '山东省', place_code: '370000', place_note: '济南', place_start_year: '' },
+    { place: '', place_code: '', place_note: '无码一条', place_start_year: '' },
   ]);
 
   // ---- lib 层同口径（三处判定一致：null = 未提供） ----
@@ -983,6 +1007,179 @@ test('只读预检先于扣费：祖谱镜像 / 世本镜像 / chain 镜像夹�
   assert.equal(ok.statusCode, 200, `祖谱镜像只提地点字段应放行（实际 ${ok.statusCode} ${ok.body}）`);
   assert.equal(json(ok).fee.pieces, 1);
   assert.deepEqual(readTree('mp_lockclan').people.lc_f.birth_place, { origin_code: '371325', note: '祖居' });
+});
+
+// ==================== 契约 v3：居住地开始年份（start_year） ====================
+
+test('v3 F3/F4 纯函数：assertStartYears（格式/范围）与 assertStartYearNotAfterDeath（卒年交叉）逐条 + 逐字文案', () => {
+  // 逐字文案常量（模板函数）
+  assert.equal(pp.startYearFormatMessage('196'), '居住地开始年份格式无效：196');
+  assert.equal(pp.startYearRangeMessage('2101'), '居住地开始年份超出范围（1000–2100）：2101');
+  assert.equal(pp.startYearAfterDeathMessage('1991', '1990'), '居住地开始年份不得晚于卒年：1991（卒年 1990）');
+
+  // F3：空 / 未填 / 未提供 → 放行；4 位在范围内 → 放行
+  assert.equal(pp.assertStartYears({}), true);
+  assert.equal(pp.assertStartYears({ residence_places: null }), true);
+  assert.equal(pp.assertStartYears({ residence_places: [{ start_year: '' }, { start_year: '1960' }, { start_year: '1000' }, { start_year: '2100' }] }), true);
+  // 格式失败（非 4 位数字）→ 400 逐字
+  for (const bad of ['196', '19600', '19a0', 'abc', '１９６０']) {
+    assert.throws(() => pp.assertStartYears({ residence_places: [{ start_year: bad }] }), (e) => e.status === 400 && e.message === `居住地开始年份格式无效：${bad}`);
+  }
+  // 越界（4 位但不在 1000–2100）→ 400 逐字
+  for (const bad of ['0999', '2101', '0000']) {
+    assert.throws(() => pp.assertStartYears({ residence_places: [{ start_year: bad }] }), (e) => e.status === 400 && e.message === `居住地开始年份超出范围（1000–2100）：${bad}`);
+  }
+  // **出生地不参与**（birth_place 无 start_year 字段）
+  assert.equal(pp.assertStartYears({ birth_place: { origin_code: '370000', note: '', start_year: '196' } }), true, '出生地不参与年份校验');
+
+  // F4：卒年 = fallback（节点现值），取前 4 位；缺失 / 取不到 4 位 → 放行
+  assert.equal(pp.assertStartYearNotAfterDeath({ residence_places: [{ start_year: '1990' }] }, '1990'), true, '等于卒年 → 放行');
+  assert.equal(pp.assertStartYearNotAfterDeath({ residence_places: [{ start_year: '1989' }] }, '1990'), true, '早于卒年 → 放行');
+  assert.throws(() => pp.assertStartYearNotAfterDeath({ residence_places: [{ start_year: '1991' }] }, '1990'), (e) => e.status === 400 && e.message === '居住地开始年份不得晚于卒年：1991（卒年 1990）');
+  assert.equal(pp.assertStartYearNotAfterDeath({ residence_places: [{ start_year: '2020' }] }, '2020-05-01'), true, 'fallback 取前 4 位 2020');
+  assert.throws(() => pp.assertStartYearNotAfterDeath({ residence_places: [{ start_year: '2021' }] }, '2020-05-01'), (e) => e.message === '居住地开始年份不得晚于卒年：2021（卒年 2020）');
+  assert.equal(pp.assertStartYearNotAfterDeath({ residence_places: [{ start_year: '1995' }] }, ''), true, '卒年空 → 放行');
+  assert.equal(pp.assertStartYearNotAfterDeath({ residence_places: [{ start_year: '1995' }] }, undefined), true, '卒年缺 → 放行');
+  assert.equal(pp.assertStartYearNotAfterDeath({ residence_places: [{ start_year: '1995' }] }, '十九世纪'), true, '取不到 4 位数字 → 放行');
+  // 请求体显式 death_date 优先于 fallback
+  assert.throws(() => pp.assertStartYearNotAfterDeath({ residence_places: [{ start_year: '1995' }], death_date: '1994' }, '2000'), (e) => e.message === '居住地开始年份不得晚于卒年：1995（卒年 1994）');
+  assert.equal(pp.assertStartYearNotAfterDeath({ residence_places: [{ start_year: '1995' }], death_date: '2000' }, '1994'), true, 'body.death_date 优先于节点现值');
+  // 空年份不判 / 不做出生年下限校验
+  assert.equal(pp.assertStartYearNotAfterDeath({ residence_places: [{ start_year: '' }] }, '1900'), true, '空年份不判（即使卒年更早）');
+  assert.equal(pp.assertStartYearNotAfterDeath({ residence_places: [{ start_year: '1000' }] }, ''), true, '不做出生年下限校验');
+});
+
+test('v3 F7 sameResidencePlaces 纳入 start_year：仅年份变 → false；全同 → true；顺序变 → false（+ 计费侧同口径）', () => {
+  const base = [
+    { origin_code: '370000', note: '济南', start_year: '1960' },
+    { origin_code: '', note: '某地', start_year: '' },
+  ];
+  assert.equal(pp.sameResidencePlaces(base, base), true);
+  assert.equal(
+    pp.sameResidencePlaces(base, [
+      { origin_code: '370000', note: '济南', start_year: '1960' },
+      { origin_code: '', note: '某地', start_year: '' },
+    ]),
+    true,
+    '逐字段全同 → true',
+  );
+  // ★ 只改年份 → false（否则「只改年份」被判无改动 ⇒ 不落库、不扣费）
+  assert.equal(
+    pp.sameResidencePlaces(base, [
+      { origin_code: '370000', note: '济南', start_year: '1961' },
+      { origin_code: '', note: '某地', start_year: '' },
+    ]),
+    false,
+  );
+  // 缺键 vs 空串同口径（都归一为 ''）
+  assert.equal(pp.sameResidencePlaces([{ origin_code: '', note: 'x' }], [{ origin_code: '', note: 'x', start_year: '' }]), true);
+  // 顺序变 → false
+  assert.equal(pp.sameResidencePlaces(base, [base[1], base[0]]), false, '顺序变 → false');
+  // 长度变 → false
+  assert.equal(pp.sameResidencePlaces(base, [base[0]]), false, '少一条 → false');
+
+  // 计费侧同口径：只改年份 = 变更（1 片 / 节点）
+  const person = { name: '甲一', surname: '甲', given: '一', gender: 'M', birth_date: '', death_date: '', birth_place: '', residence_places: base, death_place: '', is_living: true };
+  const onlyYear = { residence_places: [{ origin_code: '370000', note: '济南', start_year: '1961' }, base[1]] };
+  assert.equal(eco.isPersonUnchanged(onlyYear, person), false, '只改年份 = 变更');
+  assert.ok(eco.personValueDiff(onlyYear, person).fields.includes('residence_places'), '只改年份 → personValueDiff 报 residence_places');
+  assert.equal(eco.isPersonUnchanged({ residence_places: base.map((x) => ({ ...x })) }, person), true, '原样回传 → no-op');
+});
+
+test('v3 F3/F4 写路径：年份格式/范围 400、晚于卒年 400（逐字文案、不扣费不写树）；校验顺序冻结（形状→上限→年份→码→卒年）', async () => {
+  await fund(CHIEF, 30);
+  writeTree({
+    ...SCHEMA,
+    tree_id: 'mp_sy',
+    version: 1,
+    people: {
+      sy1: node('sy1', 'I0001', '乙一', '乙', '一', { death_date: '1990' }),
+      sy2: node('sy2', 'I0002', '乙二', '乙', '二', { death_date: '2020-05-01' }),
+      sy3: node('sy3', 'I0003', '乙三', '乙', '三', { death_date: '' }),
+    },
+    families: {},
+  });
+  const snap = async () => ({ md5: treeMd5('mp_sy'), assets: await el.getAssets(CHIEF) });
+  const assertNoSideEffect = async (before, label) => {
+    assert.equal(treeMd5('mp_sy'), before.md5, `${label}：被拒请求不得写树`);
+    const after = await el.getAssets(CHIEF);
+    assert.equal(after.txs.length, before.assets.txs.length, `${label}：不得产生资产流水`);
+    assert.equal(assetPieces(after), assetPieces(before.assets), `${label}：不得扣费`);
+  };
+
+  // ② 格式无效 → 400 逐字（不扣费不写树）；③ 越界 → 400 逐字
+  {
+    const before = await snap();
+    for (const bad of ['196', '19600', '19a0', 'abc', '１９６０']) {
+      const res = await put('mp_sy', 'sy1', { residence_places: [{ origin_code: '', note: 'x', start_year: bad }] });
+      assert.equal(res.statusCode, 400, `start_year=${bad} 实际 ${res.statusCode} ${res.body}`);
+      assert.equal(json(res).error, `居住地开始年份格式无效：${bad}`);
+    }
+    for (const bad of ['0999', '2101']) {
+      const res = await put('mp_sy', 'sy1', { residence_places: [{ origin_code: '', note: 'x', start_year: bad }] });
+      assert.equal(res.statusCode, 400);
+      assert.equal(json(res).error, `居住地开始年份超出范围（1000–2100）：${bad}`);
+    }
+    await assertNoSideEffect(before, '年份格式/范围 400');
+  }
+
+  // ④ 顺序：年份格式校验先于码合法性（同时坏 → 报年份）
+  {
+    const res = await put('mp_sy', 'sy1', { residence_places: [{ origin_code: '999998', note: '', start_year: '196' }] });
+    assert.equal(res.statusCode, 400);
+    assert.equal(json(res).error, '居住地开始年份格式无效：196', '年份格式校验先于码合法性');
+  }
+  // ⑤ 顺序：上限校验先于年份校验
+  {
+    const res = await put('mp_sy', 'sy1', { residence_places: new Array(10).fill({ origin_code: '', note: 'x', start_year: '196' }) });
+    assert.equal(res.statusCode, 400);
+    assert.equal(json(res).error, '居住地最多 9 条', '上限校验先于年份校验');
+  }
+  // ⑥ 顺序：码合法性先于「年份 vs 卒年」
+  {
+    const res = await put('mp_sy', 'sy1', { residence_places: [{ origin_code: '999998', note: '', start_year: '1999' }] });
+    assert.equal(res.statusCode, 400);
+    assert.equal(json(res).error, '出生地行政区划代码无效：999998', '码校验先于卒年交叉校验');
+  }
+
+  // ⑦ 卒年交叉（**卒年取节点现值**：body 未传 death_date）— sy1 节点卒年 1990
+  {
+    const before = await snap();
+    const late = await put('mp_sy', 'sy1', { residence_places: [{ origin_code: '', note: 'x', start_year: '1991' }] });
+    assert.equal(late.statusCode, 400, `实际 ${late.statusCode} ${late.body}`);
+    assert.equal(json(late).error, '居住地开始年份不得晚于卒年：1991（卒年 1990）');
+    await assertNoSideEffect(before, '晚于卒年 400');
+    assert.equal((await put('mp_sy', 'sy1', { residence_places: [{ origin_code: '', note: 'x', start_year: '1990' }] })).statusCode, 200, '等于卒年 → 放行');
+    assert.equal((await put('mp_sy', 'sy1', { residence_places: [{ origin_code: '', note: 'x', start_year: '1989' }] })).statusCode, 200, '早于卒年 → 放行');
+  }
+
+  // ⑧ 卒年 '2020-05-01' → 取前 4 位 2020（sy2）
+  {
+    const res = await put('mp_sy', 'sy2', { residence_places: [{ origin_code: '', note: 'x', start_year: '2021' }] });
+    assert.equal(res.statusCode, 400);
+    assert.equal(json(res).error, '居住地开始年份不得晚于卒年：2021（卒年 2020）');
+    assert.equal((await put('mp_sy', 'sy2', { residence_places: [{ origin_code: '', note: 'x', start_year: '2020' }] })).statusCode, 200);
+  }
+
+  // ⑨ 卒年缺失 → 放行（sy3 节点卒年空）
+  assert.equal((await put('mp_sy', 'sy3', { residence_places: [{ origin_code: '', note: 'x', start_year: '1995' }] })).statusCode, 200, '无卒年应放行');
+
+  // ⑩ 请求体显式 death_date 优先于节点现值（sy1 节点 = 1990）
+  assert.equal((await put('mp_sy', 'sy1', { residence_places: [{ origin_code: '', note: 'x', start_year: '1995' }], death_date: '2000' })).statusCode, 200, 'body.death_date 优先（2000）');
+  {
+    const bad = await put('mp_sy', 'sy1', { residence_places: [{ origin_code: '', note: 'x', start_year: '1995' }], death_date: '1994' });
+    assert.equal(bad.statusCode, 400);
+    assert.equal(json(bad).error, '居住地开始年份不得晚于卒年：1995（卒年 1994）');
+  }
+
+  // ⑪ 写成功：start_year 落库 + 读响应 place_start_year
+  {
+    const ok = await put('mp_sy', 'sy3', { residence_places: [{ origin_code: '370000', note: '济南', start_year: '1949' }] });
+    assert.equal(ok.statusCode, 200, ok.body);
+    assert.deepEqual(readTree('mp_sy').people.sy3.residence_places, [{ origin_code: '370000', note: '济南', start_year: '1949' }]);
+    const view = json(await getPerson('mp_sy', 'sy3'));
+    assert.deepEqual(view.residence_places, [{ place: '山东省', place_code: '370000', place_note: '济南', place_start_year: '1949' }]);
+  }
 });
 
 // ==================== 真源零写入 / 真源一致性 ====================

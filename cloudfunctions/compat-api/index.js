@@ -90,6 +90,8 @@ import {
   assertKnownOriginCodes,
   assertPlaceFieldShapes,
   assertResidencePlacesLimit,
+  assertStartYearNotAfterDeath,
+  assertStartYears,
   hasPlaceContent,
   placeViewOf,
   residenceViewOf,
@@ -3133,10 +3135,24 @@ async function handleRequest(event) {
       } catch (e) {
         return send(errorStatusOf(e, 400), { error: e.message });
       }
+      // 居住地开始年份「格式 / 范围」（契约 v3 F3）：非空必须 `^\d{4}$` 且 1000–2100 → 否则 400
+      //（校验先于扣费；**出生地不参与** —— §20-2 出生地不加此字段）。
+      try {
+        assertStartYears(body);
+      } catch (e) {
+        return send(errorStatusOf(e, 400), { error: e.message });
+      }
       // R1（Zang 2026-09-20 裁定）：`birth_place` 与 `residence_places` 每条的非空码必须是已登记码，
       // 未知码 → 400「出生地行政区划代码无效：<码>」（与 PUT /tree-meta 同口径，校验先于扣费）。
       try {
         assertKnownOriginCodes(body);
+      } catch (e) {
+        return send(errorStatusOf(e, 400), { error: e.message });
+      }
+      // 居住地开始年份「不得晚于卒年」（契约 v3 F4）：卒年取 `body.death_date`（显式传入）否则**节点现值**；
+      // 取年份前 4 位数字；卒年缺失 / 取不到 4 位 ⇒ 放行。**写路径校验顺序的最后一步**（依赖节点现值）。
+      try {
+        assertStartYearNotAfterDeath(body, putTree?.people?.[peMatch[1]]?.death_date);
       } catch (e) {
         return send(errorStatusOf(e, 400), { error: e.message });
       }
