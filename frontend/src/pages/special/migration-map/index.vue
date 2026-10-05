@@ -1,56 +1,45 @@
 <template>
-  <view class="container">
-    <text class="title">迁徙地图</text>
-    <text class="tree-id">Tree: {{ treeId }}</text>
-
-    <!-- ECharts 地图占位 — 后续集成 echarts-for-weixin 或 H5 ECharts -->
-    <view class="map-placeholder">
-      <text class="placeholder-text">🗺️ 迁徙路线地图</text>
-      <text class="placeholder-hint">将使用 ECharts 渲染迁徙路线和分布点位</text>
-    </view>
-
-    <view class="routes">
-      <text class="subtitle">迁徙路线</text>
-      <view v-for="(route, idx) in routes" :key="idx" class="route-item">
-        <text class="route-num">{{ idx + 1 }}</text>
-        <text class="route-path">{{ route.from }} → {{ route.to }}</text>
-        <text class="route-era">{{ route.era }}</text>
-      </view>
-      <text v-if="routes.length === 0" class="empty">暂无迁徙记录</text>
-    </view>
+  <view class="mig-page">
+    <!-- #ifdef H5 -->
+    <MigrationMapH5 v-if="treeId" :tree-id="treeId" />
+    <view v-else class="center"><text class="center-txt">未指定家族树</text></view>
+    <!-- #endif -->
+    <!-- #ifndef H5 -->
+    <view class="center"><text class="center-txt">请在网页版查看迁徙地图</text></view>
+    <!-- #endif -->
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref } from 'vue';
 import { onLoad } from '@dcloudio/uni-app';
+// #ifdef H5
+import MigrationMapH5 from './MigrationMapH5.vue';
+// #endif
 
+/** 家族树 id（入口 = 家族树页右浮菜单「🗺️ 迁徙地图」，`?tree_id=`） */
 const treeId = ref('');
-const routes = ref<Array<{ from: string; to: string; era: string }>>([]);
 
-onLoad((options: any) => {
-  treeId.value = options?.tree_id || '';
-});
-
-onMounted(async () => {
-  // TODO: fetch migration events from Gramps-Web
+onLoad((options): void => {
+  treeId.value = (options && options.tree_id) || '';
 });
 </script>
 
 <style scoped>
-.container { padding: 20px; }
-.title { font-size: 20px; font-weight: bold; display: block; text-align: center; }
-.tree-id { font-size: 12px; color: #aaa; display: block; text-align: center; margin-top: 4px; }
-.map-placeholder {
-  margin: 20px 0; padding: 60px 20px; background: #f5f5f5;
-  border-radius: 12px; text-align: center; border: 2px dashed #ddd;
+.mig-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #fffdf8;
 }
-.placeholder-text { font-size: 16px; color: #999; display: block; }
-.placeholder-hint { font-size: 13px; color: #bbb; display: block; margin-top: 8px; }
-.subtitle { font-size: 16px; font-weight: bold; color: #8B4513; display: block; margin-bottom: 12px; }
-.route-item { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
-.route-num { font-size: 13px; color: #fff; background: #8B4513; width: 24px; height: 24px; border-radius: 12px; text-align: center; line-height: 24px; margin-right: 8px; }
-.route-path { font-size: 14px; color: #555; flex: 1; }
-.route-era { font-size: 12px; color: #999; }
-.empty { color: #999; text-align: center; padding: 20px; }
+.center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.center-txt {
+  font-size: 15px;
+  color: #6d6055;
+}
 </style>

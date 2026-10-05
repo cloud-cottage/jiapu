@@ -327,9 +327,17 @@ function attrKey(a: { type: string | { string: string } }): string {
 
 function toPersonSummary(raw: RawPerson): PersonSummary {
   const { birth, death } = parseDates(raw);
+  const prof = raw.profile || raw.extended?.profile;
   // 葬地（真源 `death_place`）：读响应落在 `profile.death.place`（后端**仅有卒年时**才输出该键）——
   // 缺键 / 空串 → `undefined`（= 该条缺项）
-  const deathPlace = ((raw.profile || raw.extended?.profile)?.death?.place || '').trim();
+  const deathPlace = (prof?.death?.place || '').trim();
+  // 地理只读派生字段（迁徙地图用）：出生地展示串 / 码 / 备注、葬地码；缺键 / 空串 → `undefined`（与 `death_place` 同体例）
+  const birthPlace = (prof?.birth?.place || '').trim();
+  const birthPlaceCode = (prof?.birth?.place_code || '').trim();
+  const birthPlaceNote = (prof?.birth?.place_note || '').trim();
+  const deathPlaceCode = (prof?.death?.place_code || '').trim();
+  // 居住地读响应派生列表：复用既有 `placeViewsOf()`（不得自带第二套归一）；空 → `undefined`
+  const residencePlaces = placeViewsOf(raw.residence_places);
   // 跨树链接标记（分迁占位 / 出嫁 / 登记始祖）
   let externalTree: string | undefined;
   let externalLinkType: string | undefined;
@@ -355,6 +363,11 @@ function toPersonSummary(raw: RawPerson): PersonSummary {
     birth_date: birth,
     death_date: death,
     death_place: deathPlace || undefined,
+    birth_place: birthPlace || undefined,
+    birth_place_code: birthPlaceCode || undefined,
+    birth_place_note: birthPlaceNote || undefined,
+    death_place_code: deathPlaceCode || undefined,
+    residence_places: residencePlaces.length ? residencePlaces : undefined,
     gender: genderToString(raw.gender),
     // 显式健在状态优先（compat 已存 is_living，可表达「已故但卒年不详」）；旧数据回退按卒年推断
     is_living: raw.is_living !== undefined ? raw.is_living : !death,

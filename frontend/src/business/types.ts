@@ -78,6 +78,22 @@ export interface PersonSummary {
    * ⇒ 卒年不详者此字段为 `undefined`）。只读展示用。
    */
   death_place?: string;
+  /**
+   * 出生地展示串（读响应 `profile.birth.place`；缺键 / 空串 → `undefined`，与 `death_place` 同体例）。
+   * **只读展示**：迁徙地图（`business/migration-map.ts`）的**无码文本**记录取此值；结构化码见 `birth_place_code`。
+   */
+  birth_place?: string;
+  /** 出生地结构化码（读响应 `profile.birth.place_code`；缺键 / 空串 → `undefined`）。只读，不提交。 */
+  birth_place_code?: string;
+  /** 出生地备注（读响应 `profile.birth.place_note`；缺键 / 空串 → `undefined`）。 */
+  birth_place_note?: string;
+  /** 葬地结构化码（读响应 `profile.death.place_code`；缺键 / 空串 → `undefined`）。只读展示用。 */
+  death_place_code?: string;
+  /**
+   * 居住地读响应派生列表（顶层 `residence_places`，复用 `placeViewsOf()` 归一；缺键 / 空 → `undefined`）。
+   * 顺序即展示顺序；只读，不提交。**与既有 `death_place` 同体例**（空 → `undefined`）。
+   */
+  residence_places?: PersonPlaceView[];
   gender?: 'M' | 'F' | 'U';
   is_living: boolean;
   /** 称号串（封号·谥号·号，按「封号→谥号→号」顺序拼接；无称号则空串） */
@@ -128,7 +144,14 @@ export interface ProfileLifespanView {
 }
 
 /** 人物详情 */
-export interface PersonDetail extends PersonSummary {
+/**
+ * 人物详情。
+ *
+ * ⚠️ `PersonSummary` 的 `birth_place?: string`（列表读形状 = 展示串）与详情的 `birth_place?: PersonPlaceView`
+ * （结构化读形状）**同名不同形**，直接 `extends` 会触发 TS2430 ⇒ 用 `Omit` 剥掉父级同名键后再声明详情形状
+ * （**净效果不变**：`PersonDetail` 仍是「`PersonSummary` 全部字段 + birth_place 换结构化形状」）。
+ */
+export interface PersonDetail extends Omit<PersonSummary, 'birth_place'> {
   /** 出生地（读响应派生形状；无数据 → `undefined`） */
   birth_place?: PersonPlaceView;
   /** 居住地（多条，顺序即展示顺序；无数据 → `[]`） */
