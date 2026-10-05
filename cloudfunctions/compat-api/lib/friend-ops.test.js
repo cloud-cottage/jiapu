@@ -846,19 +846,20 @@ test('F-A 只做编排：资产只经 ledger 的 withAssets/导出读写（无�
   assert.equal(SRC.includes('colAll('), true, 'sweepFriends / 句柄反查 需要全量遍历');
 });
 
-// ══ ⑯ 注册数 39 与磁盘一致 ══════════════════════════════════════════════════════
+// ══ ⑯ 注册数 40 与磁盘一致 ══════════════════════════════════════════════════════
 // ⚠️ 本判据的基线必须跟随**磁盘真值**：新增第 37 个测试文件（anchors.test.js，批 A 锚点域）后残留旧基线 36 变成假红；
 //    批 C-1 又新增第 38 个（invite-codes.test.js）；路 B 第 3 期新增第 39 个（wallet.test.js，¥ 钱包 v2：每手机号一档 +
-//    config 单档 + 平台流水单档 ⇒ 定额同步为实得真值 39）。口径 = 「注册数 = 磁盘数 = 定额」，仍为精确等值 + 双向零缺口 + 去重。
-test('package.json 注册数 = 磁盘 *.test.js 数 = 39，且双向零缺口', async () => {
+//    config 单档 + 平台流水单档）；迁徙地图批次新增第 40 个（geo-bounds.test.js，边界数据管线单测）
+//    ⇒ 定额同步为实得真值 40。口径 = 「注册数 = 磁盘数 = 定额」，仍为精确等值 + 双向零缺口 + 去重。
+test('package.json 注册数 = 磁盘 *.test.js 数 = 40，且双向零缺口', async () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));
   const registered = pkg.scripts.test
     .split(/\s+/)
     .filter((x) => x.endsWith('.test.js'))
     .map((x) => path.basename(x));
   const onDisk = fs.readdirSync(HERE).filter((f) => f.endsWith('.test.js')).sort();
-  assert.equal(registered.length, 39, `注册数应为 39，实得 ${registered.length}`);
-  assert.equal(onDisk.length, 39, `磁盘 *.test.js 应为 39，实得 ${onDisk.length}`);
+  assert.equal(registered.length, 40, `注册数应为 40，实得 ${registered.length}`);
+  assert.equal(onDisk.length, 40, `磁盘 *.test.js 应为 40，实得 ${onDisk.length}`);
   assert.equal(new Set(registered).size, registered.length, '注册项不得重复');
   const missingOnDisk = registered.filter((f) => !onDisk.includes(f));
   const unregistered = onDisk.filter((f) => !registered.includes(f));
@@ -884,6 +885,13 @@ test('package.json 注册数 = 磁盘 *.test.js 数 = 39，且双向零缺口', 
 //    详情档（handle `103f95b875d632a1f5c64098dc0d`，已不在任何树 / family 槽位 / external_* /
 //    tree-meta）⇒ 文件集 −1 ⇒ 定额同步为实得真值 339；基线口径不变（`REAL_FP.digest` vs
 //    `fp.digest` 跑测前后逐字节一致仍是**真不变量**），**不放宽、不删除任何断言**。
+//    2026-10-05（迁徙地图批次）续登记：新增边界真源目录 `config/geo-bounds/<adcode>.json`（29 个分片，
+//    属 `walk(REPO/config)` 的集合 ⇒ 文件集 +29）⇒ 定额同步为实得真值 368；基线口径不变
+//    （`REAL_FP.digest` vs `fp.digest` 跑测前后逐字节一致仍是**真不变量**），**不放宽、不删除任何断言**。
+//    2026-10-05（迁徙地图 LOD 批次）续登记：新增**粗档**真源目录 `config/geo-bounds/coarse/<adcode>.json`
+//    （29 个分片，同属 `walk(REPO/config)` 集合 ⇒ 文件集 +29；期望 368 + 29 = 397 = 实测，差值恰等于
+//    本次真源文件新增数，未混入别处漂移）⇒ 定额同步为实得真值 397；基线口径不变
+//    （`REAL_FP.digest` vs `fp.digest` 跑测前后逐字节一致仍是**真不变量**），**不放宽、不删除任何断言**。
 test('真源零写入：config/tree-meta.json 与 migrate-output/ 全量 md5 与开工基线逐字节一致', async () => {
   assert.equal(md5(REAL_META), realMetaMd5, 'config/tree-meta.json 被改动');
   const nowTrees = dirBaseline(REAL_TREES);
@@ -896,9 +904,9 @@ test('真源零写入：config/tree-meta.json 与 migrate-output/ 全量 md5 与
   assert.deepEqual([...nowCols.keys()].sort(), [...realColBaseline.keys()].sort(), 'collections 文件集变化');
   for (const [f, h] of realColBaseline) assert.equal(nowCols.get(f), h, `collections/${f} 内容变化`);
   const fp = realSourceFingerprint();
-  assert.equal(fp.count, 339, `真源文件数应为 339，实得 ${fp.count}`);
+  assert.equal(fp.count, 397, `真源文件数应为 397，实得 ${fp.count}`);
   assert.equal(fp.digest, REAL_FP.digest, '真源全量指纹变化');
-  assert.equal(REAL_FP.count, 339);
+  assert.equal(REAL_FP.count, 397);
   // 沙箱自证：本测试全程只写 /tmp 副本
   assert.ok(TMP.startsWith(os.tmpdir()), '测试根必须是 /tmp 副本');
   assert.equal(store.PATHS.out, TMP);
