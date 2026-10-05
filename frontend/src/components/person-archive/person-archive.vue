@@ -468,6 +468,11 @@
             <t-input :value="rp.note" placeholder="如：费县城关镇" class="field"
             @update:value="(v: any) => rp.note = v"
             />
+            <!-- 开始年份（契约 v3 F1）：仅居住地有此字段；4 位年份、数字键盘；选填 —— 只填年份也算一条有内容 -->
+            <text class="field-label">开始年份（选填，4 位年份）</text>
+            <t-input :value="rp.start_year" type="number" :maxlength="4" placeholder="如 1960（选填，4 位年份）" class="field"
+            @update:value="(v: any) => rp.start_year = v"
+            />
             <t-button size="small" variant="outline" theme="danger" @click="removeResidence(i)">删除</t-button>
           </view>
           <t-button size="small" variant="outline" :disabled="residenceFull" @click="addResidence">＋ 添加居住地</t-button>
@@ -2306,6 +2311,31 @@ const residenceHint = computed(() => (residenceFull.value
   ? `已达上限 ${MAX_RESIDENCE_PLACES} 条，如需新增请先删除一条。`
   : `最多 ${MAX_RESIDENCE_PLACES} 条；无码也无备注的空条目不会保存。`));
 
+/**
+ * 居住地开始年份前端预校（契约 v3 F3 / F4；文案**逐字与后端一致**，不得另写一版）。
+ * 返回空串 = 通过。三条判据（仅对**非空**年份生效）：
+ *   · 格式：非 `^\d{4}$` → `居住地开始年份格式无效：<值>`
+ *   · 范围：`<1000` 或 `>2100` → `居住地开始年份超出范围（1000–2100）：<值>`
+ *   · 交叉：卒年有值（取当前 `editForm.death_date` 前 4 位）且年份大于卒年 →
+ *           `居住地开始年份不得晚于卒年：<start_year>（卒年 <death_year>）`
+ * **体验层**：只在提交前先拦明显非法值，**绝不代替后端**（后端仍会对同样输入 400）。
+ */
+function residenceStartYearError(rows: PersonPlaceInput[]): string {
+  const deathRaw = editNorm(editForm.value.death_date);
+  const deathYear = /^\d{4}$/.test(deathRaw.slice(0, 4)) ? deathRaw.slice(0, 4) : '';
+  for (const r of rows) {
+    const year = (r.start_year || '').trim();
+    if (!year) continue;
+    if (!/^\d{4}$/.test(year)) return `居住地开始年份格式无效：${year}`;
+    const n = Number(year);
+    if (n < 1000 || n > 2100) return `居住地开始年份超出范围（1000–2100）：${year}`;
+    if (deathYear && n > Number(deathYear)) {
+      return `居住地开始年份不得晚于卒年：${year}（卒年 ${deathYear}）`;
+    }
+  }
+  return '';
+}
+
 /** 新增一条居住地（按钮满 9 条即禁用，此处再兜一层，绝不越过上限） */
 function addResidence() {
   if (residenceFull.value) {
@@ -2367,6 +2397,12 @@ async function doSave() {
     const residenceRows = prunePlaces(editForm.value.residence_places);
     if (residenceRows.length > MAX_RESIDENCE_PLACES) {
       editError.value = `居住地最多 ${MAX_RESIDENCE_PLACES} 条，请先删除多余的条目`;
+      return;
+    }
+    // 居住地开始年份预校（契约 v3 F3 / F4）：失败即不提交（不发 PUT、不扣费）；文案逐字与后端一致
+    const yearErr = residenceStartYearError(residenceRows);
+    if (yearErr) {
+      editError.value = yearErr;
       return;
     }
     // ①′ 只读镜像（R3 唯一例外 · 契约 v2 C6）：本层只提交出生地 + 居住地 ——

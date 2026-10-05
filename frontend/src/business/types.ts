@@ -119,6 +119,11 @@ export interface PersonPlaceInput {
   origin_code: string;
   /** 细节补充（界面文案「备注」；无码的历史自由文本亦落此字段） */
   note: string;
+  /**
+   * 开始年份（契约 v3 F1，**仅居住地条目**；出生地无此字段）。
+   * **字符串**（`''` 或 `'1960'`；同 `birth_date` 口径，不用数字）；缺键 / 空串 = 未填。
+   */
+  start_year?: string;
 }
 
 /**
@@ -132,6 +137,11 @@ export interface PersonPlaceView {
   place_code: string;
   /** 备注（无码旧数据的正文也落此字段 → 建档回显不丢） */
   place_note: string;
+  /**
+   * 开始年份（契约 v3 F5；与 `place` / `place_code` / `place_note` 平行；**缺值 ⇒ 空串**）。
+   * 仅居住地有；出生地读形状不带此键。
+   */
+  place_start_year?: string;
 }
 
 /** 读响应里 `profile.birth` / `profile.death` 的生卒形状（含派生地点字段） */
