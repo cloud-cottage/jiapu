@@ -67,13 +67,14 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { fetchFamilyList, fetchPersonList, fetchTreeMetaRemote } from '@/business/api';
 import type { TreeEntry } from '@/business/types';
-import { buildMigrationSites } from '@/business/migration-map';
+import { buildMigrationSites, MIG_YEAR_BASIS, siteYearLabel, yearBasisOf, yearWaveTimeline, yearWaveTitle, type MigrationSites, type MigrationYearBasis } from '@/business/migration-map';
 import {
   buildMigrationMapPlan,
   collectBoundAdcodes,
   planSiteCodes,
   provinceOf,
   type MigrationMapPlan,
+  type MigrationSiteRef,
 } from '@/business/migration-map-view';
 import { loadBound, loadBoundCoarse, type BoundFeatureCollection } from '@/business/geo/bounds-loader';
 import { mountMigrationMap, type MigrationMapController } from './map-engine';
@@ -90,6 +91,8 @@ const progress = ref(0);
 const playing = ref(true);
 const stepTitle = ref('');
 const stepDesc = ref('');
+/** 树级年份口径三态（§17）：`gen`（全无 · 现状逐字不变）/ `mixed`（部分）/ `year`（全有 · 尾波按年份） */
+const yearBasis = ref<MigrationYearBasis>(MIG_YEAR_BASIS.GEN);
 
 let controller: MigrationMapController | null = null;
 let boundMap: Record<string, BoundFeatureCollection> = {};
@@ -110,6 +113,49 @@ function destroyEngine(): void {
   }
 }
 
+/** 全站点的「码 → 最早年份」映射（起点站 + 全部波内站点；§17） */
+function collectYears(sites: MigrationSites): Map<string, string> {
+  const m = new Map<string, string>();
+  if (sites.origin && sites.origin.earliestYear) m.set(sites.origin.code, sites.origin.earliestYear);
+  for (const w of sites.waves) for (const s of w.sites) if (s.earliestYear) m.set(s.code, s.earliestYear);
+  return m;
+}
+
+/**
+ * 三态展示口径（§17）：
+ *   · `gen`   ⇒ **逐字不动**（世代骨架 · 现状）；
+ *   · `mixed` ⇒ 仅**有年份的站点**在标签附年份（时间轴骨架仍按世代 · 不动）；
+ *   · `year`  ⇒ 全部站点标签附年份 + **时间轴展示位**把「第N世」换成「<year>年」。
+ * 标签追加 = 单点 `siteYearLabel`；时间轴文案 = 单点 `yearWaveTimeline`。
+ */
+function applyYearDisplay(p: MigrationMapPlan, sites: MigrationSites, basis: MigrationYearBasis): void {
+  if (basis === MIG_YEAR_BASIS.GEN) return;
+  const years = collectYears(sites);
+  const label = (ref: MigrationSiteRef | null): void => {
+    if (!ref) return;
+    const y = years.get(ref.code);
+    if (y) ref.name = siteYearLabel(ref.name, y);
+  };
+  label(p.origin);
+  label(p.main);
+  for (const g of p.genWaves) for (const s of g.sites) label(s);
+  if (basis !== MIG_YEAR_BASIS.YEAR) return;
+  const tl: string[] = [];
+  if (p.origin) tl.push(`起点 · ${p.origin.name} · ${p.origin.count} 人`);
+  if (p.main) tl.push(`主居地 · ${p.main.name} · ${p.main.count} 人`);
+  for (const g of p.genWaves) tl.push(yearWaveTimeline(String(g.gen), g.sites.length));
+  p.timeline = tl;
+}
+
+/** 年份模式下第 `i` 步对应的年份波（非年份模式 / 非尾波 ⇒ `null`，走引擎原值） */
+function yearWaveAt(i: number): { year: string; desc: string } | null {
+  if (yearBasis.value !== MIG_YEAR_BASIS.YEAR || !plan.value) return null;
+  const base = (plan.value.origin ? 1 : 0) + (plan.value.main ? 1 : 0);
+  const g = plan.value.genWaves[i - base];
+  if (!g) return null;
+  return { year: String(g.gen), desc: `${g.gen}年：${g.sites.map((s) => s.name).join(' + ')} 同批点亮（微错峰 120ms）` };
+}
+
 function mountEngine(): void {
   const el = resolveStageEl();
   if (!el || !plan.value) {
@@ -120,8 +166,9 @@ function mountEngine(): void {
   controller = mountMigrationMap(el, plan.value, boundMap, coarseMap, {
     onStep: (i, title, desc) => {
       current.value = i;
-      stepTitle.value = title;
-      stepDesc.value = desc;
+      const yw = yearWaveAt(i);
+      stepTitle.value = yw ? yearWaveTitle(yw.year) : title;
+      stepDesc.value = yw ? yw.desc : desc;
     },
     onTick: (p, isPlaying) => {
       progress.value = p;
@@ -177,6 +224,8 @@ async function reload(): Promise<void> {
       founder_gramps_id: String(entry.founder_gramps_id || ''),
     });
     const p = buildMigrationMapPlan(sites);
+    yearBasis.value = yearBasisOf(sites);
+    applyYearDisplay(p, sites, yearBasis.value);
     plan.value = p;
     if (!p.hasSites) {
       status.value = 'empty';
