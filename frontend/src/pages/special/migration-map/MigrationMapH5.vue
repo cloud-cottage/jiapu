@@ -297,7 +297,7 @@ onBeforeUnmount(() => {
 }
 .hud-title {
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   color: #8b4513;
 }
 .hud-desc {
@@ -312,7 +312,7 @@ onBeforeUnmount(() => {
 }
 .note-main {
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
   color: #8b4513;
 }
 .note-sub {
@@ -358,7 +358,7 @@ onBeforeUnmount(() => {
 }
 .tl-txt {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: #3e2723;
   display: block;
   white-space: nowrap;
@@ -387,7 +387,7 @@ onBeforeUnmount(() => {
 }
 .ctrl.primary .ctrl-txt {
   color: #fff;
-  font-weight: 700;
+  font-weight: 500;
 }
 .ctrl-hover {
   background: #f6efe6;
@@ -552,12 +552,12 @@ onBeforeUnmount(() => {
   fill: #3e2723;
   paint-order: stroke;
   stroke: #fffdf8;
-  stroke-width: 3px;
+  stroke-width: 2px;
   stroke-linejoin: round;
 }
 .stage :deep(.lb.big .lb-txt) {
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 500;
 }
 .stage :deep(.lb.gold .lb-txt) {
   fill: #7a5f10;
@@ -568,6 +568,7 @@ onBeforeUnmount(() => {
 }
 .stage :deep(.lb.brown .lb-txt) {
   fill: #fff;
+  stroke: none;
 }
 .stage :deep(.lb.brown rect) {
   fill: #8b4513;
@@ -591,6 +592,6 @@ onBeforeUnmount(() => {
 }
 .stage :deep(.lb .badge) {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
 }
 </style>
