@@ -1729,3 +1729,55 @@ wc -l docs/person-places.spec.md docs/person-places.qa.md docs/PENDING_DEPLOY.md
 - **只写文档**：未改任何代码（含 §20-1 – §20-8 所列落点 —— **本节不实现**）、未改 `config/`、未碰 `migrate-output/`、未跑测试、未重启服务、未打包 / 未部署 / 未 git；**未碰任何 `.qa.md`**（§0-5）。
 - **只追加**：本节为**新节**（接 §19，现证 **第 1636 行**）；**§0–§19 历史行原文一律保留**。
 - **不写实现现状读数**：行数 / 例数 / 字节 / md5 一律不推算、不预填；上列行号均为成文时点只读实测，落盘后行号位移以届时实测为准。
+
+---
+
+### 20-11 实现登记（契约 v3 落盘 · 后端 `c44a40f` / 前端 `1347fac` / 年份三态 `00b33fe` · **Zang 现场实测 + 浏览器实测** · **只追加 · §0–§20-10 历史行原文一律保留、不回改**）
+
+> **性质（只追加 · 承 §0-4）**：本节为 **§20 契约 v3 的实现落盘追记**（实现归另单 Kong）—— **不改 §20-1 – §20-10 任何条文字面**、**不改 §20-9 所称「本节不写实现现状读数」的当时约束**（该句描述的是**立规格时点**；**本追记按 §0-4「保留旧行 + 紧接追记」体例另行落盘**）。凡标「**Zang 现场实测**」「**Zang 亲跑**」者读数**逐字照录、不重算**。
+> **⚠️ 仍不上云（只登记）**：本追记**不改**「本阶段不上云」口径；**上云动作面与「3100 重启前置」见 `docs/PENDING_DEPLOY.md` §55-6**；**年份三态的机测证据见 `docs/migration-map.spec.md` §17-7**。
+
+#### 20-11-A 实现落在（**commit 逐字照录 · 不得改数**）
+
+- 后端契约 v3 = **`c44a40f`**（commit 逐字：`feat(person-places): 契约 v3 后端 —— 居住地 start_year 与三条校验`）。
+- 前端表单与展示 = **`1347fac`**（commit 逐字：`feat(person-archive): 居住地新增「开始年份」输入与展示拼接（契约 v3 前端）`）。
+- 迁徙地图年份三态 = **`00b33fe`**（commit 逐字：`feat(migration-map): 年份三态（全有⇒按年份 / 全无⇒逐字不变 / 部分⇒世代+标签附年份）`）。
+- **三 commit 一并推送**：**`84fcf30..00b33fe → origin/main`**（现证 `git rev-parse origin/main` = `00b33fe`）。
+
+#### 20-11-B §20-2 实现口径勘误（**重要 · 按「规格为准」处置**）
+
+- **派单口径原写**：「`normalizeBirthPlace()` 输出增加 `start_year`」。
+- **实现改为**：**`normalizeBirthPlace` 恒不产出 `start_year`**；改在 **`normalizeResidencePlaces()` 逐条附加**，落笔形态（逐字）= **`{...normalizeBirthPlace(item), start_year: text(item?.start_year)}`**（现证 `cloudfunctions/compat-api/lib/person-places.js` **第 96 行**；`normalizeResidencePlaces` 定义现证 **第 94 行**）。
+- **理由（逐字照录）**：`cloudfunctions/compat-api/lib/tree-write.js:220`（现证）用 `normalizeBirthPlace(body.birth_place)` **直接落库** `person.birth_place` ⇒ 若在该函数加键，**每条落库的出生地都会多出 `start_year:''`**，违反规格 §20-2「出生地不加此字段」并弄红 C4 全部「存储形状」旧例。
+- **处置结论（逐字）**：**实现口径勘误：加键位置由 `normalizeBirthPlace` 改到 `normalizeResidencePlaces`（因 `tree-write.js:220` 会落库 birth_place）；§20-2 语义未变、反而得到硬保障**。
+
+#### 20-11-C Zang 现场实测读数（**逐字照录 · 不得改数**）
+
+- `npm test` = **671 / 671 / 0 / 0**。
+- `node --test .../person-places.test.js` = **23 / 23 / 0**。
+- `cd frontend && npm run type-check` = **EXIT 0**。
+- `node scripts/gen-geo-bounds.mjs --check` = **EXIT 0**。
+- `node scripts/verify-migration-map.mjs` = **32 项全过**（既有 12 + 新增 20）。
+- `config/tree-meta.json` md5 = **`093f51acdd181456b824744149bd1fc2`**（**未变** · 现证同值）。
+- 改动面 = **9 文件、+731 / −78**（**代码面 9 文件**；**不含**本契约三册文档的追加行）。
+- **产物读数（子代理报 · 逐字）**：H5 产物**文件字节和 = 3,072,786 B（84 文件）**（**含并行两单同期进入构建、未拆分增量** ⇒ 如实注记）；**小程序主包 = 2,040,481 B**（total **2,153,786** − 7 分包 **113,305**；**较上批 +1,171 B**）。
+- **旧体积读数一律原文保留**（§0-4）。
+
+#### 20-11-D 浏览器实测（**Zang 亲跑 · 逐字**）
+
+1. 档案页居住地行**新元素存在**：`place-edit-row` 内 `input[type=number]`、`maxLength=4`、标签「开始年份（选填，4 位年份）」、placeholder「如 1960（选填，4 位年份）」。
+2. 填 **999** → 保存 → 页面逐字报 **`居住地开始年份格式无效：999`**。
+3. 填 **9999** → **`居住地开始年份超出范围（1000–2100）：9999`**。
+4. **真源零写入**：`migrate-output/trees/ji_23395_01.json` md5 **前后同值 `94d17163ae5155e4c34b8acbcc83ab67`**（现证同值）。
+5. **地图无回归**（全无年份 ⇒ gen 模式）：面数 **9**、面色 `rgb(234,227,214)`、时间轴四行逐字 = `起点 · 费县 · 4 人` / `主居地 · 梨树区 · 3 人` / `第24世 · 再分迁 · 2 处` / `第25世 · 再分迁 · 2 处`。
+
+#### 20-11-E 观察项（**登记不修**）
+
+1. `maxlength=4` 在 `input[type=number]` 上**浏览器不生效**（属性在、无约束力）⇒ 超长值由格式校验兜住。
+2. 前端预校取 `editForm.death_date` 前 4 位、**未按 `is_living` 置空** ⇒ 健在者残留旧卒年会比后端更严（**体验层先行拦截、后端为唯一裁决**）。
+3. H5 字节和含并行改动未拆分（见 §20-11-C）。
+
+#### 20-11-F 未完成 / 前置（**必登**）
+
+- **3100 重启是端到端生效的前置** —— 运行中的旧进程持有旧 `normalizer`，会**静默丢弃**提交上来的 `start_year` ⇒ 重启前「填了年份看起来成功但年份丢失」。**Zang 尚未重启**（用户服务，待拍板）。
+- **登记落点 = `docs/PENDING_DEPLOY.md` §55-6**（含验证方法：重启后面板探针 + 档案页填一次年份看回显）。
