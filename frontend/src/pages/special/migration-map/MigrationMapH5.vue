@@ -232,6 +232,9 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* ============================================================================
+   页面 / 布局（模板元素 ⇒ 普通 scoped 规则即可命中）
+   ========================================================================== */
 .mig {
   display: flex;
   flex-direction: column;
@@ -413,31 +416,39 @@ onBeforeUnmount(() => {
   font-size: 11px;
   color: #9e8f80;
 }
-</style>
 
-<!-- 引擎用 JS 创建 SVG（元素不带 scoped data-v 属性）⇒ 视觉 token / 动画走命名空间化的全局样式 -->
-<style>
-.mig-stage-svg {
+/* ============================================================================
+   SVG 内部（map-engine.ts 用 document.createElementNS 动态创建 ⇒ 元素不带 data-v）
+   ⚠️ 为什么必须是 :deep(...) 且必须从「模板里真实存在的容器」出发：
+   uni-app H5 的 vite 插件 uni:css-scoped 会经由 addScoped() 给页面 / 组件 SFC 的
+   每一个 <style> 块（包括显式不写 scoped 的「全局块」）强制注入 ` scoped`
+   （见 @dcloudio/uni-cli-shared/dist/vite/plugins/cssScoped.js:16-32；只有 App.vue 例外）。
+   故任何「拆出一个不带 scoped 的第二块」都会被编译成 `.face[data-v-…]` 而永不命中。
+   唯一可行解：规则留在 scoped 块内，用 :deep() 把作用域锁到模板容器 `.stage`
+   （它是模板元素，带 data-v），其后的 JS 创建元素一律不再要求 data-v。
+   注意：`.mig-stage-svg`（svg 根）本身也是 JS 创建的、不带 data-v ⇒ 不能拿它当锚点。
+   ========================================================================== */
+.stage :deep(.mig-stage-svg) {
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
 /* 高 DPR 清晰度：仅对「几何形状」启用平滑渲染（文字不受影响）；
    描边宽度一律 ≥ 1 CSS px 且带 non-scaling-stroke ⇒ 设备像素 = CSS px × DPR（DPR 1/2/3 均不发毛） */
-.mig-stage-svg .face,
-.mig-stage-svg .hk,
-.mig-stage-svg .ring,
-.mig-stage-svg .halo,
-.mig-stage-svg .arc,
-.mig-stage-svg .arc-glow {
+.stage :deep(.face),
+.stage :deep(.hk),
+.stage :deep(.ring),
+.stage :deep(.halo),
+.stage :deep(.arc),
+.stage :deep(.arc-glow) {
   shape-rendering: geometricPrecision;
 }
-.mig-stage-svg .lyr {
+.stage :deep(.lyr) {
   opacity: 0;
   transition: opacity 0.55s ease;
 }
-.mig-stage-svg .lyr.on {
+.stage :deep(.lyr.on) {
   opacity: 1;
 }
-.mig-stage-svg .face {
+.stage :deep(.face) {
   fill: #eae3d6;
   stroke: #c9bfae;
   /* ≥ 1 CSS px：DPR 1 下也不低于 1 设备像素（配合 non-scaling-stroke，不虚不毛） */
@@ -445,7 +456,7 @@ onBeforeUnmount(() => {
   vector-effect: non-scaling-stroke;
   fill-rule: evenodd;
 }
-.mig-stage-svg .hk {
+.stage :deep(.hk) {
   opacity: 0;
   fill: #eae3d6;
   stroke: #c9bfae;
@@ -454,10 +465,10 @@ onBeforeUnmount(() => {
   fill-rule: evenodd;
   transition: fill 0.6s linear, stroke 0.6s linear, opacity 0.6s linear;
 }
-.mig-stage-svg .hk.pulse {
+.stage :deep(.hk.pulse) {
   animation: mig-spulse 1.15s ease-out infinite;
 }
-.mig-stage-svg .hk.softpulse {
+.stage :deep(.hk.softpulse) {
   animation: mig-spulse2 1.6s ease-in-out infinite;
 }
 @keyframes mig-spulse {
@@ -469,33 +480,33 @@ onBeforeUnmount(() => {
   0%, 100% { stroke-opacity: 1; }
   50% { stroke-opacity: 0.45; }
 }
-.mig-stage-svg .site-dot {
+.stage :deep(.site-dot) {
   fill: #c9a227;
   stroke: #fff;
   stroke-width: 1.4px;
 }
-.mig-stage-svg .site-dot.brown {
+.stage :deep(.site-dot.brown) {
   fill: #8b4513;
 }
-.mig-stage-svg .ring {
+.stage :deep(.ring) {
   fill: none;
   stroke: #c9a227;
   stroke-width: 1.6px;
 }
-.mig-stage-svg .ring.brown {
+.stage :deep(.ring.brown) {
   stroke: #8b4513;
 }
 /* 小面指示圈（halo）：**固定半径**圆环（不扩散、不变粗），仅透明度呼吸 —— 与扩散环（r 7→41）明确区分 */
-.mig-stage-svg .halo {
+.stage :deep(.halo) {
   fill: none;
   stroke-width: 2.6px;
   stroke-opacity: 0.9;
   animation: mig-halo 2.6s ease-in-out infinite;
 }
-.mig-stage-svg .halo.gold {
+.stage :deep(.halo.gold) {
   stroke: #c9a227;
 }
-.mig-stage-svg .halo.brown {
+.stage :deep(.halo.brown) {
   stroke: #8b4513;
 }
 @keyframes mig-halo {
@@ -507,36 +518,36 @@ onBeforeUnmount(() => {
     stroke-opacity: 0.4;
   }
 }
-.mig-stage-svg .arc {
+.stage :deep(.arc) {
   fill: none;
   stroke: #c9a227;
   stroke-width: 2px;
   stroke-linecap: round;
 }
-.mig-stage-svg .arc.dash {
+.stage :deep(.arc.dash) {
   stroke-dasharray: 5 5;
   opacity: 0.75;
   stroke-width: 1.6px;
 }
-.mig-stage-svg .arc-glow {
+.stage :deep(.arc-glow) {
   fill: none;
   stroke: #c9a227;
   stroke-width: 7px;
   stroke-linecap: round;
 }
-.mig-stage-svg .dotmove {
+.stage :deep(.dotmove) {
   fill: #fff3c4;
   stroke: #c9a227;
   stroke-width: 2px;
 }
-.mig-stage-svg .lb {
+.stage :deep(.lb) {
   opacity: 0;
   transition: opacity 0.6s ease;
 }
-.mig-stage-svg .lb.on {
+.stage :deep(.lb.on) {
   opacity: 1;
 }
-.mig-stage-svg .lb text {
+.stage :deep(.lb .lb-txt) {
   font-size: 13px;
   fill: #3e2723;
   paint-order: stroke;
@@ -544,41 +555,41 @@ onBeforeUnmount(() => {
   stroke-width: 3px;
   stroke-linejoin: round;
 }
-.mig-stage-svg .lb.big text {
+.stage :deep(.lb.big .lb-txt) {
   font-size: 14px;
   font-weight: 700;
 }
-.mig-stage-svg .lb.gold text {
+.stage :deep(.lb.gold .lb-txt) {
   fill: #7a5f10;
 }
-.mig-stage-svg .lb.gold rect {
+.stage :deep(.lb.gold rect) {
   fill: #fff8e2;
   stroke: #c9a227;
 }
-.mig-stage-svg .lb.brown text {
+.stage :deep(.lb.brown .lb-txt) {
   fill: #fff;
 }
-.mig-stage-svg .lb.brown rect {
+.stage :deep(.lb.brown rect) {
   fill: #8b4513;
   stroke: #8a6c12;
 }
-.mig-stage-svg .lb rect {
+.stage :deep(.lb rect) {
   fill: #fffdf6;
   stroke: #c9bfae;
   stroke-width: 1px;
 }
 /* 小面引线：质心 → 外移标签，细实线（不位移面本身几何） */
-.mig-stage-svg .lb .leader {
+.stage :deep(.lb .leader) {
   stroke: #b9ad99;
   stroke-width: 1.1px;
 }
-.mig-stage-svg .lb.gold .leader {
+.stage :deep(.lb.gold .leader) {
   stroke: #c9a227;
 }
-.mig-stage-svg .lb.brown .leader {
+.stage :deep(.lb.brown .leader) {
   stroke: #8b4513;
 }
-.mig-stage-svg .lb .badge {
+.stage :deep(.lb .badge) {
   font-size: 13px;
   font-weight: 700;
 }

@@ -569,10 +569,14 @@ export function mountMigrationMap(
       // 小面 ⇒ 引线（质心 → 外移标签边缘）；置于 rect 之下
       const line = leader ? (mk('line', { class: 'leader', x1: 0, y1: 0, x2: 0, y2: 0 }, g) as SVGLineElement) : null;
       const bg = mk('rect', { x: -6, y: -h / 2 - 1, width: w, height: h, rx: 6, ry: 6 }, g);
-      const t = mk('text', { x: 0, y: 0 }, g);
+      // ⚠️ 必须给 SVG <text> 挂 class：uni-app H5 的 uni-app postcss 插件会把「内置组件标签选择器」
+      //    重写为 uni-<tag>（isBuiltInComponent('text') ⇒ `text` 变 `uni-text`，见
+      //    @dcloudio/uni-cli-shared/dist/postcss/plugins/uniapp.js rewriteUniH5Tags），
+      //    而这里是 JS 用 createElementNS 造的原生 SVG <text>（localName='text'）⇒ 标签选择器永不命中。
+      const t = mk('text', { class: 'lb-txt', x: 0, y: 0 }, g);
       t.textContent = d.text;
       if (d.badge) {
-        const bt = mk('text', { x: w, y: 0, class: 'badge' }, g);
+        const bt = mk('text', { x: w, y: 0, class: 'badge lb-txt' }, g);
         bt.textContent = d.badge;
         wAll = w + d.badge.length * BADGE_FONT_PX + 6;
         bg.setAttribute('width', String(wAll));
