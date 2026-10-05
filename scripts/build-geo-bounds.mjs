@@ -134,7 +134,7 @@ export function slimCollection(fc, areaThreshold = SLIM_AREA_THRESHOLD) {
 //
 // 口径（本批派单逐字冻结）：
 //   · **只新增**；既有细档真源与产物**一动不动**（不得重生成、不得改形状）。
-//   · `adcode` 集合与细档**完全一致**（29 个），且**逐 feature 与细档一一对应**
+//   · `adcode` 集合与细档**完全一致**（既有 29 + 本批新增天津 `120000` = 30 个），且**逐 feature 与细档一一对应**
 //     （同数量、同顺序、同 `properties.adcode`）—— 不得整个分片统一简化，否则渲染器
 //     无法「按单个面选档」。
 //   · 生成手段：对细档**每个 feature 独立**做 Douglas–Peucker；顶点预算
@@ -315,12 +315,12 @@ export function coarseCollection(fineFc, areaThreshold = SLIM_AREA_THRESHOLD) {
   return { collection: { type: 'FeatureCollection', features }, emptyFeatures };
 }
 
-/** 真源目录里的 adcode（升序；非 `.json` / 子目录忽略） */
+/** 真源目录里的 adcode（升序；**只认 6 位码文件名** —— `_unsourceable.json` 等清单文件 / 子目录一律忽略） */
 export function listTruthAdcodes(dir = TRUTH_DIR) {
   return fs.existsSync(dir)
     ? fs
         .readdirSync(dir)
-        .filter((f) => f.endsWith('.json'))
+        .filter((f) => /^\d{6}\.json$/.test(f))
         .map((f) => f.slice(0, -'.json'.length))
         .sort()
     : [];

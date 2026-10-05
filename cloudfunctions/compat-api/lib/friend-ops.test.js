@@ -892,6 +892,11 @@ test('package.json 注册数 = 磁盘 *.test.js 数 = 40，且双向零缺口', 
 //    （29 个分片，同属 `walk(REPO/config)` 集合 ⇒ 文件集 +29；期望 368 + 29 = 397 = 实测，差值恰等于
 //    本次真源文件新增数，未混入别处漂移）⇒ 定额同步为实得真值 397；基线口径不变
 //    （`REAL_FP.digest` vs `fp.digest` 跑测前后逐字节一致仍是**真不变量**），**不放宽、不删除任何断言**。
+//    2026-10-05（迁徙地图 · 面级判据 + 显式豁免批次）续登记：新增天津细档 `config/geo-bounds/120000.json`
+//    + 粗档 `config/geo-bounds/coarse/120000.json` + 豁免清单 `config/geo-bounds/_unsourceable.json`
+//    （3 个文件，同属 `walk(REPO/config)` 集合 ⇒ 文件集 +3；期望 397 + 3 = 400 = 实测，差值恰等于
+//    本次真源文件新增数，未混入别处漂移）⇒ 定额同步为实得真值 400；基线口径不变
+//    （`REAL_FP.digest` vs `fp.digest` 跑测前后逐字节一致仍是**真不变量**），**不放宽、不删除任何断言**。
 test('真源零写入：config/tree-meta.json 与 migrate-output/ 全量 md5 与开工基线逐字节一致', async () => {
   assert.equal(md5(REAL_META), realMetaMd5, 'config/tree-meta.json 被改动');
   const nowTrees = dirBaseline(REAL_TREES);
@@ -904,9 +909,9 @@ test('真源零写入：config/tree-meta.json 与 migrate-output/ 全量 md5 与
   assert.deepEqual([...nowCols.keys()].sort(), [...realColBaseline.keys()].sort(), 'collections 文件集变化');
   for (const [f, h] of realColBaseline) assert.equal(nowCols.get(f), h, `collections/${f} 内容变化`);
   const fp = realSourceFingerprint();
-  assert.equal(fp.count, 397, `真源文件数应为 397，实得 ${fp.count}`);
+  assert.equal(fp.count, 400, `真源文件数应为 400，实得 ${fp.count}`);
   assert.equal(fp.digest, REAL_FP.digest, '真源全量指纹变化');
-  assert.equal(REAL_FP.count, 397);
+  assert.equal(REAL_FP.count, 400);
   // 沙箱自证：本测试全程只写 /tmp 副本
   assert.ok(TMP.startsWith(os.tmpdir()), '测试根必须是 /tmp 副本');
   assert.equal(store.PATHS.out, TMP);

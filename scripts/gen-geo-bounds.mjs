@@ -24,6 +24,12 @@
  *       ① 逐 adcode 校验产物可还原且与真源逐字段一致；
  *       ② 输出**缺失清单**（真源有、产物无；或按收集规则应有而无）⇒ 缺失 / 不一致时 **exit 非 0**；
  *       ③ 两档 adcode 集合互相一致（细档 ≡ 粗档）。
+ *   · 「应有而无」判据 = **面级**（非码级）：一个码满足 ⇔ 本档存在该码的分片文件，**或**本档任一分片的
+ *     feature `properties.adcode` == 该码（省 / 市面承载于 `100000.json` 等父分片：如 `710000` / `120000`；
+ *     `120116` 承载于 `120000.json`）。**细档与粗档各自独立**按此判据算。
+ *   · 上游确实无几何的码（`120100` 伪级「市辖区」/ `711600` / `711601` 台湾自建码）进**显式豁免清单**
+ *     `config/geo-bounds/_unsourceable.json`（逐码 `code` / `level` / `reason`，禁静默跳过）；
+ *     豁免项在 `--check` 里**不判负**，但**必须打印**「豁免 N 个（不可取源）」且 N ≡ 清单条目数。
  *
  * 用法：
  *   node scripts/gen-geo-bounds.mjs            # 生成 / 更新两档全部产物
@@ -53,15 +59,57 @@ export const TIERS = [
   { key: 'coarse', label: '粗档', truthDir: COARSE_TRUTH_DIR, productDir: PRODUCT_COARSE_DIR },
 ];
 
+/** 不可取源码**显式豁免清单**（逐码登记 `code` / `level` / `reason`；禁静默跳过） */
+export const UNSOURCEABLE_FILE = path.join(TRUTH_DIR, '_unsourceable.json');
+
+/**
+ * 读豁免清单（路径 `file`）；兼容裸数组与 `{ exemptions: [...] }` 两种形状。
+ * 返回 `{ rows, codes }`（`codes` = 表内码集合）。缺文件 ⇒ 空清单（不臆造）。
+ */
+export function loadUnsourceable(file = UNSOURCEABLE_FILE) {
+  if (!fs.existsSync(file)) return { rows: [], codes: new Set() };
+  const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const rows = Array.isArray(raw) ? raw : Array.isArray(raw?.exemptions) ? raw.exemptions : [];
+  const codes = new Set(rows.filter((r) => r && typeof r.code === 'string').map((r) => r.code));
+  return { rows, codes };
+}
+
+/**
+ * 一档全部真源分片里出现过的 feature adcode 集合（**面级判据**的「面」）。
+ * 例：`100000.json` → 34 个省级面（含 `710000` / `120000`）；`120000.json` → 16 个区面（含 `120116`）。
+ */
+export function faceAdcodes(adcodes, dir = TRUTH_DIR) {
+  const set = new Set();
+  for (const adcode of adcodes) {
+    const fc = JSON.parse(fs.readFileSync(path.join(dir, `${adcode}.json`), 'utf8'));
+    for (const f of fc?.features || []) {
+      const a = String(f?.properties?.adcode);
+      if (/^\d{6}$/.test(a)) set.add(a);
+    }
+  }
+  return set;
+}
+
+/**
+ * 「应有而无」（**面级判据 + 豁免**）：一个码满足 ⇔ 本档存在其分片文件，**或**本档任一分片的
+ * feature `properties.adcode` == 该码。豁免清单内的码**不判负**（不进缺失清单）。
+ * 返回未满足的码（升序保持 `expected` 次序）。
+ */
+export function unsatisfiedCodes(expected, shardCodes, faceSet, exemptCodes = new Set()) {
+  const shards = shardCodes instanceof Set ? shardCodes : new Set(shardCodes);
+  const faces = faceSet instanceof Set ? faceSet : new Set(faceSet);
+  return expected.filter((c) => !shards.has(c) && !faces.has(c) && !exemptCodes.has(c));
+}
+
 const INFLATE_TS = path.join(REPO, 'frontend', 'src', 'business', 'geo', 'inflate.ts');
 const ESBUILD = path.join(REPO, 'frontend', 'node_modules', '.bin', 'esbuild');
 
-/** 真源目录里的 adcode（升序；非 `.json` / 子目录忽略） */
+/** 真源目录里的 adcode（升序；**只认 6 位码文件名** —— `_unsourceable.json` 等清单文件 / 子目录一律忽略） */
 export function truthAdcodes(dir = TRUTH_DIR) {
   return fs.existsSync(dir)
     ? fs
         .readdirSync(dir)
-        .filter((f) => f.endsWith('.json'))
+        .filter((f) => /^\d{6}\.json$/.test(f))
         .map((f) => f.slice(0, -'.json'.length))
         .sort()
     : [];
@@ -113,6 +161,10 @@ if (isMain) {
     process.exit(1);
   }
   const expected = collectAdcodes();
+  const { rows: exemptRows, codes: exemptCodes } = loadUnsourceable();
+  console.log(
+    `ℹ️  豁免 ${exemptRows.length} 个（不可取源 · ${path.relative(REPO, UNSOURCEABLE_FILE)}）：${exemptRows.map((r) => r.code).join(', ') || '无'}`,
+  );
 
   // ══ 生成（不写 --check） ══
   if (!check) {
@@ -130,15 +182,16 @@ if (isMain) {
         fs.writeFileSync(file, want, 'utf8');
         wrote += 1;
       }
-      const missingTruth = expected.filter((c) => !adcodes.includes(c));
+      const faces = faceAdcodes(adcodes, tier.truthDir);
+      const missingTruth = unsatisfiedCodes(expected, adcodes, faces, exemptCodes);
       if (missingTruth.length) {
-        console.error(`❌ [${tier.label}] 按收集规则应有而无真源（先跑 build-geo-bounds.mjs）：${missingTruth.join(', ')}`);
+        console.error(`❌ [${tier.label}] 按收集规则应有而无（面级判据；先跑 build-geo-bounds.mjs）：${missingTruth.join(', ')}`);
         bad = true;
         continue;
       }
       const staleProduct = productAdcodes(tier.productDir).filter((c) => !adcodes.includes(c));
       if (staleProduct.length) console.error(`⚠️  [${tier.label}] 产物无对应真源（陈旧，未自动删除）：${staleProduct.join(', ')}`);
-      console.log(`✅ [${tier.label}] 生成 ${adcodes.length} 份前端产物 → ${tier.productDir}（本次改写 ${wrote} 份）`);
+      console.log(`✅ [${tier.label}] 生成 ${adcodes.length} 份前端产物 → ${tier.productDir}（本次改写 ${wrote} 份；豁免 ${exemptRows.length} 个（不可取源））`);
     }
     if (bad) process.exit(1);
     const fineSet = truthAdcodes(TRUTH_DIR);
@@ -163,7 +216,7 @@ if (isMain) {
     const adcodes = truthAdcodes(tier.truthDir);
     const product = productAdcodes(tier.productDir);
     const missingProduct = adcodes.filter((c) => !product.includes(c));
-    const missingTruth = expected.filter((c) => !adcodes.includes(c));
+    const missingTruth = unsatisfiedCodes(expected, adcodes, faceAdcodes(adcodes, tier.truthDir), exemptCodes);
     const staleProduct = product.filter((c) => !adcodes.includes(c));
     const tierBad = [];
     for (const adcode of adcodes) {
@@ -184,7 +237,7 @@ if (isMain) {
       }
     }
     if (missingProduct.length) console.error(`❌ [${tier.label}] 真源有、产物无（缺失清单）：${missingProduct.join(', ')}`);
-    if (missingTruth.length) console.error(`❌ [${tier.label}] 收集规则应有而无真源（缺失清单）：${missingTruth.join(', ')}`);
+    if (missingTruth.length) console.error(`❌ [${tier.label}] 收集规则应有而无（面级判据 · 缺失清单）：${missingTruth.join(', ')}`);
     if (staleProduct.length) console.error(`❌ [${tier.label}] 产物无对应真源（陈旧清单）：${staleProduct.join(', ')}`);
     let truthBytes = 0;
     let productBytes = 0;
@@ -193,6 +246,9 @@ if (isMain) {
       if (fs.existsSync(path.join(tier.productDir, `${adcode}.json`))) productBytes += fs.statSync(path.join(tier.productDir, `${adcode}.json`)).size;
     }
     if (tierBad.length) bad.push(`${tier.key}:${tierBad.length}`);
+    if (missingProduct.length) bad.push(`${tier.key}:product`);
+    if (missingTruth.length) bad.push(`${tier.key}:truth`);
+    if (staleProduct.length) bad.push(`${tier.key}:stale`);
     console.log(
       `✅ [${tier.label}] 真源（唯一真源，不参与比对、只作基准）：${tier.truthDir}（${adcodes.length} 分片，合计 ${truthBytes} 字节）`,
     );
@@ -200,7 +256,7 @@ if (isMain) {
       `✅ [${tier.label}] 逐 adcode 一致（${adcodes.length} 份）：产物 = deflateRaw + base64，可经 inflateBase64ToUtf8 还原，与真源逐字段一致`,
     );
     console.log(
-      `✅ [${tier.label}] 缺失清单为空：真源有产物无 ${missingProduct.length}；收集规则应有而无 ${missingTruth.length}；陈旧产物 ${staleProduct.length}（收集规则共 ${expected.length} 个码）`,
+      `✅ [${tier.label}] 缺失清单为空：真源有产物无 ${missingProduct.length}；收集规则应有而无 ${missingTruth.length}；陈旧产物 ${staleProduct.length}（面级判据；收集规则共 ${expected.length} 个码；豁免 ${exemptRows.length} 个（不可取源））`,
     );
     console.log(`— [${tier.label}] 产物合计 ${productBytes} 字节（${tier.productDir}）`);
   }
