@@ -457,6 +457,8 @@ cd frontend && npm run type-check      # vue-tsc --noEmit
 - **真源写入登记 · 更名批（追加 · 2026-10-09 · **只追加，不改上列各条**）**：**本批真源变更 = 15 个集合文件改名**——`migrate-output/collections/jiazu_*.json` → `jiapu_*.json`（**内容零变化**，前后 md5 **逐文件一致**）。**备份 + md5 台账齐备**：`~/jiazu-backups/2026-10-09-jiazu-rename/`（含 `migrate-output/` + `tree-meta.json` + `MD5-LEDGER.txt` = **344 行**）。**⚠️ 作业面（硬）**：`migrate-output/**` 无版本控制（`.gitignore`）⇒ 上述备份目录是**唯一回滚基线**；改名必须先停 3100（常驻实例按旧名读、会把内存快照整份回写）。
 - **真源写入登记 · 更名批 · 待确认项（追加 · 2026-10-09 · **只追加**）**：**2026-10-09 15:16–15:36 窗口**内 `migrate-output/trees/zhonghua.json`（mtime **15:24**）+ **5 个 zhonghua 详情档**（`zhonghua:c4aa5669…` / `zhonghua:5cc029ef…` / `zhonghua:0343d876…` / `zhonghua:92d03c30…` / `zhonghua:8ecbd8db…`）+ **3 个集合**（`jiapu_id_seq.json` / `jiapu_assets.json` / `jiapu_invite_codes.json` —— **改名后现名**；本批改名时其内容零变化）被写入 ⇒ **归属 = 待 Kevin 确认**（**未确认前不得写「已归 Kevin」**；先例 = 2026-09-23 / 09-24 / 09-25 / 09-26 的「待确认 → 追记确认」两行体例）。
 
+- **真源写入登记 · 更名批 · 归属确认追记（**归 Kevin 本人 · 已当面确认（2026-10-09）** · 只追加，不改上列各条）**：上列「待确认项」行中的「**归属 = 待 Kevin 确认**」措辞**原文一字不改、一律保留**，其**语义自本行起被覆盖**（本手册 §10 纪律）。**Kevin 于 2026-10-09 当面确认：2026-10-09 15:16–15:36 窗口内的上述写入 = 本人 UI 操作**（zhonghua 加人 5 名 + 随附 5 个详情档 + `jiapu_id_seq` / `jiapu_assets` / `jiapu_invite_codes` 三个集合的连带变更）⇒ **结论（可直接引用）= 无需回滚 / 无需退费**。
+
 ---
 
 ## 8. 部署口径（只做本地阶段）
