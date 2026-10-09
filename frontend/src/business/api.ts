@@ -1799,6 +1799,43 @@ export async function fetchClanInfo(treeId: string): Promise<ClanInfo> {
   return clanGet<ClanInfo>(`/admin/clan-info?tree_id=${encodeURIComponent(treeId)}`);
 }
 
+/**
+ * 直建祖谱结果（POST /admin/create-clan；形状随 ClanSummary 体例，字段 = 后端 createClanTree 出参 + fee）。
+ * 余额不足 409 走 ApiStatusError（code=ASSET_INSUFFICIENT，调用方按码分支引导）。
+ */
+export interface ClanCreateResult {
+  ok: boolean;
+  /** 新建祖谱的 tree_id（`<姓拼音>_<码点>`，随**表单姓**而非节点姓） */
+  tree_id: string;
+  kind: string;
+  path_alias: string;
+  surname: string;
+  display_title: string;
+  master_tree_id: string;
+  master_handle: string;
+  master_name: string;
+  /** 自有支系入口节点（缺省建谱为空） */
+  founder_handle: string;
+  /** 顶端镜像段始祖镜像 handle */
+  founder_mirror_handle: string;
+  mirror_count: number;
+  message: string;
+  /** 直建费回显（石榴籽域；99 籽） */
+  fee?: { unit: string; pieces: number; balance: number | null; balance_after: number | null };
+}
+
+/**
+ * 直建祖谱（POST /admin/create-clan，方式 C）：chief_editor 在世本真身节点上直接新建并**建后即挂**
+ * （签名风格随 attachFounder：authedFetch + X-Tree-Id；后端校验全过后、落库前扣 99 籽）。
+ */
+export async function createClan(
+  treeId: string,
+  input: { master_handle: string; surname: string; clan_title: string; target_tree_id?: string },
+  token: string,
+): Promise<ClanCreateResult> {
+  return authedFetch(treeId, '/admin/create-clan', 'POST', token, input);
+}
+
 /** 建谱申请（POST /admin/clan-request）：该姓现有树 steward/chief 发起 → chief_editor 审批 */
 export async function submitClanRequest(
   input: { tree_id?: string; surname: string; master_handle: string; clan_title?: string; note?: string },

@@ -81,7 +81,7 @@
         <!-- 身份认定已取消（申请-审批制；docs/permission-tier.spec.md §9）：自助认领不再提供 -->
       </view>
 
-      <!-- 邀请入族（批 C-2 **入口一 · 节点型**）：显示条件 = **已登录 且（本人锚点属本树 或 role='chief_editor'）**。
+      <!-- 邀请入族（批 C-2 **入口一 · 节点型**）：显示条件 = **已登录 且（本人锚点属本树 或 role='chief_editor'）**；已故节点不外显。
            短链 + 长链（仅 node 型）+ 复制按钮；节点已被他人绑定 ⇒ 后端 **409**，按邀请域文案提示（不静默）。 -->
       <view v-if="canInvitePerson" class="invite-box">
         <view class="invite-entry" @click="openInvite">
@@ -775,7 +775,7 @@
         <text class="field-label">选择要挂载的祖谱</text>
         <view v-if="attachLoading" class="join-tip">加载祖谱清单...</view>
         <view v-else-if="!attachCandidates.length" class="join-tip">
-          暂无祖谱可挂载：请由本姓现有家族树先申请建立祖谱。
+          {{ CLAN_EMPTY_HINT }}
         </view>
         <TreePicker
           v-else
@@ -785,6 +785,24 @@
           placeholder="请选择要挂载的祖谱"
           @update:model-value="(v: any) => (attachTargetId = v)"
         />
+
+        <!-- 直建祖谱（方式 C，仅总编辑）：TreePicker / 空态之下常驻一行入口 → 点开内联迷你表单（99 籽 · 建后即挂） -->
+        <view class="clan-create-entry" @click="openClanCreate">
+          <text class="clan-create-entry-text">{{ CLAN_CREATE_ENTRY_TEXT }}</text>
+          <text class="clan-create-entry-fee">{{ CLAN_CREATE_FEE_NOTE }}</text>
+        </view>
+        <view v-if="showClanCreateForm" class="clan-create-form">
+          <text class="field-label">祖谱名称</text>
+          <t-input :value="clanCreateTitle" placeholder="如：季氏祖谱" class="field" @update:value="(v: any) => (clanCreateTitle = v)" />
+          <text class="field-label">姓氏（必填 · 单汉字 · 可改）</text>
+          <t-input :value="clanCreateSurname" placeholder="单汉字姓氏" class="field" @update:value="(v: any) => (clanCreateSurname = v)" />
+          <text class="clan-create-note">{{ clanCreateMountNote }}</text>
+          <view v-if="clanCreateError" class="edit-error">{{ clanCreateError }}</view>
+          <view class="modal-actions">
+            <t-button theme="primary" block :loading="clanCreateSubmitting" @click="doCreateClan">确认新建</t-button>
+            <t-button variant="text" block @click="showClanCreateForm = false">取消</t-button>
+          </view>
+        </view>
 
         <view v-if="attachError" class="edit-error">{{ attachError }}</view>
         <view class="modal-actions">
@@ -835,7 +853,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { fetchPerson, fetchPersonForEdit, savePerson, savePersonPlaces, isLiving, API_BASE, fetchTreeMetaRemote, searchPeople, searchMarriageCandidates, removeBranchLink, reparentNode, deleteNode, marriageRequest, marryEnd, founderRequest, fetchFounderRequests, attachFounder, detachFounder, resetFounder, fetchClans, treeKindLabel, treeKindOf, feeText, isAssetInsufficientError, showAssetInsufficientGuide, fetchPersonList, fetchFamilyList, fetchSpirit, postConvergeClan, mirrorNoteText, mirrorReadonlyViewOf, treeDisplayTitleOf, MAX_RESIDENCE_PLACES, emptyPlaceInput, normalizePlace, prunePlaces, placesDirty, placeDisplayOf, fetchMyAnchor, createInviteCode, inviteShortUrl, inviteLongUrl } from '@/business';
+import { fetchPerson, fetchPersonForEdit, savePerson, savePersonPlaces, isLiving, API_BASE, fetchTreeMetaRemote, searchPeople, searchMarriageCandidates, removeBranchLink, reparentNode, deleteNode, marriageRequest, marryEnd, founderRequest, fetchFounderRequests, attachFounder, detachFounder, resetFounder, createClan, fetchClans, treeKindLabel, treeKindOf, feeText, isAssetInsufficientError, showAssetInsufficientGuide, fetchPersonList, fetchFamilyList, fetchSpirit, postConvergeClan, mirrorNoteText, mirrorReadonlyViewOf, treeDisplayTitleOf, MAX_RESIDENCE_PLACES, emptyPlaceInput, normalizePlace, prunePlaces, placesDirty, placeDisplayOf, fetchMyAnchor, createInviteCode, inviteShortUrl, inviteLongUrl } from '@/business';
 import { isAuthenticated, authState, getAuthToken } from '@/business/auth';
 // 邀请域文案单点（批 C-2 入口一）：组件内**不得**散落用户可见字面
 import {
@@ -964,6 +982,22 @@ const REPARENT_FEE_CONFIRM =
   '同树改挂父节点：消耗 1 片竹片。\n' +
   '若该编号属于其它家族树：本次为跨树整体迁移，本次迁移共 9 片（与携带后代人数无关），本节点及其全部后代整体迁入该树。\n' +
   '是否继续？';
+
+// ---- 直建祖谱（方式 C，仅总编辑）文案常量：集中此处，不散落 ----
+
+/** 直建费单价：99 籽（与后端 lib/clan.js `CLAN_CREATE_FEE_SEEDS` 同值；后端为唯一权威，此处仅文案用） */
+const CLAN_CREATE_FEE_SEEDS = 99;
+const CLAN_CREATE_ENTRY_TEXT = '＋ 新建祖谱';
+const CLAN_CREATE_FEE_NOTE = `消耗 ${CLAN_CREATE_FEE_SEEDS} 颗石榴籽`;
+/** 挂载弹窗空态两条路：就地新建（99 籽，立即生效）/ 本姓现有家族树先申请 */
+const CLAN_EMPTY_HINT = `暂无祖谱可挂载：可在下方就地新建祖谱（${CLAN_CREATE_FEE_NOTE}，立即生效），或由本姓现有家族树先申请建立祖谱。`;
+/** 「新建后即挂载到节点「X」」：X = 当前真身节点名 */
+const CLAN_CREATE_MOUNT_NOTE = (nodeName: string) => `新建后即挂载到节点「${nodeName}」`;
+const CLAN_CREATE_CONFIRM_TITLE = '确认新建祖谱';
+const CLAN_CREATE_CONFIRM_TEXT = (nodeName: string, title: string) =>
+  `将${CLAN_CREATE_FEE_NOTE}，在节点「${nodeName}」上新建祖谱「${title}」并立即挂载。是否继续？`;
+const CLAN_CREATE_SUCCESS_TITLE = '祖谱已建立并挂载';
+const CLAN_CREATE_SUCCESS_FALLBACK = '新建祖谱已挂载到当前节点';
 
 const showEdit = ref(false);
 const saving = ref(false);
@@ -1233,10 +1267,12 @@ const attachTargetId = ref('');
 const attachSubmitting = ref(false);
 const attachError = ref('');
 
-/** 挂载入口（选择器）：普通树不得直挂世本 → 候选仅为祖谱清单 */
+/** 挂载入口（选择器）：普通树不得直挂世本 → 候选仅为祖谱清单；每次打开重置直建表单态 */
 async function openAttachFounder() {
   attachError.value = '';
   attachTargetId.value = '';
+  showClanCreateForm.value = false;
+  clanCreateError.value = '';
   showAttachPicker.value = true;
   attachLoading.value = true;
   try {
@@ -1280,6 +1316,90 @@ async function doAttachFounder() {
   } finally {
     attachSubmitting.value = false;
   }
+}
+
+// ---- 直建祖谱（方式 C，仅总编辑；99 籽 · 建后即挂）：挂载弹窗内联迷你表单 ----
+const showClanCreateForm = ref(false);
+const clanCreateTitle = ref('');
+const clanCreateSurname = ref('');
+const clanCreateError = ref('');
+const clanCreateSubmitting = ref(false);
+/** 说明行：新建后即挂载到当前节点（挂载弹窗只在真身节点上打开） */
+const clanCreateMountNote = computed(() => CLAN_CREATE_MOUNT_NOTE(person.value?.name || ''));
+
+/**
+ * 点开内联迷你表单：姓氏预填当前节点的姓（字段路径已实测：档案详情 `person.surname`，
+ * 由 `toPersonSummary` 从 `primary_name.surname_list` 映射）；取不到 → 空串，靠必填校验兜底。
+ */
+function openClanCreate() {
+  clanCreateTitle.value = '';
+  clanCreateSurname.value = person.value?.surname || '';
+  clanCreateError.value = '';
+  showClanCreateForm.value = true;
+}
+
+async function doCreateClan() {
+  const token = getAuthToken();
+  if (!token) {
+    clanCreateError.value = '登录已过期，请重新登录';
+    return;
+  }
+  const title = clanCreateTitle.value.trim();
+  const surname = clanCreateSurname.value.trim();
+  if (!title) {
+    clanCreateError.value = '请填写祖谱名称';
+    return;
+  }
+  if (!surname) {
+    clanCreateError.value = '请填写姓氏';
+    return;
+  }
+  if (!/^[\u4e00-\u9fa5]$/.test(surname)) {
+    clanCreateError.value = '请填写单个汉字姓氏';
+    return;
+  }
+  const nodeName = person.value?.name || '';
+  clanCreateError.value = '';
+  clanCreateSubmitting.value = true;
+  // 提交前二次确认（文案含 99 籽与节点名）
+  uni.showModal({
+    title: CLAN_CREATE_CONFIRM_TITLE,
+    content: CLAN_CREATE_CONFIRM_TEXT(nodeName, title),
+    success: async (r: any) => {
+      if (!r.confirm) {
+        clanCreateSubmitting.value = false;
+        return;
+      }
+      try {
+        const res = await createClan(
+          props.treeId,
+          { master_handle: handle.value, surname, clan_title: title, target_tree_id: props.treeId },
+          token,
+        );
+        showClanCreateForm.value = false;
+        showAttachPicker.value = false;
+        uni.showModal({
+          title: CLAN_CREATE_SUCCESS_TITLE,
+          content: `${res?.message || CLAN_CREATE_SUCCESS_FALLBACK}（tree_id：${res?.tree_id || ''}）`,
+          showCancel: false,
+          confirmText: '知道了',
+        });
+        await loadAttachedTrees();
+        emit('tree-changed');
+      } catch (e: any) {
+        if (isAssetInsufficientError(e)) {
+          showAssetInsufficientGuide(e);
+        } else {
+          clanCreateError.value = e?.message || '新建祖谱失败';
+        }
+      } finally {
+        clanCreateSubmitting.value = false;
+      }
+    },
+    fail: () => {
+      clanCreateSubmitting.value = false;
+    },
+  });
 }
 /**
  * 解除始祖登记（双方均可，无需申请，立即生效；R2）：只清登记指针 ——
@@ -1900,7 +2020,7 @@ const deathText = computed(() => {
 });
 
 // ---- 邀请入族（批 C-2 **入口一 · 节点型**）----
-// 显示条件（逐字按派单）：**已登录 且（本人锚点属本树 或 role='chief_editor'）**，不叠加任何其它条件。
+// 显示条件：**已登录 且（本人锚点属本树 或 role='chief_editor'）**；已故节点一律不外显（Kevin 2026-10-09 拍板）。
 // 节点型 = 指定建议绑定节点 + 一次性；签发时节点已被他人绑定 ⇒ 后端 409（不签发废码），此处按域内文案提示。
 
 /** 本人锚点所属树（`GET /admin/get-anchor`；未登录 / 读不到 ⇒ 空串 = 入口不外显） */
@@ -1912,10 +2032,21 @@ const inviteLong = ref('');
 const inviteExpiry = ref('');
 const inviteErr = ref('');
 
+/**
+ * 已故判据（全站三态同源 · 严格等值）：**仅 `is_living === false` 算已故** —— true / null / undefined /
+ * 缺字段一律不算（禁止 `!is_living` 真值判断，禁止「有卒年 ⇒ 已故」另立第二套判据）。数据源复用档案加载的
+ * **已派生值**：`person.is_living` 由 api 层映射回填（`is_living !== undefined ? is_living : !death`，与
+ * openEdit 的 raw→editForm 派生同一口径），此处只做严格判据、不重复推导；祖谱 / 世本节点后端锁死
+ * `is_living=false` ⇒ 自动被本判据覆盖，无需单独分支。
+ */
+const isPersonDeceased = computed(() => person.value?.is_living === false);
+
 const canInvitePerson = computed(() => {
   if (!isAuthenticated()) return false;
   if (!person.value) return false;
   if (!treeId.value) return false;
+  // 已故节点不外显「邀请此人入族」入口（与后端签发守卫同判据：is_living === false ⇒ 400）
+  if (isPersonDeceased.value) return false;
   return myAnchorTreeId.value === treeId.value || authState.role === 'chief_editor';
 });
 
@@ -2875,6 +3006,20 @@ async function doEndMarriage() {
   border: 1px solid #E3D3BE;
 }
 .invite-entry-text { font-size: 13px; color: #8B4513; }
+
+/* 直建祖谱（方式 C）：挂载弹窗内入口行 + 内联迷你表单（TreePicker / 空态之下） */
+.clan-create-entry {
+  margin-top: 10px; padding: 9px 12px; border-radius: 10px; text-align: center;
+  background: linear-gradient(180deg, #FFFDF8, #F8F0E5);
+  border: 1px dashed #B08D57;
+}
+.clan-create-entry-text { font-size: 13px; color: #8B4513; font-weight: bold; }
+.clan-create-entry-fee { display: block; font-size: 11px; color: #B08D57; margin-top: 2px; }
+.clan-create-form {
+  margin-top: 10px; padding: 12px;
+  background: #FBF6EF; border: 1px solid #E3D3BE; border-radius: 10px;
+}
+.clan-create-note { display: block; font-size: 11px; color: #B5A594; margin-top: 4px; line-height: 1.7; }
 .invite-panel {
   margin-top: 10px; padding: 12px;
   background: #FBF6EF; border: 1px dashed #E3D3BE; border-radius: 10px;
