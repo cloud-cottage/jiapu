@@ -1,4 +1,6 @@
-# 家族历史数字馆 (jiazu)
+# 家族历史数字馆 (jiapu)
+
+> **更名登记（2026-10-09 · Kevin 拍定）**：项目 / 仓库名由 **jiazu** 更名为 **jiapu** —— GitHub 仓库 = `https://github.com/cloud-cottage/jiapu`；Vercel 预览 = `devjiapu.vercel.app`；正式域名 = `jiapu100.com`（解析中）。**代码内集合 / 键名 `jiazu_*`、本地目录名、ctrl 面板 sid 为待迁移项**（分批 R1–R4，见 `docs/PENDING_DEPLOY.md` 更名专项节）。
 
 多姓氏、多支派家谱数字化展示平台。
 

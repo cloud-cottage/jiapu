@@ -5834,3 +5834,71 @@ wc -c < cloudfunctions/deploy/compat-api/index.js; md5 -q cloudfunctions/deploy/
 - **状态** = **「规格已落盘 · 实现已落盘（工作区在途未提交）· 本阶段不上云（只登记）」**（**不得写「已部署 / 已上云 / 全部完成」**）。
 - **边界（硬）**：本节作者（Jing）**只登记、不执行** —— **未跑任何打包 / `tcb` 写命令 / 未上传 / 未部署 / 未重传**；**未改任何代码 / `config/` / `migrate-output/`**；**未 `git` 任何写操作**；**未碰任何既有 `.qa.md`**（§0-5）；**未尝试写 `AGENTS.md`**。**只读探针已做（Jing · 2026-10-09）**：`npm test`（/tmp 沙箱）、`type-check`、§56-1 判据 grep、集合与上传脚本 grep、`git status --porcelain` —— 均为零写入探针。
 - **回写位**：§56-1 / §56-2 的**判据读数**、§56-4 的**冒烟结论**，**由执行 / 质检收口后回写**；口径侧回写 = 三册 `docs/friend-domain.spec.md` §29 / `docs/clan-tree.spec.md` §12 / `docs/economy-fee.spec.md` §16。
+
+## §57 更名专项（jiazu → jiapu）· 上云与部署动作（**云端集合迁移 + 云函数重打包 + Vercel 面** · **本阶段不上云 · 只登记** · **无新集合（仅旧集合改名）· 无数据修正 · 无 pages.json 改动** · 2026-10-09 · **只追加 · 不改 §0–§56 任何行**）（Jing 制度员）
+
+> **性质（只追加）**：本节为 **jiazu → jiapu 更名专项** 的**上云 / 部署面动作与判据登记**（**§0–§56 既有行原文一律保留、一字不改、一行不删**；承 `AGENTS.md` §0-4）。**背景与拍定**（Kevin 2026-10-09）：项目 / 仓库名由 **jiazu** 更名为 **jiapu**；**已完成** = GitHub 仓库改名 `cloud-cottage/jiazu` → `jiapu`（Kevin 执行）+ 本地 `git remote` 已切 `https://github.com/cloud-cottage/jiapu.git`（现证 `git remote -v`）+ `README.md` / `AGENTS.md` **顶部更名登记行** + 本批两宗功能（已故节点邀请守卫 / 新建祖谱 99 籽）已提交推送（`28721b4` / `e9ca354` / `c86f8be` / `26466bb`）。**拍定范围（四批 R1–R4）** = **R1** 品牌与仓库面（**已完**）· **R2** 内部标识符**一并改**（代码 `jiazu_*` → `jiapu_*` + 本地真源 `migrate-output/collections/jiazu_*.json` 改名 + 云端集合迁移，**另立批次**）· **R3** 本地目录 `/Users/kevin/bistro/jiazu` → `jiapu` + ctrl 面板 sid `jiazu-api` / `jiazu` → `jiapu-api` / `jiapu` + group → `jiapu`（**需服务窗口**）· **R4** Vercel 构建部署 + `jiapu100.com` 绑定。**本阶段不上云、只登记**。
+> **⚠️ 纪律（硬）**：判据读数**一律以命令实际输出为准**（**不得编数字**）；**迁移前不预填任何数字**（条数 / `grep -c` 计数 / 集合数）—— **一律写「以执行时实测为准」**；esbuild 产物中文为 `\uXXXX` 转义 → **中文判据须按转义形 `grep -F`**（**裸中文命中 0 ≠ 没打进去**；承 §20-1 ③ / §55-2 / §56 尾注）。**行号一律本节登记时点现证**。
+> **登记时点基线（现证 · Jing · 2026-10-09）**：`git status --porcelain` = ` M AGENTS.md` / ` M README.md`（**仅此两行**）；`git remote -v` = `origin https://github.com/cloud-cottage/jiapu.git`；`git rev-parse HEAD` = `26466bb`（`git ls-remote origin HEAD` 同值 `26466bb`）。
+
+### §57-0 批次定性与动作面（**3 项动作面 + 边界**）
+
+| # | 动作面 | 触发依据（行号 = 本节登记时点现证） | 本轮定性 |
+|---|---|---|---|
+| **①** | **云端集合迁移（R2 的云侧）** | CloudBase 集合**不能原地改名** ⇒ 只能「建新集合（`jiapu_*`）→ 导数据 → 代码切换 → 删旧集合（留备份）→ 双轨验证」；受影响清单见 §57-1（**20 项 = 迁移档 15 + 代码侧 5**） | **必登**（§57-1） |
+| **②** | **云函数 `compat-api` 重打包 + `tcb fn deploy`** | 本批新路由与**重命名后的标识符**一并生效；判据与 **§56 合流**（**指路即可、不重写**） | **必登**（§57-2） |
+| **③** | **Vercel 面（R4）** | H5 构建部署（`build:h5` 产物 + hash 路由 SPA fallback）· 项目 link `jiapu` · 预览 `devjiapu.vercel.app` · 正式域名 `jiapu100.com` | **必登**（§57-3） |
+| — | **边界** | **本阶段不上云 · 只登记**；**无新集合**（仅旧集合改名）；**无数据修正**；**无 pages.json 改动**；**R3 不属上云动作** | **必登**（§57-4） |
+
+- **顺序纪律**：**先云端集合迁移 → 再云函数重打包 → 再前端 / Vercel**（承 §35-2 / §38-0 / §55-0 / §56-0）。
+
+### §57-1 必登 ①：云端集合迁移（R2 的云侧）
+
+**为什么（CloudBase 集合不能原地改名）**：CloudBase **不支持集合原地改名** ⇒ `jiazu_*` → `jiapu_*` 只能走「**建新 → 导数据 → 切代码 → 双轨验证 → 删旧（留备份）**」五步；**任何一步跳步 = 断档或数据丢失**。
+
+**具体动作（五步 · 逐步）**：
+
+1. **建新集合**：按下方清单**逐名映射**建 `jiapu_*`（每旧集合一名新集合）。
+2. **导数据**：旧集合 `jiazu_*` → 新集合 `jiapu_*`（含 `_id` / 索引）。**保留旧集合不删**进入双轨期。
+3. **代码切换**：`cloudfunctions/compat-api/**`（含 `lib/*.js`）内 `jiazu_*` 字面量 → `jiapu_*`；**上传脚本 `scripts/upload-migrated-to-cloudbase.mjs` 的 `COLLECTIONS` 必须同步**（见下）。
+4. **双轨验证**：新旧集合**逐集合比条数**（`count`）+ **抽样对账**（按 `_id` 抽 N 条比对字段），全绿方可删旧。
+5. **删旧集合（保留备份）**：双轨通过后删旧 `jiazu_*`；**删除前先导出备份**（导出的 JSON 落盘留存，登记备份路径与 md5）。
+
+**受影响集合清单（现证 · 本节登记时点）**：
+
+- **A. 有迁移档**（`migrate-output/collections/jiazu_*.json`，`ls -1 migrate-output/collections/jiazu_*.json | wc -l` = **15**）：
+  `jiazu_anchors` / `jiazu_assets` / `jiazu_clan_requests` / `jiazu_founder_requests` / `jiazu_id_seq` / `jiazu_invite_codes` / `jiazu_leave_requests` / `jiazu_market` / `jiazu_marriage_requests` / `jiazu_messages` / `jiazu_ops_logs` / `jiazu_sms_codes` / `jiazu_spirit` / `jiazu_users` / `jiazu_wallets`。
+- **B. 代码侧（无迁移档）**（现证 `migrate-output/collections/<name>.json` **ABSENT**，逐名验证）：`jiazu_person_details` / `jiazu_tree_meta` / `jiazu_friends` / `jiazu_invites` / `jiazu_join_requests`（**5 项**）。
+- **合计 = 20 项** ≡ 上传脚本 `COLLECTIONS` 项数（现证 = 20，见下）。
+
+**上传脚本同步（硬）**：`scripts/upload-migrated-to-cloudbase.mjs` 的 `const COLLECTIONS = [`（现证 **`:44`** 起，**20 项**）**必须随代码同步改名**；该脚本另含**启动自检**（现证 **`:74-122`**）：扫 `cloudfunctions/compat-api` 下 `jiazu_xxx` 字面量与 `COLLECTIONS` 求差集，差集内非白名单项 ⇒ **告警 + `exit 1`**（承 `AGENTS.md` §8 历史缺陷「名单漏项 ⇒ 云端缺集合」）⇒ **改名必须「代码 + 名单」同时切，否则自检判红**。测试探针白名单现证 = `jiazu_cas_probe` / `jiazu_guard_probe` / `jiazu_wallet_cas_probe`（`*.test.js` 内，不入云函数）。
+
+**判据（迁移前后对账）**：`grep -c 'jiazu_'` 在 **`cloudfunctions/`** 的命中数 与 **迁移后期望值** 对账 —— ⚠️ **迁移前不预填数字，一律写「以执行时实测为准」**。**登记时点基线（仅供参考、不作期望值）**：`grep -rho "jiazu_[a-z_]*" cloudfunctions --include='*.js' | sort -u` = **23** unique 字面名（含上述 3 测试探针；真实集合名 = **20**）。
+
+**本地验证证据（本节登记时点 · 均现证）**：迁移档 15 档 `ls | wc -l` = 15；`COLLECTIONS` 项数 = 20；代码侧 5 项 `ABSENT`；`cloudfunctions/compat-api/lib/clan.js` `:2` / `lib/store.js` `:9` / `lib/economy-ops.js` `:12` 等 `jiazu_*` 命中（逐文件命中行数见执行时重算）。
+
+**阻塞点**：需 **CB_ENV / CB_KEY**；删旧集合时机需 **Kevin 拍板**（双轨验证全绿后）；代码侧改名属 **R2 代码批次**（本册只登记云侧动作）。
+
+### §57-2 必登 ②：云函数 `compat-api` 重打包 + `tcb fn deploy`（**指路 §56 · 不重写**）
+
+- **判据与 §56 合流**（**不重写**）：`grep -c 'create-clan' cloudfunctions/deploy/compat-api/index.js` 与已故文案转义形 `grep -cF '...'` —— 形态与通过条件**见 §56-1 判据 1 / 判据 2（`:5799-5803`）**，本节不复制。
+- **本节关注点（重命名标识符随重打包生效）**：`jiazu_*` → `jiapu_*` 后，产物须含新集合名；对账判据同 §57-1 的 `grep -c 'jiazu_'`（**迁移后应为 0 命中，或仅剩 `*.test.js` 探针 —— 以执行时实测为准**）。
+- **现产物状态（现证 · 承 §56-1）**：`cloudfunctions/deploy/compat-api/index.js` mtime **2026-10-03 23:44** / **1,395,711 B**；判据 `create-clan` = **0**、已故转义形 = **0** ⇒ **仍是旧产物、未重打包**（**早于 §56 本批**）。
+- **命令面**：按本仓既有惯例用 esbuild 打包（承 §1 / §55-1 / §56-1）；`cloudfunctions/deploy/compat-api/index.js` 是**产物、不是编辑对象**。
+
+### §57-3 必登 ③：Vercel 面（R4）
+
+- **H5 构建部署**：`cd frontend && npm run build:h5`（现证 `frontend/package.json` scripts `build:h5` = **`uni build`**）⇒ 产物 `frontend/dist/build/h5`；**hash 路由 SPA fallback**（现证 `frontend/src/manifest.json` **无 `h5` 键** ⇒ uni-app H5 默认 `router.mode = 'hash'`；**SPA fallback 按 hash 路由处置**）。
+- **项目 link**：Vercel 项目名 **`jiapu`**。
+- **预览验证**：**`devjiapu.vercel.app`** —— 作为 **H5 新托管**预览入口。
+- **正式域名**：**`jiapu100.com`** —— **解析生效后**绑定 + 冒烟（现证 `frontend/src/static/tree-meta.json` 已含 `"_root_domain": "jiapu100.com"` + 子域 `shiben.jiapu100.com`；`frontend/dist/build/{h5,mp-weixin}/static/tree-meta.json` 同值 ⇒ 主域 / 子域为 H5 与小程序同源基准）。
+- **判据形态（执行时贴实际输出）**：① `devjiapu.vercel.app` 可开、首页可加载；② `jiapu100.com` 解析生效后 `dig` / 访问可达 + 冒烟；③ 产物字符串（**中文 `grep -F`**）与 §57-2 云函数联通（**具体读数以命令实际输出为准，不预填**）。
+- **阻塞点（如实登记）**：**`jiapu100.com` 解析中、未生效** ⇒ 正式绑定 / 冒烟**待解析生效**；**需 Kevin 提供 Vercel 登录态**（项目 owner）。
+
+### §57-4 边界与状态词
+
+- **状态** = **「规格已登记 · 本阶段不上云（只登记）」**（**不得写「已部署 / 已上云 / 已迁移 / 全部完成」**）。
+- **边界（硬）**：本阶段**不上云、只登记**；**无新集合**（**就旧集合改名**，不新建 `jiapu_*` 之外的集合）；**无数据修正**（不动树 JSON / 详情键 / `config/tree-meta.json`）；**无 pages.json 改动**（口径承 §56-3）。
+- **R3 不属上云动作（一句话指路）**：本地目录 `/Users/kevin/bistro/jiazu` → `jiapu` + ctrl 面板 sid / group 改名的登记**落 `ctrl/PORTS.md`**（现证：**本仓无 `ctrl/` 目录**），**R3 时由 Jing 登记**；**本单不动控棚色 `ctrl/` 仓任何文件**。
+- **本节作者（Jing）只登记、不执行**：未跑任何打包 / `tcb` / `vercel` 写命令 / 未上传 / 未部署 / 未迁移；**未改任何代码 / `config/` / `migrate-output/`**；**未 `git` 任何写操作**；**未碰任何既有 `.qa.md`**（§0-5）；**未尝试写 `AGENTS.md`**。**只读探针已做**（Jing · 2026-10-09）：`git status --porcelain` / `git remote -v` / `git rev-parse HEAD` / `git ls-remote origin HEAD`、`ls` 迁移档、`COLLECTIONS` 读取、`grep` 集合与判据、`frontend/package.json` / `frontend/src/manifest.json` 读取 —— 均零写入。
+- **回写位**：§57-1 的**迁移对账读数**、§57-3 的**Vercel 冒烟结论**，**由执行 / 质检收口后回写**；R2 代码 / 真源改名回写位 = 另立批次登记。

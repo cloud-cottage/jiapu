@@ -1,4 +1,6 @@
-# 家族历史数字馆（jiazu）— AI 工作手册（AGENTS.md）
+# 家族历史数字馆（jiapu）— AI 工作手册（AGENTS.md）
+
+> **更名登记（2026-10-09 · Kevin 拍定）**：项目 / 仓库名由 **jiazu** 更名为 **jiapu**（GitHub = `cloud-cottage/jiapu` · Vercel 预览 = `devjiapu.vercel.app` · 正式域名 = `jiapu100.com`，解析中）。**范围含内部标识符**（CloudBase 集合与本地真源 `collections/jiazu_*.json` 一并改名）· **本地目录与 ctrl 面板 sid / group 一并改** · **Vercel 作为 H5 新托管**。**分批**：**R1** 品牌与仓库面（本行起：README / AGENTS 登记 + `git remote` 已切 `jiapu.git`；`package.json` name 随 R2）· **R2** 代码标识符全量替换 + 本地真源改名 + 测试断言同步 + 云端集合迁移登记 · **R3** 本地目录 `/Users/kevin/bistro/jiazu` → `jiapu` + ctrl 面板 sid / group / cwd（需服务窗口）· **R4** Vercel 构建部署 + `jiapu100.com` 绑定。**纪律**：spec 历史行**不作全量替换**（只增不改）；正文内旧路径 / 旧标识符随 R2 / R3 落地时同步；上云动作与判据 = `docs/PENDING_DEPLOY.md` 更名专项节。
 
 > 本文件**面向 AI 代理**，定义本仓的**写入权限、真源纪律、数据流向与验证口径**。人类开发者请读 `README.md`（快速开始 / 树内操作）与 `IDEA.md`（V1.0-Final 完整设计）。
 >
