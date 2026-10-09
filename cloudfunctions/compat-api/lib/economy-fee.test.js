@@ -16,12 +16,17 @@
  *   ⑨ 落库失败冲正：真实路径（路由落库抛错）+ mock 注入（`refund` / `refundAssets`）→ 资产总分还原、
  *      原批次（同 `lot_id` / `expires_at` / `qty`）复活、存在 `fee_refund` 流水
  *   ⑩ 建树扣 9 籽 / 不足 409 / 落库失败原路返还 / 删除路径不触籽（删树不退）
- *   ⑪ 0 片行：源码级穷举「30 条 0 片路由不接闸门，清单与 index.js 逐条对齐（无幽灵路由，missing 必须为 0）」
- *      + 实跑 `POST /people` 资产逐字节不变
- *   ⑫ 冲正回显统一：4 条计费路由的 catch 一律带 `fee_refunded:true`（reparent / delete-node 实测落库失败）
+ *   ⑪ 0 片行：源码级穷举「29 条 0 片路由不接闸门，清单与 index.js 逐条对齐（无幽灵路由，missing 必须为 0）」
+ *      + 实跑 `POST /people` 资产逐字节不变（Kevin 2026-10-09：/admin/clan-request 预扣 99 籽移出 0 片清单）
+ *   ⑫ 冲正回显统一：7 条计费路由的 catch 一律带 `fee_refunded:true`（reparent / delete-node 实测落库失败；
+ *      Kevin 2026-10-09 起新增 /admin/create-clan 直建祖谱 + /admin/clan-request 预扣后落申请失败两条）
  *   ⑬ 资产总览：`getAssetSummary` = 账本内核 `summarize` 同形状（从未有资产的手机号也不报错）
  *   ⑭ 错误回显白名单：`EACCES` / `ENOENT` 等系统错误码与路径绝不透传；409 资产不足四字段与 `how_to_get` 原样保留
  *   ⑮ 真源未变：`config/tree-meta.json` 与 `migrate-output/`（trees + details + collections）逐字节 md5 一致
+ *   ⑯ 新建祖谱 99 籽全链路（Kevin 2026-10-09 拍定 · CLAN_CREATE_FEE_SEEDS 单点 lib/clan.js）：
+ *      /admin/create-clan 直建（200 扣籽+注册+镜像段 / 409 零写入 / 同姓同节点 400 / 落库失败原路返还 /
+ *      表单姓≠节点姓 → tree_id 随表单姓）；/admin/clan-request 预扣（fee_ref 落申请单 / 不足 409 不落申请 /
+ *      重复 pending 409 不扣）；/admin/decide-clan（驳回同批次原路返还后落 rejected / 通过不重复扣）
  *
  * 数据安全：COMPAT_OUT_DIR / COMPAT_META_FILE 一律指向 /tmp 副本；文末 md5 断言真实数据未变
  * （照 assets.test.js / node-delete.test.js 的模式）。
@@ -75,6 +80,7 @@ const TREES = {
   fee_zero: { tree_id: 'fee_zero', kind: 'family', display_title: '子氏（0 片路由实跑）' },
   fee_delns: { tree_id: 'fee_delns', kind: 'family', display_title: '丑氏（库层直调删节点）' },
   fee_clan: { tree_id: 'fee_clan', kind: 'clan', display_title: '祖谱（0 片实跑）' },
+  fee_req: { tree_id: 'fee_req', kind: 'family', display_title: '癸氏（建谱申请锚点树 · ⑯ 用）' },
 };
 const META_FILE = process.env.COMPAT_META_FILE;
 fs.writeFileSync(META_FILE, JSON.stringify({ _schema: '1.1', trees: TREES }, null, 2) + '\n');
@@ -103,6 +109,7 @@ fs.writeFileSync(
 const el = await import('./economy-ledger.js');
 const eco = await import('./economy-fee.js');
 const tw = await import('./tree-write.js');
+const clan = await import('./clan.js');
 const { handleRequest } = await import('../index.js');
 const { signJwt } = await import('./auth.js');
 
@@ -1082,7 +1089,8 @@ const ZERO_FEE_ROUTES = [
   '/admin/detach-founder',
   '/admin/remove-branch-link',
   '/admin/reset-founder',
-  '/admin/clan-request',
+  // /admin/clan-request 已于 Kevin 2026-10-09 移出 0 片清单：发起建谱申请预扣 99 籽（CLAN_CREATE_FEE_SEEDS，
+  // 单点 lib/clan.js）—— 冲正（decide-clan 驳回原路返还）只走 eco.refund / refundAssets，不接闸门。
   '/admin/decide-clan',
   '/marriage-request',
   '/admin/approve-marriage',
@@ -1104,7 +1112,7 @@ const ZERO_FEE_ROUTES = [
   '/wallet/transfer',
 ];
 
-test('0 片穷举：矩阵里 30 条 0 片路由均未接闸门（源码级）+ POST /people 实跑资产逐字节不变', async () => {
+test('0 片穷举：矩阵里 29 条 0 片路由均未接闸门（源码级）+ POST /people 实跑资产逐字节不变', async () => {
   const offenders = [];
   const missing = [];
   let checked = 0;
@@ -1118,14 +1126,15 @@ test('0 片穷举：矩阵里 30 条 0 片路由均未接闸门（源码级）+ 
     for (const b of branches) if (GATE_RE.test(b)) offenders.push(p);
   }
   assert.deepEqual(offenders, [], `这些 0 片路由被误接了闸门（矩阵即契约）：${offenders.join(', ')}`);
-  assert.ok(checked >= 30, `实际扫描到的 0 片路由分支片段仅 ${checked} 个`);
+  assert.ok(checked >= 29, `实际扫描到的 0 片路由分支片段仅 ${checked} 个`);
   // 清单必须与 index.js 实际路由逐条对上：**一条都不许缺**（幽灵路由 / 改名漏改一律红灯，
   // 不得为了跑绿把断言放松 —— P1 质检已删掉不存在的 POST /admin/reject-leave）
   assert.equal(missing.length, 0, `0 片清单与 index.js 对不上的路由（幽灵或改名）：${missing.join(', ')}`);
-  assert.equal(ZERO_FEE_ROUTES.length, 30, '0 片清单条数固定（矩阵即契约）');
+  // Kevin 2026-10-09：/admin/clan-request 移出 0 片清单（预扣 99 籽）→ 30 - 1 = 29
+  assert.equal(ZERO_FEE_ROUTES.length, 29, '0 片清单条数固定（矩阵即契约）');
 
-  // 正向对照：5 条计费路由都确实接了闸门
-  for (const p of ['/admin/reparent', '/admin/delete-node', '/admin/create-tree', '/admin/sibling-reorder']) {
+  // 正向对照：计费路由都确实接了闸门（Kevin 2026-10-09 起新增 /admin/create-clan 直建祖谱 99 籽）
+  for (const p of ['/admin/reparent', '/admin/delete-node', '/admin/create-tree', '/admin/sibling-reorder', '/admin/create-clan']) {
     const snippets = branchesOf(p).join('\n');
     assert.ok(GATE_RE.test(snippets), `${p} 应接入扣费闸门`);
   }
@@ -1178,11 +1187,12 @@ test('0 片穷举：矩阵里 30 条 0 片路由均未接闸门（源码级）+ 
 
 // ================= ⑥-2 冲正回显统一（fee_refunded） =================
 
-test('冲正回显统一：5 条计费路由落库失败一律带 fee_refunded:true（/admin/reparent、/admin/delete-node 实测）', async () => {
-  // 源码口径：五条 catch 一律 `…refunded ? { fee_refunded: true } : {}`（PUT /people、/admin/create-tree、
-  // /admin/reparent、/admin/delete-node、/admin/sibling-reorder 各一处；冲正才回显，未扣费 / 冲正失败不带）
+test('冲正回显统一：7 条计费路由落库失败一律带 fee_refunded:true（/admin/reparent、/admin/delete-node 实测）', async () => {
+  // 源码口径：七条 catch 一律 `…refunded ? { fee_refunded: true } : {}`（PUT /people、/admin/create-tree、
+  // /admin/reparent、/admin/delete-node、/admin/sibling-reorder、/admin/create-clan、/admin/clan-request 各一处；
+  // Kevin 2026-10-09 起新增后两条：直建祖谱落库失败冲正 + 建谱申请预扣后落申请失败冲正）
   const hits = (INDEX_LINES.join('\n').match(/refunded \? \{ fee_refunded: true \} : \{\}/g) || []).length;
-  assert.equal(hits, 5, '五条冲正分支口径必须统一');
+  assert.equal(hits, 7, '七条冲正分支口径必须统一');
   for (const p of ['/admin/reparent', '/admin/delete-node', '/admin/sibling-reorder']) {
     assert.match(branchesOf(p).join('\n'), /refunded \? \{ fee_refunded: true \}/, `${p} 冲正分支应回显 fee_refunded`);
   }
@@ -1264,6 +1274,198 @@ test('冲正回显统一：5 条计费路由落库失败一律带 fee_refunded:t
   assert.equal(poorRes.statusCode, 409, '余额不足 409');
   assert.equal(bodyOf(poorRes).code, 'ASSET_INSUFFICIENT');
   assert.equal('fee_refunded' in bodyOf(poorRes), false, '409 未扣费 → 不带 fee_refunded');
+});
+
+// ================= ⑯ 新建祖谱 99 籽（/admin/create-clan 直建 + /admin/clan-request 预扣 + /admin/decide-clan） =================
+
+/** 建谱申请集合（沙箱副本；顶层键 = 申请单 _id，无 records/list 容器） */
+const readClanRequests = () => {
+  const p = path.join(TMP, 'collections', 'jiazu_clan_requests.json');
+  if (!fs.existsSync(p)) return {};
+  return JSON.parse(fs.readFileSync(p, 'utf8'));
+};
+const metaTreeIds = () => Object.keys(JSON.parse(fs.readFileSync(META_FILE, 'utf8')).trees);
+
+test('POST /admin/create-clan：99 籽建谱扣籽（txs+批次）+ kind=clan 注册 + 顶端镜像段指向 master_handle；不足 409 零写入；同姓同节点重复 400；落库失败原路返还；姓氏可改 tree_id 随表单姓', async () => {
+  // zhonghua 树已由「0 片穷举」用例写入并常驻 treeCache（单人 'zhonghua-host'，I900）
+  const masterHandle = 'zhonghua-host';
+
+  // ① 200：扣 99（txs + 批次）+ tree-meta 注册 kind='clan' + 顶端镜像段指向 master_handle
+  await scene({ phone: CHIEF, seeds: 99 });
+  const okRes = await call('/admin/create-clan', 'POST', bee(CHIEF), {}, { master_handle: masterHandle, surname: '甲', clan_title: '甲氏祖谱（直建）' });
+  assert.equal(okRes.statusCode, 200, bodyOf(okRes).error || '');
+  const created = bodyOf(okRes);
+  assert.equal(created.ok, true);
+  assert.ok(created.tree_id, '返回新祖谱 id');
+  assert.equal(created.fee.unit, 'seeds', '籽域扣费');
+  assert.equal(created.fee.pieces, 99, '回显 99 籽');
+  assert.equal(created.fee.balance, 99);
+  assert.equal(created.fee.balance_after, 0);
+  const afterCreate = await readAssets(CHIEF);
+  assert.equal(el.sumLots(afterCreate.seeds), 0, '扣 99 籽');
+  assert.deepEqual(txTypes(afterCreate), ['tree_create']);
+  assert.deepEqual(afterCreate.txs[0].delta, { seeds: -99 });
+  assert.equal(afterCreate.txs[0].operator, CHIEF, '从操作者本人扣');
+  const clanEntry = JSON.parse(fs.readFileSync(META_FILE, 'utf8')).trees[created.tree_id];
+  assert.ok(clanEntry, 'tree-meta 已登记');
+  assert.equal(clanEntry.kind, 'clan', '注册 kind=clan');
+  assert.equal(clanEntry.master_handle, masterHandle);
+  assert.equal(clanEntry.surname, '甲');
+  const clanTree = readTree(created.tree_id);
+  const founderMirror = Object.values(clanTree.people).find((p) => p.external_link_type === 'founder');
+  assert.ok(founderMirror, '建后即挂：顶端镜像段已建');
+  assert.equal(founderMirror.external_mirror, 'true');
+  assert.equal(founderMirror.external_tree, 'zhonghua');
+  assert.equal(founderMirror.external_person_handle, masterHandle, '顶端镜像段指向 master_handle');
+
+  // ② 不足 409 + 零写入（校验全过后、落库前扣 → 扣费失败时不落任何东西）
+  await scene({ phone: CHIEF, seeds: 98 });
+  const poorBag = bagOf(await readAssets(CHIEF));
+  const poorMeta = metaTreeIds();
+  const poorRes = await call('/admin/create-clan', 'POST', bee(CHIEF), {}, { master_handle: masterHandle, surname: '乙', clan_title: '乙氏祖谱' });
+  assert.equal(poorRes.statusCode, 409, '余额不足 409');
+  const pb = bodyOf(poorRes);
+  assert.equal(pb.code, 'ASSET_INSUFFICIENT');
+  assert.equal(pb.need, 99);
+  assert.equal(pb.current, 98);
+  assert.equal(pb.unit, 'seeds');
+  assert.ok(Array.isArray(pb.how_to_get) && pb.how_to_get.length > 0, 'how_to_get 全字段');
+  assert.equal('fee_refunded' in pb, false, '未扣费 → 不带 fee_refunded');
+  assert.deepEqual(metaTreeIds(), poorMeta, '不足 → 不注册 tree-meta');
+  assert.equal(bagOf(await readAssets(CHIEF)), poorBag, '不足 → 籽一字节不动');
+  assert.deepEqual(txTypes(await readAssets(CHIEF)), [], '不足 → 零流水');
+
+  // ③ 同姓同节点重复 400（硬口径 1 唯一性先于扣费 → 不产生流水）
+  await scene({ phone: CHIEF, seeds: 99 });
+  const dupBag = bagOf(await readAssets(CHIEF));
+  const dupRes = await call('/admin/create-clan', 'POST', bee(CHIEF), {}, { master_handle: masterHandle, surname: '甲', clan_title: '甲氏祖谱（重复）' });
+  assert.equal(dupRes.statusCode, 400, `同姓同节点重复应 400：实得 ${dupRes.statusCode}`);
+  assert.match(bodyOf(dupRes).error, /已认该世本节点为始祖/);
+  assert.equal(bagOf(await readAssets(CHIEF)), dupBag, '重复 400 → 未扣费');
+  assert.deepEqual(txTypes(await readAssets(CHIEF)), [], '重复 400 → 零流水');
+
+  // ④ 落库失败 → 原路返还同一批次 + fee_refunded:true（trees 目录占位成文件，制造真实落库失败）
+  const seedLotId = (await readAssets(CHIEF)).seeds[0].id;
+  const seedsBefore = JSON.stringify((await readAssets(CHIEF)).seeds);
+  const treesDir = path.join(TMP, 'trees');
+  const stash = fs.readdirSync(treesDir).map((f) => [f, fs.readFileSync(path.join(treesDir, f))]);
+  fs.rmSync(treesDir, { recursive: true, force: true });
+  fs.writeFileSync(treesDir, 'blocked');
+  let failRes = null;
+  try {
+    failRes = await call('/admin/create-clan', 'POST', bee(CHIEF), {}, { master_handle: masterHandle, surname: '丙', clan_title: '丙氏祖谱' });
+  } finally {
+    fs.rmSync(treesDir, { force: true });
+    fs.mkdirSync(treesDir, { recursive: true });
+    for (const [f, buf] of stash) fs.writeFileSync(path.join(treesDir, f), buf);
+  }
+  assert.ok(failRes.statusCode >= 400, '落库失败 → 非 2xx');
+  assert.equal(bodyOf(failRes).fee_refunded, true, '错误体带 fee_refunded:true');
+  const refunded = await readAssets(CHIEF);
+  assert.equal(el.sumLots(refunded.seeds), 99, '99 籽已原路返还');
+  assert.equal(JSON.stringify(refunded.seeds), seedsBefore, '原路返还**同一批次**（同 id / 同 expires_at / 同 qty）');
+  assert.equal(refunded.seeds[0].id, seedLotId);
+  assert.deepEqual(txTypes(refunded), ['tree_create', 'fee_refund']);
+  assert.deepEqual(refunded.txs[1].delta, { seeds: 99 }, 'fee_refund delta 取原值反向');
+  assert.equal(refunded.txs[1].ref.txn_id, refunded.txs[0].id, 'ref 指回原流水 id');
+
+  // ⑤ 姓氏可改：表单姓（丁）≠ 节点姓（夹具 zhonghua-host 姓「甲」）→ tree_id 随表单姓
+  const editRes = await call('/admin/create-clan', 'POST', bee(CHIEF), {}, { master_handle: masterHandle, surname: '丁', clan_title: '丁氏祖谱（改姓）' });
+  assert.equal(editRes.statusCode, 200, bodyOf(editRes).error || '');
+  const edited = bodyOf(editRes);
+  assert.equal(edited.tree_id, `ding_${'丁'.codePointAt(0)}`, 'tree_id 随表单姓（丁）');
+  assert.equal(JSON.parse(fs.readFileSync(META_FILE, 'utf8')).trees[edited.tree_id].surname, '丁');
+  assert.equal(clan.CLAN_CREATE_FEE_SEEDS, 99, '费用单价单点 lib/clan.js');
+});
+
+test('/admin/clan-request 预扣 99 籽（fee_ref 落申请单）+ 不足 409 不落申请 + 重复 pending 409 不扣 + 驳回同批次原路返还落 rejected + 通过不重复扣', async () => {
+  const masterHandle = 'zhonghua-host';
+
+  // ① 预扣 + fee_ref 落档：本姓现有树（fee_req）的 steward 发起 → 校验全过后、落申请前预扣 99
+  const reqTree = singleTree('fee_req');
+  writeTree(reqTree.tree);
+  await scene({ phone: STEWARD, seeds: 99 });
+  const stewardBefore = bagSorted(await readAssets(STEWARD)); // 预扣前基线（驳回原路返还后应逐字节还原）
+  const okRes = await call('/admin/clan-request', 'POST', H('fee_req', STEWARD), {}, { tree_id: 'fee_req', surname: '季', master_handle: masterHandle, clan_title: '季氏祖谱（申请）' });
+  assert.equal(okRes.statusCode, 200, bodyOf(okRes).error || '');
+  const req1 = bodyOf(okRes);
+  const docs1 = readClanRequests();
+  const doc1 = docs1[req1.request_id];
+  assert.ok(doc1, '申请单已落库');
+  assert.equal(doc1.status, 'pending');
+  assert.equal(doc1.fee_ref.seeds, 99, 'fee_ref 记 99 籽');
+  assert.ok(doc1.fee_ref.txn_id, 'fee_ref 记原流水 id');
+  assert.ok(Array.isArray(doc1.fee_ref.lots) && doc1.fee_ref.lots.length === 1, 'fee_ref 批次 lots 快照');
+  assert.equal(doc1.fee_ref.lots[0].qty, 99);
+  const assetsAfterReq = await readAssets(STEWARD);
+  assert.equal(el.sumLots(assetsAfterReq.seeds), 0, '发起即预扣 99 籽');
+  assert.deepEqual(txTypes(assetsAfterReq), ['tree_create']);
+
+  // ② 重复 pending 409 不扣、不落第二张单
+  const dupBag = bagOf(await readAssets(STEWARD));
+  const dupRes = await call('/admin/clan-request', 'POST', H('fee_req', STEWARD), {}, { tree_id: 'fee_req', surname: '季', master_handle: masterHandle, clan_title: '季氏祖谱（重复）' });
+  assert.equal(dupRes.statusCode, 409, `重复 pending 应 409：实得 ${dupRes.statusCode}`);
+  assert.equal(bodyOf(dupRes).error, clan.PENDING_CLAN_MESSAGE, '文案沿用单点常量');
+  assert.equal(Object.keys(readClanRequests()).length, 1, '重复 → 不落第二张申请单');
+  assert.equal(bagOf(await readAssets(STEWARD)), dupBag, '重复 → 不扣');
+  assert.deepEqual(txTypes(await readAssets(STEWARD)), ['tree_create'], '重复 → 零新增流水');
+
+  // ③ 不足 409 不落申请（POOR 0 籽）
+  await scene({ phone: POOR, seeds: 0 });
+  const poorBag = bagOf(await readAssets(POOR));
+  const poorRes = await call('/admin/clan-request', 'POST', H('fee_req', POOR), {}, { tree_id: 'fee_req', surname: '顾', master_handle: masterHandle, clan_title: '顾氏祖谱' });
+  assert.equal(poorRes.statusCode, 409, '余额不足 409');
+  const pb = bodyOf(poorRes);
+  assert.equal(pb.code, 'ASSET_INSUFFICIENT');
+  assert.equal(pb.need, 99);
+  assert.equal(pb.current, 0);
+  assert.equal(pb.unit, 'seeds');
+  assert.equal('fee_refunded' in pb, false, '未扣费 → 不带 fee_refunded');
+  assert.equal(Object.keys(readClanRequests()).length, 1, '不足 → 不落申请');
+  assert.equal(bagOf(await readAssets(POOR)), poorBag, '不足 → 资产一字节不动');
+
+  // ④ 驳回：同批次原路全额返还（同 lot_id / 同 qty）→ 再落 rejected；返还单次
+  const rejectRes = await call('/admin/decide-clan', 'POST', bee(CHIEF), {}, { request_id: req1.request_id, approve: false, reason: '测试驳回' });
+  assert.equal(rejectRes.statusCode, 200, bodyOf(rejectRes).error || '');
+  assert.equal(bodyOf(rejectRes).status, 'rejected');
+  assert.equal(bodyOf(rejectRes).fee_refunded, true, '驳回回显 fee_refunded:true');
+  const doc1r = readClanRequests()[req1.request_id];
+  assert.equal(doc1r.status, 'rejected', 'rejected 落盘');
+  assert.equal(doc1r.decided_by, CHIEF);
+  assert.equal(doc1r.reject_reason, '测试驳回');
+  assert.ok(doc1r.fee_refund && doc1r.fee_refund.txn_id, '申请单记 fee_refund 回执');
+  const afterReject = await readAssets(STEWARD);
+  assert.equal(bagSorted(afterReject), stewardBefore, '同批次原路全额返还（资产袋逐字节还原）');
+  assert.equal(afterReject.seeds[0].id, doc1.fee_ref.lots[0].lot_id, '同 lot_id');
+  assert.equal(afterReject.seeds[0].qty, doc1.fee_ref.lots[0].qty, '同 qty');
+  assert.equal(afterReject.seeds[0].expires_at, doc1.fee_ref.lots[0].expires_at, '同 expires_at');
+  assert.deepEqual(txTypes(afterReject), ['tree_create', 'fee_refund']);
+  assert.deepEqual(afterReject.txs[1].delta, { seeds: 99 });
+  assert.equal(afterReject.txs[1].ref.txn_id, doc1.fee_ref.txn_id, 'fee_refund 指回原流水 id');
+
+  // ⑤ 再次驳回同一单：status!==pending 400 闸门 → 不重复返还
+  const againRes = await call('/admin/decide-clan', 'POST', bee(CHIEF), {}, { request_id: req1.request_id, approve: false, reason: '再驳一次' });
+  assert.equal(againRes.statusCode, 400, '已驳回再驳 → 400');
+  assert.deepEqual(txTypes(await readAssets(STEWARD)), ['tree_create', 'fee_refund'], '返还只此一次');
+
+  // ⑥ 通过：不重复扣（发起时预扣即最终扣，无二次扣费、无返还流水）
+  await scene({ phone: STEWARD, seeds: 99 });
+  const ok2 = await call('/admin/clan-request', 'POST', H('fee_req', STEWARD), {}, { tree_id: 'fee_req', surname: '顾', master_handle: masterHandle, clan_title: '顾氏祖谱（申请）' });
+  assert.equal(ok2.statusCode, 200, bodyOf(ok2).error || '');
+  const req2 = bodyOf(ok2);
+  const approveRes = await call('/admin/decide-clan', 'POST', bee(CHIEF), {}, { request_id: req2.request_id, approve: true });
+  assert.equal(approveRes.statusCode, 200, bodyOf(approveRes).error || '');
+  assert.equal(bodyOf(approveRes).status, 'approved');
+  const approvedTreeId = bodyOf(approveRes).result?.tree_id;
+  assert.ok(approvedTreeId, '审批通过建树');
+  const afterApprove = await readAssets(STEWARD);
+  assert.equal(el.sumLots(afterApprove.seeds), 0, '仍只有发起时预扣的 99（通过不另扣）');
+  assert.deepEqual(txTypes(afterApprove), ['tree_create'], '通过：无二次扣费、无返还流水');
+  const doc2 = readClanRequests()[req2.request_id];
+  assert.equal(doc2.status, 'approved');
+  assert.ok(fs.existsSync(path.join(TMP, 'trees', `${approvedTreeId}.json`)), '审批通过后祖谱树已落库');
+  assert.equal(JSON.parse(fs.readFileSync(META_FILE, 'utf8')).trees[approvedTreeId].kind, 'clan');
+  assert.equal(clan.CLAN_REQUEST_COLLECTION, 'jiazu_clan_requests', '集合名单点 lib/clan.js');
 });
 
 // ================= ⑦ 真源未变 =================

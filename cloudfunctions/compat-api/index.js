@@ -40,7 +40,8 @@
  *   POST /admin/founder-request | /admin/decide-founder | /admin/attach-founder | /admin/detach-founder
  *   POST /admin/reset-founder（重置始祖：清空本树始祖登记 → 「无始祖」态）
  *   GET  /admin/founder-requests（始祖挂载 / 认祖，docs/founder-attach.spec.md）
- *   POST /admin/clan-request | /admin/decide-clan
+ *   POST /admin/clan-request | /admin/decide-clan（建谱申请发起预扣 99 籽 / 驳回原路返还 · Kevin 2026-10-09）
+ *   POST /admin/create-clan（直建祖谱：chief_editor 世本真身节点上直接新建并即挂 · 99 籽 · Kevin 2026-10-09）
  *   GET  /admin/clan-requests | /admin/clans | /admin/clan-info（祖谱，docs/clan-tree.spec.md）
  *   POST /join | /leave-request
  *   POST /invite/code | GET /invite/code/resolve | POST /invite/bind
@@ -548,6 +549,12 @@ async function handleRequest(event) {
         if (!issueTargetTree) return send(404, { error: `家族树不存在: ${issueTree}` });
         if (!issueTargetTree.people || !issueTargetTree.people[issueHandle]) {
           return send(404, { error: `该家族树中找不到此节点: ${issueHandle}（tree_id=${issueTree}）` });
+        }
+        // 已故节点不签发（Kevin 2026-10-09 拍板）：判据 = `is_living === false` 严格等值（true / null /
+        // 缺字段一律不算已故，全站三态同源）；先于 409 / 403 拦下，**不落任何码文档**
+        // （与既有「节点已被绑 ⇒ 409 不签发废码」同形态；assertAnchorBindable 调用点数不动）。
+        if (issueTargetTree.people[issueHandle].is_living === false) {
+          return send(400, { error: '已故节点不可发起入族邀请' });
         }
         try {
           // 复用批 A 单一单点函数：命中他人绑定 ⇒ 409（**签发时不给 force** —— 不签发废码；传参里不出现 force）
@@ -2189,6 +2196,55 @@ async function handleRequest(event) {
       }
     }
 
+    // 直建祖谱（方式 C · Kevin 2026-10-09 拍定）：总编辑在世本真身节点上直接新建祖谱并即挂（建后即挂）。
+    // - body: { master_handle(必填), surname(必填·单汉字·可改), clan_title(必填), target_tree_id(缺省 = 世本) }
+    // - 鉴权 = requireWriteUser（同 attach-founder：zhonghua ⇒ chief_editor）；其余字段一律不传
+    //   （genealogyName / hallName / ownRootName / originCode 均空，走 lib/clan.js 缺省口径）。
+    // - 唯一性（硬口径 1「世本节点 × 姓」）走 createClanTree 内部 assertClanFounderUnique（不复制第二份）。
+    // - 计费：全部校验通过后、落库前从操作者扣 CLAN_CREATE_FEE_SEEDS（单价单点在 lib/clan.js），
+    //   扣费 / 冲正复用建树费既有经济域单点（chargeSeeds / refundQuietly，与 /admin/create-tree 同形态）；
+    //   落库失败 → 原路返还同一批次，错误体带 fee_refunded:true（照 reparent 形态）。
+    if (pathname === '/admin/create-clan' && method === 'POST') {
+      const body = parseBody(event);
+      const directClanSurname = String(body.surname || '').trim();
+      const directClanTitle = String(body.clan_title || '').trim();
+      const directTargetTreeId = String(body.target_tree_id || MASTER_TREE_ID).trim();
+      const directMasterRef = String(body.master_handle || '').trim();
+      if (!directClanSurname) return send(400, { error: '请填写姓氏' });
+      if (!/^[\u4e00-\u9fa5]$/.test(directClanSurname)) return send(400, { error: '请填写单个汉字姓氏' });
+      if (!directClanTitle) return send(400, { error: '请填写祖谱名称' });
+      if (!directMasterRef) return send(400, { error: '缺少 master_handle' });
+      const directMasterHit = await resolveNode(directMasterRef, directTargetTreeId, { targetTreeId: directTargetTreeId });
+      if (!directMasterHit) {
+        return send(404, { error: `目标树 ${directTargetTreeId} 中找不到编号/句柄为「${directMasterRef}」的节点` });
+      }
+      const directMasterHandle = directMasterHit.handle;
+      let charged = null;
+      let operatorPhone = '';
+      try {
+        const u = await requireWriteUser(headers, directTargetTreeId, pathname, directMasterHandle, false);
+        operatorPhone = u.phone;
+        const result = await clan.createClanTree({
+          surname: directClanSurname,
+          clanTitle: directClanTitle,
+          masterTreeId: directTargetTreeId,
+          masterHandle: directMasterHandle,
+          initiatorPhone: u.phone,
+          onBeforeWrite: async () => {
+            charged = await eco.chargeSeeds(u.phone, clan.CLAN_CREATE_FEE_SEEDS, {
+              op: 'tree_create',
+              person_handle: directMasterHandle,
+              desc: `新建祖谱（扣 ${clan.CLAN_CREATE_FEE_SEEDS} 颗石榴籽）`,
+            });
+          },
+        });
+        return send(200, { ...result, fee: eco.feeResponse(charged) });
+      } catch (e) {
+        const refunded = await refundQuietly(operatorPhone, charged, '建谱落库失败，已原路返还');
+        return send(e.status || 400, eco.errorPayload(e, refunded ? { fee_refunded: true } : {}));
+      }
+    }
+
     // 解除始祖挂载（双方均可发起，无需申请，立即生效）
     // - 下层树侧：传始祖节点 person_handle（本树 steward / chief）；祖谱 → 清顶端镜像段、留自有段
     // - 上层树侧：传 master_handle / target_handle（+ attached_tree_id 指定具体挂载树；仅一个时可省略）
@@ -2328,8 +2384,10 @@ async function handleRequest(event) {
         if (!masterPerson) return send(404, { error: '所选中华世本节点不存在' });
         const masterHandle = masterHit.handle;
         const clauses = await colAll(clan.CLAN_REQUEST_COLLECTION);
+        // 重复 pending = 409（Kevin 2026-10-09 拍定）：与「籽不足 409」同域 —— 资源冲突类拦截一律 409，
+        // 400 只留给入参错误；校验发生在预扣之前 ⇒ 不产生任何资产流水。
         if (clauses.some((r) => r.status === 'pending' && r.surname === surname && r.master_handle === masterHandle)) {
-          return send(400, { error: clan.PENDING_CLAN_MESSAGE });
+          return send(409, { error: clan.PENDING_CLAN_MESSAGE });
         }
         // 硬口径 1（同姓同世本节点唯一）提前拦截，避免审批时才失败
         try {
@@ -2362,7 +2420,32 @@ async function handleRequest(event) {
           note: body.note,
           originCode,
         });
-        await colSet(clan.CLAN_REQUEST_COLLECTION, id, request);
+        // 预扣 99 籽（Kevin 2026-10-09 拍定：发起时预扣、驳回原路返还）：全部校验（含重复 pending /
+        // 资格 / 唯一性 / 发源地）通过后、落申请前，从发起人预扣 CLAN_CREATE_FEE_SEEDS（单价单点 lib/clan.js）；
+        // 不足 409 → 不落申请；扣费复用建树费既有经济域单点 chargeSeeds（与 /admin/create-tree 同形态）。
+        // 申请单记 fee_ref（原流水 id + 批次 lots 快照）供 decide-clan 驳回时**原路返还同一批次**。
+        let charged = null;
+        let requestPersisted = false;
+        try {
+          charged = await eco.chargeSeeds(u.phone, clan.CLAN_CREATE_FEE_SEEDS, {
+            op: 'tree_create',
+            tree_id: anchorEntry.tree_id,
+            person_handle: masterHandle,
+            desc: `建谱申请预扣（扣 ${clan.CLAN_CREATE_FEE_SEEDS} 颗石榴籽，驳回原路返还）`,
+          });
+          request.fee_ref = {
+            txn_id: charged.txn_id,
+            unit: 'seeds',
+            seeds: clan.CLAN_CREATE_FEE_SEEDS,
+            charged_at: new Date().toISOString(),
+            lots: charged.spent,
+          };
+          await colSet(clan.CLAN_REQUEST_COLLECTION, id, request);
+          requestPersisted = true;
+        } catch (e) {
+          const refunded = requestPersisted ? false : await refundQuietly(u.phone, charged, '申请落库失败，已原路返还');
+          return send(e.status || 400, eco.errorPayload(e, refunded ? { fee_refunded: true } : {}));
+        }
         return send(200, {
           ok: true,
           request_id: id,
@@ -2411,14 +2494,43 @@ async function handleRequest(event) {
         }
         const now = new Date().toISOString();
         if (!approve) {
+          // 驳回先返还（Kevin 2026-10-09 拍定：杜绝「已驳回钱未退」）：把发起时预扣的 99 籽
+          // 按申请单 fee_ref 的批次 lots **原路全额返还**（同 lot_id / 同 qty，不新造批次），
+          // 返还成功后才落 rejected；返还失败 → 500 且申请保持 pending（可重试）。
+          // 只此一次：status!==pending 已有 400 闸门 + 发起人账上按原流水 id 查重（冲正前再核一遍）。
+          const feeRef = request.fee_ref || null;
+          let refundTxnId = '';
+          if (feeRef && feeRef.txn_id) {
+            const assets = await ledger.getAssets(request.requested_by);
+            const alreadyRefunded = (assets?.txs || []).some(
+              (t) => t?.type === 'fee_refund' && t?.ref?.txn_id === feeRef.txn_id,
+            );
+            if (!alreadyRefunded) {
+              const lots = Array.isArray(feeRef.lots) ? feeRef.lots : [];
+              const r = lots.length
+                ? await eco.refund(request.requested_by, lots, {
+                    unit: 'seeds',
+                    txn_id: feeRef.txn_id,
+                    tree_id: request.tree_id || '',
+                    person_handle: request.master_handle || '',
+                    reason: '建谱申请已驳回，预扣籽原路返还',
+                  })
+                : await eco.refundAssets(request.requested_by, feeRef.txn_id, '建谱申请已驳回，预扣籽原路返还');
+              if (!r || r.ok === false) {
+                return send(500, { error: '驳回返还失败，申请保持待审批，请稍后重试' });
+              }
+              refundTxnId = r.txn_id || '';
+            }
+          }
           await colSet(clan.CLAN_REQUEST_COLLECTION, rid, {
             ...request,
             status: 'rejected',
             decided_by: u.phone,
             decided_at: now,
             reject_reason: String(body.reason || '').slice(0, 200),
+            ...(feeRef && feeRef.txn_id ? { fee_refund: { txn_id: refundTxnId, refunded_at: now } } : {}),
           });
-          return send(200, { ok: true, status: 'rejected' });
+          return send(200, { ok: true, status: 'rejected', ...(refundTxnId ? { fee_refunded: true } : {}) });
         }
         const result = await clan.createClanTree({
           surname: request.surname,

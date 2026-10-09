@@ -5,6 +5,7 @@
  *   ① 签发 node 型 200（形状逐字 / 6 位码表 / TTL 30 天 / `max_uses=1` / 落库字段）
  *   ①′ 签发 plain 型：忽略节点参数、`tree_id=null`、`max_uses=null`（多次可用）
  *   ② 节点已被绑定 ⇒ 签发 **409**（且不落废码）
+ *   ②′ 已故节点（`is_living === false` 严格等值）签 node 型 ⇒ **400** 文案逐字 + 不落任何码（Kevin 2026-10-09）
  *   ③ 非本树成员签发 ⇒ **403**；chief_editor 放行
  *   ④ `GET /invite/code/resolve` 五态（valid / expired / revoked / used / not_found）+ **零手机号**
  *   ⑤ `X-Invite-Code` 放行：同树有效码 ⇒ 节点数 = 未裁剪（= 该树 member 读数）；无码 / 无效 / 异树 ⇒ **逐字相同**
@@ -84,6 +85,9 @@ for (let i = 1; i <= DEPTH; i += 1) {
   };
   if (i > 1) families[`f${i - 1}`] = { handle: `f${i - 1}`, gramps_id: `F${String(i - 1).padStart(4, '0')}`, father_handle: `n${i - 1}`, mother_handle: '', child_handles: [`n${i}`] };
 }
+// 已故对照（Kevin 2026-10-09 拍板：已故节点不得签发入族邀请）：在**既有人物** n25 上落 `is_living=false`。
+// **不得新增人物** —— ⑤ 的整树读数按人数定额断言，加人会打红；n25 是本文件无其它用例引用的尾节点。
+people.n25.is_living = false;
 const TREE = { tree_id: TREE_ID, version: 1, people, families };
 const OTHER_TREE = {
   tree_id: OTHER_TREE_ID,
@@ -252,6 +256,19 @@ test('② 节点已被他人绑定 ⇒ 签发 409，且不落废码', async () =
   assert.ok(!res.body.includes(U.occ), '409 文案不得下发占用者手机号');
   assert.equal(Object.keys(codeDocs()).length, before, '409 不得落任何码');
   assert.equal((await anchorOf(U.inviter)).person_handle, 'n2', '占用者锚点不受影响');
+});
+
+// ---- ②′ 已故节点 ⇒ 签发 400（Kevin 2026-10-09：已故不得发起入族邀请）----
+
+test('②′ 已故节点（is_living === false）签 node 型 ⇒ 400 文案逐字 + 不落任何码；缺省 is_living 不受影响', async () => {
+  const before = Object.keys(codeDocs()).length;
+  const res = await issue(U.inviter, 'user', { kind: 'node', tree_id: TREE_ID, person_handle: 'n25' });
+  assert.equal(res.statusCode, 400);
+  assert.equal(json(res).error, '已故节点不可发起入族邀请', '文案逐字（前端 inviteErrorText 透出后端原文）');
+  assert.equal(Object.keys(codeDocs()).length, before, '400 不得落任何码文档');
+  // 对照：is_living 缺省（三态口径 = 不算已故）的节点照常签发 200（n8，无其它用例引用）
+  const alive = await issue(U.inviter, 'user', { kind: 'node', tree_id: TREE_ID, person_handle: 'n8' });
+  assert.equal(alive.statusCode, 200, 'is_living 缺省不算已故，签发不受守卫影响');
 });
 
 // ---- ③ 签发权限 ----

@@ -57,6 +57,14 @@ export const MAX_CHAIN_DEPTH = 12;
 /** 建谱申请重复提示 */
 export const PENDING_CLAN_MESSAGE = '该姓已有待审批的建谱申请，请等待总编审批';
 
+/**
+ * 新建祖谱费用（Kevin 2026-10-09 拍定 · 一句话可改）：直建（POST /admin/create-clan）与
+ * 申请-审批路径（POST /admin/clan-request 发起预扣 / decide-clan 驳回原路返还）同价同源。
+ * 本常量只定「价」；扣费 / 冲正机制一律复用建树费既有经济域单点（eco.chargeSeeds / eco.refund 等），
+ * 不另写第二套扣籽逻辑。
+ */
+export const CLAN_CREATE_FEE_SEEDS = 99;
+
 /** 祖谱未认祖世本时的页面提示（docs/clan-tree.spec.md §5） */
 export const NO_MASTER_MESSAGE = '该祖谱未认祖世本';
 
@@ -764,7 +772,9 @@ export async function createClanTree({
     founder_handle: ownRootHandle,
     founder_mirror_handle: applied.founder_mirror_handle,
     mirror_count: applied.mirror_count,
-    message: `已建立「${meta.trees[treeId].display_title}」（${treeId}），始祖镜像自${kindLabel(TREE_KIND.MASTER)}「${masterPerson.name || ''}」`,
+    // ⚠️ 文案取本函数刚写出的 clanEntry（而非 meta.trees[treeId]）：local 模式 mutateTreeMeta 只落盘
+    // （文件指纹失效交由下一次 getMeta 重读），**不回填**调用方持有的 meta 快照 → 读旧快照必 undefined。
+    message: `已建立「${clanEntry.display_title}」（${treeId}），始祖镜像自${kindLabel(TREE_KIND.MASTER)}「${masterPerson.name || ''}」`,
   };
 }
 
