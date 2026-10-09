@@ -184,3 +184,59 @@ npm test 2>&1 | tail -8        # 本节复测（2026-09-20 18:22:53 CST）：454
 **（c）E2 登记行（取证路径 · 次优但已获接受）**：上述证据由 **`PersonDetailModal.open(treeId, handle)`**（公开 API，与 `clan-hall.vue:411-419` `openOwnFounder` 的 catch 回退**同调用形状**）取得、**非真实鼠标点击** ⇒ **必须写明理据**，避免后续会话误读为「正常路径可达」；Jing 本轮**尝试**真实点击流复现**未成**（浏览器后端被 Chrome profile 写锁拦下）⇒ **未补证**。**完整理据 / 代码锚点 / 独立结构侧证据 = `docs/founder-attach.spec.md` §9-11 (c) (d)**。
 
 > **本节（§11-6）边界**：**只改 `docs/**`**；**未改代码、未跑迁移脚本（含 dry-run）、未写真源、未重传 / 部署 / 打包、未提交、未尝试写 `AGENTS.md`**。真源现值 = `config/tree-meta.json` **`13616a89db2782256c3f33260aa32470`**（9,814 B）、`migrate-output/**` **317 文件**。
+
+---
+
+## 12. 直建祖谱（方式 C）＋ 申请-审批路径同价 99 籽（**追加章节 · Kevin 2026-10-09 三次拍定 + 修正 · 只追加 · 不改 §0–§11 任何历史行 · 删除行 = 0 · 本册无任何字面替换**）
+
+### 12-0 拍定口径（**照录 · 逐条**）
+
+1. **zhonghua 节点「⛩ 挂载祖谱」弹窗新增就地新建祖谱（方式 C，仅 chief_editor）**；**建后即挂**（复用 `createClanTree`，出生即带该节点世本镜像段）。
+2. **表单最简 = 祖谱名称（必填）+ 姓氏（必填 · 单汉字 · 预填当前节点姓但可改 —— Kevin 修正）**；`tree_id` 由**表单姓**经 `genClanTreeId` 生成；唯一性照旧「**世本节点 × 表单姓**」（不同姓可共享节点）。
+3. **直建计费**：校验全过后、落库前从**操作者**扣 **99 籽**（单点常量 `CLAN_CREATE_FEE_SEEDS = 99` 落 `lib/clan.js`，**一句话可改**）；落库失败**原路返还** + `fee_refunded:true`；不足 **409 整单不建不挂**。
+4. **既有申请-审批路径同样收 99 籽**：发起时从发起人**预扣**（`fee_ref = txn_id + lots` 落申请单）、不足 409 **不落申请**；**驳回原路同批次全额返还（复用既有 `fee_refund` 流水类型 + 幂等重放检查）再落 rejected**；**通过不扣不退**。
+5. **clan-request 移出 0 片路由清单**（economy-fee 矩阵 30 → 29 条；计费口径细目 = `docs/economy-fee.spec.md` **§16**，本节不复写）。
+
+### 12-1 后端路由契约（现证 · `cloudfunctions/compat-api/index.js` / `lib/clan.js`）
+
+- **头注登记**：`index.js` `:43-44`（clan-request 预扣 / decide-clan 驳回返还 / create-clan 直建 99 籽 · Kevin 2026-10-09）。
+- **`POST /admin/create-clan`（直建）** —— 现证 `:2207-2246`：入参 `surname` / `clan_title` / `master_handle` / `target_tree_id?`（缺省 `MASTER_TREE_ID`）；校验 = 姓氏必填 `:2213` → **单汉字 `:2214`** → 名称必填 `:2215` → `master_handle` 必填 `:2216` → `resolveNode` 解析 `:2217-2221`；权限 = `requireWriteUser`（`:2225`；目标树 zhonghua ⇒ 既有写权阶梯 = 总谱仅 chief_editor，用例 ⑯ 以 CHIEF 发起）；**扣费 = `createClanTree` 的 `onBeforeWrite` 钩子**（校验全过后、落库前；`chargeSeeds` 现证 `:2233-2239`）；成功回显 `fee` `:2241`；**落库失败 → `refundQuietly` 原路返还 + `fee_refunded:true`** `:2242-2245`。
+- **`tree_id` 生成**：`genClanTreeId(meta, 表单姓)` —— 现证 `lib/clan.js` `:108-111`（`<姓拼音>_<十进制码点>`，冲突追加 `_01/_02…`），`createClanTree` 内调用 `:659`。
+- **唯一性**：`assertClanFounderUnique`「同姓同世本节点唯一（异姓可共享）」—— 现证 `lib/clan.js` `:125-140`（400 文案 `:136`）；直建侧**不复制第二份**（`index.js` 注释 `:2203`）。
+- **单价单点**：`CLAN_CREATE_FEE_SEEDS = 99` —— 现证 `lib/clan.js` `:64-66`（**一句话可改**）。
+- **`POST /admin/clan-request`（申请 · 预扣）** —— 现证 `:2362`（路由）/ `:2423-2448`：预扣注释 `:2423-2426`（**全部校验（含重复 pending / 资格 / 唯一性 / 发源地）通过后、落申请前**）；`chargeSeeds` `:2430-2435`；**`request.fee_ref = { txn_id, unit:'seeds', seeds, charged_at, lots }` 落申请单** `:2436-2442`；落申请 `:2443-2444`；落库失败 → 返还 + `fee_refunded` `:2445-2448`；**不足 409 → 不落申请**（测试现证 `:1413-1425`，见 12-4）。
+- **`POST /admin/decide-clan`（审批）** —— 现证 `:2480-2558`：仅 chief_editor `:2489`；`status !== 'pending'` 400 闸 `:2492-2494`；**驳回先返还** `:2496-2524`（注释 `:2497-2500`「杜绝已驳回钱未退」；**幂等重放检查** = 发起人账上按 `type === 'fee_refund' && ref.txn_id === feeRef.txn_id` 查重 `:2504-2507`；**同批次原路全额返还** = 有 `lots` 走 `eco.refund`（同 lot_id / 同 qty，不新造批次）`:2509-2517`、无 `lots` 走 `eco.refundAssets` `:2518`；**返还失败 → 500 且申请保持 pending 可重试** `:2519-2521`）；**返还成功后才落 `rejected`**（`fee_refund` 回执落申请单 `:2525-2532`）；**通过 = `createClanTree` 建树，不扣不退** `:2535-2554`。
+
+### 12-2 前端口径与文案（**逐字 · 现证 `frontend/src/components/person-archive/person-archive.vue`**）
+
+- **入口位置**：zhonghua 真身节点「⛩ 挂载祖谱」按钮 `:270` → 挂载弹窗（标题 `⛩ 挂载祖谱` `:770`）；弹窗内 TreePicker / 空态之下**常驻一行直建入口** `:789-793`；空态提示渲染 `:777-779`。
+- **文案常量单点**（现证 `:986-1000`，逐字；`:988` 注明「后端为唯一权威，此处仅文案用」）：
+  - 入口 **「＋ 新建祖谱」**（`:990`）；费用行 **「消耗 99 颗石榴籽」**（`:991`，随 `:989` 单价常量插值）；
+  - 空态 **「暂无祖谱可挂载：可在下方就地新建祖谱（消耗 99 颗石榴籽，立即生效），或由本姓现有家族树先申请建立祖谱。」**（`:993`）；
+  - 即挂说明 **「新建后即挂载到节点「X」」**（`:995`，X = 当前真身节点名；说明行渲染 `:799`）；
+  - 确认标题 **「确认新建祖谱」**（`:996`）/ 确认正文 **「将消耗 99 颗石榴籽，在节点「X」上新建祖谱「Y」并立即挂载。是否继续？」**（`:997-998`）；
+  - 成功标题 **「祖谱已建立并挂载」**（`:999`）/ 兜底 **「新建祖谱已挂载到当前节点」**（`:1000`）。
+- **表单最简两字段**（现证 `:794-804`）：祖谱名称（`:795-796`）+ 姓氏，标签**「姓氏（必填 · 单汉字 · 可改）」**（`:797-798`）；**预填当前节点姓但可改** = `openClanCreate` 里 `clanCreateSurname.value = person.value?.surname || ''`（**现证 `:1334-1339`，预填 `:1336`**）。
+- **API 封装**：`createClan()` —— 现证 `frontend/src/business/api.ts` `:1827-1835`（注释 `:1828-1829`「建后即挂」「后端校验全过后、落库前扣 99 籽」；出参类型 `ClanCreateResult` `:1806`；`business/index.ts` 同步导出 —— 本批在途 diff 现证）。
+
+### 12-3 已知边界与**待观察**（**如实登记 · 不得写成已解决**）
+
+- **已修复（收尾单）**：`store.mutateTreeMeta` local 分支**不回填调用方持有的 meta 快照** ⇒ `createClanTree` 末尾读 `meta.trees[treeId].display_title` 必炸（连带 decide-clan approve 同炸；**路 B v2 后一直存在，非本批引入**）。修法 = `message` 改读**本函数刚写出的 `clanEntry`** —— 现证 `lib/clan.js` `:775-777`（注释 `:775-776`「local 模式 mutateTreeMeta 只落盘…不回填调用方持有的 meta 快照 → 读旧快照必 undefined」+ `message` 取 `clanEntry.display_title` `:777`）。
+- **待观察（硬 · 未审计）**：**其余 `mutateTreeMeta` 生产调用点未逐一审计**是否同样存在「调用方在写后回读旧 meta 快照」模式 —— 现证调用点清单（`grep mutateTreeMeta`，lib 生产码，不含测试）：`lib/tree-write.js` `:1198 / :1287 / :2589`；`lib/clan.js` `:760 / :836 / :890`；`lib/branch-clan-ops.js` `:711 / :723 / :971`；`lib/founder-attach.js` `:872 / :894 / :983 / :1026`（共 **13 处**）。**未审计前不得据任一调用点判「已解决 / 无同类缺陷」**。
+
+### 12-4 测试与基线（现证 · `cloudfunctions/compat-api/lib/economy-fee.test.js`）
+
+- 本批新增用例编号 = **⑯**（头注条目 `:26-29`；块标 `:1279`）。**现证无 ⑰ 编号用例**（`grep '⑰'` 于本文件 = 0 命中）。
+- 用例 1「POST /admin/create-clan：99 籽建谱扣籽…」`:1289-1379`：① 200 扣籽（`tree_create` / `delta {seeds:-99}` / 从操作者扣）+ `kind='clan'` 注册 + 顶端镜像段指向 `master_handle`（**建后即挂**）`:1293-1319`；② 不足 409 零写入（tree-meta 不注册 / 籽一字节不动 / 零流水 / 不带 `fee_refunded`）`:1321-1336`；③ 同姓同节点重复 400（**先于扣费**，零流水）`:1338-1345`；④ 落库失败原路返还**同一批次**（同 id / 同 expires_at / 同 qty）+ `fee_refunded:true` `:1347-1370`；⑤ **姓氏可改 → tree_id 随表单姓** `:1372-1378`。
+- 用例 2「/admin/clan-request 预扣… + /admin/decide-clan…」`:1381-1469`：① 预扣 + `fee_ref` 落档 `:1384-1402`；② 重复 pending 409 不扣不落第二张 `:1404-1411`；③ 不足 409 不落申请 `:1413-1425`；④ 驳回同批次原路全额返还（**资产袋逐字节还原**）→ 落 rejected + 回执 `:1427-1444`；⑤ 再驳 400 不重复返还 `:1446-1449`；⑥ 通过不重复扣（无二次扣费、无返还流水）`:1451-1468`。
+- 0 片清单断言：clan-request 移出注释 `:1092-1093`；**`ZERO_FEE_ROUTES.length = 29`** `:1133-1134`；正向计费清单含 `/admin/create-clan` `:1136-1137`。
+- **基线（Jing 2026-10-09 CST 实测）**：`npm test` → **674 tests / 674 pass / 0 fail / 0 skipped**（exit 0）；`cd frontend && npm run type-check` → **EXIT 0**。
+
+### 12-5 上云面（**只指向**）
+
+- 云函数 `compat-api` 重打包 + H5 / 小程序两产物重打；判据与冒烟 = `docs/PENDING_DEPLOY.md` **§56**（本册不复写）。
+
+### 12-6 本节未做项（**如实登记**）
+
+- **真源零写入**：未改任何代码 / `config/` / `migrate-output/`；**未打包 / 未部署 / 未上传**；**未 `git` 任何写操作**；**未碰任何 `.qa.md`**（`AGENTS.md` §0-5）；**未尝试写 `AGENTS.md`**（§0 索引行以草稿交主代理落盘）。
+- 本册为**口径与实现锚点登记**；`mutateTreeMeta` 其余调用点审计（§12-3 待观察项）**未做**，归后续单。

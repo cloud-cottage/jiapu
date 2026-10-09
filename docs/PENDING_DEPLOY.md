@@ -5775,3 +5775,62 @@ wc -c < cloudfunctions/deploy/compat-api/index.js; md5 -q cloudfunctions/deploy/
 
 - **只登记、不执行**：本追记作者（Jing）**未重启任何服务**（**3100 未重启** —— 待拍板）、**未打包 / 未部署 / 未重传**、**未改任何代码 / `config/` / `migrate-output/`**、**未跑测试**、**未 `git` 任何写操作**、**未改 §0–§55-5 任何历史行**（纯追加 · §0-4）；**未碰任何既有 `.qa.md`**（§0-5）。
 - **本节不预填**：3100 重启后的面板探针 / 档案页回显结论 **由执行 / 质检收口后回写**。
+
+---
+
+## §56 已故节点无邀请入口 ＋ 新建祖谱 99 籽（直建 / 预扣返还）批次（**云函数 compat-api 重打包 + H5 / 小程序两产物重打** · **无新集合 · 无数据修正 · 无 pages.json 改动** · 2026-10-09 · **只追加 · 不改 §0–§55 任何行**）（Jing 制度员）
+
+> **性质（只追加）**：本节为**两批口径**的**上云动作与冒烟判据登记**（**批 1** = 已故节点无【邀请此人入族】入口；**批 B** = 新建祖谱 99 籽直建 / 申请-审批预扣返还）：**§0–§55 既有行原文一律保留、一字不改、一行不删**（承 `AGENTS.md` §0-4）。**口径真源** = `docs/friend-domain.spec.md` **§29** + `docs/clan-tree.spec.md` **§12** + `docs/economy-fee.spec.md` **§16**。**本阶段不上云、只登记**。
+> **⚠️ 纪律（硬）**：判据读数**一律以命令实际输出为准**（**不得编数字**）；esbuild 产物中文为 `\uXXXX` 转义 → **中文判据须按转义形 `grep -F`**（**裸中文命中 0 ≠ 没打进去**；承 §20-1 ③ / §55-2 判据 1 尾注）。
+
+### §56-0 批次定性与动作面（**2 项**）
+
+| # | 动作面 | 触发依据（行号 = 本节登记时点现证） | 本轮定性 |
+|---|---|---|---|
+| **①** | **云函数 `compat-api` 重打包 + `tcb fn deploy`** | 后端改动面：`cloudfunctions/compat-api/index.js`（`/invite/code` 已故守卫 `:553-558` / `POST /admin/create-clan` `:2207-2246` / `/admin/clan-request` 预扣 `:2423-2448` / `/admin/decide-clan` 驳回返还 `:2496-2532`）+ `lib/clan.js`（`CLAN_CREATE_FEE_SEEDS` `:64-66` / `genClanTreeId` `:108-111` / `createClanTree` 含 message 修 `:775-777`）⇒ **不重打包 = 云端仍旧口径（无已故 400、无 create-clan、clan-request 不预扣）** | **必登**（§56-1） |
+| **②** | **前端 H5 + 小程序两产物重打** | 前端改动面：`person-archive.vue`（已故入口隐藏 `:2042` / `:2044-2051` + 直建表单与文案 `:794-804` / `:986-1000` / `:1334-1339`）+ `business/api.ts`（`createClan` `:1827-1835`）+ `business/index.ts`（导出同步） | **必登**（§56-2） |
+
+- **顺序纪律**：**先云函数 → 再前端**（承 §35-2 / §38-0 / §55-0）。
+- **前置门槛（本批已达标 · Jing 2026-10-09 CST 实测）**：`npm test` → **674 tests / 674 pass / 0 fail / 0 skipped**（exit 0）；`cd frontend && npm run type-check` → **EXIT 0**。**执行打包前须再跑一次并以当场输出为准。**
+- **工作区在途改动面（现证 `git status --porcelain`，非 docs 部分 · 本节登记时点）**：`cloudfunctions/compat-api/index.js`、`cloudfunctions/compat-api/lib/clan.js`、`lib/economy-fee.test.js`、`lib/friend-ops.test.js`、`lib/invite-codes.test.js`、`frontend/src/business/api.ts`、`frontend/src/business/index.ts`、`frontend/src/components/person-archive/person-archive.vue`；另有 `config/tree-meta.json` 在途 diff（现证 = 李氏树 `description` 文案修正 + `version` 递增，**非本批动作面**）—— 本批**不改树数据**（见 §56-3）。
+
+### §56-1 必登 ①：云函数 `compat-api` 重打包 + `tcb fn deploy`
+
+| # | 判据 | 命令 | 通过条件 | 当前实测（Jing · 2026-10-09） |
+|---|---|---|---|---|
+| 1 | 产物含 create-clan 路由 | `grep -c 'create-clan' cloudfunctions/deploy/compat-api/index.js` | **≥ 1**（**0 = 未重打包 ⇒ 判负**） | **0 ⇒ 未重打包** |
+| 2 | 产物含已故 400 文案（**\u 转义形**） | `grep -cF '\u5df2\u6545\u8282\u70b9\u4e0d\u53ef\u53d1\u8d77\u5165\u65cf\u9080\u8bf7' cloudfunctions/deploy/compat-api/index.js`（= 「已故节点不可发起入族邀请」的 esbuild ascii 转义形） | **≥ 1**（**0 = 未重打包 ⇒ 判负**） | **0 ⇒ 未重打包** |
+| 3 | 产物与源同步 | 重打包后 `md5 -q cloudfunctions/deploy/compat-api/index.js` + `wc -c` | **以执行时输出为准（不预填）** | 现产物 mtime **2026-10-03 23:44** / 1,395,711 B（**早于本批**） |
+
+- **重打包命令面**：按本仓既有惯例（esbuild，承 §1 / §55-1）；`cloudfunctions/deploy/compat-api/index.js` 是**产物、不是编辑对象**。
+
+### §56-2 必登 ②：前端 **H5 + 小程序**两产物重打
+
+- **H5**：`cd frontend && npm run build:h5`（**构建前注入 `VITE_API_BASE`**，取值口径同 §1 / §7-4）⇒ `tcb hosting deploy frontend/dist/build/h5 /jiazu -e <envId>`（**子路径 `/jiazu` 必填**，承 §50-2）。
+- **小程序**：`cd frontend && npm run build:mp-weixin` ⇒ **微信开发者工具上传**。
+- **判据形态（执行时贴实际输出）**：① H5 产物 `grep -cF '新建祖谱'` **且** `grep -cF '消耗 99 颗石榴籽'` **均 ≥ 1**（0 = 未重打 ⇒ 判负）；② 小程序产物重跑同判据；③ **小程序主包体积管控线 ≤ 2,097,152 B**（扣除 `app.json` 中**全部** `subPackages[].root` 分包字节，承 §55-2；具体字节数**待实测、不预填**）。
+
+### §56-3 云端动作：**无新集合 / 无数据修正 / 无 pages.json 改动**（现证）
+
+- **无新集合**：`jiazu_clan_requests` / `jiazu_invite_codes` **两集合均已存在**（现证 `migrate-output/collections/` 各有一档）且**均已在上传脚本 `COLLECTIONS`**（现证 `scripts/upload-migrated-to-cloudbase.mjs` `:62` / `:67`）⇒ **不改 `COLLECTIONS`**。
+- **无数据修正**：本批**不改树 JSON、不删旧详情键、不改 `config/tree-meta.json`**（两批真源零写入，承派单口径；在途 `config/tree-meta.json` diff 属他批，见 §56-0）。
+- **无 pages.json 改动**：现证 `git status --porcelain frontend/src/pages.json` = **空**（无在途改动）。
+- **与已知部署阻塞项（§7-7）的关系**：本批**不触碰 `jiazu_assets` 的多实例并发形态** ⇒ **既不影响、也不解除** §7-7 欠债（口径同 §35-5 / §38-3 / §55-3）。
+
+### §56-4 部署后冒烟验证（**按序做** · ⚠️ 结论由执行 / 质检收口后回写，**本清单不预填**）
+
+1. **已故入口隐藏**：打开任一 `is_living === false` 节点档案 ⇒ **期望**：无「邀请此人入族（建议绑定此节点）」入口。
+2. **已故直打守卫**：有效登录态对已故节点 `POST /invite/code {kind:'node'}` ⇒ **期望**：**400** 文案逐字 **「已故节点不可发起入族邀请」**；`jiazu_invite_codes` **不新增文档**。
+3. **三态对照**：`is_living` **缺字段**节点同请求 ⇒ **期望**：照常 **200** 签发（缺字段不算已故）。
+4. **plain 型不变**：【我的】页「邀请族人加入」入口照常、plain 型签发不受影响。
+5. **直建链路**：chief_editor 于 zhonghua 真身节点「⛩ 挂载祖谱」→ 见「＋ 新建祖谱（消耗 99 颗石榴籽）」入口 → 表单**预填当前节点姓（可改）** → 确认弹窗两层文案逐字 → **200**，成功标题「祖谱已建立并挂载」→ 该祖谱可即选即挂；`tree_id` **随表单姓**；节点档案出现世本镜像段（建后即挂）。
+6. **直建计费**：操作者流水新增 `tree_create` `seeds −99`；**98 籽账号** ⇒ **409 `ASSET_INSUFFICIENT`** 且**零写入**（不建树、不注册 tree-meta、零流水）。
+7. **申请-审批同价**：本姓现有树 steward 发起建谱申请 ⇒ **立即预扣 99**（申请单落 `fee_ref`）；**驳回** ⇒ 原路同批次全额返还（`fee_refund` 指回原流水）+ 申请单 `rejected` + 回执 `fee_refunded:true`；**通过** ⇒ 无二次扣费、无返还流水。
+8. **返还失败路径**（可选 · 需注入故障）：返还失败 ⇒ **500**、申请**保持 pending**、可重试。
+9. **真源零写入核对（冒烟窗口）**：`find migrate-output config -newermt "<本批开始时刻>" -type f` ⇒ **期望为空**（口径承 §55-3）。
+
+### §56-5 状态词与边界
+
+- **状态** = **「规格已落盘 · 实现已落盘（工作区在途未提交）· 本阶段不上云（只登记）」**（**不得写「已部署 / 已上云 / 全部完成」**）。
+- **边界（硬）**：本节作者（Jing）**只登记、不执行** —— **未跑任何打包 / `tcb` 写命令 / 未上传 / 未部署 / 未重传**；**未改任何代码 / `config/` / `migrate-output/`**；**未 `git` 任何写操作**；**未碰任何既有 `.qa.md`**（§0-5）；**未尝试写 `AGENTS.md`**。**只读探针已做（Jing · 2026-10-09）**：`npm test`（/tmp 沙箱）、`type-check`、§56-1 判据 grep、集合与上传脚本 grep、`git status --porcelain` —— 均为零写入探针。
+- **回写位**：§56-1 / §56-2 的**判据读数**、§56-4 的**冒烟结论**，**由执行 / 质检收口后回写**；口径侧回写 = 三册 `docs/friend-domain.spec.md` §29 / `docs/clan-tree.spec.md` §12 / `docs/economy-fee.spec.md` §16。
