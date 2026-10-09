@@ -182,7 +182,7 @@ var init_id_seq = __esm({
     import_fs = __toESM(require("fs"), 1);
     import_path = __toESM(require("path"), 1);
     init_store();
-    SEQ_COLLECTION = "jiazu_id_seq";
+    SEQ_COLLECTION = "jiapu_id_seq";
     SEQ_PERSON = "person";
     SEQ_FAMILY = "family";
     ID_WIDTH = 6;
@@ -862,7 +862,7 @@ async function getDetail(treeId, handle) {
       return null;
     return JSON.parse(import_fs2.default.readFileSync(p, "utf8"));
   }
-  const r = await sdkCall(() => getApp().database().collection("jiazu_person_details").doc(`${treeId}:${handle}`).get());
+  const r = await sdkCall(() => getApp().database().collection("jiapu_person_details").doc(`${treeId}:${handle}`).get());
   const d = r?.data;
   return (Array.isArray(d) ? d[0] : d) || null;
 }
@@ -875,7 +875,7 @@ async function saveDetail(detail) {
     import_fs2.default.writeFileSync(p, JSON.stringify(detail, null, 2));
     return;
   }
-  await sdkCall(() => getApp().database().collection("jiazu_person_details").doc(id).set(data));
+  await sdkCall(() => getApp().database().collection("jiapu_person_details").doc(id).set(data));
 }
 async function deleteDetail(treeId, handle) {
   const id = `${treeId}:${handle}`;
@@ -885,7 +885,7 @@ async function deleteDetail(treeId, handle) {
       import_fs2.default.unlinkSync(p);
     return;
   }
-  await sdkCall(() => getApp().database().collection("jiazu_person_details").doc(id).remove());
+  await sdkCall(() => getApp().database().collection("jiapu_person_details").doc(id).remove());
 }
 async function getAllDetails(treeId) {
   if (SOURCE === "local") {
@@ -897,7 +897,7 @@ async function getAllDetails(treeId) {
     }
     return out;
   }
-  const r = await sdkCall(() => getApp().database().collection("jiazu_person_details").where({ tree_id: treeId }).limit(2e3).get());
+  const r = await sdkCall(() => getApp().database().collection("jiapu_person_details").where({ tree_id: treeId }).limit(2e3).get());
   return r?.data || [];
 }
 async function getEventIndex(treeId) {
@@ -974,7 +974,7 @@ var init_store = __esm({
       return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
     };
     META_DOC_ID = "_meta";
-    META_COL = "jiazu_tree_meta";
+    META_COL = "jiapu_tree_meta";
     metaWriteLock = Promise.resolve();
     treeWriteLocks = /* @__PURE__ */ new Map();
   }
@@ -1025,7 +1025,7 @@ async function authUser(headers) {
   const payload = verifyJwt(token);
   if (!payload)
     return null;
-  const user = await colGet("jiazu_users", payload.phone);
+  const user = await colGet("jiapu_users", payload.phone);
   return user ? { phone: user.phone, role: user.role } : null;
 }
 function genCode() {
@@ -1042,7 +1042,7 @@ function sendSms(phone, code) {
 }
 async function requestCode(phone) {
   const code = genCode();
-  await colSet("jiazu_sms_codes", phone, {
+  await colSet("jiapu_sms_codes", phone, {
     code,
     expires_at: Date.now() + CODE_TTL * 1e3,
     attempts: 0
@@ -1051,27 +1051,27 @@ async function requestCode(phone) {
   return { ok: true, message: "\u9A8C\u8BC1\u7801\u5DF2\u53D1\u9001", dev_code: SMS_PROVIDER === "console" ? code : void 0 };
 }
 async function verifyCode(phone, inputCode) {
-  const entry = await colGet("jiazu_sms_codes", phone);
+  const entry = await colGet("jiapu_sms_codes", phone);
   if (!entry)
     return { ok: false, message: "\u8BF7\u5148\u83B7\u53D6\u9A8C\u8BC1\u7801" };
   if (Date.now() > entry.expires_at) {
-    await colDelete("jiazu_sms_codes", phone);
+    await colDelete("jiapu_sms_codes", phone);
     return { ok: false, message: "\u9A8C\u8BC1\u7801\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u83B7\u53D6" };
   }
   entry.attempts = (entry.attempts || 0) + 1;
   if (entry.attempts > 5) {
-    await colDelete("jiazu_sms_codes", phone);
+    await colDelete("jiapu_sms_codes", phone);
     return { ok: false, message: "\u5C1D\u8BD5\u6B21\u6570\u8FC7\u591A\uFF0C\u8BF7\u91CD\u65B0\u83B7\u53D6\u9A8C\u8BC1\u7801" };
   }
   if (entry.code !== inputCode) {
-    await colSet("jiazu_sms_codes", phone, entry);
+    await colSet("jiapu_sms_codes", phone, entry);
     return { ok: false, message: "\u9A8C\u8BC1\u7801\u9519\u8BEF" };
   }
-  await colDelete("jiazu_sms_codes", phone);
+  await colDelete("jiapu_sms_codes", phone);
   return { ok: true };
 }
 async function findOrCreateUser(phone, nickname) {
-  let user = await colGet("jiazu_users", phone);
+  let user = await colGet("jiapu_users", phone);
   if (!user) {
     const role = ADMIN_PHONE && phone === ADMIN_PHONE ? "chief_editor" : "user";
     user = {
@@ -1080,10 +1080,10 @@ async function findOrCreateUser(phone, nickname) {
       role,
       created_at: (/* @__PURE__ */ new Date()).toISOString()
     };
-    await colSet("jiazu_users", phone, user);
+    await colSet("jiapu_users", phone, user);
   } else if (nickname && nickname !== user.nickname) {
     user.nickname = nickname;
-    await colSet("jiazu_users", phone, user);
+    await colSet("jiapu_users", phone, user);
   }
   return user;
 }
@@ -1301,7 +1301,7 @@ var WALLET_COL, walletIdOf, CONFIG_ID, PLATFORM_ID, DEFAULT_FEE_CENTS, DEFAULT_B
 var init_wallet = __esm({
   "cloudfunctions/compat-api/lib/wallet.js"() {
     init_store();
-    WALLET_COL = "jiazu_wallets";
+    WALLET_COL = "jiapu_wallets";
     walletIdOf = (phone) => String(phone == null ? "" : phone).trim();
     CONFIG_ID = "config";
     PLATFORM_ID = "_platform";
@@ -1730,7 +1730,7 @@ var ASSETS_COL, assetIdOf, SEED_TTL_DAYS, BAMBOO_TTL_DAYS, FRAGMENT_CAP, FRAGMEN
 var init_economy_ledger = __esm({
   "cloudfunctions/compat-api/lib/economy-ledger.js"() {
     init_store();
-    ASSETS_COL = "jiazu_assets";
+    ASSETS_COL = "jiapu_assets";
     assetIdOf = (phone) => String(phone == null ? "" : phone).trim();
     SEED_TTL_DAYS = 365;
     BAMBOO_TTL_DAYS = 365;
@@ -2461,7 +2461,7 @@ var init_economy_market = __esm({
     init_store();
     init_economy_ledger();
     init_wallet();
-    MARKET_COL = "jiazu_market";
+    MARKET_COL = "jiapu_market";
     OFFICIAL_ID = "official";
     LISTING_PREFIX = "lst_";
     TRADE_PREFIX = "trd_";
@@ -2982,9 +2982,9 @@ var init_economy_ops = __esm({
     init_economy_spirit();
     init_economy_market();
     init_scope();
-    MESSAGES_COL = "jiazu_messages";
-    OPS_LOGS_COL = "jiazu_ops_logs";
-    USERS_COL = "jiazu_users";
+    MESSAGES_COL = "jiapu_messages";
+    OPS_LOGS_COL = "jiapu_ops_logs";
+    USERS_COL = "jiapu_users";
     MESSAGE_KEEP_LIMIT = 200;
     WARN_DAYS_30 = 30;
     WARN_DAYS_7 = 7;
@@ -3042,7 +3042,7 @@ function anchorError(status, message) {
   return e;
 }
 async function allAnchors() {
-  return colAll("jiazu_anchors");
+  return colAll("jiapu_anchors");
 }
 async function anchorHolderPhone(personHandle, excludePhone = "") {
   const handle = String(personHandle || "").trim();
@@ -3101,13 +3101,13 @@ async function setAnchor(phone, treeId, personHandle, extra = null) {
   };
   if (extra && typeof extra === "object")
     Object.assign(doc, extra);
-  await colSet("jiazu_anchors", phone, doc);
+  await colSet("jiapu_anchors", phone, doc);
 }
 async function clearAnchor(phone) {
-  await colDelete("jiazu_anchors", phone);
+  await colDelete("jiapu_anchors", phone);
 }
 async function getAnchor(phone) {
-  return colGet("jiazu_anchors", phone);
+  return colGet("jiapu_anchors", phone);
 }
 async function buildScope(families, phone, role) {
   if (role === "tree_steward" || role === "chief_editor") {
@@ -3724,9 +3724,9 @@ var init_economy_spirit = __esm({
     init_store();
     init_economy_ledger();
     init_scope();
-    SPIRIT_COL = "jiazu_spirit";
-    USERS_COL2 = "jiazu_users";
-    ANCHORS_COL = "jiazu_anchors";
+    SPIRIT_COL = "jiapu_spirit";
+    USERS_COL2 = "jiapu_users";
+    ANCHORS_COL = "jiapu_anchors";
     MASTER_TREE_ID = process.env.MASTER_TREE_ID || "zhonghua";
     BUFFER_DAYS = 30;
     PERMANENT_THRESHOLD_DAYS = 360;
@@ -3889,8 +3889,8 @@ var init_invite = __esm({
   "cloudfunctions/compat-api/lib/invite.js"() {
     init_store();
     init_economy_ledger();
-    INVITES_COL = "jiazu_invites";
-    USERS_COL3 = "jiazu_users";
+    INVITES_COL = "jiapu_invites";
+    USERS_COL3 = "jiapu_users";
     PHONE_RE2 = /^1\d{10}$/;
     INVITE_REWARD_FRAGMENTS = 9;
     INVITE_REWARD_SCROLL_FRAGMENTS = 11;
@@ -4432,7 +4432,7 @@ var FRIENDS_COL, RELATION_STATUS, INVITE_TTL_DAYS, RENEW_TTL_DAYS, RENEW_WINDOW_
 var init_friends = __esm({
   "cloudfunctions/compat-api/lib/friends.js"() {
     init_store();
-    FRIENDS_COL = "jiazu_friends";
+    FRIENDS_COL = "jiapu_friends";
     RELATION_STATUS = {
       /** 待邀请 */
       PENDING: "pending",
@@ -30394,6 +30394,17 @@ var MAX_RESIDENCE_PLACES = 9;
 var RESIDENCE_LIMIT_MESSAGE = "\u5C45\u4F4F\u5730\u6700\u591A 9 \u6761";
 var RESIDENCE_SHAPE_MESSAGE = "\u5C45\u4F4F\u5730\u683C\u5F0F\u65E0\u6548\uFF0C\u5E94\u4E3A\u6570\u7EC4";
 var BIRTH_PLACE_SHAPE_MESSAGE = "\u51FA\u751F\u5730\u683C\u5F0F\u65E0\u6548\uFF0C\u5E94\u4E3A\u5BF9\u8C61";
+var START_YEAR_MIN = 1e3;
+var START_YEAR_MAX = 2100;
+function startYearFormatMessage(value) {
+  return `\u5C45\u4F4F\u5730\u5F00\u59CB\u5E74\u4EFD\u683C\u5F0F\u65E0\u6548\uFF1A${value}`;
+}
+function startYearRangeMessage(value) {
+  return `\u5C45\u4F4F\u5730\u5F00\u59CB\u5E74\u4EFD\u8D85\u51FA\u8303\u56F4\uFF081000\u20132100\uFF09\uFF1A${value}`;
+}
+function startYearAfterDeathMessage(startYear, deathYear) {
+  return `\u5C45\u4F4F\u5730\u5F00\u59CB\u5E74\u4EFD\u4E0D\u5F97\u665A\u4E8E\u5352\u5E74\uFF1A${startYear}\uFF08\u5352\u5E74 ${deathYear}\uFF09`;
+}
 var PERSON_PLACE_FIELDS = ["birth_place", "residence_places"];
 var text = (v) => v === null || v === void 0 ? "" : String(v).trim();
 function normalizeBirthPlace(raw) {
@@ -30406,7 +30417,7 @@ function normalizeBirthPlace(raw) {
 function normalizeResidencePlaces(raw) {
   if (!Array.isArray(raw))
     return [];
-  return raw.map((item) => normalizeBirthPlace(item));
+  return raw.map((item) => ({ ...normalizeBirthPlace(item), start_year: text(item?.start_year) }));
 }
 function assertResidencePlacesLimit(raw) {
   if (Array.isArray(raw) && raw.length > MAX_RESIDENCE_PLACES) {
@@ -30446,14 +30457,15 @@ function sameResidencePlaces(a, b) {
   const y = normalizeResidencePlaces(b);
   if (x.length !== y.length)
     return false;
-  return x.every((v, i) => v.origin_code === y[i].origin_code && v.note === y[i].note);
+  return x.every((v, i) => v.origin_code === y[i].origin_code && v.note === y[i].note && v.start_year === y[i].start_year);
 }
 function placeViewOf(raw) {
   const p = normalizeBirthPlace(raw);
   return {
     place: p.origin_code ? resolveOrigin(p.origin_code).display : "",
     place_code: p.origin_code,
-    place_note: p.note
+    place_note: p.note,
+    place_start_year: text(raw?.start_year)
   };
 }
 function residenceViewOf(raw) {
@@ -30490,6 +30502,41 @@ function assertKnownOriginCodes(body) {
   }
   return true;
 }
+function leadingYear(v) {
+  const m = text(v).match(/^\d{4}/);
+  return m ? m[0] : "";
+}
+function assertStartYears(body) {
+  const b = body || {};
+  if (b.residence_places === void 0 || b.residence_places === null)
+    return true;
+  for (const item of normalizeResidencePlaces(b.residence_places)) {
+    const y = item.start_year;
+    if (!y)
+      continue;
+    if (!/^\d{4}$/.test(y))
+      throw shapeError(startYearFormatMessage(y));
+    const n = Number(y);
+    if (n < START_YEAR_MIN || n > START_YEAR_MAX)
+      throw shapeError(startYearRangeMessage(y));
+  }
+  return true;
+}
+function assertStartYearNotAfterDeath(body, fallbackDeathDate) {
+  const b = body || {};
+  const deathRaw = b.death_date !== void 0 && b.death_date !== null ? b.death_date : fallbackDeathDate;
+  const deathYear = leadingYear(deathRaw);
+  if (!deathYear)
+    return true;
+  for (const item of normalizeResidencePlaces(b.residence_places)) {
+    const y = item.start_year;
+    if (!y)
+      continue;
+    if (Number(y) > Number(deathYear))
+      throw shapeError(startYearAfterDeathMessage(y, deathYear));
+  }
+  return true;
+}
 function isPlaceFieldsOnly(body) {
   const b = body || {};
   const keys = Object.keys(b).filter((k) => b[k] !== void 0 && b[k] !== null);
@@ -30499,7 +30546,7 @@ function isPlaceFieldsOnly(body) {
 // cloudfunctions/compat-api/lib/founder-attach.js
 var FOUNDER_LINK_TYPE = "founder";
 var CHAIN_LINK_TYPE = "chain";
-var FOUNDER_REQUEST_COLLECTION = "jiazu_founder_requests";
+var FOUNDER_REQUEST_COLLECTION = "jiapu_founder_requests";
 var TREE_KIND = { MASTER: "master", CLAN: "clan", FAMILY: "family" };
 var KIND_LABEL = { master: "\u4E2D\u534E\u4E16\u672C", clan: "\u7956\u8C31", family: "\u5BB6\u65CF\u6811" };
 var MIRROR_LOCK_MESSAGE = "\u59CB\u7956\u8282\u70B9\u4FE1\u606F\u9700\u5728\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u4E2D\u4FEE\u6539";
@@ -33465,7 +33512,7 @@ var FEE = {
   tree_create_seeds: 9,
   // 建树：9颗石榴籽（非竹片）
   // 立支（POST /admin/establish-branch）：9999 颗完整石榴籽 / 次（docs/branch-clan-ops.spec.md §3-4 / §6-1-7）；
-  // 默认值唯一真源 —— 运行时可被 `jiazu_wallets.config.branch_fee_seeds` 覆盖（见 lib/wallet.js getBranchFeeSeeds）
+  // 默认值唯一真源 —— 运行时可被 `jiapu_wallets.config.branch_fee_seeds` 覆盖（见 lib/wallet.js getBranchFeeSeeds）
   branch_fee_seeds: 9999
 };
 var HOW_TO_GET = [
@@ -33831,6 +33878,24 @@ async function refund(phone, taken, ref = {}) {
     return { ok: true, refunded, unit, txn_id: tx.id, tx };
   });
 }
+async function refundAssets(phone, txn_id, reason = "") {
+  const id = String(txn_id || "");
+  if (!id)
+    return { ok: false, refunded: 0, error: "\u7F3A\u5C11 txn_id" };
+  const user = await getAssets(phone);
+  const orig = (user.txs || []).find((t) => t && t.id === id);
+  if (!orig)
+    return { ok: false, refunded: 0, error: `\u627E\u4E0D\u5230\u539F\u6D41\u6C34 ${id}` };
+  const lots = orig.ref?.lots || [];
+  if (!lots.length)
+    return { ok: false, refunded: 0, error: `\u539F\u6D41\u6C34 ${id} \u672A\u8BB0\u5F55\u6279\u6B21\u660E\u7EC6\uFF0C\u65E0\u6CD5\u539F\u8DEF\u8FD4\u8FD8` };
+  const unit = orig.delta?.seeds !== void 0 ? "seeds" : "bamboos";
+  return refund(
+    phone,
+    lots.map((l) => ({ lot_id: l.lot_id, qty: Math.abs(Number(l.qty) || 0), expires_at: l.expires_at ?? null, source: l.source, created_at: l.created_at })),
+    { unit, txn_id: id, tree_id: orig.ref?.tree_id || "", person_handle: orig.ref?.person_handle || "", reason }
+  );
+}
 async function refundCharged(phone, charged, reason = "\u843D\u5E93\u5931\u8D25") {
   if (!charged || !charged.charged)
     return { ok: false, refunded: 0, error: "\u672C\u6B21\u672A\u6263\u8D39\uFF0C\u65E0\u9700\u51B2\u6B63" };
@@ -33880,7 +33945,7 @@ init_store();
 init_economy_ledger();
 init_invite();
 init_scope();
-var INVITE_CODES_COL = "jiazu_invite_codes";
+var INVITE_CODES_COL = "jiapu_invite_codes";
 var INVITE_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 var INVITE_CODE_LEN = 6;
 var INVITE_CODE_TTL_DAYS = 30;
@@ -34917,11 +34982,12 @@ async function addChildNode({
 var import_node_crypto7 = __toESM(require("node:crypto"), 1);
 init_store();
 init_id_seq();
-var CLAN_REQUEST_COLLECTION = "jiazu_clan_requests";
+var CLAN_REQUEST_COLLECTION = "jiapu_clan_requests";
 var CLAN_MIRROR_PREFIX = "mir_";
 var DEFAULT_CHAIN_DEPTH = 0;
 var MAX_CHAIN_DEPTH = 12;
 var PENDING_CLAN_MESSAGE = "\u8BE5\u59D3\u5DF2\u6709\u5F85\u5BA1\u6279\u7684\u5EFA\u8C31\u7533\u8BF7\uFF0C\u8BF7\u7B49\u5F85\u603B\u7F16\u5BA1\u6279";
+var CLAN_CREATE_FEE_SEEDS = 99;
 var NO_MASTER_MESSAGE = "\u8BE5\u7956\u8C31\u672A\u8BA4\u7956\u4E16\u672C";
 function genHandle4() {
   return import_node_crypto7.default.randomBytes(14).toString("hex");
@@ -35503,7 +35569,9 @@ async function createClanTree({
     founder_handle: ownRootHandle,
     founder_mirror_handle: applied.founder_mirror_handle,
     mirror_count: applied.mirror_count,
-    message: `\u5DF2\u5EFA\u7ACB\u300C${meta.trees[treeId].display_title}\u300D\uFF08${treeId}\uFF09\uFF0C\u59CB\u7956\u955C\u50CF\u81EA${kindLabel(TREE_KIND.MASTER)}\u300C${masterPerson.name || ""}\u300D`
+    // ⚠️ 文案取本函数刚写出的 clanEntry（而非 meta.trees[treeId]）：local 模式 mutateTreeMeta 只落盘
+    // （文件指纹失效交由下一次 getMeta 重读），**不回填**调用方持有的 meta 快照 → 读旧快照必 undefined。
+    message: `\u5DF2\u5EFA\u7ACB\u300C${clanEntry.display_title}\u300D\uFF08${treeId}\uFF09\uFF0C\u59CB\u7956\u955C\u50CF\u81EA${kindLabel(TREE_KIND.MASTER)}\u300C${masterPerson.name || ""}\u300D`
   };
 }
 async function attachClanToMaster({
@@ -36374,10 +36442,10 @@ init_id_seq();
 // cloudfunctions/compat-api/lib/tree-activity.js
 init_store();
 var EVENT_COLLECTIONS = [
-  "jiazu_join_requests",
-  "jiazu_marriage_requests",
-  "jiazu_founder_requests",
-  "jiazu_clan_requests"
+  "jiapu_join_requests",
+  "jiapu_marriage_requests",
+  "jiapu_founder_requests",
+  "jiapu_clan_requests"
 ];
 var WINDOW_DAYS = 30;
 var DAY_MS6 = 24 * 3600 * 1e3;
@@ -36833,7 +36901,7 @@ async function requireWriteUser(headers, treeId, pathname, targetHandle, isAddNo
   const u = await authUser(headers);
   if (!u)
     throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
-  const user = await colGet("jiazu_users", u.phone);
+  const user = await colGet("jiapu_users", u.phone);
   if (!user)
     throw httpError4(401, "\u7528\u6237\u4E0D\u5B58\u5728");
   const role = user.role;
@@ -36982,7 +37050,7 @@ async function handleRequest(event) {
       const phone = String(body.phone || "").trim();
       if (!/^1\d{10}$/.test(phone))
         return send(400, { error: "\u624B\u673A\u53F7\u683C\u5F0F\u4E0D\u6B63\u786E" });
-      const existing = await colGet("jiazu_sms_codes", phone);
+      const existing = await colGet("jiapu_sms_codes", phone);
       if (existing && existing.expires_at > Date.now()) {
         const { requestCode: rc } = await Promise.resolve().then(() => (init_auth(), auth_exports));
         const r2 = await rc(phone);
@@ -36995,7 +37063,7 @@ async function handleRequest(event) {
       const body = parseBody(event);
       const phone = String(body.phone || "").trim();
       const code = String(body.code || "").trim();
-      const user = await colGet("jiazu_users", phone);
+      const user = await colGet("jiapu_users", phone);
       if (!user)
         return send(404, { error: "\u8BE5\u624B\u673A\u53F7\u672A\u6CE8\u518C\uFF0C\u8BF7\u5148\u6CE8\u518C" });
       const v = await verifyCode(phone, code);
@@ -37011,7 +37079,7 @@ async function handleRequest(event) {
       const nickname = String(body.nickname || "").trim().slice(0, 30);
       if (!/^1\d{10}$/.test(phone))
         return send(400, { error: "\u624B\u673A\u53F7\u683C\u5F0F\u4E0D\u6B63\u786E" });
-      if (await colGet("jiazu_users", phone))
+      if (await colGet("jiapu_users", phone))
         return send(409, { error: "\u8BE5\u624B\u673A\u53F7\u5DF2\u6CE8\u518C\uFF0C\u8BF7\u76F4\u63A5\u767B\u5F55" });
       const inviteCode = body.invite_code;
       const inviteCheck = await resolveInvite(inviteCode, phone);
@@ -37060,6 +37128,9 @@ async function handleRequest(event) {
           return send(404, { error: `\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728: ${issueTree}` });
         if (!issueTargetTree.people || !issueTargetTree.people[issueHandle]) {
           return send(404, { error: `\u8BE5\u5BB6\u65CF\u6811\u4E2D\u627E\u4E0D\u5230\u6B64\u8282\u70B9: ${issueHandle}\uFF08tree_id=${issueTree}\uFF09` });
+        }
+        if (issueTargetTree.people[issueHandle].is_living === false) {
+          return send(400, { error: "\u5DF2\u6545\u8282\u70B9\u4E0D\u53EF\u53D1\u8D77\u5165\u65CF\u9080\u8BF7" });
         }
         try {
           await assertAnchorBindable(issueHandle, "", { tree: issueTargetTree, treeId: issueTree, role: u.role });
@@ -37119,7 +37190,7 @@ async function handleRequest(event) {
       const u = await authUser(headers);
       if (!u)
         return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      const user = await colGet("jiazu_users", u.phone);
+      const user = await colGet("jiapu_users", u.phone);
       if (!user)
         return send(404, { error: "\u7528\u6237\u4E0D\u5B58\u5728" });
       return send(200, { phone: user.phone, nickname: user.nickname, role: user.role });
@@ -37134,7 +37205,7 @@ async function handleRequest(event) {
       const u = await authUser(headers);
       if (!u)
         return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      const user = await colGet("jiazu_users", u.phone);
+      const user = await colGet("jiapu_users", u.phone);
       if (!user || user.role !== "chief_editor")
         return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
       const body = parseBody(event);
@@ -37174,7 +37245,7 @@ async function handleRequest(event) {
       const u = await authUser(headers);
       if (!u)
         return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      const user = await colGet("jiazu_users", u.phone);
+      const user = await colGet("jiapu_users", u.phone);
       if (!user || user.role !== "chief_editor")
         return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
       const body = parseBody(event);
@@ -37793,7 +37864,7 @@ async function handleRequest(event) {
         return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward)
         return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
-      const list2 = (await colAll("jiazu_users")).map((usr) => ({ phone: usr.phone, nickname: usr.nickname, role: usr.role, created_at: usr.created_at }));
+      const list2 = (await colAll("jiapu_users")).map((usr) => ({ phone: usr.phone, nickname: usr.nickname, role: usr.role, created_at: usr.created_at }));
       return send(200, list2);
     }
     if (pathname === "/admin/set-role" && method === "POST") {
@@ -37806,7 +37877,7 @@ async function handleRequest(event) {
       if (!targetPhone || !ROLE_LEVEL[newRole]) {
         return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Aphone + role \u5FC5\u586B\uFF0Crole \u2208 user/branch_curator/tree_steward/chief_editor" });
       }
-      const target = await colGet("jiazu_users", targetPhone);
+      const target = await colGet("jiapu_users", targetPhone);
       if (!target)
         return send(404, { error: `\u7528\u6237\u4E0D\u5B58\u5728: ${targetPhone}` });
       const myLevel = ROLE_LEVEL[u.role] ?? 0;
@@ -37823,7 +37894,7 @@ async function handleRequest(event) {
       const oldRole = target.role;
       target.role = newRole;
       target.role_updated_at = (/* @__PURE__ */ new Date()).toISOString();
-      await colSet("jiazu_users", targetPhone, target);
+      await colSet("jiapu_users", targetPhone, target);
       return send(200, { ok: true, phone: targetPhone, role: newRole, old_role: oldRole });
     }
     if (pathname === "/admin/set-anchor" && method === "POST") {
@@ -37838,7 +37909,7 @@ async function handleRequest(event) {
       const personHandle = String(body.person_handle || "").trim();
       if (!targetPhone || !targetTree || !personHandle)
         return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Aphone + tree_id + person_handle \u5FC5\u586B" });
-      if (!await colGet("jiazu_users", targetPhone))
+      if (!await colGet("jiapu_users", targetPhone))
         return send(404, { error: `\u7528\u6237\u4E0D\u5B58\u5728: ${targetPhone}` });
       let bindable;
       try {
@@ -37886,7 +37957,7 @@ async function handleRequest(event) {
       if (!Object.values(meta.trees).some((t) => t.tree_id === targetTree)) {
         return send(404, { error: `\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728: ${targetTree}` });
       }
-      const all = await colAll("jiazu_join_requests");
+      const all = await colAll("jiapu_join_requests");
       if (all.some((r) => r.phone === u.phone && r.tree_id === targetTree && r.status === "pending")) {
         return send(400, { error: "\u60A8\u5DF2\u63D0\u4EA4\u52A0\u5165\u7533\u8BF7\uFF0C\u8BF7\u7B49\u5F85\u65CF\u8C31\u4E3B\u7406\u4EBA\u5BA1\u6838" });
       }
@@ -37902,7 +37973,7 @@ async function handleRequest(event) {
       }
       const refName = refPerson.name || `${refPerson.surname || ""}${refPerson.given || ""}` || referenceHandle;
       const id = `JR_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
-      await colSet("jiazu_join_requests", id, {
+      await colSet("jiapu_join_requests", id, {
         phone: u.phone,
         tree_id: targetTree,
         reference_handle: referenceHandle,
@@ -37921,7 +37992,7 @@ async function handleRequest(event) {
       if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward)
         return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
       const myTree = u.role === "chief_editor" ? null : (await getAnchor(u.phone))?.tree_id || null;
-      const list2 = await colAll("jiazu_join_requests");
+      const list2 = await colAll("jiapu_join_requests");
       const out = list2.filter((r) => myTree === null || r.tree_id === myTree).map((r) => ({ id: r._id, ...r }));
       const depthCache = /* @__PURE__ */ new Map();
       for (const item of out) {
@@ -37952,7 +38023,7 @@ async function handleRequest(event) {
       const id = String(body.id || "").trim();
       if (!id)
         return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Aid \u5FC5\u586B" });
-      const jr = await colGet("jiazu_join_requests", id);
+      const jr = await colGet("jiapu_join_requests", id);
       if (!jr)
         return send(404, { error: "\u7533\u8BF7\u4E0D\u5B58\u5728" });
       if (jr.status !== "pending")
@@ -37982,7 +38053,7 @@ async function handleRequest(event) {
       jr.status = "approved";
       jr.handled_by = u.phone;
       jr.handled_at = (/* @__PURE__ */ new Date()).toISOString();
-      await colSet("jiazu_join_requests", jr._id, jr);
+      await colSet("jiapu_join_requests", jr._id, jr);
       return send(200, { ok: true, status: "approved", reassigned_from: bindable.reassigned_from || null });
     }
     if (pathname === "/admin/reject-join" && method === "POST") {
@@ -37992,7 +38063,7 @@ async function handleRequest(event) {
       if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward)
         return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
       const body = parseBody(event);
-      const jr = await colGet("jiazu_join_requests", String(body.id || ""));
+      const jr = await colGet("jiapu_join_requests", String(body.id || ""));
       if (!jr)
         return send(404, { error: "\u7533\u8BF7\u4E0D\u5B58\u5728" });
       if (jr.status !== "pending")
@@ -38006,7 +38077,7 @@ async function handleRequest(event) {
       jr.reject_reason = String(body.reason || "").slice(0, 200);
       jr.handled_by = u.phone;
       jr.handled_at = (/* @__PURE__ */ new Date()).toISOString();
-      await colSet("jiazu_join_requests", jr._id, jr);
+      await colSet("jiapu_join_requests", jr._id, jr);
       return send(200, { ok: true, status: "rejected" });
     }
     if (pathname === "/leave-request" && method === "POST") {
@@ -38016,12 +38087,12 @@ async function handleRequest(event) {
       const anchor = await getAnchor(u.phone);
       if (!anchor)
         return send(400, { error: "\u60A8\u5C1A\u672A\u7ED1\u5B9A\u5BB6\u65CF\u6811" });
-      const all = await colAll("jiazu_leave_requests");
+      const all = await colAll("jiapu_leave_requests");
       if (all.some((r) => r.phone === u.phone && r.status === "pending")) {
         return send(400, { error: "\u5DF2\u6709\u5F85\u5BA1\u6279\u7684\u89E3\u7ED1\u7533\u8BF7\uFF0C\u8BF7\u7B49\u5F85\u5904\u7406" });
       }
       const id = `LR_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
-      await colSet("jiazu_leave_requests", id, {
+      await colSet("jiapu_leave_requests", id, {
         phone: u.phone,
         tree_id: anchor.tree_id,
         person_handle: anchor.person_handle,
@@ -38037,7 +38108,7 @@ async function handleRequest(event) {
         return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward)
         return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
-      const list2 = await colAll("jiazu_leave_requests");
+      const list2 = await colAll("jiapu_leave_requests");
       const myTree = u.role === "chief_editor" ? null : (await getAnchor(u.phone))?.tree_id;
       const out = list2.filter((r) => myTree === null || r.tree_id === myTree).map((r) => ({ id: r._id, ...r }));
       return send(200, out);
@@ -38049,7 +38120,7 @@ async function handleRequest(event) {
       if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward)
         return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
       const body = parseBody(event);
-      const req = await colGet("jiazu_leave_requests", String(body.id || ""));
+      const req = await colGet("jiapu_leave_requests", String(body.id || ""));
       if (!req)
         return send(404, { error: "\u7533\u8BF7\u4E0D\u5B58\u5728" });
       if (req.status !== "pending")
@@ -38057,7 +38128,7 @@ async function handleRequest(event) {
       req.status = body.approve ? "approved" : "rejected";
       req.handled_by = u.phone;
       req.handled_at = (/* @__PURE__ */ new Date()).toISOString();
-      await colSet("jiazu_leave_requests", req._id, req);
+      await colSet("jiapu_leave_requests", req._id, req);
       if (body.approve)
         await clearAnchor(req.phone);
       return send(200, { ok: true, status: req.status });
@@ -38167,7 +38238,7 @@ async function handleRequest(event) {
             requested_by: u.phone,
             created_at: now
           };
-          await colSet("jiazu_marriage_requests", mid2, request2);
+          await colSet("jiapu_marriage_requests", mid2, request2);
           return send(200, { ok: true, request_id: mid2, status: "pending", to_tree: toTree2, to_person_name: other2.name });
         }
         const mid = me.external_marriage_id || "";
@@ -38201,7 +38272,7 @@ async function handleRequest(event) {
           requested_by: u.phone,
           created_at: now
         };
-        await colSet("jiazu_marriage_requests", rid, request);
+        await colSet("jiapu_marriage_requests", rid, request);
         return send(200, { ok: true, request_id: rid, status: "pending", to_tree: toTree, to_person_name: other.name });
       } catch (e) {
         return safeError(e);
@@ -38211,13 +38282,13 @@ async function handleRequest(event) {
       const u = await authUser(headers);
       if (!u)
         return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      const user = await colGet("jiazu_users", u.phone);
+      const user = await colGet("jiapu_users", u.phone);
       if (!user)
         return send(401, { error: "\u7528\u6237\u4E0D\u5B58\u5728" });
       const chief = user.role === "chief_editor";
       const anchor = chief ? null : await getAnchor(u.phone);
       const myTree = anchor?.tree_id || "";
-      const all = await colAll("jiazu_marriage_requests");
+      const all = await colAll("jiapu_marriage_requests");
       const list2 = all.filter((r) => r.status === "pending").filter((r) => chief || r.to_tree === myTree).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
       return send(200, { list: list2, can_approve_all: chief, my_tree: myTree });
     }
@@ -38231,7 +38302,7 @@ async function handleRequest(event) {
         const u = await authUser(headers);
         if (!u)
           return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-        const request = await colGet("jiazu_marriage_requests", rid);
+        const request = await colGet("jiapu_marriage_requests", rid);
         if (!request)
           return send(404, { error: "\u7533\u8BF7\u4E0D\u5B58\u5728" });
         if (request.status !== "pending") {
@@ -38240,7 +38311,7 @@ async function handleRequest(event) {
         await requireWriteUser(headers, request.to_tree, pathname, request.to_person_handle, false);
         const now = (/* @__PURE__ */ new Date()).toISOString();
         if (!approve) {
-          await colSet("jiazu_marriage_requests", rid, {
+          await colSet("jiapu_marriage_requests", rid, {
             ...request,
             status: "rejected",
             decided_by: u.phone,
@@ -38280,7 +38351,7 @@ async function handleRequest(event) {
             createdBy: request.requested_by
           })
         );
-        await colSet("jiazu_marriage_requests", rid, {
+        await colSet("jiapu_marriage_requests", rid, {
           ...request,
           status: "approved",
           decided_by: u.phone,
@@ -38425,7 +38496,7 @@ async function handleRequest(event) {
       const u = await authUser(headers);
       if (!u)
         return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      const user = await colGet("jiazu_users", u.phone);
+      const user = await colGet("jiapu_users", u.phone);
       if (!user)
         return send(401, { error: "\u7528\u6237\u4E0D\u5B58\u5728" });
       const chief = user.role === "chief_editor";
@@ -38567,6 +38638,50 @@ async function handleRequest(event) {
         return safeError(e);
       }
     }
+    if (pathname === "/admin/create-clan" && method === "POST") {
+      const body = parseBody(event);
+      const directClanSurname = String(body.surname || "").trim();
+      const directClanTitle = String(body.clan_title || "").trim();
+      const directTargetTreeId = String(body.target_tree_id || MASTER_TREE_ID2).trim();
+      const directMasterRef = String(body.master_handle || "").trim();
+      if (!directClanSurname)
+        return send(400, { error: "\u8BF7\u586B\u5199\u59D3\u6C0F" });
+      if (!/^[\u4e00-\u9fa5]$/.test(directClanSurname))
+        return send(400, { error: "\u8BF7\u586B\u5199\u5355\u4E2A\u6C49\u5B57\u59D3\u6C0F" });
+      if (!directClanTitle)
+        return send(400, { error: "\u8BF7\u586B\u5199\u7956\u8C31\u540D\u79F0" });
+      if (!directMasterRef)
+        return send(400, { error: "\u7F3A\u5C11 master_handle" });
+      const directMasterHit = await resolveNode(directMasterRef, directTargetTreeId, { targetTreeId: directTargetTreeId });
+      if (!directMasterHit) {
+        return send(404, { error: `\u76EE\u6807\u6811 ${directTargetTreeId} \u4E2D\u627E\u4E0D\u5230\u7F16\u53F7/\u53E5\u67C4\u4E3A\u300C${directMasterRef}\u300D\u7684\u8282\u70B9` });
+      }
+      const directMasterHandle = directMasterHit.handle;
+      let charged = null;
+      let operatorPhone = "";
+      try {
+        const u = await requireWriteUser(headers, directTargetTreeId, pathname, directMasterHandle, false);
+        operatorPhone = u.phone;
+        const result = await createClanTree({
+          surname: directClanSurname,
+          clanTitle: directClanTitle,
+          masterTreeId: directTargetTreeId,
+          masterHandle: directMasterHandle,
+          initiatorPhone: u.phone,
+          onBeforeWrite: async () => {
+            charged = await chargeSeeds(u.phone, CLAN_CREATE_FEE_SEEDS, {
+              op: "tree_create",
+              person_handle: directMasterHandle,
+              desc: `\u65B0\u5EFA\u7956\u8C31\uFF08\u6263 ${CLAN_CREATE_FEE_SEEDS} \u9897\u77F3\u69B4\u7C7D\uFF09`
+            });
+          }
+        });
+        return send(200, { ...result, fee: feeResponse(charged) });
+      } catch (e) {
+        const refunded = await refundQuietly(operatorPhone, charged, "\u5EFA\u8C31\u843D\u5E93\u5931\u8D25\uFF0C\u5DF2\u539F\u8DEF\u8FD4\u8FD8");
+        return send(e.status || 400, errorPayload(e, refunded ? { fee_refunded: true } : {}));
+      }
+    }
     if (pathname === "/admin/detach-founder" && method === "POST") {
       const body = parseBody(event);
       const fromTree = body.tree_id || treeId;
@@ -38700,7 +38815,7 @@ async function handleRequest(event) {
         const masterHandle = masterHit.handle;
         const clauses = await colAll(CLAN_REQUEST_COLLECTION);
         if (clauses.some((r) => r.status === "pending" && r.surname === surname && r.master_handle === masterHandle)) {
-          return send(400, { error: PENDING_CLAN_MESSAGE });
+          return send(409, { error: PENDING_CLAN_MESSAGE });
         }
         try {
           assertClanFounderUnique({
@@ -38729,7 +38844,28 @@ async function handleRequest(event) {
           note: body.note,
           originCode
         });
-        await colSet(CLAN_REQUEST_COLLECTION, id, request);
+        let charged = null;
+        let requestPersisted = false;
+        try {
+          charged = await chargeSeeds(u.phone, CLAN_CREATE_FEE_SEEDS, {
+            op: "tree_create",
+            tree_id: anchorEntry.tree_id,
+            person_handle: masterHandle,
+            desc: `\u5EFA\u8C31\u7533\u8BF7\u9884\u6263\uFF08\u6263 ${CLAN_CREATE_FEE_SEEDS} \u9897\u77F3\u69B4\u7C7D\uFF0C\u9A73\u56DE\u539F\u8DEF\u8FD4\u8FD8\uFF09`
+          });
+          request.fee_ref = {
+            txn_id: charged.txn_id,
+            unit: "seeds",
+            seeds: CLAN_CREATE_FEE_SEEDS,
+            charged_at: (/* @__PURE__ */ new Date()).toISOString(),
+            lots: charged.spent
+          };
+          await colSet(CLAN_REQUEST_COLLECTION, id, request);
+          requestPersisted = true;
+        } catch (e) {
+          const refunded = requestPersisted ? false : await refundQuietly(u.phone, charged, "\u7533\u8BF7\u843D\u5E93\u5931\u8D25\uFF0C\u5DF2\u539F\u8DEF\u8FD4\u8FD8");
+          return send(e.status || 400, errorPayload(e, refunded ? { fee_refunded: true } : {}));
+        }
         return send(200, {
           ok: true,
           request_id: id,
@@ -38747,7 +38883,7 @@ async function handleRequest(event) {
       const u = await authUser(headers);
       if (!u)
         return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      const user = await colGet("jiazu_users", u.phone);
+      const user = await colGet("jiapu_users", u.phone);
       if (!user)
         return send(401, { error: "\u7528\u6237\u4E0D\u5B58\u5728" });
       const chief = user.role === "chief_editor";
@@ -38769,7 +38905,7 @@ async function handleRequest(event) {
         const u = await authUser(headers);
         if (!u)
           return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-        const user = await colGet("jiazu_users", u.phone);
+        const user = await colGet("jiapu_users", u.phone);
         if (!user || user.role !== "chief_editor")
           return send(403, { error: "\u5EFA\u8C31\u5BA1\u6279\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
         const request = await colGet(CLAN_REQUEST_COLLECTION, rid);
@@ -38780,14 +38916,37 @@ async function handleRequest(event) {
         }
         const now = (/* @__PURE__ */ new Date()).toISOString();
         if (!approve) {
+          const feeRef = request.fee_ref || null;
+          let refundTxnId = "";
+          if (feeRef && feeRef.txn_id) {
+            const assets = await getAssets(request.requested_by);
+            const alreadyRefunded = (assets?.txs || []).some(
+              (t) => t?.type === "fee_refund" && t?.ref?.txn_id === feeRef.txn_id
+            );
+            if (!alreadyRefunded) {
+              const lots = Array.isArray(feeRef.lots) ? feeRef.lots : [];
+              const r = lots.length ? await refund(request.requested_by, lots, {
+                unit: "seeds",
+                txn_id: feeRef.txn_id,
+                tree_id: request.tree_id || "",
+                person_handle: request.master_handle || "",
+                reason: "\u5EFA\u8C31\u7533\u8BF7\u5DF2\u9A73\u56DE\uFF0C\u9884\u6263\u7C7D\u539F\u8DEF\u8FD4\u8FD8"
+              }) : await refundAssets(request.requested_by, feeRef.txn_id, "\u5EFA\u8C31\u7533\u8BF7\u5DF2\u9A73\u56DE\uFF0C\u9884\u6263\u7C7D\u539F\u8DEF\u8FD4\u8FD8");
+              if (!r || r.ok === false) {
+                return send(500, { error: "\u9A73\u56DE\u8FD4\u8FD8\u5931\u8D25\uFF0C\u7533\u8BF7\u4FDD\u6301\u5F85\u5BA1\u6279\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5" });
+              }
+              refundTxnId = r.txn_id || "";
+            }
+          }
           await colSet(CLAN_REQUEST_COLLECTION, rid, {
             ...request,
             status: "rejected",
             decided_by: u.phone,
             decided_at: now,
-            reject_reason: String(body.reason || "").slice(0, 200)
+            reject_reason: String(body.reason || "").slice(0, 200),
+            ...feeRef && feeRef.txn_id ? { fee_refund: { txn_id: refundTxnId, refunded_at: now } } : {}
           });
-          return send(200, { ok: true, status: "rejected" });
+          return send(200, { ok: true, status: "rejected", ...refundTxnId ? { fee_refunded: true } : {} });
         }
         const result = await createClanTree({
           surname: request.surname,
@@ -38919,7 +39078,7 @@ async function handleRequest(event) {
         const u = await authUser(headers);
         if (!u)
           throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
-        const reqUser = await colGet("jiazu_users", u.phone);
+        const reqUser = await colGet("jiapu_users", u.phone);
         if (!reqUser)
           throw httpError4(401, "\u7528\u6237\u4E0D\u5B58\u5728");
         if (reqUser.role === "guest")
@@ -38957,7 +39116,7 @@ async function handleRequest(event) {
         const u = await authUser(headers);
         if (!u)
           throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
-        const reqUser = await colGet("jiazu_users", u.phone);
+        const reqUser = await colGet("jiapu_users", u.phone);
         if (!reqUser || reqUser.role !== "chief_editor")
           throw httpError4(403, "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650");
         const ratio = await getConvergeSpiritRatio();
@@ -38979,7 +39138,7 @@ async function handleRequest(event) {
       const u = await authUser(headers);
       if (!u)
         return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      const user = await colGet("jiazu_users", u.phone);
+      const user = await colGet("jiapu_users", u.phone);
       if (!user || user.role !== "chief_editor")
         return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
       const body = parseBody(event);
@@ -39014,7 +39173,7 @@ async function handleRequest(event) {
       const u = await authUser(headers);
       if (!u)
         return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      const user = await colGet("jiazu_users", u.phone);
+      const user = await colGet("jiapu_users", u.phone);
       if (!user || user.role !== "chief_editor")
         return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
       const body = parseBody(event);
@@ -39036,7 +39195,7 @@ async function handleRequest(event) {
       const u = await authUser(headers);
       if (!u)
         return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      const user = await colGet("jiazu_users", u.phone);
+      const user = await colGet("jiapu_users", u.phone);
       if (!user || user.role !== "chief_editor")
         return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
       const body = parseBody(event);
@@ -39071,7 +39230,7 @@ async function handleRequest(event) {
         const u = await authUser(headers);
         if (!u)
           return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-        const user = await colGet("jiazu_users", u.phone);
+        const user = await colGet("jiapu_users", u.phone);
         if (!user || user.role !== "chief_editor")
           return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
       } else {
@@ -39097,7 +39256,7 @@ async function handleRequest(event) {
       const u = await authUser(headers);
       if (!u)
         return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      const user = await colGet("jiazu_users", u.phone);
+      const user = await colGet("jiapu_users", u.phone);
       if (!user || user.role !== "chief_editor")
         return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
       const body = parseBody(event);
@@ -39418,7 +39577,17 @@ async function handleRequest(event) {
         return send(errorStatusOf(e, 400), { error: e.message });
       }
       try {
+        assertStartYears(body);
+      } catch (e) {
+        return send(errorStatusOf(e, 400), { error: e.message });
+      }
+      try {
         assertKnownOriginCodes(body);
+      } catch (e) {
+        return send(errorStatusOf(e, 400), { error: e.message });
+      }
+      try {
+        assertStartYearNotAfterDeath(body, putTree?.people?.[peMatch[1]]?.death_date);
       } catch (e) {
         return send(errorStatusOf(e, 400), { error: e.message });
       }
