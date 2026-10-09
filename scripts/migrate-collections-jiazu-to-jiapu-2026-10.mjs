@@ -22,10 +22,15 @@
  *     node scripts/migrate-collections-jiazu-to-jiapu-2026-10.mjs
  *   # 只盘点（只读）
  *   ... --inventory
+ *   # 导出备份：白名单 20 个旧集合全量文档 → ~/jiazu-backups/<批次>/ + md5 台账（只读云端）
+ *   ... --export
  *   # 落盘：建集合 + 导数据 + 对账
  *   ... --apply
- *   # 【危险 · 本单不执行】迁移后删旧集合
+ *   # 【危险】迁移后删旧集合（内置白名单断言：仅恰 20 个 jiazu_* 可删，其余一律拒）
  *   ... --apply --delete-old
+ *
+ * 安全闸（生死线）：DELETE_WHITELIST 恰 20 个旧集合名 + assertDeletable()
+ *   —— 名字不在白名单、或不以旧前缀开头 ⇒ 直接抛错拒绝（导出与删除两条路径都过闸）。
  *
  * 凭据优先级：CB_KEY（accessKey 路径）> TCB_SECRET_ID/TCB_SECRET_KEY/TCB_TOKEN（STS 路径）；
  *            都缺 ⇒ 清晰报错 + exit 1。**只从环境变量读取，不入 argv、不打印、不落盘。**
@@ -42,6 +47,9 @@ import cloudbase from '@cloudbase/node-sdk';
 import { createRequire } from 'module';
 import { execFileSync } from 'child_process';
 import path from 'path';
+import crypto from 'crypto';
+import fs from 'fs';
+import os from 'os';
 import { fileURLToPath } from 'url';
 
 const require_ = createRequire(import.meta.url);
@@ -54,8 +62,16 @@ const argv = process.argv.slice(2);
 const ADMIN = argv[0] === '--admin';
 const APPLY = argv.includes('--apply');
 const INVENTORY_ONLY = argv.includes('--inventory');
+const EXPORT = argv.includes('--export');
 const DELETE_OLD = argv.includes('--delete-old');
 const SAMPLE_N = 3;
+
+// 备份落点（持久位置，禁用 /tmp）
+const BACKUP_DIR = path.join(
+  os.homedir(),
+  'jiazu-backups',
+  '2026-10-09-jiazu-collections-pre-delete',
+);
 
 // ---- 凭据（仅 env；不入 argv / 不打印）----
 const ENV = process.env.CB_ENV;
@@ -111,6 +127,57 @@ const BASE_NAMES = [
   'join_requests',
 ];
 
+// ---- 删除白名单（生死线 · 恰 20 个旧集合 · 逐字）----
+// 除以下 20 个 jiazu_* 外，任何集合一律不得删（含全部 jiapu_* 与其它项目的 65 个）。
+const DELETE_WHITELIST = [
+  'jiazu_anchors',
+  'jiazu_assets',
+  'jiazu_clan_requests',
+  'jiazu_founder_requests',
+  'jiazu_id_seq',
+  'jiazu_invite_codes',
+  'jiazu_leave_requests',
+  'jiazu_market',
+  'jiazu_marriage_requests',
+  'jiazu_messages',
+  'jiazu_ops_logs',
+  'jiazu_sms_codes',
+  'jiazu_spirit',
+  'jiazu_users',
+  'jiazu_wallets',
+  'jiazu_person_details',
+  'jiazu_tree_meta',
+  'jiazu_friends',
+  'jiazu_invites',
+  'jiazu_join_requests',
+];
+const DELETE_WHITELIST_SET = new Set(DELETE_WHITELIST);
+
+// 内置断言：名字不在白名单 ⇒ 拒；不以旧前缀开头 ⇒ 拒。删前逐集合再断一次。
+function assertDeletable(name) {
+  if (!DELETE_WHITELIST_SET.has(name)) {
+    throw new Error(`✖ 拒绝删除：${name} 不在删除白名单（恰 20 个 ${OLD_PREFIX}*）`);
+  }
+  if (!String(name).startsWith(OLD_PREFIX)) {
+    throw new Error(`✖ 拒绝删除：${name} 不以旧前缀 ${OLD_PREFIX} 开头`);
+  }
+  return true;
+}
+
+// 自检：白名单必须恰 20、互不重复，且与 BASE_NAMES 映射出的旧名逐一一致。
+{
+  const expected = BASE_NAMES.map(OLD);
+  const mismatch =
+    DELETE_WHITELIST.length !== 20 ||
+    DELETE_WHITELIST_SET.size !== 20 ||
+    DELETE_WHITELIST.some((n) => !expected.includes(n)) ||
+    expected.some((n) => !DELETE_WHITELIST_SET.has(n));
+  if (mismatch) {
+    console.error('✖ 白名单自检失败：DELETE_WHITELIST 与 BASE_NAMES 映射不一致');
+    process.exit(1);
+  }
+}
+
 // ---- manager-node 定位（repo → 全局 npm root 下的 @cloudbase/cli）----
 function loadManager() {
   const cands = [
@@ -155,6 +222,7 @@ async function runAdminChild(args) {
       const r = await app.database.createCollectionIfNotExists(name);
       finish({ ok: true, created: !!(r && r.IsCreated) });
     } else if (op === 'delete') {
+      assertDeletable(name); // 隔离子进程内再断一次（生死线 · 双闸）
       await app.database.deleteCollection(name);
       finish({ ok: true });
     } else {
@@ -306,13 +374,54 @@ async function reconcile(oldName, newName) {
   };
 }
 
+// ---- 导出备份（--export）：全量文档落盘 + md5 台账 + 计数台账 ----
+async function runExport() {
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  const ledger = [];
+  const counts = [];
+  let grand = 0;
+  for (const base of BASE_NAMES) {
+    const name = OLD(base);
+    assertDeletable(name); // 导出只针对白名单内集合
+    const cloud = await countOf(name);
+    const docs = await readAll(name);
+    if (cloud.count === null || docs.length !== cloud.count) {
+      throw new Error(
+        `✖ 档数不符：${name} 导出 ${docs.length} 档 / 云端 ${cloud.count} 档 —— 停下报回`,
+      );
+    }
+    const file = path.join(BACKUP_DIR, `${name}.json`);
+    fs.writeFileSync(file, JSON.stringify(docs, null, 2));
+    const buf = fs.readFileSync(file);
+    const md5 = crypto.createHash('md5').update(buf).digest('hex');
+    ledger.push(`${md5}  ${String(buf.length).padStart(8)}  ${name}.json`);
+    counts.push(`${name}\t${docs.length}`);
+    grand += docs.length;
+    console.log(`  ✓ ${name}.json  ${docs.length} 档  ${buf.length} B  md5=${md5}`);
+  }
+  fs.writeFileSync(path.join(BACKUP_DIR, 'MD5-LEDGER.txt'), ledger.join('\n') + '\n');
+  fs.writeFileSync(path.join(BACKUP_DIR, 'COUNTS.txt'), counts.join('\n') + '\n');
+  console.log('');
+  console.log(`  合计导出 ${grand} 档 / ${BASE_NAMES.length} 集合`);
+  console.log(`  台账：MD5-LEDGER.txt（${ledger.length} 行）/ COUNTS.txt（${counts.length} 行）`);
+  return { grand, dir: BACKUP_DIR };
+}
+
 // ================= main =================
 async function main() {
   console.log('=== 云端集合迁移：旧前缀 → 新前缀 ===');
-  console.log(`模式        : ${APPLY ? 'APPLY（落盘）' : INVENTORY_ONLY ? 'INVENTORY（只盘点）' : 'DRY-RUN（默认，零写入）'}`);
+  const mode = APPLY
+    ? 'APPLY（落盘）'
+    : INVENTORY_ONLY
+      ? 'INVENTORY（只盘点）'
+      : EXPORT
+        ? 'EXPORT（导出备份，只读云端）'
+        : 'DRY-RUN（默认，零写入）';
+  console.log(`模式        : ${mode}`);
   console.log(`环境        : ${ENV}`);
   console.log(`凭据路径    : ${hasKey ? 'CB_KEY(accessKey)' : 'TCB STS(secretId/sessionToken)'} —— 仅 env 变量名已设置，值不打印`);
   console.log(`受影响清单  : ${BASE_NAMES.length} 项`);
+  console.log(`删除白名单  : ${DELETE_WHITELIST.length} 项（仅此 20 个 jiazu_* 可删，余者一律拒）`);
   console.log(`旧集合不删  : ${DELETE_OLD ? '⚠️  --delete-old 已开启（危险）' : '是（--delete-old 未开启）'}`);
   console.log('');
 
@@ -353,7 +462,17 @@ async function main() {
     return;
   }
 
-  // ---------- ② 建新集合（仅 --apply；dry-run 只打印计划）----------
+  // ---------- ② 导出备份（--export）：全量文档 + md5 台账 ----------
+  if (EXPORT) {
+    console.log('');
+    console.log('--- ② 导出备份（全量文档 + md5 台账 · 只读云端）---');
+    const r = await runExport();
+    console.log('');
+    console.log(`✓ 备份目录：${r.dir}`);
+    return;
+  }
+
+  // ---------- 建新集合（仅 --apply；dry-run 只打印计划）----------
   if (!APPLY) {
     console.log('');
     console.log('--- DRY-RUN 计划 ---');
@@ -430,10 +549,28 @@ async function main() {
     }
     console.log('');
     console.log('--- ⑤ 删除旧集合（--delete-old）---');
-    for (const r of rows) {
-      if (!r.old.exists) continue;
-      const d = adminCall(['delete', r.oldName]);
-      console.log(`  ${d.ok ? '✓ 已删' : '✖ 删除失败'} ${r.oldName}${d.ok ? '' : ' —— ' + d.error}`);
+    // 删前再断：全部待删名必须落在白名单内（生死线）
+    const toDelete = rows.filter((r) => r.old.exists).map((r) => r.oldName);
+    for (const n of toDelete) assertDeletable(n);
+    console.log(`  待删 ${toDelete.length} 个（均经白名单断言）：${toDelete.join(', ')}`);
+    let deleted = 0;
+    const failures = [];
+    for (const name of toDelete) {
+      assertDeletable(name); // 逐集合删前再断一次
+      const d = adminCall(['delete', name]);
+      if (d.ok) {
+        deleted++;
+        console.log(`  ✓ 已删 ${name}`);
+      } else {
+        failures.push({ name, error: d.error });
+        console.log(`  ✖ 删除失败 ${name} —— ${d.error}`);
+      }
+    }
+    console.log('');
+    console.log(`  删除汇总：成功 ${deleted} / ${toDelete.length}`);
+    if (failures.length) {
+      console.log(`  ✖ ${failures.length} 个删除失败（不应有失败）：`);
+      for (const f of failures) console.log(`    - ${f.name}: ${f.error}`);
     }
   } else {
     console.log('');
