@@ -14,7 +14,7 @@
  *   H7 树清单拉取失败 ⇒ 整体降级空表（`generated_at: null`）＋ **不被空值锁死**（依赖恢复后立即重扫并拿到票）
  *   H8 清单失败不刷新成功时刻 ⇒ 返回上一次成功值（`generated_at` 不变、无负缓存）
  *   H9 `failed` 值形态 = **树 id 字符串数组**（仅收 `getTree` 抛错的树；返回 null 的不进）
- *   Z1 真源零写入（收尾）：`config/tree-meta.json` 与 `migrate-output/collections/jiazu_assets.json` md5 逐字节未变
+ *   Z1 真源零写入（收尾）：`config/tree-meta.json` 与 `migrate-output/collections/jiapu_assets.json` md5 逐字节未变
  *
  * 数据安全：`COMPAT_SOURCE=local` + `COMPAT_OUT_DIR` / `COMPAT_META_FILE` 一律指向 `/tmp` 副本；
  * 本文件对真源**只读**，收尾以 Z1 逐字节断言（沿用 `lib/*.test.js` 惯例）。
@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '../../..');
 const REAL_META = path.join(REPO, 'config', 'tree-meta.json');
-const REAL_ASSETS = path.join(REPO, 'migrate-output', 'collections', 'jiazu_assets.json');
+const REAL_ASSETS = path.join(REPO, 'migrate-output', 'collections', 'jiapu_assets.json');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'jiazu-geo-hot-'));
 const META_FILE = path.join(TMP, 'tree-meta.json');
@@ -351,10 +351,10 @@ test('H6 GET /geo/hot：200 + 顶层四键；无需鉴权 / 无需 X-Tree-Id；�
 
 // ================= Z1 真源零写入 =================
 
-test('Z1 真源零写入：config/tree-meta.json 与 migrate-output/collections/jiazu_assets.json md5 逐字节未变', () => {
+test('Z1 真源零写入：config/tree-meta.json 与 migrate-output/collections/jiapu_assets.json md5 逐字节未变', () => {
   assert.equal(md5(REAL_META), REAL_META_MD5, 'config/tree-meta.json 被改动了（本批禁止任何真源写入）');
-  assert.ok(REAL_ASSETS_MD5, '真源基线必须存在：migrate-output/collections/jiazu_assets.json');
-  assert.equal(md5(REAL_ASSETS), REAL_ASSETS_MD5, 'migrate-output/collections/jiazu_assets.json 被改动了');
+  assert.ok(REAL_ASSETS_MD5, '真源基线必须存在：migrate-output/collections/jiapu_assets.json');
+  assert.equal(md5(REAL_ASSETS), REAL_ASSETS_MD5, 'migrate-output/collections/jiapu_assets.json 被改动了');
   assert.notEqual(path.resolve(TMP), path.resolve(REPO), '夹具跑在 /tmp 副本上');
   assert.equal(path.resolve(TMP).startsWith(path.resolve(os.tmpdir())), true);
 });

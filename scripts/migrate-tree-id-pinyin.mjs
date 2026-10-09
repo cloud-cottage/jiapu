@@ -15,7 +15,7 @@
  *   1. config/tree-meta.json 3 个条目：键名 + tree_id + path_alias，并补 surname_pinyin
  *   2. migrate-output/trees/<old>.json 3 个文件：文件名 + 内部 tree_id
  *   3. migrate-output/details/<old>:<handle>.json 5 个文件：文件名前缀 + 内部 tree_id
- *   4. migrate-output/collections/jiazu_assets.json 账本 ref.tree_id 与 desc 文案（不新增字段）
+ *   4. migrate-output/collections/jiapu_assets.json 账本 ref.tree_id 与 desc 文案（不新增字段）
  *
  * 口径：**原地迁移、不保留旧 URL 别名**（旧 tree_id 一律不再可达）。
  * 幂等：重复执行必须报「已迁移，0 变更」并 exit 0。
@@ -97,7 +97,7 @@ for (const m of MAPPING) {
   m.metaState = hasOld ? 'old' : hasNew ? 'new' : 'missing';
 }
 
-const assetsFile = path.join(COLLECTIONS, 'jiazu_assets.json');
+const assetsFile = path.join(COLLECTIONS, 'jiapu_assets.json');
 const assetsText = exists(assetsFile) ? read(assetsFile) : '';
 for (const m of MAPPING) {
   m.assetsOld = countOccurrences(assetsText, m.from);
@@ -193,7 +193,7 @@ for (const m of MAPPING) {
   backup(m.planTrees.newTree, path.join('trees', `${m.to}.json`));
   for (const f of m.planDetails.old) backup(path.join(DETAILS, f), path.join('details', f));
 }
-backup(assetsFile, 'collections/jiazu_assets.json');
+backup(assetsFile, 'collections/jiapu_assets.json');
 console.log(`\n备份：${BAK}（${backupList.length} 个文件）`);
 
 const changed = [];
@@ -243,7 +243,7 @@ if (exists(assetsFile)) {
   if (touched > 0) {
     if (text.endsWith('\n') !== assetsText.endsWith('\n')) throw new Error('末尾换行状态被改变，拒绝写回');
     write(assetsFile, text);
-    changed.push(`collections/jiazu_assets.json（${touched} 处）`);
+    changed.push(`collections/jiapu_assets.json（${touched} 处）`);
   }
 }
 

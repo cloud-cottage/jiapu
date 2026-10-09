@@ -1,7 +1,7 @@
 /**
  * 全站唯一节点编号铸号器 —— docs/id-system.spec.md §3
  *
- * 计数器持久化在集合 `jiazu_id_seq`（本地 migrate-output/collections/jiazu_id_seq.json）：
+ * 计数器持久化在集合 `jiapu_id_seq`（本地 migrate-output/collections/jiapu_id_seq.json）：
  *   { _id: 'person', next: <number> }   // next = 下一个待分配号（1-based）
  *   { _id: 'family', next: <number> }
  *
@@ -16,7 +16,7 @@ import fs from 'fs';
 import path from 'path';
 import { colGet, colSet, colAtomicNext, PATHS, SOURCE } from './store.js';
 
-export const SEQ_COLLECTION = 'jiazu_id_seq';
+export const SEQ_COLLECTION = 'jiapu_id_seq';
 export const SEQ_PERSON = 'person';
 export const SEQ_FAMILY = 'family';
 export const ID_WIDTH = 6;
@@ -95,7 +95,7 @@ function localMaxIds() {
  * 计数器缺失时初始化（幂等）：
  * - 已有计数器 → 原样返回（绝不回退，杜绝重号）
  * - 缺失 → 本地按「既有数据最大编号 + 1」播种（迁移前的兜底，保证不与存量撞号）；
- *   云端缺失 → 1（云端首值由迁移脚本写入 jiazu_id_seq）
+ *   云端缺失 → 1（云端首值由迁移脚本写入 jiapu_id_seq）
  * @param {boolean} [force] true = 即使计数器已存在也按 max+1 抬升（只抬不降，供迁移脚本用）
  */
 export async function initSeqIfMissing(force = false) {

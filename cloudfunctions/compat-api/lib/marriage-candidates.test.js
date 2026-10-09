@@ -187,12 +187,12 @@ writeTree({
 // ---- 用户 / 锚点（登录态夹具）----
 const P_NO_ANCHOR = '16600000901'; // 登录但**无锚点** → 对 TREE 非成员
 const P_OTHER_ANCHOR = '16600000902'; // 登录但锚点在**其它树** → 对 TREE 非成员
-const P_GONE = '16600000903'; // token 有效但 jiazu_users 里没有该用户 → 401
-writeCol('jiazu_users', {
+const P_GONE = '16600000903'; // token 有效但 jiapu_users 里没有该用户 → 401
+writeCol('jiapu_users', {
   [P_NO_ANCHOR]: { _id: P_NO_ANCHOR, phone: P_NO_ANCHOR, nickname: '非成员甲', role: 'user' },
   [P_OTHER_ANCHOR]: { _id: P_OTHER_ANCHOR, phone: P_OTHER_ANCHOR, nickname: '非成员乙', role: 'user' },
 });
-writeCol('jiazu_anchors', {
+writeCol('jiapu_anchors', {
   [P_OTHER_ANCHOR]: {
     _id: P_OTHER_ANCHOR,
     tree_id: OTHER_TREE,

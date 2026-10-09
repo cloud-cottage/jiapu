@@ -1,6 +1,6 @@
 /**
  * 锚点 + 节点编辑范围校验（与 auth-server/scope.js 行为一致）
- * 锚点集合：jiazu_anchors（phone -> {tree_id, person_handle, updated_at}）
+ * 锚点集合：jiapu_anchors（phone -> {tree_id, person_handle, updated_at}）
  */
 import { colGet, colAll, colSet, colDelete, getTree } from './store.js';
 import { appendOpsLog, opsLogId } from './economy-ops.js';
@@ -24,7 +24,7 @@ function anchorError(status, message) {
  * 其它模块（含 `invite-codes`）**不得自扫全表**：一律经 `anchorHolderPhone` / `isPersonHandleTaken` 查询。
  */
 async function allAnchors() {
-  return colAll('jiazu_anchors');
+  return colAll('jiapu_anchors');
 }
 
 /**
@@ -51,7 +51,7 @@ export async function isPersonHandleTaken(personHandle) {
  *
  * 两条校验（Kevin 2026-09-30 当面拍定）：
  *  ① **存在性**：目标树 `people[person_handle]` 必须存在 ⇒ 否则 **404**（文案带节点标识，堵坏锚点）；
- *  ② **全站唯一**：唯一键 = `person_handle`（**全站唯一 · 不按树分**）—— 扫 `jiazu_anchors` 全表，
+ *  ② **全站唯一**：唯一键 = `person_handle`（**全站唯一 · 不按树分**）—— 扫 `jiapu_anchors` 全表，
  *     存在**其它 phone** 已绑同一 handle ⇒ **409**；文案**不得下发占用者手机号**。
  *     豁免：`opts.force === true` **且** `opts.role === 'chief_editor'` ⇒ 允许覆盖；
  *     其它角色传 `force` 一律忽略（仍 409）；`force` **只能来自请求体显式字段**、不得默认开启。
@@ -126,15 +126,15 @@ export async function setAnchor(phone, treeId, personHandle, extra = null) {
     updated_at: new Date().toISOString(),
   };
   if (extra && typeof extra === 'object') Object.assign(doc, extra);
-  await colSet('jiazu_anchors', phone, doc);
+  await colSet('jiapu_anchors', phone, doc);
 }
 
 export async function clearAnchor(phone) {
-  await colDelete('jiazu_anchors', phone);
+  await colDelete('jiapu_anchors', phone);
 }
 
 export async function getAnchor(phone) {
-  return colGet('jiazu_anchors', phone);
+  return colGet('jiapu_anchors', phone);
 }
 
 /**

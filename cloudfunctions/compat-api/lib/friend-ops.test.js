@@ -99,8 +99,8 @@ const L = await import('./economy-ledger.js');
 const store = await import('./store.js');
 
 const SRC = fs.readFileSync(MOD_SRC, 'utf8');
-const FRIENDS_FILE = path.join(TMP, 'collections', 'jiazu_friends.json');
-const MSG_FILE = path.join(TMP, 'collections', 'jiazu_messages.json');
+const FRIENDS_FILE = path.join(TMP, 'collections', 'jiapu_friends.json');
+const MSG_FILE = path.join(TMP, 'collections', 'jiapu_messages.json');
 const readFriends = () => (fs.existsSync(FRIENDS_FILE) ? JSON.parse(fs.readFileSync(FRIENDS_FILE, 'utf8')) : {});
 const readMsgs = () => (fs.existsSync(MSG_FILE) ? JSON.parse(fs.readFileSync(MSG_FILE, 'utf8')) : {});
 const msgItems = (phone) => readMsgs()?.[phone]?.items || [];
@@ -260,7 +260,7 @@ test('F-F 导出清单逐字齐备（11 个操作 + 常量/工具）+ 返回壳�
 test('F-G listFriends：不下发好友明文手机号（有昵称出昵称、无昵称只出脱敏串）', async () => {
   const T0 = '2026-03-01T00:00:00.000Z';
   const [a, b, c] = ['13910000001', '13910000002', '13910000003'];
-  await store.colSet('jiazu_users', b, { _id: b, phone: b, nickname: '乙用户', role: 'user' }); // c 无昵称
+  await store.colSet('jiapu_users', b, { _id: b, phone: b, nickname: '乙用户', role: 'user' }); // c 无昵称
   await F.createInvite(a, b, { now: T0 });
   await F.acceptInvite(rid(a, b), b, { now: T0 });
   await F.createInvite(a, c, { now: T0 });
@@ -829,7 +829,7 @@ test('F-D sweepFriends：全量关系惰性推进并**仅落变更**（版本 +1
 
 // ══ ⑮ F-A 不自写第二版记账（源码判据） ═══════════════════════════════════════════
 test('F-A 只做编排：资产只经 ledger 的 withAssets/导出读写（无资产集合字面、无第二套记账）', async () => {
-  assert.equal(SRC.includes('jiazu_assets'), false, '不得出现资产集合字面');
+  assert.equal(SRC.includes('jiapu_assets'), false, '不得出现资产集合字面');
   assert.equal(/ASSETS_COL|ASSETS_ID|mutateAssets/.test(SRC), false, '不得直接引用资产集合常量');
   assert.equal(SRC.includes("from './economy-ledger.js'"), true, '必须从账本域导入');
   for (const fn of ['withAssets', 'chargeLots', 'addFragments', 'addScrollFragments', 'addLot', 'recordTx', 'sumLots']) {
@@ -873,7 +873,7 @@ test('package.json 注册数 = 磁盘 *.test.js 数 = 40，且双向零缺口', 
 
 // ══ ⑰ 真源零写入 ════════════════════════════════════════════════════════════════
 // ⚠️ 本判据的**文件数定额**必须跟随真源集合真值：批 C 邀请码链路首次落盘新增集合文件
-//    migrate-output/collections/jiazu_invite_codes.json ⇒ 真源文件集合 +1，此处残留的旧定额 342
+//    migrate-output/collections/jiapu_invite_codes.json ⇒ 真源文件集合 +1，此处残留的旧定额 342
 //    变成假红 ⇒ 定额同步为实得真值 343。
 //    基线口径不变：`REAL_FP.digest` 与 `fp.digest` 跑测前后逐字节一致是**真不变量**；
 //    文件数定额只是「真源文件集变了就人工同步」的**绊线**。本次只同步定额（精确等值断言原样保留），
@@ -930,7 +930,7 @@ test('真源零写入：config/tree-meta.json 与 migrate-output/ 全量 md5 与
 test('裁定 3 relation_token：全程只出不透明句柄（fr_ + 16 hex），全部路由面出参零明文手机号', async () => {
   const T0 = '2028-01-01T00:00:00.000Z';
   const [a, b, c] = ['13980000001', '13980000002', '13980000003'];
-  await store.colSet('jiazu_users', b, { _id: b, phone: b, nickname: '乙', role: 'user' });
+  await store.colSet('jiapu_users', b, { _id: b, phone: b, nickname: '乙', role: 'user' });
   const seen = [];
   const collect = (label, r) => {
     noPlainPhone(r, label);

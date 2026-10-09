@@ -314,7 +314,7 @@ test('路由 POST /admin/add-child：maternal_succession 贯通请求体 → 200
   const phone = '16600000971';
   fs.mkdirSync(COLS_DIR, { recursive: true });
   fs.writeFileSync(
-    path.join(COLS_DIR, 'jiazu_users.json'),
+    path.join(COLS_DIR, 'jiapu_users.json'),
     JSON.stringify({ [phone]: { _id: phone, phone, nickname: '守卫测试', role: 'tree_steward' } }),
   );
   const token = signJwt({ sub: phone, phone, role: 'tree_steward' }, 3600);

@@ -74,7 +74,7 @@ fs.mkdirSync(path.join(TMP, 'collections'), { recursive: true });
 fs.mkdirSync(path.join(TMP, 'trees'), { recursive: true });
 fs.mkdirSync(path.join(TMP, 'details'), { recursive: true });
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_users.json'),
+  path.join(TMP, 'collections', 'jiapu_users.json'),
   JSON.stringify({ [CHIEF]: { _id: CHIEF, phone: CHIEF, nickname: '总编辑', role: 'chief_editor' } }),
 );
 const FIXTURE = () => ({

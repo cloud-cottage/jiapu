@@ -464,7 +464,7 @@ test('路由 POST /admin/delete-node：鉴权/权限/成功删除/dry-run/跨树
   fs.mkdirSync(path.join(TMP, 'collections'), { recursive: true });
   const phone = '16600000200';
   fs.writeFileSync(
-    path.join(TMP, 'collections', 'jiazu_users.json'),
+    path.join(TMP, 'collections', 'jiapu_users.json'),
     JSON.stringify({
       [phone]: { _id: phone, phone, nickname: '主理人', role: 'tree_steward' },
       '16600000201': { _id: '16600000201', phone: '16600000201', nickname: '游客', role: 'guest' },

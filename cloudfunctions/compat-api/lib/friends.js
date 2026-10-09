@@ -36,8 +36,8 @@
  */
 import { colGet, colSet, colWhere } from './store.js';
 
-/** F-1：集合名（部署名逐字；本地模式落 migrate-output/collections/jiazu_friends.json） */
-export const FRIENDS_COL = 'jiazu_friends';
+/** F-1：集合名（部署名逐字；本地模式落 migrate-output/collections/jiapu_friends.json） */
+export const FRIENDS_COL = 'jiapu_friends';
 
 /** F-4 状态取值（逐字）：待邀请 / 生效中 / 缓冲中 / 已解除 */
 export const RELATION_STATUS = {

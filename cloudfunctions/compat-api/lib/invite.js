@@ -1,14 +1,14 @@
 /**
- * 邀请链路内核（jiazu_invites）— Zang 裁定 v3（2026-09-25，冻结口径 I-1…I-9）
+ * 邀请链路内核（jiapu_invites）— Zang 裁定 v3（2026-09-25，冻结口径 I-1…I-9）
  *
  * 口径（逐条实现，每条一句话可改）：
- *   I-1 集合 `jiazu_invites`，**每被邀请人一文档**：`_id = 被邀请人手机号`；
+ *   I-1 集合 `jiapu_invites`，**每被邀请人一文档**：`_id = 被邀请人手机号`；
  *       字段 `inviter_phone` / `created_at` / `rewarded`（布尔）/ `reward_tx_id`（可选）。
  *       一个手机号只能被邀请一次（`_id` 唯一天然保证）；**记录永不复用、不删除**。
  *   I-2 **邀请码 = 邀请人手机号（11 位）**，不引入短码与映射表；可校验：该手机号必须已注册。
  *   I-3 注册时可选填 `invite_code`；缺省 / 空 = 无邀请（行为与既有完全一致）。
  *       依次校验：① 11 位手机号格式 ② 邀请人 ≠ 被邀请人 ③ 邀请人已注册 ④ 该被邀请人尚无邀请记录
- *       （④ 命中 → **静默忽略，不重发奖**）。**校验全过才写 jiazu_invites 文档**。
+ *       （④ 命中 → **静默忽略，不重发奖**）。**校验全过才写 jiapu_invites 文档**。
  *   I-4 发奖：**邀请人**得 9 石榴籽碎片 + 11 兰帖残页；**被邀请人不得奖**。
  *   I-5 日限与防刷：邀请人 **3 次/日**（按北京自然日）；超限**静默不发放**、**不回滚注册**；
  *       计数口径 = 扫描本仓既有 `Tx.type === 'reward'` 流水（**不新增顶层计数字段**）；
@@ -43,8 +43,8 @@ import {
 
 // ---- 集合与常量 ----
 
-export const INVITES_COL = 'jiazu_invites';
-export const USERS_COL = 'jiazu_users';
+export const INVITES_COL = 'jiapu_invites';
+export const USERS_COL = 'jiapu_users';
 
 /** 邀请码形态 = 11 位手机号（I-2；与既有 PHONE_RE 同口径） */
 export const PHONE_RE = /^1\d{10}$/;
@@ -255,7 +255,7 @@ export async function applyInvite(inviteePhone, rawCode, opts = {}) {
 
 /**
  * 我的邀请面板：邀请码（= 我的手机号，I-2）、今日已邀次数（I-5 口径：今日已发放的邀请奖励条数）、
- * 已邀总数（`jiazu_invites` 中 `inviter_phone = 我` 的文档数）、剩余今日额度。
+ * 已邀总数（`jiapu_invites` 中 `inviter_phone = 我` 的文档数）、剩余今日额度。
  */
 export async function inviteStats(phone, now = new Date()) {
   const me = String(phone || '').trim();

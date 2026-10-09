@@ -1,6 +1,6 @@
 /**
  * 好友域**编排层**（批2-D）—— lib/friends.js（关系状态域）× lib/economy-ledger.js（资产账本域）
- * × 站内信域（`jiazu_messages`）。
+ * × 站内信域（`jiapu_messages`）。
  *
  * ────────────────────────────────────────────────────────────────────────────
  * 分工（Zang 裁定 v4 / F-A）：
@@ -13,7 +13,7 @@
  *     **唯一私有落盘点 `writeRelationDoc`**（version + 1，与 friends.js 的 `persistRelation` 同律）：
  *     friends.js 不提供「全量遍历」与「追加审计事件」两个导出，而裁定 2 明令补偿须在关系 history 留痕。
  *   · **通知一律复用站内信域**：实测本仓**不存在 `lib/messages.js`**（只有 `messages.test.js`），
- *     通知域的实现落点是 `lib/economy-ops.js`（`jiazu_messages` **每手机号一档** + `withMessages` CAS +
+ *     通知域的实现落点是 `lib/economy-ops.js`（`jiapu_messages` **每手机号一档** + `withMessages` CAS +
  *     `messageId` / `trimMessages`）。本模块复用其 `withMessages` 写同形 `Message`，
  *     **不另造第二套通知存储**、**不动 economy-ops.js**。
  *
@@ -238,7 +238,7 @@ export function maskPhone(phone) {
   return `${p.slice(0, 1)}****`;
 }
 
-/** 昵称（`jiazu_users` 一人一文档，`_id` = 手机号）；拿不到 ⇒ `''`（不臆造） */
+/** 昵称（`jiapu_users` 一人一文档，`_id` = 手机号）；拿不到 ⇒ `''`（不臆造） */
 async function nicknameOf(phone) {
   const p = norm(phone);
   if (!p) return '';
@@ -1263,7 +1263,7 @@ export async function lockedScrollPieces(phone, now = new Date()) {
 // ==================== F-D：惰性 sweep（不注册定时任务） ====================
 
 /**
- * F-D 惰性 sweep：遍历 `jiazu_friends` **全量关系**，对每份调用 friends.js 的**纯函数** `sweepRelation`，
+ * F-D 惰性 sweep：遍历 `jiapu_friends` **全量关系**，对每份调用 friends.js 的**纯函数** `sweepRelation`，
  * **仅对发生迁移的关系落盘**（version + 1，走本模块唯一落盘点 `writeRelationDoc`）。
  * **不注册定时任务**：源码中无任何定时器 / 周期调度调用。
  * @param {Date|string} [now]

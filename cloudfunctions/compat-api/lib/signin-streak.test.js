@@ -1,6 +1,6 @@
 /**
  * 签到域单测（Zang 裁定 v1 · Kevin 2026-09-28 拍定）——
- *   连签 7 天 + 每日随机追加 + 补签 + 后台可配（`jiazu_wallets.config` 三键）+ 出参扩展（items / calendar）。
+ *   连签 7 天 + 每日随机追加 + 补签 + 后台可配（`jiapu_wallets.config` 三键）+ 出参扩展（items / calendar）。
  *
  * 本文件覆盖（硬清单）：
  *   ① 常量逐字 / 无新增 Tx.type / 随机源不得用 `Date.now()`（源码判据）；
@@ -8,7 +8,7 @@
  *   ③ 第 7 天额外发 `signin_day7_fragments`（默认 10）碎片（同一次 `grantRewardBase` / 同一事务）；
  *   ④ 随机池**注入确定性**：三种 kind（fragment / bamboo / scrollFragment）各命中一次（含资产读回）；
  *   ⑤ 池权重边界（半开半闭：0 / 0.499999 / 0.5 / 0.849999 / 0.85 / 0.999999 / 越界 / NaN / 空池）；
- *   ⑥ 配置读写与非法回退（读侧默认值、写侧 400、载体 = `jiazu_wallets.config`、路由 = 既有 PUT /admin/wallet-fee）；
+ *   ⑥ 配置读写与非法回退（读侧默认值、写侧 400、载体 = `jiapu_wallets.config`、路由 = 既有 PUT /admin/wallet-fee）；
  *   ⑦ 补签：成功（扣费 / 落日期集 / 重算连签 / 不补发道具）· 越界 / 今天 / 未来 / 超 7 天 · 重复 · 竹片不足（409 且零写入）；
  *   ⑧ 幂等：同日重复签到 409 且**零写入**（直调与路由两条面）；
  *   ⑨ `calendar` 7 格状态判定（signed / missed / today / future）＋ `/assets/summary` 也带日历条（前端不得另开请求）；
@@ -64,8 +64,8 @@ function realSourceFingerprint() {
   return { count: files.length, digest: agg.digest('hex') };
 }
 const REAL_FP_BEFORE = realSourceFingerprint();
-/** 真源单文件 md5（`migrate-output/collections/jiazu_assets.json`）——报告要求的逐文件证据 */
-const REAL_ASSETS_MD5_BEFORE = md5(path.join(REAL_OUT, 'collections', 'jiazu_assets.json'));
+/** 真源单文件 md5（`migrate-output/collections/jiapu_assets.json`）——报告要求的逐文件证据 */
+const REAL_ASSETS_MD5_BEFORE = md5(path.join(REAL_OUT, 'collections', 'jiapu_assets.json'));
 
 fs.mkdirSync(path.join(TMP, 'collections'), { recursive: true });
 fs.mkdirSync(path.join(TMP, 'trees'), { recursive: true });
@@ -91,7 +91,7 @@ const users = Object.values(U).map((phone) => [
   phone,
   { _id: phone, phone, nickname: `用户${phone.slice(-3)}`, role: phone === U.chief ? 'chief_editor' : 'user' },
 ]);
-fs.writeFileSync(path.join(TMP, 'collections', 'jiazu_users.json'), JSON.stringify(Object.fromEntries(users)));
+fs.writeFileSync(path.join(TMP, 'collections', 'jiapu_users.json'), JSON.stringify(Object.fromEntries(users)));
 
 const L = await import('./economy-ledger.js');
 const W = await import('./wallet.js');
@@ -144,9 +144,9 @@ const BLANK = {
   signin_days: [],
 };
 const resetUser = (phone) => seed(phone, JSON.parse(JSON.stringify(BLANK)));
-/** 后台配置复位（`jiazu_wallets` 的 `_id='config'` 单档清空 ⇒ 三键全部回落默认值） */
+/** 后台配置复位（`jiapu_wallets` 的 `_id='config'` 单档清空 ⇒ 三键全部回落默认值） */
 const resetSigninConfig = () =>
-  store.colSet('jiazu_wallets', 'config', { _id: 'config', version: 1 });
+  store.colSet('jiapu_wallets', 'config', { _id: 'config', version: 1 });
 
 // ══ ① 常量逐字 / 无新增枚举 / 随机源纪律 ═════════════════════════════════════════
 test('① 常量逐字：周期 7（写死不配）/ 可补 7 天 / 两条文案 / 默认池三件 / 默认值 2 与 10', () => {
@@ -364,7 +364,7 @@ test('⑤ 池权重边界：半开半闭区间（0/0.499999/0.5/0.849999/0.85/0.
 });
 
 // ══ ⑥ 后台可配：读写 / 非法回退 / 治理路由 ════════════════════════════════════════
-test('⑥ 配置：载体 = jiazu_wallets.config、读侧默认回退、写侧非法 400、路由 = 既有 PUT /admin/wallet-fee', async () => {
+test('⑥ 配置：载体 = jiapu_wallets.config、读侧默认回退、写侧非法 400、路由 = 既有 PUT /admin/wallet-fee', async () => {
   await resetSigninConfig();
   // 读侧默认（缺省）
   assert.deepEqual(await W.getSigninPool(), W.DEFAULT_SIGNIN_POOL);
@@ -372,7 +372,7 @@ test('⑥ 配置：载体 = jiazu_wallets.config、读侧默认回退、写侧�
   assert.equal(await W.getSigninDay7Fragments(), 10);
 
   // 非法存量 ⇒ 回退默认（同 getBranchFeeSeeds 体例）
-  await store.colSet('jiazu_wallets', 'config', {
+  await store.colSet('jiapu_wallets', 'config', {
     _id: 'config',
     version: 1,
     signin_pool: [],
@@ -382,7 +382,7 @@ test('⑥ 配置：载体 = jiazu_wallets.config、读侧默认回退、写侧�
   assert.deepEqual(await W.getSigninPool(), W.DEFAULT_SIGNIN_POOL, '空数组 ⇒ 回退默认池');
   assert.equal(await W.getSigninMakeupCostBamboos(), 2, '0 ⇒ 回退默认 2');
   assert.equal(await W.getSigninDay7Fragments(), 10, '负数 ⇒ 回退默认 10');
-  await store.colSet('jiazu_wallets', 'config', {
+  await store.colSet('jiapu_wallets', 'config', {
     _id: 'config',
     version: 1,
     signin_pool: [{ kind: 'bogus', qty: 1, weight: 1 }],
@@ -436,8 +436,8 @@ test('⑥ 配置：载体 = jiazu_wallets.config、读侧默认回退、写侧�
   ]);
   assert.equal(okBody.signin_makeup_cost_bamboos, 4);
   assert.equal(okBody.signin_day7_fragments, 20);
-  // 载体确认：确实落在 jiazu_wallets 的 `_id='config'` 单档上（**不新建集合**）
-  const wallets = await store.colGet('jiazu_wallets', 'config');
+  // 载体确认：确实落在 jiapu_wallets 的 `_id='config'` 单档上（**不新建集合**）
+  const wallets = await store.colGet('jiapu_wallets', 'config');
   assert.deepEqual(wallets.signin_pool[0], { kind: 'scroll_fragment', qty: 2, weight: 1 });
   assert.equal(wallets.signin_makeup_cost_bamboos, 4);
   assert.equal(wallets.signin_day7_fragments, 20);
@@ -733,10 +733,10 @@ test('⑪ 收口：每格 base 逐字两项 + random=true；仅第 7 格 bonus�
 });
 
 // ══ ⑩ 真源零写入 ════════════════════════════════════════════════════════════════
-test('⑩ 真源零写入：config/ + migrate-output/ 全量指纹不变；jiazu_assets.json md5 逐字节一致', () => {
+test('⑩ 真源零写入：config/ + migrate-output/ 全量指纹不变；jiapu_assets.json md5 逐字节一致', () => {
   const after = realSourceFingerprint();
   assert.equal(after.count, REAL_FP_BEFORE.count, '真源文件数不得变化');
   assert.equal(after.digest, REAL_FP_BEFORE.digest, '真源全量 md5 指纹不得变化');
-  assert.equal(md5(path.join(REAL_OUT, 'collections', 'jiazu_assets.json')), REAL_ASSETS_MD5_BEFORE, '真源资产集合逐字节一致');
+  assert.equal(md5(path.join(REAL_OUT, 'collections', 'jiapu_assets.json')), REAL_ASSETS_MD5_BEFORE, '真源资产集合逐字节一致');
   assert.equal(process.env.COMPAT_OUT_DIR, TMP, '本文件必须把数据根指向 /tmp 副本');
 });

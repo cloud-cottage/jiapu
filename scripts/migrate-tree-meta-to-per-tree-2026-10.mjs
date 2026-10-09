@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * 一次性数据手术（路 B 重构第 4 期）：`jiazu_tree_meta` 单文档 → **每树一档**
+ * 一次性数据手术（路 B 重构第 4 期）：`jiapu_tree_meta` 单文档 → **每树一档**
  *
  * 背景（根因）：tree-meta 在云端原为**全体共用单文档** `_id='global'`（内嵌 `trees` 映射），
  * 本地形态 `config/tree-meta.json` 本就是「每树一键」（`{_schema,_description,trees:{<tree_id>:{…}}}`）。
  * 多实例并发写不同树会互相覆盖。本脚本把两侧口径统一到 v2：
  *
- *   云端迁移前：jiazu_tree_meta/global = { _schema, _description, trees:{…}, storage_files:{…} }
- *   云端迁移后：jiazu_tree_meta/_meta       = { _id:'_meta', _schema, _description, storage_files }
- *               jiazu_tree_meta/<tree_id>  = { _id:'<tree_id>', …原 trees[tree_id] 字段…, version }
+ *   云端迁移前：jiapu_tree_meta/global = { _schema, _description, trees:{…}, storage_files:{…} }
+ *   云端迁移后：jiapu_tree_meta/_meta       = { _id:'_meta', _schema, _description, storage_files }
+ *               jiapu_tree_meta/<tree_id>  = { _id:'<tree_id>', …原 trees[tree_id] 字段…, version }
  *               （旧 global 档**删除**；迁后 `global` 键必须消失）
  *   本地：`config/tree-meta.json` **路径与对外形状不变**，仅给每个树条目**新增 `version`**
  *         （非负整数自 1 起；缺省写 1）。
@@ -53,7 +53,7 @@ const apply = args.includes('--apply');
 const withCloud = args.includes('--cloud');
 
 const META_DOC_ID = '_meta';
-const COLL = 'jiazu_tree_meta';
+const COLL = 'jiapu_tree_meta';
 
 const md5 = (buf) => crypto.createHash('md5').update(buf).digest('hex');
 const hasVersion = (entry) => Number.isInteger(entry?.version) && entry.version >= 1;

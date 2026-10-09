@@ -1,5 +1,5 @@
 /**
- * 认证模块：JWT 签发/验证、短信验证码、用户账户（集合 jiazu_users / jiazu_sms_codes）
+ * 认证模块：JWT 签发/验证、短信验证码、用户账户（集合 jiapu_users / jiapu_sms_codes）
  * 行为与 auth-server/server.js 保持一致（默认 secret 相同，本地 token 互通）。
  */
 import crypto from 'node:crypto';
@@ -53,7 +53,7 @@ export async function authUser(headers) {
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   const payload = verifyJwt(token);
   if (!payload) return null;
-  const user = await colGet('jiazu_users', payload.phone);
+  const user = await colGet('jiapu_users', payload.phone);
   return user ? { phone: user.phone, role: user.role } : null;
 }
 
@@ -73,7 +73,7 @@ function sendSms(phone, code) {
 
 export async function requestCode(phone) {
   const code = genCode();
-  await colSet('jiazu_sms_codes', phone, {
+  await colSet('jiapu_sms_codes', phone, {
     code,
     expires_at: Date.now() + CODE_TTL * 1000,
     attempts: 0,
@@ -83,29 +83,29 @@ export async function requestCode(phone) {
 }
 
 export async function verifyCode(phone, inputCode) {
-  const entry = await colGet('jiazu_sms_codes', phone);
+  const entry = await colGet('jiapu_sms_codes', phone);
   if (!entry) return { ok: false, message: '请先获取验证码' };
   if (Date.now() > entry.expires_at) {
-    await colDelete('jiazu_sms_codes', phone);
+    await colDelete('jiapu_sms_codes', phone);
     return { ok: false, message: '验证码已过期，请重新获取' };
   }
   entry.attempts = (entry.attempts || 0) + 1;
   if (entry.attempts > 5) {
-    await colDelete('jiazu_sms_codes', phone);
+    await colDelete('jiapu_sms_codes', phone);
     return { ok: false, message: '尝试次数过多，请重新获取验证码' };
   }
   if (entry.code !== inputCode) {
-    await colSet('jiazu_sms_codes', phone, entry);
+    await colSet('jiapu_sms_codes', phone, entry);
     return { ok: false, message: '验证码错误' };
   }
-  await colDelete('jiazu_sms_codes', phone);
+  await colDelete('jiapu_sms_codes', phone);
   return { ok: true };
 }
 
 // ---- 用户 ----
 
 export async function findOrCreateUser(phone, nickname) {
-  let user = await colGet('jiazu_users', phone);
+  let user = await colGet('jiapu_users', phone);
   if (!user) {
     const role = ADMIN_PHONE && phone === ADMIN_PHONE ? 'chief_editor' : 'user';
     user = {
@@ -114,10 +114,10 @@ export async function findOrCreateUser(phone, nickname) {
       role,
       created_at: new Date().toISOString(),
     };
-    await colSet('jiazu_users', phone, user);
+    await colSet('jiapu_users', phone, user);
   } else if (nickname && nickname !== user.nickname) {
     user.nickname = nickname;
-    await colSet('jiazu_users', phone, user);
+    await colSet('jiapu_users', phone, user);
   }
   return user;
 }

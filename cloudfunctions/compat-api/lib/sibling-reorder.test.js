@@ -9,7 +9,7 @@
  *   C3 闸门顺序：鉴权 → 只读预检 → 余额预检 → 扣费 → 落库；扣费在前、落库在后；余额不足 409 沿用既有原文。
  *   C4 no-op（提交序与现状逐位相同，含拖回原位）→ 不扣费、不写库、`noop:true`。
  *   C5 `child_handles` 必须与现有集合**完全等价**（等长 / 同元素 / 无重复），否则 400；family 不存在 → 404。
- *   C6 只读节点（始祖真身 / 上层镜像）→ 403，且 `jiazu_assets` 零变化、树零写入。
+ *   C6 只读节点（始祖真身 / 上层镜像）→ 403，且 `jiapu_assets` 零变化、树零写入。
  *   C7/C8 一次提交只动**一段** family 的数组（多家族分段，互不影响）。
  *
  * 数据安全：COMPAT_OUT_DIR / COMPAT_META_FILE 一律指向 /tmp 副本（同 lib/noop-edit-integrity.test.js 模式）；
@@ -74,7 +74,7 @@ fs.mkdirSync(path.join(TMP, 'collections'), { recursive: true });
 fs.mkdirSync(path.join(TMP, 'details'), { recursive: true });
 fs.mkdirSync(path.join(TMP, 'trees'), { recursive: true });
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_users.json'),
+  path.join(TMP, 'collections', 'jiapu_users.json'),
   JSON.stringify({
     [STEWARD]: { _id: STEWARD, phone: STEWARD, nickname: '主理人', role: 'tree_steward' },
     [GUEST]: { _id: GUEST, phone: GUEST, nickname: '游客', role: 'guest' },
@@ -117,7 +117,7 @@ const H = (treeId, phone = STEWARD) => ({ ...bee(phone), 'x-tree-id': treeId });
 const treePath = (id) => path.join(TMP, 'trees', `${id}.json`);
 const treeMd5 = (id) => md5(treePath(id));
 const readTree = (id) => JSON.parse(fs.readFileSync(treePath(id), 'utf8'));
-const assetsMd5 = () => md5(path.join(TMP, 'collections', 'jiazu_assets.json'));
+const assetsMd5 = () => md5(path.join(TMP, 'collections', 'jiapu_assets.json'));
 function writeTree(tree) {
   fs.mkdirSync(path.dirname(treePath(tree.tree_id)), { recursive: true });
   fs.writeFileSync(treePath(tree.tree_id), JSON.stringify(tree, null, 2));
@@ -385,7 +385,7 @@ test('缺参：无 family_handle / 无 person_handle / child_handles 非数组 /
 
 // ================= ⑤ 只读节点（C6）=================
 
-test('只读镜像节点 → 403，且 jiazu_assets 零变化、树零写入、无流水', async () => {
+test('只读镜像节点 → 403，且 jiapu_assets 零变化、树零写入、无流水', async () => {
   await scene({ trees: [mirrorTree('sr_mirror')], phone: STEWARD, bamboos: 5 });
   const t0 = treeMd5('sr_mirror');
   const v0 = readTree('sr_mirror').version;

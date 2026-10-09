@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * 业务数据迁移：auth-server/data/*.json → CloudBase 集合（jiazu_ 前缀）
+ * 业务数据迁移：auth-server/data/*.json → CloudBase 集合（jiapu_ 前缀）
  *
- * - users.json          → jiazu_users（_id = phone）
- * - wallets.json        → jiazu_wallets（_id = 'global'，原结构整体作为文档）
- * - role-anchors.json   → jiazu_anchors（_id = phone）
- * - leave-requests.json → jiazu_leave_requests（_id = 原 key）
+ * - users.json          → jiapu_users（_id = phone）
+ * - wallets.json        → jiapu_wallets（_id = 'global'，原结构整体作为文档）
+ * - role-anchors.json   → jiapu_anchors（_id = phone）
+ * - leave-requests.json → jiapu_leave_requests（_id = 原 key）
  *
  * 用法:
  *   本地模拟:  node scripts/migrate-business-data.mjs --local
@@ -55,9 +55,9 @@ async function writeCloud(col, entries) {
 async function main() {
   console.log(LOCAL ? '目标: 本地模拟集合' : `目标: CloudBase ${ENV}`);
   const mappings = [
-    ['jiazu_users', 'users.json'],
-    ['jiazu_anchors', 'role-anchors.json'],
-    ['jiazu_leave_requests', 'leave-requests.json'],
+    ['jiapu_users', 'users.json'],
+    ['jiapu_anchors', 'role-anchors.json'],
+    ['jiapu_leave_requests', 'leave-requests.json'],
   ];
   for (const [col, file] of mappings) {
     const data = read(file);
@@ -68,8 +68,8 @@ async function main() {
   // wallets：单文档
   const wallets = read('wallets.json');
   const walletEntries = [['global', wallets]];
-  if (LOCAL) await writeLocal('jiazu_wallets', walletEntries);
-  else await writeCloud('jiazu_wallets', walletEntries);
+  if (LOCAL) await writeLocal('jiapu_wallets', walletEntries);
+  else await writeCloud('jiapu_wallets', walletEntries);
   console.log('完成');
 }
 

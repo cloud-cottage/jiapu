@@ -133,7 +133,7 @@ test('路由 PUT /tree-meta（chief_editor）：改的是副本，真源照旧',
   const CHIEF = '16600000901';
   fs.mkdirSync(path.join(TMP, 'collections'), { recursive: true });
   fs.writeFileSync(
-    path.join(TMP, 'collections', 'jiazu_users.json'),
+    path.join(TMP, 'collections', 'jiapu_users.json'),
     JSON.stringify({ [CHIEF]: { _id: CHIEF, phone: CHIEF, nickname: '总编辑', role: 'chief_editor' } }),
   );
   const token = signJwt({ sub: CHIEF, phone: CHIEF, role: 'chief_editor' }, 3600);
@@ -231,13 +231,13 @@ test('树 / 详情 / 集合写入也都落在副本（migrate-output 一个字�
     families: {},
   });
   await store.saveDetail({ _id: `${TREE_ID}:f`, tree_id: TREE_ID, handle: 'f', name: '护栏', events: [] });
-  await store.colSet('jiazu_guard_probe', 'p1', { _id: 'p1', note: '护栏测试集合' });
+  await store.colSet('jiapu_guard_probe', 'p1', { _id: 'p1', note: '护栏测试集合' });
 
   assert.ok(fs.existsSync(path.join(TMP, 'trees', `${TREE_ID}.json`)), '树写进副本');
-  assert.ok(fs.existsSync(path.join(TMP, 'collections', 'jiazu_guard_probe.json')), '集合写进副本');
+  assert.ok(fs.existsSync(path.join(TMP, 'collections', 'jiapu_guard_probe.json')), '集合写进副本');
   assert.ok(!fs.existsSync(path.join(REAL_TREES, `${TREE_ID}.json`)), '真实 migrate-output 不得出现该树');
   assert.ok(
-    !fs.existsSync(path.join(REAL_OUT, 'collections', 'jiazu_guard_probe.json')),
+    !fs.existsSync(path.join(REAL_OUT, 'collections', 'jiapu_guard_probe.json')),
     '真实 migrate-output 不得出现该集合',
   );
 });

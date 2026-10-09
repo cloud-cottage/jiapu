@@ -77,7 +77,7 @@ fs.mkdirSync(path.join(TMP, 'details'), { recursive: true });
 
 const F = await import('./friends.js');
 
-const COL_FILE = path.join(TMP, 'collections', 'jiazu_friends.json');
+const COL_FILE = path.join(TMP, 'collections', 'jiapu_friends.json');
 const readCol = () => JSON.parse(fs.readFileSync(COL_FILE, 'utf8'));
 const docOf = (id) => readCol()[id];
 
@@ -170,9 +170,9 @@ test('F-2 关系 _id：双方手机号升序拼接（A 为字典序较小者）�
   assert.equal(Object.keys(readCol()).filter((k) => k === res.relation_id).length, 1);
 });
 
-test('F-1 集合名逐字 = jiazu_friends，本地模式落 collections/jiazu_friends.json', async () => {
-  assert.equal(F.FRIENDS_COL, 'jiazu_friends');
-  assert.ok(fs.existsSync(COL_FILE), '副本目录下应生成 jiazu_friends.json');
+test('F-1 集合名逐字 = jiapu_friends，本地模式落 collections/jiapu_friends.json', async () => {
+  assert.equal(F.FRIENDS_COL, 'jiapu_friends');
+  assert.ok(fs.existsSync(COL_FILE), '副本目录下应生成 jiapu_friends.json');
 });
 
 // ══ ② / ③ 接受锚点与天数算术（v4 ①） ══════════════════════════════════════════════
@@ -600,7 +600,7 @@ test('F-11 本模块不读写兰帖资产、不建第二套 IO（源码判据）
   const raw = fs.readFileSync(MOD_SRC, 'utf8');
   // 只判代码、不判注释（模块头注释里为说明边界会引用被禁对象的**名字**）
   const src = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/[ \t]+\/\/.*$/gm, '');
-  assert.equal(/economy-ledger|jiazu_assets|withAssets/.test(src), false, '不得 import / 引用经济域账本');
+  assert.equal(/economy-ledger|jiapu_assets|withAssets/.test(src), false, '不得 import / 引用经济域账本');
   assert.equal(/writeFileSync|readFileSync|unlinkSync|fs\./.test(src), false, '不得直接碰文件系统');
   assert.equal(/require\(/.test(src), false, '不得用 CJS require 另开 IO');
   assert.equal(/colDelete/.test(src), false, '不得删除文档（关系只走状态机，不物理删）');
@@ -639,7 +639,7 @@ test('F-12 导出清单逐字齐备（函数 + 常量）；自然月导出已不
   assert.equal(F.BASE_DAYS, 365);
   assert.equal(F.RENEWAL_REWARD_DAYS, 30);
   assert.equal(F.LOCKED_PIECES, 1);
-  assert.equal(F.FRIENDS_COL, 'jiazu_friends');
+  assert.equal(F.FRIENDS_COL, 'jiapu_friends');
   // v4：自然月算术/常量一律不得再导出（无死代码）
   assert.equal(F.addMonths, undefined);
   assert.equal(F.BASE_MONTHS, undefined);
@@ -874,5 +874,5 @@ test('数据安全：config/tree-meta.json 与 migrate-output/（trees + details
   assert.deepEqual(dirBaseline(REAL_TREES), realTreeBaseline, '真源 trees/ 未被写入');
   assert.deepEqual(dirBaseline(REAL_DETAILS), realDetailBaseline, '真源 details/ 未被写入');
   assert.deepEqual(dirBaseline(REAL_COLLECTIONS), realColBaseline, '真源 collections/ 未被写入');
-  assert.equal(fs.existsSync(path.join(REAL_COLLECTIONS, 'jiazu_friends.json')), false, '真源不得出现 jiazu_friends.json');
+  assert.equal(fs.existsSync(path.join(REAL_COLLECTIONS, 'jiapu_friends.json')), false, '真源不得出现 jiapu_friends.json');
 });

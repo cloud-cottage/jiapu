@@ -9,7 +9,7 @@
  * 用户余额 `users[*].balance_cents` **不动**（那笔 ¥20 不返还，不做冲正、不给用户加钱）。
  *
  * 清理目标（相对数据根 `--root`）：
- *   ① migrate-output/collections/jiazu_wallets.json   compat-api local 真源集合（形状 `{ global: {...} }`）
+ *   ① migrate-output/collections/jiapu_wallets.json   compat-api local 真源集合（形状 `{ global: {...} }`）
  *   ② auth-server/data/wallets.json                   auth-server 遗留链路（顶层形状），文件不存在则跳过
  *
  * 对每个目标文件只做两件事：
@@ -50,7 +50,7 @@ const SANDBOX_VARS = ['COMPAT_META_FILE', 'COMPAT_OUT_DIR', 'NODE_TEST_CONTEXT']
 
 // 目标文件（相对数据根）
 const TARGETS = [
-  { rel: 'migrate-output/collections/jiazu_wallets.json', label: 'compat-api local 真源集合（jiazu_wallets）' },
+  { rel: 'migrate-output/collections/jiapu_wallets.json', label: 'compat-api local 真源集合（jiapu_wallets）' },
   { rel: 'auth-server/data/wallets.json', label: 'auth-server 遗留链路（wallets.json）' },
 ];
 

@@ -54,7 +54,7 @@ export const FEE = {
   sibling_reorder: 1,
   tree_create_seeds: 9, // 建树：9颗石榴籽（非竹片）
   // 立支（POST /admin/establish-branch）：9999 颗完整石榴籽 / 次（docs/branch-clan-ops.spec.md §3-4 / §6-1-7）；
-  // 默认值唯一真源 —— 运行时可被 `jiazu_wallets.config.branch_fee_seeds` 覆盖（见 lib/wallet.js getBranchFeeSeeds）
+  // 默认值唯一真源 —— 运行时可被 `jiapu_wallets.config.branch_fee_seeds` 覆盖（见 lib/wallet.js getBranchFeeSeeds）
   branch_fee_seeds: 9999,
 };
 

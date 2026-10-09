@@ -106,7 +106,7 @@ const META_FIX = { _schema: '1.1', trees: TREES };
 // ---- 用户（路由写权）----
 const CHIEF = '16600009101';
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_users.json'),
+  path.join(TMP, 'collections', 'jiapu_users.json'),
   JSON.stringify({ [CHIEF]: { _id: CHIEF, phone: CHIEF, nickname: '总编辑', role: 'chief_editor' } }),
 );
 

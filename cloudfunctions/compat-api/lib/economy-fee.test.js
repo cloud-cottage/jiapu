@@ -97,7 +97,7 @@ fs.mkdirSync(path.join(TMP, 'collections'), { recursive: true });
 fs.mkdirSync(path.join(TMP, 'details'), { recursive: true });
 fs.mkdirSync(path.join(TMP, 'trees'), { recursive: true });
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_users.json'),
+  path.join(TMP, 'collections', 'jiapu_users.json'),
   JSON.stringify({
     [CHIEF]: { _id: CHIEF, phone: CHIEF, nickname: '总编辑', role: 'chief_editor' },
     [STEWARD]: { _id: STEWARD, phone: STEWARD, nickname: '主理人', role: 'tree_steward' },
@@ -860,8 +860,8 @@ test('POST /admin/create-tree：不足 8 籽 409 不建树；9 籽建树扣 tree
   assert.equal(after.txs[0].ref.tree_id, created.tree_id, 'ref.tree_id = onBeforeWrite 拿到的 plannedTreeId');
   assert.ok(fs.existsSync(path.join(TMP, 'trees', `${created.tree_id}.json`)), '树 JSON 已落库');
   assert.ok(newTreesIn().includes(created.tree_id), 'tree-meta 已登记');
-  // 旧 ¥ 钩子已废弃：不再写 jiazu_wallets（wallet.deductTreeCreateFee 不再被调用）
-  assert.equal(fs.existsSync(path.join(TMP, 'collections', 'jiazu_wallets.json')), false, '不得再走 ¥ 建树费');
+  // 旧 ¥ 钩子已废弃：不再写 jiapu_wallets（wallet.deductTreeCreateFee 不再被调用）
+  assert.equal(fs.existsSync(path.join(TMP, 'collections', 'jiapu_wallets.json')), false, '不得再走 ¥ 建树费');
 
   // ③ 落库失败 → 原路返还同一批次（把 trees 目录临时占位成文件，制造真实落库失败）
   await scene({ phone: CHIEF, seeds: 9 });
@@ -1280,7 +1280,7 @@ test('冲正回显统一：7 条计费路由落库失败一律带 fee_refunded:t
 
 /** 建谱申请集合（沙箱副本；顶层键 = 申请单 _id，无 records/list 容器） */
 const readClanRequests = () => {
-  const p = path.join(TMP, 'collections', 'jiazu_clan_requests.json');
+  const p = path.join(TMP, 'collections', 'jiapu_clan_requests.json');
   if (!fs.existsSync(p)) return {};
   return JSON.parse(fs.readFileSync(p, 'utf8'));
 };
@@ -1465,7 +1465,7 @@ test('/admin/clan-request 预扣 99 籽（fee_ref 落申请单）+ 不足 409 �
   assert.equal(doc2.status, 'approved');
   assert.ok(fs.existsSync(path.join(TMP, 'trees', `${approvedTreeId}.json`)), '审批通过后祖谱树已落库');
   assert.equal(JSON.parse(fs.readFileSync(META_FILE, 'utf8')).trees[approvedTreeId].kind, 'clan');
-  assert.equal(clan.CLAN_REQUEST_COLLECTION, 'jiazu_clan_requests', '集合名单点 lib/clan.js');
+  assert.equal(clan.CLAN_REQUEST_COLLECTION, 'jiapu_clan_requests', '集合名单点 lib/clan.js');
 });
 
 // ================= ⑦ 真源未变 =================

@@ -42,7 +42,7 @@ export const FOUNDER_LINK_TYPE = 'founder';
 /** 祖谱顶端「世系链」镜像的链接类型（docs/clan-tree.spec.md §4-1：其下链路节点） */
 export const CHAIN_LINK_TYPE = 'chain';
 /** 认祖申请集合（新建集合 → docs/PENDING_DEPLOY.md） */
-export const FOUNDER_REQUEST_COLLECTION = 'jiazu_founder_requests';
+export const FOUNDER_REQUEST_COLLECTION = 'jiapu_founder_requests';
 
 /** 层级 kind（tree-meta.trees[*].kind；master=中华世本 / clan=祖谱 / family=普通树） */
 export const TREE_KIND = { MASTER: 'master', CLAN: 'clan', FAMILY: 'family' };
@@ -710,7 +710,7 @@ export function planFounderReset(entry) {
 
 // ---- 申请单（纯函数） ----
 
-/** 构造认祖申请单（落 jiazu_founder_requests） */
+/** 构造认祖申请单（落 jiapu_founder_requests） */
 export function buildFounderRequest({ id, treeId, founder, masterTreeId, masterPerson, requestedBy = '', note = '', targetKind = '', now = new Date().toISOString() }) {
   return {
     _id: id,

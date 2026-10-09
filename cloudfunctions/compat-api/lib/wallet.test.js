@@ -50,7 +50,7 @@ const USER = '16600009901';
 const OTHER = '16600009902';
 fs.mkdirSync(path.join(TMP, 'collections'), { recursive: true });
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_users.json'),
+  path.join(TMP, 'collections', 'jiapu_users.json'),
   JSON.stringify({
     [USER]: { _id: USER, phone: USER, nickname: '钱包测试用户', role: 'user' },
     [OTHER]: { _id: OTHER, phone: OTHER, nickname: '钱包测试用户二', role: 'user' },
@@ -62,7 +62,7 @@ const store = await import('./store.js');
 const { handleRequest } = await import('../index.js');
 const { signJwt } = await import('./auth.js');
 
-const WALLETS_FILE = path.join(TMP, 'collections', 'jiazu_wallets.json');
+const WALLETS_FILE = path.join(TMP, 'collections', 'jiapu_wallets.json');
 const rawCollection = () => JSON.parse(fs.readFileSync(WALLETS_FILE, 'utf8'));
 const bearer = (phone) => ({ authorization: `Bearer ${signJwt({ sub: phone, phone, role: 'user' }, 3600)}` });
 const call = (p, method = 'GET', headers = {}, query = {}, body = null) =>
@@ -71,7 +71,7 @@ const json = (res) => JSON.parse(res.body);
 
 /** 重置钱包集合为空（每例独立起点；走 store 删除以保持进程内缓存一致） */
 const resetWallets = async () => {
-  for (const d of await store.colAll('jiazu_wallets')) await store.colDelete('jiazu_wallets', d._id);
+  for (const d of await store.colAll('jiapu_wallets')) await store.colDelete('jiapu_wallets', d._id);
 };
 
 // ---- ① 常量与默认值 ----
@@ -163,7 +163,7 @@ test('③ 充值 / deductUserBalance / deductTreeCreateFee：取值与流水符�
 test('④ config 单档 `_id=config`：原值原样 + version；PUT /admin/wallet-fee 落该档；读接口默认回退', async () => {
   await resetWallets();
   const CHIEF = '16600009903';
-  await store.colSet('jiazu_users', CHIEF, { _id: CHIEF, phone: CHIEF, nickname: '钱包总编', role: 'chief_editor' });
+  await store.colSet('jiapu_users', CHIEF, { _id: CHIEF, phone: CHIEF, nickname: '钱包总编', role: 'chief_editor' });
   const chief = { authorization: `Bearer ${signJwt({ sub: CHIEF, phone: CHIEF, role: 'chief_editor' }, 3600)}` };
 
   const res = await call('/admin/wallet-fee', 'PUT', chief, {}, {
@@ -197,7 +197,7 @@ test('④ config 单档 `_id=config`：原值原样 + version；PUT /admin/walle
   await assert.rejects(() => W.setSigninDay7Fragments(-1), /非负整数/);
 
   // 非法存量写进 config 档 ⇒ 读侧一律回退默认（同 getBranchFeeSeeds 体例）
-  await store.colSet('jiazu_wallets', 'config', {
+  await store.colSet('jiapu_wallets', 'config', {
     _id: 'config',
     version: 1,
     signin_pool: [],
@@ -265,7 +265,7 @@ test('⑥ 并发两路扣同一手机号（Promise.all）：只成功一次、�
 
 test('⑦ CAS：同一档两路读改写（绕开进程内锁）→ 条件写冲突被重读重放，零丢更新、txs 与余额精确、version 递增', async () => {
   const CASPHONE = '16600009977';
-  await store.mutateDoc('jiazu_wallets', CASPHONE, (d) => {
+  await store.mutateDoc('jiapu_wallets', CASPHONE, (d) => {
     const rec = { ...d };
     delete rec._id;
     delete rec.version;
@@ -279,7 +279,7 @@ test('⑦ CAS：同一档两路读改写（绕开进程内锁）→ 条件写冲
   let releaseA;
   const gateA = new Promise((r) => { releaseA = r; });
   // A：读到后阻塞（保证 B 先完整提交 → 制造一次真实 version 冲突）
-  const writerA = store.mutateDoc('jiazu_wallets', CASPHONE, async (d) => {
+  const writerA = store.mutateDoc('jiapu_wallets', CASPHONE, async (d) => {
     const rec = { ...d };
     delete rec._id;
     delete rec.version;
@@ -290,7 +290,7 @@ test('⑦ CAS：同一档两路读改写（绕开进程内锁）→ 条件写冲
     return rec;
   });
   await aReadP; // A 已读到 v1 并进入 mutator（阻塞中）
-  await store.mutateDoc('jiazu_wallets', CASPHONE, (d) => {
+  await store.mutateDoc('jiapu_wallets', CASPHONE, (d) => {
     const rec = { ...d };
     delete rec._id;
     delete rec.version;
@@ -301,7 +301,7 @@ test('⑦ CAS：同一档两路读改写（绕开进程内锁）→ 条件写冲
   releaseA(); // A 恢复：其条件写（期望 v1）必落空 → 重读重放 → v3
   await writerA;
 
-  const doc = await store.colGet('jiazu_wallets', CASPHONE);
+  const doc = await store.colGet('jiapu_wallets', CASPHONE);
   assert.equal(doc.balance_cents, 200, '两路各加 100：零丢更新（若无条件写此处会少 100）');
   assert.equal(doc.txs.length, 2, '两条流水都在（未吞、未重复）');
   assert.deepEqual(doc.txs.map((t) => t.id).sort(), ['tx_cas_a', 'tx_cas_b']);
@@ -310,7 +310,7 @@ test('⑦ CAS：同一档两路读改写（绕开进程内锁）→ 条件写冲
 
 test('⑦-2 反证：同序下「无条件写（colSet）」丢更新 —— 证明上一条并发断言不是摆设', async () => {
   const NPHONE = '16600009978';
-  const COL = 'jiazu_wallet_cas_probe';
+  const COL = 'jiapu_wallet_cas_probe';
   await store.colSet(COL, NPHONE, { _id: NPHONE, version: 1, balance_cents: 0, txs: [] });
 
   let aRead;
@@ -345,7 +345,7 @@ test('⑦-2 反证：同序下「无条件写（colSet）」丢更新 —— 证
 test('⑧ 平台流水：无 user 的流水落 `_platform` 档，并出现在任意用户的 transactions（旧实现口径）', async () => {
   await resetWallets();
   await W.recharge(USER, 1000);
-  await store.colSet('jiazu_wallets', W.PLATFORM_ID, {
+  await store.colSet('jiapu_wallets', W.PLATFORM_ID, {
     _id: W.PLATFORM_ID,
     version: 1,
     txs: [{ id: 'tx_platform_1', type: 'platform_fee', amount_cents: -10, desc: '平台费', ts: new Date().toISOString() }],

@@ -117,10 +117,10 @@ const seedsSum = async (phone) => el.sumLots((await assetsOf(phone)).seeds);
 const bamboosSum = async (phone) => el.sumLots((await assetsOf(phone)).bamboos);
 const txsOf = async (phone) => (await assetsOf(phone)).txs || [];
 
-/** 注册一个已登录用户（路由级用例：`authUser` 需要 `jiazu_users` 记录） */
+/** 注册一个已登录用户（路由级用例：`authUser` 需要 `jiapu_users` 记录） */
 async function newUser(role = 'user') {
   const phone = nextPhone();
-  await store.colSet('jiazu_users', phone, { _id: phone, phone, nickname: `市集用户${phone.slice(-4)}`, role });
+  await store.colSet('jiapu_users', phone, { _id: phone, phone, nickname: `市集用户${phone.slice(-4)}`, role });
   return phone;
 }
 /** 造「有籽 + 有竹片」的卖家 */
@@ -137,7 +137,7 @@ async function newBuyer({ seeds = [seedLot(9999, 365)] } = {}) {
 }
 
 // 市集文档读写（夹具 · 存储形态 v2：挂单 / 成交每档一文档，official 单档 `_id='official'`）
-const MARKET_COL = 'jiazu_market';
+const MARKET_COL = 'jiapu_market';
 const OFFICIAL_ID = mk.OFFICIAL_ID;
 const stripMeta = (doc) => {
   const r = { ...doc };
@@ -169,9 +169,9 @@ async function expireListingFixture(id, expiresAt) {
   await store.colSet(MARKET_COL, id, { ...doc, expires_at: expiresAt });
 }
 
-/** ¥ 钱包（jiazu_wallets，v2：每手机号一档 `_id=手机号`）夹具 */
+/** ¥ 钱包（jiapu_wallets，v2：每手机号一档 `_id=手机号`）夹具 */
 async function setWallet(phone, balance_cents) {
-  await store.mutateDoc('jiazu_wallets', phone, (doc) => {
+  await store.mutateDoc('jiapu_wallets', phone, (doc) => {
     const rec = { ...doc };
     delete rec._id;
     delete rec.version;
@@ -182,7 +182,7 @@ async function setWallet(phone, balance_cents) {
 }
 /** 读某手机号档的 ¥ 钱包流水（v2：流水归本人档 `txs`） */
 const walletTxs = async (phone) => {
-  const doc = await store.colGet('jiazu_wallets', phone);
+  const doc = await store.colGet('jiapu_wallets', phone);
   return Array.isArray(doc?.txs) ? doc.txs : [];
 };
 
@@ -407,7 +407,7 @@ test('挂单与家族树无关（K7）：Listing 无任何家族树字段、传 
   await setMarket();
   const phone = await newSeller({ bamboos: [bambooLot(100, 30)] });
   // 该账号无锚点、未加入任何家族树，仍可挂单
-  assert.equal(await store.colGet('jiazu_anchors', phone), null);
+  assert.equal(await store.colGet('jiapu_anchors', phone), null);
   const r = await mk.listBamboo(phone, { bundles: 1, price_seeds: 3, tree_id: 'some_tree', anchor_tree_id: 'x' }, T0);
   const l = await listingById(r.listing_id);
   assert.equal(l.tree_id, undefined);
@@ -1137,7 +1137,7 @@ test('存储形态 v2：挂单 / 成交每档一文档（_id=id、version≥1）
   const l = await mk.listBamboo(seller, { bundles: 1, price_seeds: 199 }, T0);
   const r = await mk.buyListing(buyer, l.listing_id, T0);
 
-  const raw = JSON.parse(fs.readFileSync(path.join(TMP, 'collections', 'jiazu_market.json'), 'utf8'));
+  const raw = JSON.parse(fs.readFileSync(path.join(TMP, 'collections', 'jiapu_market.json'), 'utf8'));
   assert.equal('global' in raw, false, '旧单文档 _id=global 必须消失');
   const listing = raw[l.listing_id];
   const trade = raw[r.trade_id];
@@ -1217,20 +1217,20 @@ test('F3 落盘失败（0444/EACCES）→ 抛错、磁盘未变、colGet 与磁�
     assert.ok(await store.colGet(el.ASSETS_COL, phone), '删除失败：缓存不得提前丢掉文档');
 
     // ---- ③ colAtomicNext（计数器）：同序，失败不留幻影计数 ----
-    await store.colSet('jiazu_f3_probe', 'seq', { _id: 'seq', next: 7 });
-    const probeFile = path.join(store.PATHS.out, 'collections', 'jiazu_f3_probe.json');
+    await store.colSet('jiapu_f3_probe', 'seq', { _id: 'seq', next: 7 });
+    const probeFile = path.join(store.PATHS.out, 'collections', 'jiapu_f3_probe.json');
     const beforeProbe = fs.readFileSync(probeFile, 'utf8');
     fs.chmodSync(probeFile, 0o444);
     let incErr = null;
     try {
-      await store.colAtomicNext('jiazu_f3_probe', 'seq', 1, 'next');
+      await store.colAtomicNext('jiapu_f3_probe', 'seq', 1, 'next');
     } catch (e) {
       incErr = e;
     }
     fs.chmodSync(probeFile, 0o644);
     assert.ok(incErr, '计数器落盘失败必须抛错');
     assert.equal(fs.readFileSync(probeFile, 'utf8'), beforeProbe, '计数器：磁盘未变');
-    assert.equal((await store.colGet('jiazu_f3_probe', 'seq')).next, 7, '计数器：缓存保持旧值 7');
+    assert.equal((await store.colGet('jiapu_f3_probe', 'seq')).next, 7, '计数器：缓存保持旧值 7');
   } finally {
     fs.chmodSync(colFile, 0o644);
   }

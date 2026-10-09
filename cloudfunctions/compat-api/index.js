@@ -2,7 +2,7 @@
  * 兼容层 API（P1 只读 + P2 写接口）
  *
  * 输出 Gramps-Web 形状 JSON，前端 business/api.ts 解析逻辑零改动。
- * 数据源：树 JSON（云存储）+ 人物详情/业务集合（CloudBase 文档库，jiazu_ 前缀）。
+ * 数据源：树 JSON（云存储）+ 人物详情/业务集合（CloudBase 文档库，jiapu_ 前缀）。
  * 双模式：COMPAT_SOURCE=local（读/写 migrate-output/）| cloud（默认，CloudBase）。
  *
  * 写接口（P2）：
@@ -45,7 +45,7 @@
  *   GET  /admin/clan-requests | /admin/clans | /admin/clan-info（祖谱，docs/clan-tree.spec.md）
  *   POST /join | /leave-request
  *   POST /invite/code | GET /invite/code/resolve | POST /invite/bind
- *      （批 C-1 邀请码链路：6 位短码签发 · 免登录五态解析 · 接受邀请 = 直接绑定；新集合 jiazu_invite_codes）
+ *      （批 C-1 邀请码链路：6 位短码签发 · 免登录五态解析 · 接受邀请 = 直接绑定；新集合 jiapu_invite_codes）
  *   GET /people | /families 支持可选请求头 `X-Invite-Code`（同树有效码 ⇒ 该次列表不裁剪；定点例外，其余读路由不认）
  *   POST /people/ | PUT /people/<handle> | POST /families/ | PUT /families/<handle>
  */
@@ -57,10 +57,10 @@ import * as eco from './lib/economy-fee.js';
 import * as spirit from './lib/economy-spirit.js';
 import * as market from './lib/economy-market.js';
 import * as ops from './lib/economy-ops.js';
-// 邀请链路（邀请码 = 邀请人手机号）：新集合 jiazu_invites + 注册可选填邀请码 + GET /invite/me / POST /invite/accept
+// 邀请链路（邀请码 = 邀请人手机号）：新集合 jiapu_invites + 注册可选填邀请码 + GET /invite/me / POST /invite/accept
 // 口径 = Zang 裁定 v3（I-1…I-9）；兰帖碎片发奖用真源导出 addScrollFragments（I-7，不写第二版）。
 import * as invite from './lib/invite.js';
-// 邀请码链路（批 C-1 · Kevin 2026-09-30 逐条拍定）：新集合 jiazu_invite_codes
+// 邀请码链路（批 C-1 · Kevin 2026-09-30 逐条拍定）：新集合 jiapu_invite_codes
 //   POST /invite/code（签发：node 型一次性 / plain 型多次，TTL 30 天，可撤销）
 //   GET  /invite/code/resolve（免登录 · 五态 · 零手机号）
 //   POST /invite/bind（接受邀请 = 直接绑定 · accept/replace/skip · 幂等 · 档乙加成）
@@ -252,7 +252,7 @@ function toRawPerson(tree, person, detail) {
 async function requireWriteUser(headers, treeId, pathname, targetHandle, isAddNode) {
   const u = await authUser(headers);
   if (!u) throw httpError(401, '请先登录后再进行编辑操作');
-  const user = await colGet('jiazu_users', u.phone);
+  const user = await colGet('jiapu_users', u.phone);
   if (!user) throw httpError(401, '用户不存在');
   const role = user.role;
   if (role === 'guest') throw httpError(403, '游客无编辑权限，请注册后编辑');
@@ -462,7 +462,7 @@ async function handleRequest(event) {
       const body = parseBody(event);
       const phone = String(body.phone || '').trim();
       if (!/^1\d{10}$/.test(phone)) return send(400, { error: '手机号格式不正确' });
-      const existing = await colGet('jiazu_sms_codes', phone);
+      const existing = await colGet('jiapu_sms_codes', phone);
       if (existing && existing.expires_at > Date.now()) {
         const { requestCode: rc } = await import('./lib/auth.js');
         const r = await rc(phone);
@@ -476,7 +476,7 @@ async function handleRequest(event) {
       const body = parseBody(event);
       const phone = String(body.phone || '').trim();
       const code = String(body.code || '').trim();
-      const user = await colGet('jiazu_users', phone);
+      const user = await colGet('jiapu_users', phone);
       if (!user) return send(404, { error: '该手机号未注册，请先注册' });
       const v = await verifyCode(phone, code);
       if (!v.ok) return send(401, { error: v.message });
@@ -490,10 +490,10 @@ async function handleRequest(event) {
       const code = String(body.code || '').trim();
       const nickname = String(body.nickname || '').trim().slice(0, 30);
       if (!/^1\d{10}$/.test(phone)) return send(400, { error: '手机号格式不正确' });
-      if (await colGet('jiazu_users', phone)) return send(409, { error: '该手机号已注册，请直接登录' });
+      if (await colGet('jiapu_users', phone)) return send(409, { error: '该手机号已注册，请直接登录' });
       // 邀请码（I-3；**可选入参**）：缺省 / 空 = 无邀请，行为与既有完全一致。
       // 校验（格式 / 自邀 / 邀请人已注册 / 被邀请人尚无记录）**全部先于建用户** ——
-      // 不过 → 400 且不建号、不写 jiazu_invites；被邀请人已有记录 → 静默忽略（不报错、不重发奖）。
+      // 不过 → 400 且不建号、不写 jiapu_invites；被邀请人已有记录 → 静默忽略（不报错、不重发奖）。
       const inviteCode = body.invite_code;
       const inviteCheck = await invite.resolveInvite(inviteCode, phone);
       if (!inviteCheck.ok) return send(inviteCheck.status, { error: inviteCheck.error, code: inviteCheck.code });
@@ -527,7 +527,7 @@ async function handleRequest(event) {
       return send(200, r);
     }
 
-    // ---- 批 C-1 邀请码链路（签发 / 解析 / 绑定）· 新集合 jiazu_invite_codes ----
+    // ---- 批 C-1 邀请码链路（签发 / 解析 / 绑定）· 新集合 jiapu_invite_codes ----
     // 三条路由**均注册在树编辑闸门之前**（树上下文走 body / query，不依赖 X-Tree-Id）。
 
     // POST /invite/code（需登录）—— 签发。body `{kind, tree_id?, person_handle?}`。
@@ -618,7 +618,7 @@ async function handleRequest(event) {
     if (pathname === '/auth/me' && method === 'GET') {
       const u = await authUser(headers);
       if (!u) return send(401, { error: '未登录或登录已过期' });
-      const user = await colGet('jiazu_users', u.phone);
+      const user = await colGet('jiapu_users', u.phone);
       if (!user) return send(404, { error: '用户不存在' });
       return send(200, { phone: user.phone, nickname: user.nickname, role: user.role });
     }
@@ -633,7 +633,7 @@ async function handleRequest(event) {
     if (pathname === '/tree-meta' && method === 'PUT') {
       const u = await authUser(headers);
       if (!u) return send(401, { error: '未登录或登录已过期' });
-      const user = await colGet('jiazu_users', u.phone);
+      const user = await colGet('jiapu_users', u.phone);
       if (!user || user.role !== 'chief_editor') return send(403, { error: '需要总编辑权限' });
       const body = parseBody(event);
       const { tree_id, display_title, genealogy_name, archive_url, hall_name, origin, origin_code, description } = body;
@@ -674,7 +674,7 @@ async function handleRequest(event) {
     if (pathname === '/admin/set-tree-origin' && method === 'POST') {
       const u = await authUser(headers);
       if (!u) return send(401, { error: '未登录或登录已过期' });
-      const user = await colGet('jiazu_users', u.phone);
+      const user = await colGet('jiapu_users', u.phone);
       if (!user || user.role !== 'chief_editor') return send(403, { error: '需要总编辑权限' });
       const body = parseBody(event);
       const wantTreeId = String(body.tree_id || '').trim();
@@ -795,7 +795,7 @@ async function handleRequest(event) {
     // - `fee`：建树费（¥，既有键 —— 行为与出参 `tree_create_fee_yuan` 保持原样、不得改）
     // - `branch_fee_seeds`：立支费（颗完整石榴籽，默认 9999）
     // - `converge_spirit_ratio`：汇宗灵气折损比例（0–1，默认 0.5）
-    // - 🆕 签到域三键（Zang 裁定 v1 · 2026-09-28；同一载体 `jiazu_wallets.config`，**不新增设置路由**）：
+    // - 🆕 签到域三键（Zang 裁定 v1 · 2026-09-28；同一载体 `jiapu_wallets.config`，**不新增设置路由**）：
     //     `signin_pool`（非空数组，元素 {kind, qty, weight}；kind ∈ fragment|bamboo|scroll_fragment|scroll）
     //       ⚠️ 权重键名**权威 = `weight`**（相对权重、正整数，不要求和为 100）；后台 UI 显示为「权重」；
     //       **不得**改用 `probability` / `percent`（下游漂移即静默丢权重）。
@@ -1194,7 +1194,7 @@ async function handleRequest(event) {
           const now = new Date();
           // ⚠️ 缺陷 D-1（本单修复 · 后端强制校验续约锁定）：
           //   续约锁定**只占用、不扣除**（F-B：锁落在关系文档 `pending.locked_*`，那 1 张成品兰帖
-          //   仍留在 `jiazu_assets` 里）。前端对【分解】置灰**可被 curl 直接绕过**（锁定只在关系域留痕，
+          //   仍留在 `jiapu_assets` 里）。前端对【分解】置灰**可被 curl 直接绕过**（锁定只在关系域留痕，
           //   分解路由原先零校验）。故此处必须先取「未超时的续约待确认关系所锁定的片数」，再算
           //   **可分解张数 = floor((总片数 − 锁定片数) / 100)**；请求张数超出 ⇒ 409 整单拒绝（一片不扣）。
           //   锁定读数唯一来源 = friend-ops 的 `lockedScrollPieces`（只读、零写入；超时的锁由内存 sweep 清空）。
@@ -1250,7 +1250,7 @@ async function handleRequest(event) {
       // 鉴权 / 错误壳 / 错误码体例与相邻 `/assets/scroll/decompose` 对称：
       //   未登录 401 `FRIEND_UNAUTHORIZED`；count 非正整数 400 `INVALID_COUNT`；
       //   残页不足 `count × 100` ⇒ 409 `ASSET_INSUFFICIENT`（文案「资产不足，需 N 片兰帖残页，当前 M 片」）**零写入**。
-      // **免费**：不扣竹片、不走 `edit_fee`、不写 `edit_fee` 流水；**不动** `jiazu_market` / 挂单 / 注销路径。
+      // **免费**：不扣竹片、不走 `edit_fee`、不写 `edit_fee` 流水；**不动** `jiapu_market` / 挂单 / 注销路径。
       // 唯一实现 = 账本 `synthesizeScroll`（不另写一套记账）；资产入口先 `sweep` 惰性结算（§5-4-1，照 /assets/summary 体例）。
       if (pathname === '/assets/scroll/synthesize' && method === 'POST') {
         const u = await authUser(headers);
@@ -1341,7 +1341,7 @@ async function handleRequest(event) {
     // 后台资产运维（§5，**仅 `chief_editor`**）：`POST /admin/assets/grant`（`reason` 必填 + 逐笔留痕 + 用户流水）、
     // `GET /admin/assets/logs`（`operator?` / `phone?` / `limit?` 默认 50 上限 200）、`GET /admin/assets/user`（资产快照）。
     // 账号注销（§7，K10）：`POST /account/delete` → 先 `openListingGuard`（有 open 挂单 → 409「请先撤销未成交挂单」，
-    // 不自动撤单）→ 清空六类资产（四类 + 兰帖 / 兰帖残页；`scrolls` 以片计）+ 写 `account_clear` 流水（**保留流水审计 / jiazu_users / jiazu_anchors**）。
+    // 不自动撤单）→ 清空六类资产（四类 + 兰帖 / 兰帖残页；`scrolls` 以片计）+ 写 `account_clear` 流水（**保留流水审计 / jiapu_users / jiapu_anchors**）。
     // 本段**必须注册在树编辑闸门之前**（§10.1：闸门会先拦 `缺少 X-Tree-Id`）；
     // 错误体统一走 `eco.errorPayload`（只回域名码，绝不透传系统错误文本）。
     if (pathname === '/messages' && method === 'GET') {
@@ -1424,7 +1424,7 @@ async function handleRequest(event) {
       const u = await authUser(headers);
       if (!u) return send(401, { error: '未登录或登录已过期' });
       if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward) return send(403, { error: '需要族谱主理人或以上权限' });
-      const list = (await colAll('jiazu_users')).map((usr) => ({ phone: usr.phone, nickname: usr.nickname, role: usr.role, created_at: usr.created_at }));
+      const list = (await colAll('jiapu_users')).map((usr) => ({ phone: usr.phone, nickname: usr.nickname, role: usr.role, created_at: usr.created_at }));
       return send(200, list);
     }
 
@@ -1437,7 +1437,7 @@ async function handleRequest(event) {
       if (!targetPhone || !ROLE_LEVEL[newRole]) {
         return send(400, { error: '参数错误：phone + role 必填，role ∈ user/branch_curator/tree_steward/chief_editor' });
       }
-      const target = await colGet('jiazu_users', targetPhone);
+      const target = await colGet('jiapu_users', targetPhone);
       if (!target) return send(404, { error: `用户不存在: ${targetPhone}` });
       const myLevel = ROLE_LEVEL[u.role] ?? 0;
       const targetLevel = ROLE_LEVEL[target.role] ?? 0;
@@ -1450,7 +1450,7 @@ async function handleRequest(event) {
       const oldRole = target.role;
       target.role = newRole;
       target.role_updated_at = new Date().toISOString();
-      await colSet('jiazu_users', targetPhone, target);
+      await colSet('jiapu_users', targetPhone, target);
       return send(200, { ok: true, phone: targetPhone, role: newRole, old_role: oldRole });
     }
 
@@ -1463,7 +1463,7 @@ async function handleRequest(event) {
       const targetTree = String(body.tree_id || '').trim();
       const personHandle = String(body.person_handle || '').trim();
       if (!targetPhone || !targetTree || !personHandle) return send(400, { error: '参数错误：phone + tree_id + person_handle 必填' });
-      if (!(await colGet('jiazu_users', targetPhone))) return send(404, { error: `用户不存在: ${targetPhone}` });
+      if (!(await colGet('jiapu_users', targetPhone))) return send(404, { error: `用户不存在: ${targetPhone}` });
       // 存在性（404）+ 全站唯一（409 · person_handle 不按树分）—— 与 approve-join 共用同一单点函数
       // force 只认请求体显式 `true` 且角色为 chief_editor（其它角色传了也忽略，仍 409）；
       // force 放行时单点函数**一并清空原占用者锚点 + 写审计**，此处只把 `reassigned_from`（脱敏）回给前端。
@@ -1512,7 +1512,7 @@ async function handleRequest(event) {
       if (!Object.values(meta.trees).some((t) => t.tree_id === targetTree)) {
         return send(404, { error: `家族树不存在: ${targetTree}` });
       }
-      const all = await colAll('jiazu_join_requests');
+      const all = await colAll('jiapu_join_requests');
       if (all.some((r) => r.phone === u.phone && r.tree_id === targetTree && r.status === 'pending')) {
         return send(400, { error: '您已提交加入申请，请等待族谱主理人审核' });
       }
@@ -1527,7 +1527,7 @@ async function handleRequest(event) {
       }
       const refName = refPerson.name || `${refPerson.surname || ''}${refPerson.given || ''}` || referenceHandle;
       const id = `JR_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
-      await colSet('jiazu_join_requests', id, {
+      await colSet('jiapu_join_requests', id, {
         phone: u.phone,
         tree_id: targetTree,
         reference_handle: referenceHandle,
@@ -1545,7 +1545,7 @@ async function handleRequest(event) {
       if (!u) return send(401, { error: '未登录或登录已过期' });
       if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward) return send(403, { error: '需要族谱主理人或以上权限' });
       const myTree = u.role === 'chief_editor' ? null : (await getAnchor(u.phone))?.tree_id || null;
-      const list = await colAll('jiazu_join_requests');
+      const list = await colAll('jiapu_join_requests');
       const out = list
         .filter((r) => myTree === null || r.tree_id === myTree)
         .map((r) => ({ id: r._id, ...r }));
@@ -1575,7 +1575,7 @@ async function handleRequest(event) {
       const body = parseBody(event);
       const id = String(body.id || '').trim();
       if (!id) return send(400, { error: '参数错误：id 必填' });
-      const jr = await colGet('jiazu_join_requests', id);
+      const jr = await colGet('jiapu_join_requests', id);
       if (!jr) return send(404, { error: '申请不存在' });
       if (jr.status !== 'pending') return send(400, { error: '该申请已处理' });
       if (u.role !== 'chief_editor') {
@@ -1603,7 +1603,7 @@ async function handleRequest(event) {
       jr.status = 'approved';
       jr.handled_by = u.phone;
       jr.handled_at = new Date().toISOString();
-      await colSet('jiazu_join_requests', jr._id, jr);
+      await colSet('jiapu_join_requests', jr._id, jr);
       return send(200, { ok: true, status: 'approved', reassigned_from: bindable.reassigned_from || null });
     }
 
@@ -1612,7 +1612,7 @@ async function handleRequest(event) {
       if (!u) return send(401, { error: '未登录或登录已过期' });
       if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward) return send(403, { error: '需要族谱主理人或以上权限' });
       const body = parseBody(event);
-      const jr = await colGet('jiazu_join_requests', String(body.id || ''));
+      const jr = await colGet('jiapu_join_requests', String(body.id || ''));
       if (!jr) return send(404, { error: '申请不存在' });
       if (jr.status !== 'pending') return send(400, { error: '该申请已处理' });
       if (u.role !== 'chief_editor') {
@@ -1623,7 +1623,7 @@ async function handleRequest(event) {
       jr.reject_reason = String(body.reason || '').slice(0, 200);
       jr.handled_by = u.phone;
       jr.handled_at = new Date().toISOString();
-      await colSet('jiazu_join_requests', jr._id, jr);
+      await colSet('jiapu_join_requests', jr._id, jr);
       return send(200, { ok: true, status: 'rejected' });
     }
 
@@ -1632,12 +1632,12 @@ async function handleRequest(event) {
       if (!u) return send(401, { error: '未登录或登录已过期' });
       const anchor = await getAnchor(u.phone);
       if (!anchor) return send(400, { error: '您尚未绑定家族树' });
-      const all = await colAll('jiazu_leave_requests');
+      const all = await colAll('jiapu_leave_requests');
       if (all.some((r) => r.phone === u.phone && r.status === 'pending')) {
         return send(400, { error: '已有待审批的解绑申请，请等待处理' });
       }
       const id = `LR_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
-      await colSet('jiazu_leave_requests', id, {
+      await colSet('jiapu_leave_requests', id, {
         phone: u.phone,
         tree_id: anchor.tree_id,
         person_handle: anchor.person_handle,
@@ -1652,7 +1652,7 @@ async function handleRequest(event) {
       const u = await authUser(headers);
       if (!u) return send(401, { error: '未登录或登录已过期' });
       if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward) return send(403, { error: '需要族谱主理人或以上权限' });
-      const list = await colAll('jiazu_leave_requests');
+      const list = await colAll('jiapu_leave_requests');
       const myTree = u.role === 'chief_editor' ? null : (await getAnchor(u.phone))?.tree_id;
       // 前端 LeaveRequestItem 读 r.id → 从 _id 映射
       const out = list
@@ -1666,13 +1666,13 @@ async function handleRequest(event) {
       if (!u) return send(401, { error: '未登录或登录已过期' });
       if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward) return send(403, { error: '需要族谱主理人或以上权限' });
       const body = parseBody(event);
-      const req = await colGet('jiazu_leave_requests', String(body.id || ''));
+      const req = await colGet('jiapu_leave_requests', String(body.id || ''));
       if (!req) return send(404, { error: '申请不存在' });
       if (req.status !== 'pending') return send(400, { error: '该申请已处理' });
       req.status = body.approve ? 'approved' : 'rejected';
       req.handled_by = u.phone;
       req.handled_at = new Date().toISOString();
-      await colSet('jiazu_leave_requests', req._id, req);
+      await colSet('jiapu_leave_requests', req._id, req);
       if (body.approve) await clearAnchor(req.phone);
       return send(200, { ok: true, status: req.status });
     }
@@ -1785,7 +1785,7 @@ async function handleRequest(event) {
             requested_by: u.phone,
             created_at: now,
           };
-          await colSet('jiazu_marriage_requests', mid, request);
+          await colSet('jiapu_marriage_requests', mid, request);
           return send(200, { ok: true, request_id: mid, status: 'pending', to_tree: toTree, to_person_name: other.name });
         }
 
@@ -1818,7 +1818,7 @@ async function handleRequest(event) {
           requested_by: u.phone,
           created_at: now,
         };
-        await colSet('jiazu_marriage_requests', rid, request);
+        await colSet('jiapu_marriage_requests', rid, request);
         return send(200, { ok: true, request_id: rid, status: 'pending', to_tree: toTree, to_person_name: other.name });
       } catch (e) {
         return safeError(e);
@@ -1829,12 +1829,12 @@ async function handleRequest(event) {
     if (pathname === '/admin/marriage-requests' && method === 'GET') {
       const u = await authUser(headers);
       if (!u) return send(401, { error: '未登录或登录已过期' });
-      const user = await colGet('jiazu_users', u.phone);
+      const user = await colGet('jiapu_users', u.phone);
       if (!user) return send(401, { error: '用户不存在' });
       const chief = user.role === 'chief_editor';
       const anchor = chief ? null : await getAnchor(u.phone);
       const myTree = anchor?.tree_id || '';
-      const all = await colAll('jiazu_marriage_requests');
+      const all = await colAll('jiapu_marriage_requests');
       const list = all
         .filter((r) => r.status === 'pending')
         .filter((r) => chief || r.to_tree === myTree)
@@ -1851,7 +1851,7 @@ async function handleRequest(event) {
       try {
         const u = await authUser(headers);
         if (!u) return send(401, { error: '未登录或登录已过期' });
-        const request = await colGet('jiazu_marriage_requests', rid);
+        const request = await colGet('jiapu_marriage_requests', rid);
         if (!request) return send(404, { error: '申请不存在' });
         if (request.status !== 'pending') {
           return send(400, { error: request.status === 'approved' ? '该申请已通过' : '该申请已驳回' });
@@ -1859,7 +1859,7 @@ async function handleRequest(event) {
         await requireWriteUser(headers, request.to_tree, pathname, request.to_person_handle, false);
         const now = new Date().toISOString();
         if (!approve) {
-          await colSet('jiazu_marriage_requests', rid, {
+          await colSet('jiapu_marriage_requests', rid, {
             ...request,
             status: 'rejected',
             decided_by: u.phone,
@@ -1900,7 +1900,7 @@ async function handleRequest(event) {
                   createdBy: request.requested_by,
                 }),
               );
-        await colSet('jiazu_marriage_requests', rid, {
+        await colSet('jiapu_marriage_requests', rid, {
           ...request,
           status: 'approved',
           decided_by: u.phone,
@@ -2045,7 +2045,7 @@ async function handleRequest(event) {
     if (pathname === '/admin/founder-requests' && method === 'GET') {
       const u = await authUser(headers);
       if (!u) return send(401, { error: '未登录或登录已过期' });
-      const user = await colGet('jiazu_users', u.phone);
+      const user = await colGet('jiapu_users', u.phone);
       if (!user) return send(401, { error: '用户不存在' });
       const chief = user.role === 'chief_editor';
       const anchor = chief ? null : await getAnchor(u.phone);
@@ -2464,7 +2464,7 @@ async function handleRequest(event) {
     if (pathname === '/admin/clan-requests' && method === 'GET') {
       const u = await authUser(headers);
       if (!u) return send(401, { error: '未登录或登录已过期' });
-      const user = await colGet('jiazu_users', u.phone);
+      const user = await colGet('jiapu_users', u.phone);
       if (!user) return send(401, { error: '用户不存在' });
       const chief = user.role === 'chief_editor';
       const anchor = chief ? null : await getAnchor(u.phone);
@@ -2485,7 +2485,7 @@ async function handleRequest(event) {
       try {
         const u = await authUser(headers);
         if (!u) return send(401, { error: '未登录或登录已过期' });
-        const user = await colGet('jiazu_users', u.phone);
+        const user = await colGet('jiapu_users', u.phone);
         if (!user || user.role !== 'chief_editor') return send(403, { error: '建谱审批需要总编辑权限' });
         const request = await colGet(clan.CLAN_REQUEST_COLLECTION, rid);
         if (!request) return send(404, { error: '申请不存在' });
@@ -2682,7 +2682,7 @@ async function handleRequest(event) {
         const body = parseBody(event);
         const u = await authUser(headers);
         if (!u) throw httpError(401, '请先登录后再进行编辑操作');
-        const reqUser = await colGet('jiazu_users', u.phone);
+        const reqUser = await colGet('jiapu_users', u.phone);
         if (!reqUser) throw httpError(401, '用户不存在');
         if (reqUser.role === 'guest') throw httpError(403, '游客无编辑权限，请注册后编辑');
         if (reqUser.role !== 'chief_editor' && reqUser.role !== 'tree_steward') {
@@ -2720,7 +2720,7 @@ async function handleRequest(event) {
         const body = parseBody(event);
         const u = await authUser(headers);
         if (!u) throw httpError(401, '请先登录后再进行编辑操作');
-        const reqUser = await colGet('jiazu_users', u.phone);
+        const reqUser = await colGet('jiapu_users', u.phone);
         if (!reqUser || reqUser.role !== 'chief_editor') throw httpError(403, '需要总编辑权限');
         const ratio = await wallet.getConvergeSpiritRatio();
         return send(
@@ -2744,7 +2744,7 @@ async function handleRequest(event) {
     if (pathname === '/admin/create-tree' && method === 'POST') {
       const u = await authUser(headers);
       if (!u) return send(401, { error: '未登录或登录已过期' });
-      const user = await colGet('jiazu_users', u.phone);
+      const user = await colGet('jiapu_users', u.phone);
       if (!user || user.role !== 'chief_editor') return send(403, { error: '需要总编辑权限' });
       const body = parseBody(event);
       let charged = null;
@@ -2778,7 +2778,7 @@ async function handleRequest(event) {
     if (pathname === '/admin/split-tree' && method === 'POST') {
       const u = await authUser(headers);
       if (!u) return send(401, { error: '未登录或登录已过期' });
-      const user = await colGet('jiazu_users', u.phone);
+      const user = await colGet('jiapu_users', u.phone);
       if (!user || user.role !== 'chief_editor') return send(403, { error: '需要总编辑权限' });
       const body = parseBody(event);
       if (!body.tree_id || !body.ancestor_handle) return send(400, { error: '缺少 tree_id 或 ancestor_handle' });
@@ -2800,7 +2800,7 @@ async function handleRequest(event) {
     if (pathname === '/admin/chain-append' && method === 'POST') {
       const u = await authUser(headers);
       if (!u) return send(401, { error: '未登录或登录已过期' });
-      const user = await colGet('jiazu_users', u.phone);
+      const user = await colGet('jiapu_users', u.phone);
       if (!user || user.role !== 'chief_editor') return send(403, { error: '需要总编辑权限' });
       const body = parseBody(event);
       if (!body.tree_id || !body.parent_handle) return send(400, { error: '缺少 tree_id 或 parent_handle' });
@@ -2840,7 +2840,7 @@ async function handleRequest(event) {
         // 世本：仅 chief_editor（现状不变）
         const u = await authUser(headers);
         if (!u) return send(401, { error: '未登录或登录已过期' });
-        const user = await colGet('jiazu_users', u.phone);
+        const user = await colGet('jiapu_users', u.phone);
         if (!user || user.role !== 'chief_editor') return send(403, { error: '需要总编辑权限' });
       } else {
         // 祖谱：本树 tree_steward（锚点树）+ chief_editor —— 与祖谱其它写操作同档（未登录恒 401）
@@ -2866,7 +2866,7 @@ async function handleRequest(event) {
     if (pathname === '/admin/remove-branch-link' && method === 'POST') {
       const u = await authUser(headers);
       if (!u) return send(401, { error: '未登录或登录已过期' });
-      const user = await colGet('jiazu_users', u.phone);
+      const user = await colGet('jiapu_users', u.phone);
       if (!user || user.role !== 'chief_editor') return send(403, { error: '需要总编辑权限' });
       const body = parseBody(event);
       if (!body.tree_id || !body.person_handle) return send(400, { error: '缺少 tree_id 或 person_handle' });
@@ -3128,7 +3128,7 @@ async function handleRequest(event) {
     // 出参五键白名单。**必须注册在树编辑闸门之前**（闸门 = 下面的 `缺少 X-Tree-Id`，同段先例 = /search/global）
     // → tree_id 走查询参数（闸门之前没有 X-Tree-Id 语义）。
     if (pathname === '/search/marriage-candidates' && method === 'GET') {
-      // ① 鉴权：与写侧同档（有效 JWT **且** jiazu_users 中存在该用户）→ 缺失 / 失效 / 过期一律 401。
+      // ① 鉴权：与写侧同档（有效 JWT **且** jiapu_users 中存在该用户）→ 缺失 / 失效 / 过期一律 401。
       //    **不得**回落 resolveTreeAccess 的 guest 档：那正是「前端仍显示 chief、服务端按 guest 藏 18 世」
       //    这层缺陷的放大器（用户看不出任何原因）。
       const u = await authUser(headers);

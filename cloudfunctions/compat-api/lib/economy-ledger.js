@@ -1,5 +1,5 @@
 /**
- * 资产账本内核（P0）— 集合 jiazu_assets（**每手机号一文档**，`_id = 手机号明文`；R1 存储形态 v2）
+ * 资产账本内核（P0）— 集合 jiapu_assets（**每手机号一文档**，`_id = 手机号明文`；R1 存储形态 v2）
  *
  * 唯一真源：docs/economy.spec.md
  *   §3 四类资产定义 / §4-1 存储契约 / §4-6 枚举
@@ -13,7 +13,7 @@
  * 残页**照收、不拒绝、不截断**（无上限校验）；`SCROLL_FRAGMENT_CAP` 语义降为**单格容纳上限 / 展示层口径**。
  * 历史 `source: 'scroll_synth'` 批次与历史流水一律保留、不改写、不删（**存量不迁移**）。
  *
- * **存储形态 v2（R1/R2，2026-10-03 Zang 裁定 · 路 B）**：`jiazu_assets` 由「全体用户共用单文档
+ * **存储形态 v2（R1/R2，2026-10-03 Zang 裁定 · 路 B）**：`jiapu_assets` 由「全体用户共用单文档
  * `_id='global'`」改为「**每手机号一文档**（`_id = 手机号明文`）」，每档带 `version`（非负整数，自 1 起）。
  * 写入协议 = `store.mutateDoc` 的 **CAS**：读当前档 → 纯函数 mutator → `version+1` → 条件写 → **读回比对**；
  * 冲突重读重放（上限 5 次 + 退避），耗尽抛错 ⇒ **云端多实例并发不再丢更新 / 双花**（原部署阻塞项 §7-7 解除）。
@@ -29,11 +29,11 @@
  * 现有调用方均为「在账本锁内对 user 记录就地读改写」，冲突重放时**从最新档重新校验 / 重新走 FIFO**
  * （余额校验恒在 CAS 成功的那次读内完成，绝不基于陈旧快照扣减，§7-7 第 3 条）。
  *
- * **唯一写入路径（§5-7）**：任何路径（脚本 / 云函数旁路 / 前端）都不得直写 jiazu_assets，只经本模块。
+ * **唯一写入路径（§5-7）**：任何路径（脚本 / 云函数旁路 / 前端）都不得直写 jiapu_assets，只经本模块。
  */
 import { colGet, mutateDoc } from './store.js';
 
-export const ASSETS_COL = 'jiazu_assets';
+export const ASSETS_COL = 'jiapu_assets';
 /**
  * 资产档 `_id` = **手机号明文**（R1 存储形态 v2；旧「单文档 `_id='global'` + `users` 映射」已废弃）。
  * 纯投影：只做 trim，空值返回 `''`（不抛错；手机号格式校验不属本函数）。
@@ -504,7 +504,7 @@ export function addScrollFragments(user, n, now = new Date()) {
  * - 成功：`scroll_fragments -= count × 100`；每张一个新 ScrollLot（100 片、`expires_at = null` 永久
  *   **显式传入**、`source = 'scroll_synth'`）；写**一条** `Tx{type:'scroll_synth'}` 流水（`delta` 含
  *   `scroll_fragments` 与 `scrolls` 两个键、`desc` 逐字见下）；
- * - **免费**：不扣竹片、不走 `edit_fee`、不写 `edit_fee` 流水；不动 `jiazu_market` / 挂单 / 注销路径。
+ * - **免费**：不扣竹片、不走 `edit_fee`、不写 `edit_fee` 流水；不动 `jiapu_market` / 挂单 / 注销路径。
  * @returns {{synthesized:number, pieces:number, scroll_fragments:number, scroll_lots:object[]}}
  */
 export function synthesizeScroll(user, count = 1, now = new Date()) {
@@ -648,7 +648,7 @@ export function expiringItems(user, now = new Date(), days = EXPIRING_DEFAULT_DA
  *
  * 玉归属（口径 v6）：
  * - **用户面（缺省）**：**已镶嵌玉不再属于个人**（`mounted_tree_id` 非空 = 归属家族树、凹槽永久占用）
- *   ⇒ 只出未镶嵌玉，`jades_total` 同口径。原始记录保留、不迁移、不删除——`jiazu_assets` 里那条带
+ *   ⇒ 只出未镶嵌玉，`jades_total` 同口径。原始记录保留、不迁移、不删除——`jiapu_assets` 里那条带
  *   `mounted_tree_id` 的玉记录原样留着，供 `/spirit` 注入者反查与凹槽去向追溯。
  * - **后台运维面（`{ include_mounted: true }`，仅 `GET /admin/assets/user`）**：出**全量原始记录**
  *   （含已镶嵌、保留 `mounted_tree_id`），后台要能看到「玉去哪了、镶进了哪棵树」。

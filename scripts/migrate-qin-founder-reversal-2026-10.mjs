@@ -26,7 +26,7 @@
  *   (B) 祖谱 `qin_31206.json`
  *       · 删除 秦老太爷 / 秦永葆 两个 person 与 F000137；
  *       · **新建 1 条登记镜像节点**（新 handle = 24 位随机 hex；新 gramps_id 经 `lib/id-seq.js`
- *         铸号、只抬不降，并同步写 `collections/jiazu_id_seq.json`）：
+ *         铸号、只抬不降，并同步写 `collections/jiapu_id_seq.json`）：
  *         `external_tree='qin_31206_01'` / `external_person_handle=<秦老太爷 handle>` /
  *         `external_link_type='founder'` / `external_mirror='true'` /
  *         `external_relation_note='秦老太爷（秦氏鸡西家族 · 始祖）'`，姓名/性别/生卒/葬地 = 真身副本，
@@ -105,7 +105,7 @@ const META_FILE = process.env.COMPAT_META_FILE
   : process.env.COMPAT_OUT_DIR
     ? path.join(OUT_DIR, 'tree-meta.json')
     : REAL_META;
-const SEQ_FILE = path.join(COLS_DIR, 'jiazu_id_seq.json');
+const SEQ_FILE = path.join(COLS_DIR, 'jiapu_id_seq.json');
 const IS_COPY = path.resolve(OUT_DIR) !== path.resolve(REAL_OUT);
 const IS_META_COPY = path.resolve(META_FILE) !== path.resolve(REAL_META);
 const ROOT = IS_COPY ? path.dirname(OUT_DIR) : REPO;
@@ -807,7 +807,7 @@ function buildSummary({ applied, backupDir, deletedManifest = [], mirror = null 
     minted_person_id: mintedId || null,
     md5: {
       'config/tree-meta.json': { before: metaBeforeMd5, after: fs.existsSync(META_FILE) ? md5(META_FILE) : '' },
-      'collections/jiazu_id_seq.json': { before: seqBeforeMd5, after: fs.existsSync(SEQ_FILE) ? md5(SEQ_FILE) : '' },
+      'collections/jiapu_id_seq.json': { before: seqBeforeMd5, after: fs.existsSync(SEQ_FILE) ? md5(SEQ_FILE) : '' },
       files: [...filePlan.values()].map((f) => ({
         path: f.rel,
         kind: f.kind,

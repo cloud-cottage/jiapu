@@ -432,7 +432,7 @@ test('路由 POST /admin/add-child：鉴权通过 → 跨树结果落两棵树�
   const phone = '16600000000';
   fs.mkdirSync(path.join(TMP, 'collections'), { recursive: true });
   fs.writeFileSync(
-    path.join(TMP, 'collections', 'jiazu_users.json'),
+    path.join(TMP, 'collections', 'jiapu_users.json'),
     JSON.stringify({ [phone]: { _id: phone, phone, nickname: '测试', role: 'tree_steward' } }),
   );
   const token = signJwt({ sub: phone, phone, role: 'tree_steward' }, 3600);

@@ -48,7 +48,7 @@ import { idAllocator, reserveFamilyIds, reservePersonIds } from './id-seq.js';
 import { isKnownOriginCode, resolveOrigin } from './geo.js';
 
 /** 建谱申请集合（新建集合 → docs/PENDING_DEPLOY.md） */
-export const CLAN_REQUEST_COLLECTION = 'jiazu_clan_requests';
+export const CLAN_REQUEST_COLLECTION = 'jiapu_clan_requests';
 /** 顶端镜像节点 handle 前缀：`mir_<上层节点 handle>`（确定性 → 重复认祖幂等，不产生孤儿节点） */
 export const CLAN_MIRROR_PREFIX = 'mir_';
 /** 镜像链默认/最大深度（0 = 只镜像始祖节点本身；其下即自有段） */
@@ -394,7 +394,7 @@ export function applyClanTopMirror({
 
 // ---- 申请单（纯函数） ----
 
-/** 构造建谱申请单（落 jiazu_clan_requests） */
+/** 构造建谱申请单（落 jiapu_clan_requests） */
 export function buildClanRequest({
   id,
   surname,

@@ -1,5 +1,5 @@
 /**
- * 钱包模块（集合 jiazu_wallets，**存储形态 v2 · 每手机号一档**）
+ * 钱包模块（集合 jiapu_wallets，**存储形态 v2 · 每手机号一档**）
  * 规则与 auth-server/wallet.js 一致：分存储、建树费 9.9 元默认。
  * **家族树资金功能已下线**（docs/economy.spec.md §12-3）：`trees[tree_id].balance_cents`、`transferToTree`、
  * `getTreeBalance` 均已移除（`/wallet/transfer`、`/wallet/tree-balance` 恒 410）；本模块只留
@@ -24,7 +24,7 @@
 import { colGet, mutateDoc } from './store.js';
 
 /** 集合名（`economy-market.js` 等只经本模块访问 wallets，不直读） */
-export const WALLET_COL = 'jiazu_wallets';
+export const WALLET_COL = 'jiapu_wallets';
 /** 用户档 `_id` = 手机号明文（纯投影：只做 trim，空值返回 `''`；手机号格式校验不属本函数） */
 export const walletIdOf = (phone) => String(phone == null ? '' : phone).trim();
 /** 配置类单档 `_id`（原 `global.config`；先例 = `economy-market.js` 的 `OFFICIAL_ID`） */
@@ -38,7 +38,7 @@ export const DEFAULT_BRANCH_FEE_SEEDS = 9999;
 /** 汇宗灵气折损比例默认值（0–1；docs/branch-clan-ops.spec.md §5-4） */
 export const DEFAULT_CONVERGE_SPIRIT_RATIO = 0.5;
 
-// ---- 签到域后台可配键（同一设置载体 `jiazu_wallets.config`；Zang 裁定 v1 · Kevin 2026-09-28 拍定）----
+// ---- 签到域后台可配键（同一设置载体 `jiapu_wallets.config`；Zang 裁定 v1 · Kevin 2026-09-28 拍定）----
 // 写入口沿用既有治理路由 `PUT /admin/wallet-fee`（**不新增设置路由**）；读侧一律「缺省 / 非法值 → 默认值」。
 
 /** 补签费用默认值（片竹片；`config.signin_makeup_cost_bamboos`） */
@@ -229,7 +229,7 @@ export async function setTreeCreateFeeCents(amountCents) {
   return amountCents;
 }
 
-// ---- 立支 / 汇宗 后台设置键（同一设置载体 `jiazu_wallets.config`；docs/branch-clan-ops.spec.md §5-4）----
+// ---- 立支 / 汇宗 后台设置键（同一设置载体 `jiapu_wallets.config`；docs/branch-clan-ops.spec.md §5-4）----
 
 /**
  * 立支费（颗完整石榴籽）：`config.branch_fee_seeds`，缺省 / 非法值 → 9999。

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * P0 上传脚本：migrate-output/ → CloudBase（复用 liwu 环境，集合加 jiazu_ 前缀）
+ * P0 上传脚本：migrate-output/ → CloudBase（复用 liwu 环境，集合加 jiapu_ 前缀）
  *
  * - 树 JSON     → 云存储 trees/<tree_id>.json（云存储按环境隔离，无前缀）
- * - 人物详情    → 集合 jiazu_person_details（_id = "<tree_id>:<handle>", doc().set 幂等 upsert）
- * - tree-meta   → 集合 jiazu_tree_meta（_meta 单档 + 每树一档 _id=tree_id）
- * - 预留业务集合：jiazu_users / jiazu_wallets / jiazu_anchors / jiazu_leave_requests / jiazu_sms_codes
+ * - 人物详情    → 集合 jiapu_person_details（_id = "<tree_id>:<handle>", doc().set 幂等 upsert）
+ * - tree-meta   → 集合 jiapu_tree_meta（_meta 单档 + 每树一档 _id=tree_id）
+ * - 预留业务集合：jiapu_users / jiapu_wallets / jiapu_anchors / jiapu_leave_requests / jiapu_sms_codes
  *
  * 用法:
  *   CB_ENV=<envId> CB_KEY=<jwt-api-key> node scripts/upload-migrated-to-cloudbase.mjs
@@ -42,51 +42,51 @@ if (!hasKey && !hasTcb) {
 }
 
 const COLLECTIONS = [
-  'jiazu_person_details',
-  'jiazu_tree_meta',
-  'jiazu_users',
-  'jiazu_wallets',
-  'jiazu_anchors',
-  'jiazu_leave_requests',
-  'jiazu_sms_codes',
+  'jiapu_person_details',
+  'jiapu_tree_meta',
+  'jiapu_users',
+  'jiapu_wallets',
+  'jiapu_anchors',
+  'jiapu_leave_requests',
+  'jiapu_sms_codes',
   // P3 已实现的三个集合
-  'jiazu_assets',
-  'jiazu_spirit',
-  'jiazu_market',
+  'jiapu_assets',
+  'jiapu_spirit',
+  'jiapu_market',
   // P4 新增：站内消息 / 运营审计（docs/economy-ops.spec.md §5.3）
-  'jiazu_messages',
-  'jiazu_ops_logs',
+  'jiapu_messages',
+  'jiapu_ops_logs',
   // 邀请链路（Zang 裁定 v3 · I-8）：每被邀请人一文档（_id = 被邀请人手机号）
-  'jiazu_invites',
+  'jiapu_invites',
   // 邀请码链路（批 C-1）：一码一文档（_id = 6 位短码）—— 漏了云端首写直接报错（AGENTS.md §8）
-  'jiazu_invite_codes',
+  'jiapu_invite_codes',
   // 关系 / 归属 / 婚姻申请 + 编号计数器（补漏：以下 6 项曾被名单遗漏）。
   // 本仓历史：名单漏项 ⇒ 云端缺集合 ⇒ 对应路由「首次写入」才报 DATABASE_COLLECTION_NOT_EXIST
-  //（例：POST /assets/signin 发放任务奖励写 jiazu_friends 返 409）。启动自检（见下）即为此而设。
-  'jiazu_friends',
-  'jiazu_clan_requests',
-  'jiazu_founder_requests',
-  'jiazu_id_seq',
-  'jiazu_join_requests',
-  'jiazu_marriage_requests',
+  //（例：POST /assets/signin 发放任务奖励写 jiapu_friends 返 409）。启动自检（见下）即为此而设。
+  'jiapu_friends',
+  'jiapu_clan_requests',
+  'jiapu_founder_requests',
+  'jiapu_id_seq',
+  'jiapu_join_requests',
+  'jiapu_marriage_requests',
 ];
 
-// ---- 启动自检：代码引用的 jiazu_* 集合必须全部列入 COLLECTIONS ----
+// ---- 启动自检：代码引用的 jiapu_* 集合必须全部列入 COLLECTIONS ----
 // 目的：从根上堵住「名单漏项 ⇒ 云端缺集合」这一类缺陷。
-// 扫描 cloudfunctions/compat-api 下全部 .js 中形如 'jiazu_xxx' / "jiazu_xxx" 的字面量（精确集合名），
+// 扫描 cloudfunctions/compat-api 下全部 .js 中形如 'jiapu_xxx' / "jiapu_xxx" 的字面量（精确集合名），
 // 与 COLLECTIONS 求差集；差集中若有「未列入且不在探针白名单」的名字 ⇒ 明确告警并 exit 1（提示补名单）。
 //
 // 说明：**跳过 `*.test.js`** —— 单测离线运行、不进云函数，其中的测试探针集合（如
-// jiazu_cas_probe / jiazu_guard_probe / jiazu_wallet_cas_probe / jiazu_f3_probe）不会导致云端首写失败，
+// jiapu_cas_probe / jiapu_guard_probe / jiapu_wallet_cas_probe / jiapu_f3_probe）不会导致云端首写失败，
 // 若一并扫描会造成「每次上传都被自身单测探针判红」的误报。探针白名单保留作为兜底：
 // 一旦探针名混入运行时代码（非 .test.js），仍会被放行而不误伤。
 const PROBE_WHITELIST = new Set([
-  'jiazu_cas_probe', // lib/assets.test.js
-  'jiazu_guard_probe', // lib/meta-guard.test.js
-  'jiazu_wallet_cas_probe', // lib/wallet.test.js
+  'jiapu_cas_probe', // lib/assets.test.js
+  'jiapu_guard_probe', // lib/meta-guard.test.js
+  'jiapu_wallet_cas_probe', // lib/wallet.test.js
 ]);
 
-/** 扫描 compat-api 运行时代码（非 *.test.js）中被引用的全部 jiazu_* 集合名 */
+/** 扫描 compat-api 运行时代码（非 *.test.js）中被引用的全部 jiapu_* 集合名 */
 function collectJiazuCollectionsInCode() {
   const root = path.join(REPO, 'cloudfunctions', 'compat-api');
   const names = new Set();
@@ -105,7 +105,7 @@ function collectJiazuCollectionsInCode() {
       }
       if (!e.name.endsWith('.js') || e.name.endsWith('.test.js')) continue;
       const src = fs.readFileSync(p, 'utf8');
-      const re = /['"](jiazu_[A-Za-z0-9_]+)['"]/g; // 精确集合名字面量（不匹配 'jiazu_x.json' 之类）
+      const re = /['"](jiapu_[A-Za-z0-9_]+)['"]/g; // 精确集合名字面量（不匹配 'jiapu_x.json' 之类）
       let m;
       while ((m = re.exec(src))) names.add(m[1]);
     }
@@ -119,25 +119,25 @@ function assertCollectionsCoverCode() {
   const listed = new Set(COLLECTIONS);
   const missing = [...referenced].filter((n) => !listed.has(n) && !PROBE_WHITELIST.has(n)).sort();
   if (missing.length) {
-    console.error('✖ 启动自检失败：以下 jiazu_* 集合被代码引用，却不在 COLLECTIONS 名单内：');
+    console.error('✖ 启动自检失败：以下 jiapu_* 集合被代码引用，却不在 COLLECTIONS 名单内：');
     for (const n of missing) console.error(`    - ${n}`);
     console.error('  → 若不补名单，云端不会建这些集合，对应路由「首次写入」将报 DATABASE_COLLECTION_NOT_EXIST。');
     console.error('  → 请把上述名字加入 scripts/upload-migrated-to-cloudbase.mjs 的 COLLECTIONS 后重跑。');
     process.exit(1);
   }
-  console.log(`✓ 启动自检：代码引用的 ${referenced.size} 个 jiazu_* 集合均已列入 COLLECTIONS。`);
+  console.log(`✓ 启动自检：代码引用的 ${referenced.size} 个 jiapu_* 集合均已列入 COLLECTIONS。`);
 }
 
 // 路 B（写一致性 v2）业务集合：单文档 _id='global' → 主体系档（每主体一档）。
 // 上云由本脚本「按新形态覆盖写入」，随后幂等删掉残留的旧 `_id='global'` 档
 //（口径 = docs/data-model.md §7.2 R4 / docs/PENDING_DEPLOY.md §50-5 · §51-0）。
 const BUSINESS_COLLECTIONS = [
-  'jiazu_assets',
-  'jiazu_spirit',
-  'jiazu_messages',
-  'jiazu_ops_logs',
-  'jiazu_market',
-  'jiazu_wallets',
+  'jiapu_assets',
+  'jiapu_spirit',
+  'jiapu_messages',
+  'jiapu_ops_logs',
+  'jiapu_market',
+  'jiapu_wallets',
 ];
 
 const app = hasKey
@@ -182,7 +182,7 @@ async function uploadTreeJson() {
 async function uploadDetails() {
   const dir = path.join(OUT, 'details');
   const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
-  const col = db.collection('jiazu_person_details');
+  const col = db.collection('jiapu_person_details');
   let ok = 0;
   for (const f of files) {
     const doc = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
@@ -235,7 +235,7 @@ async function uploadCollections() {
 
 async function uploadTreeMeta(fileIds) {
   const meta = JSON.parse(fs.readFileSync(path.join(REPO, 'config', 'tree-meta.json'), 'utf8'));
-  const col = db.collection('jiazu_tree_meta');
+  const col = db.collection('jiapu_tree_meta');
   // 存储形态 v2（路 B 第 4 期）：**每树一档**（_id = tree_id）+ **配置单档** _id='_meta'
   // storage_files 归 _meta 单档（兼容层 getTree 按此下载树 JSON）
   await col.doc('_meta').set({
@@ -255,11 +255,11 @@ async function uploadTreeMeta(fileIds) {
     .doc('global')
     .remove()
     .catch(() => {});
-  console.log(`  ✓ tree-meta: _meta 单档 + ${n} 棵树档已写入 jiazu_tree_meta（旧 global 档已清）`);
+  console.log(`  ✓ tree-meta: _meta 单档 + ${n} 棵树档已写入 jiapu_tree_meta（旧 global 档已清）`);
 }
 
 async function main() {
-  // 启动自检（在任何网络调用之前）：代码引用的 jiazu_* 集合必须都在名单内，否则 exit 1
+  // 启动自检（在任何网络调用之前）：代码引用的 jiapu_* 集合必须都在名单内，否则 exit 1
   assertCollectionsCoverCode();
   console.log(`环境: ${ENV}`);
   console.log(`凭据路径: ${hasKey ? 'CB_KEY(accessKey)' : 'TCB STS(secretId/sessionToken)'}`);
@@ -278,16 +278,16 @@ async function main() {
 
   // 验证
   console.log('--- 验证 ---');
-  const cnt = await db.collection('jiazu_person_details').count();
-  console.log(`  jiazu_person_details 总数: ${cnt.total}`);
-  const meta = await db.collection('jiazu_tree_meta').doc('_meta').get().catch(() => null);
-  console.log(`  jiazu_tree_meta/_meta: ${meta ? 'OK' : '缺失'}`);
+  const cnt = await db.collection('jiapu_person_details').count();
+  console.log(`  jiapu_person_details 总数: ${cnt.total}`);
+  const meta = await db.collection('jiapu_tree_meta').doc('_meta').get().catch(() => null);
+  console.log(`  jiapu_tree_meta/_meta: ${meta ? 'OK' : '缺失'}`);
   const treeDocs = await db
-    .collection('jiazu_tree_meta')
+    .collection('jiapu_tree_meta')
     .where({ tree_id: db.command.exists(true) })
     .count()
     .catch(() => null);
-  if (treeDocs) console.log(`  jiazu_tree_meta 树档数: ${treeDocs.total}`);
+  if (treeDocs) console.log(`  jiapu_tree_meta 树档数: ${treeDocs.total}`);
   const canRead = (r) => {
     const d = r && r.data;
     return Array.isArray(d) ? d.length > 0 : !!d;

@@ -13,10 +13,10 @@ import { colAll } from './store.js';
 
 /** 申请/互动事件集合（逐字，与 index.js 实际写入的集合名一致） */
 export const EVENT_COLLECTIONS = [
-  'jiazu_join_requests',
-  'jiazu_marriage_requests',
-  'jiazu_founder_requests',
-  'jiazu_clan_requests',
+  'jiapu_join_requests',
+  'jiapu_marriage_requests',
+  'jiapu_founder_requests',
+  'jiapu_clan_requests',
 ];
 
 export const WINDOW_DAYS = 30;

@@ -137,12 +137,12 @@ writeJson(process.env.COMPAT_META_FILE, metaCopy);
 const MEMBER = '13800009001';
 const NONMEMBER = '13800009002';
 const CURATOR = '13800009003';
-writeCol('jiazu_users', [
+writeCol('jiapu_users', [
   { _id: MEMBER, phone: MEMBER, nickname: '沈氏成员', role: 'user' },
   { _id: NONMEMBER, phone: NONMEMBER, nickname: '路人', role: 'user' },
   { _id: CURATOR, phone: CURATOR, nickname: '总编辑', role: 'chief_editor' },
 ]);
-writeCol('jiazu_anchors', [{ _id: MEMBER, phone: MEMBER, tree_id: 'mir_tree', person_handle: 'h_g2' }]);
+writeCol('jiapu_anchors', [{ _id: MEMBER, phone: MEMBER, tree_id: 'mir_tree', person_handle: 'h_g2' }]);
 
 const { handleRequest } = await import('../index.js');
 const { signJwt } = await import('./auth.js');

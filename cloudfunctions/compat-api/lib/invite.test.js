@@ -60,7 +60,7 @@ const REG_INVITEE = '16600009941';
 
 fs.mkdirSync(path.join(TMP, 'collections'), { recursive: true });
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_users.json'),
+  path.join(TMP, 'collections', 'jiapu_users.json'),
   JSON.stringify(
     Object.fromEntries(
       [INVITER_A, INVITER_B, INVITER_C, INVITER_D]
@@ -97,8 +97,8 @@ async function devCode(phone) {
 // ===================== ① 常量与错误码字面 =====================
 
 test('① 常量与错误码字面：集合名 / 奖励 9+11 / 日限 3 / 四个错误码', () => {
-  assert.equal(inv.INVITES_COL, 'jiazu_invites', '集合名（I-1）');
-  assert.equal(inv.USERS_COL, 'jiazu_users');
+  assert.equal(inv.INVITES_COL, 'jiapu_invites', '集合名（I-1）');
+  assert.equal(inv.USERS_COL, 'jiapu_users');
   assert.equal(inv.INVITE_REWARD_FRAGMENTS, 9, '邀请人得 9 石榴籽碎片（I-4）');
   assert.equal(inv.INVITE_REWARD_SCROLL_FRAGMENTS, 11, '邀请人得 11 兰帖残页（I-4）');
   assert.equal(inv.INVITE_DAILY_LIMIT, 3, '邀请人 3 次/日（I-5）');
@@ -164,8 +164,8 @@ test('② 校验链：缺省→none；格式→FORMAT；自邀→FRIEND_SELF_INV
 test('②′ 邀请码格式失败 / 未知邀请人时**不写任何邀请文档**（校验全过才写，I-3）', async () => {
   await inv.applyInvite(INVITEES_A[0], 'abc');
   await inv.applyInvite(INVITEES_A[0], '16600000000');
-  const doc = await (await import('./store.js')).colGet('jiazu_invites', INVITEES_A[0]);
-  assert.equal(doc, null, '校验失败不得落 jiazu_invites 文档');
+  const doc = await (await import('./store.js')).colGet('jiapu_invites', INVITEES_A[0]);
+  assert.equal(doc, null, '校验失败不得落 jiapu_invites 文档');
 });
 
 // ===================== ③ I-4 发奖 =====================
@@ -204,7 +204,7 @@ test('③ I-4 发奖：邀请人得 9 石榴籽碎片 + 11 兰帖残页；被邀
 
   // I-1 邀请文档形状
   const { colGet } = await import('./store.js');
-  const doc = await colGet('jiazu_invites', INVITEES_A[0]);
+  const doc = await colGet('jiapu_invites', INVITEES_A[0]);
   assert.equal(doc._id, INVITEES_A[0]);
   assert.equal(doc.inviter_phone, INVITER_A);
   assert.equal(doc.rewarded, true);
@@ -244,7 +244,7 @@ test('④ 日限：同一邀请人第 1–3 次发放、第 4 次静默不发（
   assert.equal(user.scrolls.length, 0);
 
   const { colGet } = await import('./store.js');
-  const doc4 = await colGet('jiazu_invites', INVITEES_B[3]);
+  const doc4 = await colGet('jiapu_invites', INVITEES_B[3]);
   assert.ok(doc4, '超限也要写邀请记录（I-1：记录永不复用、不删除）');
   assert.equal(doc4.rewarded, false, '超限 → rewarded=false');
   assert.equal(doc4.reward_tx_id, undefined, '未发奖 → 无 reward_tx_id');
@@ -340,7 +340,7 @@ test('⑦-c POST /auth/register 带 invite_code：全链路发奖；不带 → �
   assert.equal(reg1.statusCode, 201);
   assert.deepEqual(Object.keys(jsonOf(reg1)).sort(), ['nickname', 'phone', 'role', 'token'], '响应形状一字不改');
   const { colGet } = await import('./store.js');
-  assert.equal(await colGet('jiazu_invites', '16600009951'), null, '无邀请码 → 不落文档');
+  assert.equal(await colGet('jiapu_invites', '16600009951'), null, '无邀请码 → 不落文档');
 
   // 带合法邀请码：注册 201 + 邀请人得 9 + 11
   const before = await getAssets(INVITER_D);
@@ -353,7 +353,7 @@ test('⑦-c POST /auth/register 带 invite_code：全链路发奖；不带 → �
   assert.equal(after.fragments, 9);
   assert.equal(after.scroll_fragments, 11);
   assert.equal(inviteTxs(after).length, 1);
-  const doc = await colGet('jiazu_invites', REG_INVITEE);
+  const doc = await colGet('jiapu_invites', REG_INVITEE);
   assert.equal(doc.inviter_phone, INVITER_D);
   assert.equal(doc.rewarded, true);
 
@@ -363,13 +363,13 @@ test('⑦-c POST /auth/register 带 invite_code：全链路发奖；不带 → �
   const regSelf = await call('/auth/register', 'POST', {}, {}, { phone: selfPhone, code: c3, invite_code: selfPhone });
   assert.equal(regSelf.statusCode, 400);
   assert.equal(jsonOf(regSelf).code, 'FRIEND_SELF_INVITE');
-  assert.equal(await colGet('jiazu_users', selfPhone), null, '校验失败不得建号');
+  assert.equal(await colGet('jiapu_users', selfPhone), null, '校验失败不得建号');
 
   const c4 = await devCode('16600009953');
   const regUnknown = await call('/auth/register', 'POST', {}, {}, { phone: '16600009953', code: c4, invite_code: '16600000000' });
   assert.equal(regUnknown.statusCode, 400);
   assert.equal(jsonOf(regUnknown).code, 'INVITE_CODE_UNKNOWN');
-  assert.equal(await colGet('jiazu_users', '16600009953'), null, '校验失败不得建号');
+  assert.equal(await colGet('jiapu_users', '16600009953'), null, '校验失败不得建号');
 
   const c5 = await devCode('16600009954');
   const regFmt = await call('/auth/register', 'POST', {}, {}, { phone: '16600009954', code: c5, invite_code: 'abc' });
@@ -383,7 +383,7 @@ test('⑦-d 日限静默回落：邀请人达 3 次后，被邀请人注册仍 2
   const reg = await call('/auth/register', 'POST', {}, {}, { phone: invitee, code: c, invite_code: INVITER_B });
   assert.equal(reg.statusCode, 201, '超限不得影响注册');
   const { colGet } = await import('./store.js');
-  const doc = await colGet('jiazu_invites', invitee);
+  const doc = await colGet('jiapu_invites', invitee);
   assert.equal(doc.inviter_phone, INVITER_B);
   assert.equal(doc.rewarded, false, '日限外静默不发放');
   assert.equal(inviteTxs(await getAssets(INVITER_B)).length, 3, '流水条数仍为 3');

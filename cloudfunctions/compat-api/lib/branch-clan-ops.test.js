@@ -15,7 +15,7 @@
  *  11) 汇宗 · 折损比例与取整（10→5 / 3→2 / 已过期→0）                            → #16
  *  12) 汇宗 · 叠加不覆盖（目标树已有灵气 → 顺延 + buffer_until=null）            → #17
  *  13) 汇宗 · 目标树未镶嵌玉 → 不并入 + skipped_reason + transferred_days=0      → #18
- *  14) 汇宗 · 跨树引用红线 → 409，两树 / tree-meta / jiazu_spirit 全不变         → #15
+ *  14) 汇宗 · 跨树引用红线 → 409，两树 / tree-meta / jiapu_spirit 全不变         → #15
  *  15) 汇宗 · confirm_people 不符 → 409 DELETE_SCOPE_CHANGED 不写                → #19
  *  16) 汇宗 · 0 片 0 籽 + R5 口径保持                                            → #20 #21
  *  17) 汇宗 · 目标解析与校验（同树 / 祖谱 / 总谱 / 镜像 / 解析不到）             → #22
@@ -323,7 +323,7 @@ const MIRROR_FAMILIES = [
   // #25 详情缺失告警（warnings?）专用源树：bc_warn_yes 的上移链缺 top 的详情；bc_warn_no 两条详情齐备
   'bc_warn_yes',
   'bc_warn_no',
-  // 系统级失败文案（§15-#8）专用源树：④ 阶段（树文件删除）/ ⑤ 阶段（jiazu_spirit 写入）各一条
+  // 系统级失败文案（§15-#8）专用源树：④ 阶段（树文件删除）/ ⑤ 阶段（jiapu_spirit 写入）各一条
   'cv_stage4',
   'cv_stage5',
 ];
@@ -576,7 +576,7 @@ const GUEST = '16600000703'; // guest → 403
 const PLAIN = '16600000704'; // user → 403
 
 fs.writeFileSync(
-  path.join(COLS_DIR, 'jiazu_users.json'),
+  path.join(COLS_DIR, 'jiapu_users.json'),
   JSON.stringify({
     [STEWARD]: { _id: STEWARD, phone: STEWARD, nickname: '主理人', role: 'tree_steward' },
     [CHIEF]: { _id: CHIEF, phone: CHIEF, nickname: '总编辑', role: 'chief_editor' },
@@ -591,10 +591,10 @@ fs.writeFileSync(
 const seedLot = (id, qty, expDays) => ({ id, qty, expires_at: isoPlus(expDays), source: 'admin', created_at: new Date().toISOString() });
 const blankUser = () => ({ fragments: 0, seeds: [], bamboos: [], jades: [], txs: [], signin_date: '' });
 // 夹具形状（local 模式，**存储形态 v2**）：集合文件 = **{ 手机号明文 → 用户资产档 }**
-// （`_id` = 手机号，每档带 `version`；store.colGet('jiazu_assets', 手机号) 直取该档，
+// （`_id` = 手机号，每档带 `version`；store.colGet('jiapu_assets', 手机号) 直取该档，
 //  getAssets(手机号) 读的就是它 —— 旧 `{ global: { users } }` 单文档形态已废弃）。
 fs.writeFileSync(
-  path.join(COLS_DIR, 'jiazu_assets.json'),
+  path.join(COLS_DIR, 'jiapu_assets.json'),
   JSON.stringify({
     // 数组顺序故意把晚到期批次放前面：FIFO 必须按 expires_at 升序命中 sl_a
     [STEWARD]: { _id: STEWARD, version: 1, ...blankUser(), seeds: [seedLot('sl_b', 6000, 20), seedLot('sl_a', 5000, 10)] },
@@ -614,7 +614,7 @@ fs.writeFileSync(
 );
 
 const jade = (id) => ({ id, expires_at: isoPlus(300), created_at: new Date().toISOString(), source: 'admin' });
-// 集合 jiazu_spirit 真源 v2：**每树一档**（`_id = tree_id`，带 `version`）
+// 集合 jiapu_spirit 真源 v2：**每树一档**（`_id = tree_id`，带 `version`）
 const SPIRIT_SEED = {
   cv_main: { jade: jade('jd_cv_main'), spirit_expires_at: isoPlus(10), status: 'active', buffer_until: null, logs: [{ id: 'lg_cv_main', plan: 'quarter', days: 90 }] },
   cv_t_main: { jade: jade('jd_cv_t_main'), spirit_expires_at: isoPlus(100), status: 'active', buffer_until: null, logs: [] },
@@ -632,14 +632,14 @@ const SPIRIT_SEED = {
   cv_t_s5: { jade: jade('jd_cv_t_s5'), spirit_expires_at: isoPlus(100), status: 'active', buffer_until: null, logs: [] },
 };
 fs.writeFileSync(
-  path.join(COLS_DIR, 'jiazu_spirit.json'),
+  path.join(COLS_DIR, 'jiapu_spirit.json'),
   JSON.stringify(
     Object.fromEntries(Object.entries(SPIRIT_SEED).map(([id, entry]) => [id, { _id: id, version: 1, ...entry }])),
   ),
 );
 
 fs.writeFileSync(
-  path.join(COLS_DIR, 'jiazu_wallets.json'),
+  path.join(COLS_DIR, 'jiapu_wallets.json'),
   JSON.stringify({ config: { _id: 'config', version: 1 } }),
 );
 
@@ -665,11 +665,11 @@ const call = (p, body, token) =>
   });
 const bodyOf = (res) => JSON.parse(res.body);
 const metaNow = () => JSON.parse(fs.readFileSync(META_FILE, 'utf8'));
-const spiritColMd5 = () => md5(path.join(COLS_DIR, 'jiazu_spirit.json'));
-const assetsColMd5 = () => md5(path.join(COLS_DIR, 'jiazu_assets.json'));
-/** 读集合 jiazu_spirit 的**每树一档**视图 `{ trees: { <tree_id>: entry } }`（剥离 `_id`/`version`） */
+const spiritColMd5 = () => md5(path.join(COLS_DIR, 'jiapu_spirit.json'));
+const assetsColMd5 = () => md5(path.join(COLS_DIR, 'jiapu_assets.json'));
+/** 读集合 jiapu_spirit 的**每树一档**视图 `{ trees: { <tree_id>: entry } }`（剥离 `_id`/`version`） */
 const spiritDocNow = () => {
-  const raw = JSON.parse(fs.readFileSync(path.join(COLS_DIR, 'jiazu_spirit.json'), 'utf8'));
+  const raw = JSON.parse(fs.readFileSync(path.join(COLS_DIR, 'jiapu_spirit.json'), 'utf8'));
   const trees = {};
   for (const [id, doc] of Object.entries(raw)) {
     const rec = { ...(doc || {}) };
@@ -1190,7 +1190,7 @@ test('§10-1-12/14/17/20/21 汇宗正例：整树迁移 + 始祖镜像丢弃 + �
   // #17 叠加不覆盖 + #21 源树灵气保留且 expired
   const spiritAfter = spiritDocNow();
   const srcEntry = spiritAfter.trees[SRC];
-  assert.ok(srcEntry, '源树 jiazu_spirit 记录保留（不删）');
+  assert.ok(srcEntry, '源树 jiapu_spirit 记录保留（不删）');
   assert.equal(srcEntry.status, 'expired', '源树 status 置 expired');
   assert.equal(srcEntry.spirit_expires_at, spiritBefore.trees[SRC].spirit_expires_at, '源树原值保留作废留痕');
   assert.deepEqual(srcEntry.jade, spiritBefore.trees[SRC].jade, '源树玉留痕保留');
@@ -1277,7 +1277,7 @@ test('§10-1-16 汇宗 · 折损取整：剩余 3 天 → 并 2 天；灵气已�
 
 test('§10-1-18 汇宗 · 目标树未镶嵌玉 → 200 且不并入：transferred_days=0 + skipped_reason 非空', async () => {
   const spiritBefore = spiritDocNow();
-  assert.equal('cv_t4' in spiritBefore.trees, false, '前置：目标树无 jiazu_spirit 记录（未镶嵌玉）');
+  assert.equal('cv_t4' in spiritBefore.trees, false, '前置：目标树无 jiapu_spirit 记录（未镶嵌玉）');
   const r = await bco.convergeClan({ treeId: 'cv_skip', targetRef: 'cv_t4-x', confirmPeople: 5 });
   assert.equal(r.moved_people, 5, '结构迁移照常完成');
   assert.equal(r.spirit.transferred_days, 0);
@@ -1290,7 +1290,7 @@ test('§10-1-18 汇宗 · 目标树未镶嵌玉 → 200 且不并入：transferr
   assert.equal(spiritAfter.trees.cv_skip.status, 'expired', '源树记录仍置 expired');
 
   // 源树未镶嵌玉（无 jade）→ 同样不并入（另一条 skipped_reason）
-  await store.colSet('jiazu_spirit', 'cv_nojade', { _id: 'cv_nojade', version: 1, spirit_expires_at: isoPlus(10), status: 'inactive', buffer_until: null, logs: [] });
+  await store.colSet('jiapu_spirit', 'cv_nojade', { _id: 'cv_nojade', version: 1, spirit_expires_at: isoPlus(10), status: 'inactive', buffer_until: null, logs: [] });
   const applied = await bco.applySpiritTransfer({ sourceTreeId: 'cv_nojade', targetTreeId: 'cv_t6' });
   assert.equal(applied.transferred_days, 0);
   assert.match(applied.skipped_reason, /源树未镶嵌石榴籽玉/);
@@ -1298,7 +1298,7 @@ test('§10-1-18 汇宗 · 目标树未镶嵌玉 → 200 且不并入：transferr
 
 // ================= ⑬ 汇宗红线 / confirm_people / 目标校验（#15 #19 #22） =================
 
-test('§10-1-15 汇宗 · 跨树引用红线 → 409：两树 / tree-meta / jiazu_spirit 全不变、无 Tx', async () => {
+test('§10-1-15 汇宗 · 跨树引用红线 → 409：两树 / tree-meta / jiapu_spirit 全不变、无 Tx', async () => {
   const srcMd5 = treeMd5Disk('cv_ref');
   const dstMd5 = treeMd5Disk('cv_t7');
   const metaMd5 = md5(META_FILE);
@@ -1317,7 +1317,7 @@ test('§10-1-15 汇宗 · 跨树引用红线 → 409：两树 / tree-meta / jiaz
   assert.equal(treeMd5Disk('cv_ref'), srcMd5);
   assert.equal(treeMd5Disk('cv_t7'), dstMd5, '目标树不写');
   assert.equal(md5(META_FILE), metaMd5, 'tree-meta 不删');
-  assert.equal(spiritColMd5(), spiritMd5, 'jiazu_spirit 不变');
+  assert.equal(spiritColMd5(), spiritMd5, 'jiapu_spirit 不变');
   assert.equal(assetsColMd5(), assetsMd5, '0 籽：资产不变');
   assert.equal((await el.getAssets(CHIEF)).txs.length, assetsBefore.txs.length);
 });
@@ -1616,7 +1616,7 @@ test('§15-#8 系统级失败文案 = 「服务内部错误」（汇宗 ④ 树�
 test('§15-#8 系统级失败文案 = 「服务内部错误」（汇宗 ⑤ 灵气写入阶段真实 EACCES）', async () => {
   const SRC = 'cv_stage5';
   const DST = 'cv_t_s5';
-  const spiritFile = path.join(COLS_DIR, 'jiazu_spirit.json');
+  const spiritFile = path.join(COLS_DIR, 'jiapu_spirit.json');
   const spiritMd5 = spiritColMd5();
   let res;
   try {

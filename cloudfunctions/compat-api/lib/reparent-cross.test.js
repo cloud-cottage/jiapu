@@ -533,7 +533,7 @@ test('路由 POST /admin/reparent（跨树）：200 + 双树落库；未登录 4
   fs.mkdirSync(path.join(TMP, 'collections'), { recursive: true });
   const phone = '16600000300';
   fs.writeFileSync(
-    path.join(TMP, 'collections', 'jiazu_users.json'),
+    path.join(TMP, 'collections', 'jiapu_users.json'),
     JSON.stringify({ [phone]: { _id: phone, phone, nickname: '主理人', role: 'tree_steward' } }),
   );
   const s = srcFamily('rc_route_src');

@@ -2,7 +2,7 @@
  * 全站唯一节点编号（docs/id-system.spec.md）测试
  *
  * 覆盖：
- * - P1 铸号：编号格式 / 计数器播种（max+1）/ 并发不重号 / 落盘集合 jiazu_id_seq / store 暴露的 nextPersonId/nextFamilyId
+ * - P1 铸号：编号格式 / 计数器播种（max+1）/ 并发不重号 / 落盘集合 jiapu_id_seq / store 暴露的 nextPersonId/nextFamilyId
  * - P1 创建路径：createPerson / createFamily / createTree / addSpouseNode / addChildNode 一律铸全局号
  * - P3 解析器：全局编号（I000052 / 000052）/ handle / 树内旧号（带 tree_id，含详情文档 legacy_gramps_id 回退）
  *   多树重号 → 明确要求指定目标树；scope 限定只在该树找
@@ -127,8 +127,8 @@ test('计数器缺失时播种 = max(既有编号)+1（迁移兜底：绝不与�
   assert.equal(first, 'I000138', '播种 = 存量最大编号 + 1');
   assert.equal(firstFam, 'F000137');
 
-  // 落盘到集合文件（本地模式 = migrate-output/collections/jiazu_id_seq.json 的同构副本）
-  const raw = JSON.parse(fs.readFileSync(path.join(TMP, 'collections', 'jiazu_id_seq.json'), 'utf8'));
+  // 落盘到集合文件（本地模式 = migrate-output/collections/jiapu_id_seq.json 的同构副本）
+  const raw = JSON.parse(fs.readFileSync(path.join(TMP, 'collections', 'jiapu_id_seq.json'), 'utf8'));
   assert.equal(raw.person.next, 139);
   assert.equal(raw.family.next, 138);
   assert.equal(raw.person._id, 'person');
@@ -326,7 +326,7 @@ test('迁移脚本：副本上跑通 → zhonghua 保留原号 / 其余树重编
   // 计数器初值 = max(zhonghua)+1
   // 口径与 scripts/migrate-global-ids.mjs 的 computeBaseline 一致：取 zhonghua **全部**编号的最大值
   // （含迁移后新建节点铸的 6 位全局号），不能只取 4 位老号，否则起点算错。
-  const seq = JSON.parse(fs.readFileSync(path.join(copy, 'collections', 'jiazu_id_seq.json'), 'utf8'));
+  const seq = JSON.parse(fs.readFileSync(path.join(copy, 'collections', 'jiapu_id_seq.json'), 'utf8'));
   const zhMax = Math.max(...zhIds.map((x) => parseInt(String(x).replace(/\D/g, ''), 10)));
   const mapping = JSON.parse(fs.readFileSync(path.join(copy, 'id-migration.json'), 'utf8'));
   // zhonghua 不出现在重编号映射表里（原号一个都没被改）：与具体节点无关的强不变量

@@ -108,7 +108,7 @@ fs.writeFileSync(process.env.COMPAT_META_FILE, JSON.stringify({ _schema: '1.1', 
 const CHIEF = '16600007101'; // chief_editor
 const STEWARD = '16600007102'; // tree_steward（非总编辑对照）
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_users.json'),
+  path.join(TMP, 'collections', 'jiapu_users.json'),
   JSON.stringify({
     [CHIEF]: { _id: CHIEF, phone: CHIEF, nickname: '总编辑', role: 'chief_editor' },
     [STEWARD]: { _id: STEWARD, phone: STEWARD, nickname: '本树主理人', role: 'tree_steward' },

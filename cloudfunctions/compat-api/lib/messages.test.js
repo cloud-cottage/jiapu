@@ -69,7 +69,7 @@ fs.mkdirSync(path.join(TMP, 'collections'), { recursive: true });
 fs.mkdirSync(path.join(TMP, 'trees'), { recursive: true });
 fs.mkdirSync(path.join(TMP, 'details'), { recursive: true });
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_users.json'),
+  path.join(TMP, 'collections', 'jiapu_users.json'),
   JSON.stringify({
     [MEMBER]: { _id: MEMBER, phone: MEMBER, nickname: '树锚点用户', role: 'user' },
     [STEWARD]: { _id: STEWARD, phone: STEWARD, nickname: '该树主理人', role: 'tree_steward' },
@@ -78,7 +78,7 @@ fs.writeFileSync(
   }),
 );
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_anchors.json'),
+  path.join(TMP, 'collections', 'jiapu_anchors.json'),
   JSON.stringify({
     [MEMBER]: { _id: MEMBER, tree_id: 'ms_f0', person_handle: 'h_member', updated_at: at(-30) },
     [STEWARD]: { _id: STEWARD, tree_id: 'ms_f1', person_handle: 'h_steward', updated_at: at(-30) },
@@ -129,10 +129,10 @@ const assetsOf = (phone) => el.getAssets(phone);
 
 /** 灵气记录（只读数据源；**每树一档** `_id = tree_id`；状态推进由 settle 负责，夹具按 settle 口径造一致值） */
 async function setEntry(treeId, entry) {
-  await store.colSet('jiazu_spirit', treeId, { ...entry });
+  await store.colSet('jiapu_spirit', treeId, { ...entry });
 }
 async function entryOf(treeId) {
-  const doc = await store.colGet('jiazu_spirit', treeId);
+  const doc = await store.colGet('jiapu_spirit', treeId);
   if (!doc) return null;
   const rec = { ...doc };
   delete rec._id;
@@ -151,23 +151,23 @@ function treeIdSafe(v) {
   return String(v || '').replace(/[^0-9]/g, '').slice(-6);
 }
 async function clearSpirit() {
-  for (const d of await store.listAll('jiazu_spirit')) await store.colDelete('jiazu_spirit', String(d._id));
+  for (const d of await store.listAll('jiapu_spirit')) await store.colDelete('jiapu_spirit', String(d._id));
 }
 
 /** 站内信真源读写（断言用；**每手机号一档** `_id = 手机号明文`） */
-const messagesDoc = (phone) => store.colGet('jiazu_messages', phone);
+const messagesDoc = (phone) => store.colGet('jiapu_messages', phone);
 const messagesFor = async (phone) => {
   const items = (await messagesDoc(phone))?.items;
   return Array.isArray(items) ? JSON.parse(JSON.stringify(items)) : [];
 };
 const warned = async () => {
   const out = {};
-  for (const d of await store.listAll('jiazu_messages')) Object.assign(out, d?.warned || {});
+  for (const d of await store.listAll('jiapu_messages')) Object.assign(out, d?.warned || {});
   return out;
 };
 async function setMessages(phone, items) {
   const prev = (await messagesDoc(phone)) || { items: [], warned: {} };
-  await store.colSet('jiazu_messages', phone, { items: items.map((m) => ({ ...m })), warned: prev.warned || {} });
+  await store.colSet('jiapu_messages', phone, { items: items.map((m) => ({ ...m })), warned: prev.warned || {} });
 }
 const msg = (id, { read = false, created_at = new Date(nowMs()).toISOString(), text = '夹具消息', type = 'system' } = {}) => ({
   id,

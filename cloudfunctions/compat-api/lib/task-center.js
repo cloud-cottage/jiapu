@@ -4,7 +4,7 @@
  * ────────────────────────────────────────────────────────────────────────────
  * 分工（单写者：本单；**不自造第二套账本 / 不新增 Tx.type 枚举**）：
  *   · 资产读写**唯一**走 `lib/economy-ledger.js` 的 `withAssets` / `getAssets`；
- *     本模块**不出现资产集合名字面**（`jiazu_assets` 只在 ledger 内）；
+ *     本模块**不出现资产集合名字面**（`jiapu_assets` 只在 ledger 内）；
  *   · **奖励池分发唯一入口 = `lib/friend-ops.js` 的 `distributeFriendRewards`**
  *     （本人基础 + 池均分、向下取整余数销毁、分母 0 不建池、触发者不入池、收件人不再触发 —— 全部由它实现，
  *     本模块**不另写一套**，只按 R-5 给出 `amounts`）；
@@ -72,7 +72,7 @@
  *
  * ────────────────────────────────────────────────────────────────────────────
  * **签到域扩展（Zang 裁定 v1 · Kevin 2026-09-28 拍定；本单新增，数值逐字）**：
- *   · 存储：既有 `jiazu_assets` 用户记录内新增 `signin_streak`（连签天数，默认 0）＋
+ *   · 存储：既有 `jiapu_assets` 用户记录内新增 `signin_streak`（连签天数，默认 0）＋
  *     `signin_days`（`YYYY-MM-DD` 升序去重、只留最近 30 天已签（含补签）日期）；`signin_date` **一字不改**；
  *   · 连签：周期 `7`（**写死不配**）；`signin_date === 昨天` ⇒ `streak + 1`，同日重复 ⇒ 409，其余 ⇒ `1`；
  *     `cycle_day = ((streak - 1) % 7) + 1`，第 7 天额外发 `signin_day7_fragments`（默认 10）碎片；
@@ -82,7 +82,7 @@
  *   · 补签：`signinMakeup(phone, date, now)`（路由 `POST /assets/signin/makeup { date }`）——
  *     今天往前 1–7 天且未签方可补；成本 `signin_makeup_cost_bamboos`（默认 2 片竹片）走既有 FIFO 批扣
  *     （不足 ⇒ 409 `ASSET_INSUFFICIENT`，整单拒绝）；**不补发任何道具**，只补日期集 + 重算连签；
- *   · 后台可配三键落在 `jiazu_wallets.config`（先例 = `getBranchFeeSeeds`；写入口 = 既有
+ *   · 后台可配三键落在 `jiapu_wallets.config`（先例 = `getBranchFeeSeeds`；写入口 = 既有
  *     `PUT /admin/wallet-fee`，**不新增设置路由**）：`signin_pool` / `signin_makeup_cost_bamboos` /
  *     `signin_day7_fragments`；
  *   · 出参扩展（**只增不删**）：`/assets/signin` ＋ `streak` / `cycle_day` / `items` / `calendar`；
@@ -111,7 +111,7 @@ import {
   grantRewardBase,
   maskPhone,
 } from './friend-ops.js';
-// 签到域后台可配键（唯一载体 = `jiazu_wallets.config`，与 `getBranchFeeSeeds` 同一先例；
+// 签到域后台可配键（唯一载体 = `jiapu_wallets.config`，与 `getBranchFeeSeeds` 同一先例；
 // 写入口 = 既有治理路由 `PUT /admin/wallet-fee`，本模块**只读**）。
 import {
   DEFAULT_SIGNIN_DAY7_FRAGMENTS,
@@ -218,7 +218,7 @@ export function taskError(code, patch = {}) {
 // ==================== 签到域：连签 7 天 + 每日随机追加 + 补签（Zang 裁定 v1 · Kevin 2026-09-28 拍定）====================
 //
 // 口径逐条（本单硬口径，数值逐字）：
-//   ① 存储（落在既有 `jiazu_assets` 用户记录内，**不新建集合**，收口见 ledger 的 blankUser / ensureUser）：
+//   ① 存储（落在既有 `jiapu_assets` 用户记录内，**不新建集合**，收口见 ledger 的 blankUser / ensureUser）：
 //      `signin_streak`（非负整数，当前连签天数，默认 0）＋ `signin_days`（`YYYY-MM-DD` 升序去重、
 //      只保留最近 30 天已签（含补签）日期）；既有 `signin_date` 语义与写法**一字不改**。
 //   ② 连签推进（周期 **写死 7**，不配）：领取日 = `day = beijingDate(now)`；

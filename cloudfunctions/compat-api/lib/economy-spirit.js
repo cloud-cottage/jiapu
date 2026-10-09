@@ -1,8 +1,8 @@
 /**
- * 时流子域内核（P2 第一段 · 纯模块，不含路由）— 集合 jiazu_spirit（**每树一文档**，`_id = tree_id`；R1 存储形态 v2）
+ * 时流子域内核（P2 第一段 · 纯模块，不含路由）— 集合 jiapu_spirit（**每树一文档**，`_id = tree_id`；R1 存储形态 v2）
  *
  * 唯一真源：docs/spirit-domain.spec.md（时流子域）+ docs/economy.spec.md（存储契约 / 枚举 / 算法）
- *   §3-1 存储契约（jiazu_spirit.trees / SpiritLog）/ §3-3 常量 / §4 四态状态机（7 条迁移）
+ *   §3-1 存储契约（jiapu_spirit.trees / SpiritLog）/ §3-3 常量 / §4 四态状态机（7 条迁移）
  *   §5-1 合成三态判定 / §5-2 分解 / §5-3 镶嵌（凹槽唯一 · 不可逆）/ §6-2 五档蓄能表
  *   §6-3 扣费与叠加 / §6-4 临时活动赠送开关 / §7 读口径（logs 成员可见）
  *
@@ -16,10 +16,10 @@
  * assetInsufficient）；本模块只做「时流子域判定 + 编排」。
  *
  * 锁顺序（**不得颠倒**，防死锁）：`spirit(tree_id) → assets(phone)`；
- * 无任何路径先持 assets 锁再取 spirit 锁。跨集合（jiazu_assets + jiazu_spirit）无事务 API：
+ * 无任何路径先持 assets 锁再取 spirit 锁。跨集合（jiapu_assets + jiapu_spirit）无事务 API：
  * 先写临界区一侧，第二侧失败 → 用快照回滚第一侧（与 store.updateTrees 的「顺序写 + 失败回滚」口径一致）。
  *
- * **存储形态 v2（R1/R2，2026-10-03 Zang 裁定 · 路 B）**：`jiazu_spirit` 由「全体家族树共用单文档
+ * **存储形态 v2（R1/R2，2026-10-03 Zang 裁定 · 路 B）**：`jiapu_spirit` 由「全体家族树共用单文档
  * `_id='global'`（内嵌 `trees` 映射）」改为「**每树一文档**（`_id = tree_id`）」，每档带 `version`
  * （非负整数，自 1 起），写入一律走 `store.mutateDoc` 的 **CAS**（读 → 纯函数 mutator → version+1 →
  * 条件写 → 读回比对；冲突重读重放，上限 5 次）。文档体 = 原 `global.trees[tree_id]` 的值（键名不改）。
@@ -47,11 +47,11 @@ import { getAnchor } from './scope.js';
 
 // ---- 集合与常量（§3-1 / §3-3：改动先改总册本册） ----
 
-export const SPIRIT_COL = 'jiazu_spirit';
+export const SPIRIT_COL = 'jiapu_spirit';
 /** 账号集合（注入者昵称来源；与 economy-ops.js 同名单点） */
-const USERS_COL = 'jiazu_users';
+const USERS_COL = 'jiapu_users';
 /** 锚点集合（注入者本树节点来源；与 scope.js 同名单点） */
-const ANCHORS_COL = 'jiazu_anchors';
+const ANCHORS_COL = 'jiapu_anchors';
 /** 中华世本（无时流子域凹槽，§3-3 TREE_ID_MASTER） */
 export const MASTER_TREE_ID = process.env.MASTER_TREE_ID || 'zhonghua';
 
@@ -290,11 +290,11 @@ export function chargeNextExpiry(spiritExpiresAt, days, now = new Date()) {
   return new Date(chargeBase(spiritExpiresAt, now) + d * DAY_MS).toISOString();
 }
 
-// ---- 读权限（§7-2：成员口径复用 jiazu_anchors + tree-access 的 member 判定） ----
+// ---- 读权限（§7-2：成员口径复用 jiapu_anchors + tree-access 的 member 判定） ----
 
 /**
  * 访问者是否为该树成员（§7-2）：`chief_editor` 全局角色视为成员；
- * 其余按锚点判定（`jiazu_anchors[phone].tree_id === tree_id`，与 `tree-access.computeAccess` 的 `member` 同源）。
+ * 其余按锚点判定（`jiapu_anchors[phone].tree_id === tree_id`，与 `tree-access.computeAccess` 的 `member` 同源）。
  * guest（无 phone）→ `false`。
  */
 export async function isTreeMember(treeId, viewer) {
@@ -350,7 +350,7 @@ const spiritLocks = new Map();
  * - mutator 抛错 → **一字节都不回写**（整单拒绝语义）。
  * - 同一 `tree_id` 串行化：并发调用按到达顺序排队（`spiritLocks`，减少本进程内无谓 CAS 冲突）；
  *   跨实例并发由 CAS 的「条件写 + 读回比对 + 重试」兜底，绝不丢更新。
- * - ⚠️ mutator 里若含**跨集合 IO**（如写 `jiazu_assets`），CAS 冲突重放会**重复执行**它 ⇒ 允许，
+ * - ⚠️ mutator 里若含**跨集合 IO**（如写 `jiapu_assets`），CAS 冲突重放会**重复执行**它 ⇒ 允许，
  *   但调用方须把跨集合副作用移出 mutator（见 `chargeSpirit`：先写资产、再以**纯** mutator 写灵气）。
  * @param {string} treeId
  * @param {(entry: object|null, ctx: {entry:object|null, now:Date, treeId:string, dirty:boolean}) => any} mutator
@@ -527,7 +527,7 @@ export async function decomposeJade(phone, jadeId, now = new Date()) {
  * 镶嵌后玉**永久销毁**（用户视角：不可取回 / 不可分解 / 不可二次使用）、凹槽**永久占用不释放**；
  * **不赠送初始灵气**（`status='inactive'`、`spirit_expires_at = null`、`logs = []`）。
  *
- * 原子性：**先写 `jiazu_spirit`（凹槽占用 = 唯一性临界区）再写 `jiazu_assets`**，
+ * 原子性：**先写 `jiapu_spirit`（凹槽占用 = 唯一性临界区）再写 `jiapu_assets`**，
  * 第二步失败 → 用快照回滚第一步（本模块内部按 tree_id 串行化 → 并发二次镶嵌只有一个成功）。
  *
  * 可镶嵌的树 = `tree-meta` 登记的 `kind='family'` 与 `kind='clan'`；`kind='master'`（中华世本）→ 400。
@@ -735,9 +735,9 @@ export function maskPhone(phone) {
 /**
  * 已镶玉的**注入者**反查（`GET /spirit` 的 `injector` 出参口径）。
  *
- * 来源 = **读侧反查**（零迁移、零新字段、零新集合）：在 `jiazu_assets`（**每手机号一文档**，
+ * 来源 = **读侧反查**（零迁移、零新字段、零新集合）：在 `jiapu_assets`（**每手机号一文档**，
  * `_id = 手机号明文`；存储形态 v2）里**分页枚举**全部资产档，反查 `mounted_tree_id === treeId`
- * 的那一枚玉 → 持有者手机号 → `jiazu_users` 昵称 + `jiazu_anchors` 锚点（`tree_id` / `person_handle`）。
+ * 的那一枚玉 → 持有者手机号 → `jiapu_users` 昵称 + `jiapu_anchors` 锚点（`tree_id` / `person_handle`）。
  * 全程**只读**（`listAll` 只读不写；不 sweep、不回写 ⇒ 不扰动真源）。
  *
  * 三态：

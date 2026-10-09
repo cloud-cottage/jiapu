@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * 一次性数据手术（路 B 重构第 3 期）：`jiazu_wallets` 单文档 → **每手机号一档 + config 单档 + 平台流水单档**
+ * 一次性数据手术（路 B 重构第 3 期）：`jiapu_wallets` 单文档 → **每手机号一档 + config 单档 + 平台流水单档**
  *
- * 背景（根因）：钱包集合 `jiazu_wallets` 原为**全体用户共用单文档** `_id='global'`，内嵌
+ * 背景（根因）：钱包集合 `jiapu_wallets` 原为**全体用户共用单文档** `_id='global'`，内嵌
  * `users` 映射（`<手机号>` → `{ balance_cents }`）+ `transactions` 数组 + `config`。写入仅进程内锁、
  * **无 version / 无 CAS** ⇒ 云端多实例并发会**双花**（docs/PENDING_DEPLOY.md §7-7；`lib/economy-market.js`
  * 官方购买走钱包扣款）。本脚本把存储形态迁到 v2：
@@ -24,7 +24,7 @@
  *   · **幂等**：已是 v2 形态（无 `global`）⇒ 零变更、exit 0（`--apply` 亦不写）。
  *
  * 安全：默认 **dry-run**（只打印计划，不写盘）；`--apply` 才写，且**写前自动备份**到
- *   `~/jiazu-backups/2026-10-03-ledger-v2/`（原文件 `jiazu_wallets.json` + `jiazu_wallets.md5-before.txt`）；报前后 md5。
+ *   `~/jiazu-backups/2026-10-03-ledger-v2/`（原文件 `jiapu_wallets.json` + `jiapu_wallets.md5-before.txt`）；报前后 md5。
  * 副本演练：`COMPAT_OUT_DIR=<副本根> node scripts/migrate-wallets-to-per-user-2026-10.mjs …`
  *   （数据根 = `$COMPAT_OUT_DIR`，默认 = `<仓库>/migrate-output`）。
  *
@@ -43,7 +43,7 @@ const REPO = path.resolve(HERE, '..');
 
 // 数据根：副本演练优先；缺省 = 真源 migrate-output
 const OUT = process.env.COMPAT_OUT_DIR ? path.resolve(process.env.COMPAT_OUT_DIR) : path.join(REPO, 'migrate-output');
-const WALLETS_FILE = path.join(OUT, 'collections', 'jiazu_wallets.json');
+const WALLETS_FILE = path.join(OUT, 'collections', 'jiapu_wallets.json');
 /** 备份目录：~/jiazu-backups/2026-10-03-ledger-v2/（与资产脚本同批同目录；本文件用独立 md5 记录名，不覆盖 assets 的） */
 const BACKUP_DIR = path.join(os.homedir(), 'jiazu-backups', '2026-10-03-ledger-v2');
 
@@ -176,10 +176,10 @@ if (!apply) {
 
 // ---- 写前备份（原文件 + 独立 md5-before.txt；不覆盖资产脚本的同名记录）----
 fs.mkdirSync(BACKUP_DIR, { recursive: true });
-const backupFile = path.join(BACKUP_DIR, 'jiazu_wallets.json');
+const backupFile = path.join(BACKUP_DIR, 'jiapu_wallets.json');
 fs.writeFileSync(backupFile, beforeRaw);
-fs.writeFileSync(path.join(BACKUP_DIR, 'jiazu_wallets.md5-before.txt'), `${beforeMd5}  ${WALLETS_FILE}\n`);
-console.log(`\n备份：${backupFile}（+ jiazu_wallets.md5-before.txt）`);
+fs.writeFileSync(path.join(BACKUP_DIR, 'jiapu_wallets.md5-before.txt'), `${beforeMd5}  ${WALLETS_FILE}\n`);
+console.log(`\n备份：${backupFile}（+ jiapu_wallets.md5-before.txt）`);
 
 fs.writeFileSync(WALLETS_FILE, nextRaw);
 const afterObj = JSON.parse(fs.readFileSync(WALLETS_FILE, 'utf8'));

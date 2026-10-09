@@ -105,7 +105,7 @@ fs.mkdirSync(path.join(TMP, 'details'), { recursive: true });
 
 const role = (phone) => (phone === U.chief ? 'chief_editor' : phone === U.steward ? 'tree_steward' : 'user');
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_users.json'),
+  path.join(TMP, 'collections', 'jiapu_users.json'),
   JSON.stringify(
     Object.fromEntries(
       Object.values(U).map((phone) => [phone, { _id: phone, phone, nickname: `用户${phone.slice(-3)}`, role: role(phone) }]),
@@ -113,7 +113,7 @@ fs.writeFileSync(
   ),
 );
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_anchors.json'),
+  path.join(TMP, 'collections', 'jiapu_anchors.json'),
   JSON.stringify({
     [U.occ]: { _id: U.occ, tree_id: TREE_ID, person_handle: 'n1', updated_at: '2026-08-14T00:00:00.000Z' },
     [U.occ2]: { _id: U.occ2, tree_id: OTHER_TREE_ID, person_handle: 'n6', updated_at: '2026-08-14T00:00:00.000Z' },
@@ -121,7 +121,7 @@ fs.writeFileSync(
   }),
 );
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_join_requests.json'),
+  path.join(TMP, 'collections', 'jiapu_join_requests.json'),
   JSON.stringify({
     JR_1: { _id: 'JR_1', phone: U.join, tree_id: TREE_ID, reference_handle: 'n3', reference_name: '季丙', status: 'pending' },
     JR_2: { _id: 'JR_2', phone: U.join2, tree_id: TREE_ID, reference_handle: 'n4', reference_name: '季丁', status: 'pending' },
@@ -309,7 +309,7 @@ test('⑥ 同一 phone 重复绑不同节点（自身覆盖）⇒ 200', async ()
 test('⑦ 口径单点（源码判据）：三处共用 assertAnchorBindable；全表扫描恰 1 处；写入路径唯一', () => {
   assert.match(SCOPE_SRC, /export async function assertAnchorBindable\(/);
   // ① 唯一性全表扫描**只此一处**（单点扫描，不得出现第二份口径）
-  assert.equal((SCOPE_SRC.match(/colAll\('jiazu_anchors'\)/g) || []).length, 1, '唯一性全表扫描必须只有一处');
+  assert.equal((SCOPE_SRC.match(/colAll\('jiapu_anchors'\)/g) || []).length, 1, '唯一性全表扫描必须只有一处');
   // ② 调用点数 = 实测真值 3：/invite/code 签发预检（只校验不写）+ set-anchor + approve-join（批 C-1 后为 3）
   const gateSites = (INDEX_SRC.match(/await assertAnchorBindable\(/g) || []).length;
   const writeSites = (INDEX_SRC.match(/await setAnchor\(/g) || []).length;
@@ -317,9 +317,9 @@ test('⑦ 口径单点（源码判据）：三处共用 assertAnchorBindable；�
   assert.equal(writeSites, 2, '锚点写入点：set-anchor / approve-join（invite-bind 的写入在 lib/invite-codes.js）');
   // ③ 所有锚点写入路径都必须先过单点校验：差 = 唯一的「只校验不写」预检（/invite/code 签发），不得再有旁路
   assert.equal(gateSites, writeSites + 1, '调用点数 = 写入点数 + 唯一的只校验不写预检（/invite/code 签发）');
-  // ④ 写入路径单点：全库只有 scope.setAnchor 写 jiazu_anchors；路由层不得绕过它直写
-  assert.equal((SCOPE_SRC.match(/colSet\('jiazu_anchors'/g) || []).length, 1, '锚点写入只此一处（setAnchor）');
-  assert.equal((INDEX_SRC.match(/colSet\('jiazu_anchors'/g) || []).length, 0, '路由层不得直写锚点集合');
+  // ④ 写入路径单点：全库只有 scope.setAnchor 写 jiapu_anchors；路由层不得绕过它直写
+  assert.equal((SCOPE_SRC.match(/colSet\('jiapu_anchors'/g) || []).length, 1, '锚点写入只此一处（setAnchor）');
+  assert.equal((INDEX_SRC.match(/colSet\('jiapu_anchors'/g) || []).length, 0, '路由层不得直写锚点集合');
   assert.equal((INDEX_SRC.match(/force: body\.force === true/g) || []).length, 2, 'force 只认请求体显式 true（两条路由一致）');
   // 唯一键 = person_handle：占用判定里不得出现 tree_id
   assert.match(SCOPE_SRC, /String\(a\.person_handle \|\| ''\)\.trim\(\) === handle/);

@@ -5,7 +5,7 @@
  *   分册 `docs/economy-ops.spec.md`：§3 资产获取规则 / §4.2-§4.5 站内信与四类预警（生成条件 · 去重键 · 惰性算法）/
  *     §5 运营后台（grant 校验矩阵与副作用顺序、logs、user 快照）/ §6.2 文案（M1–M4 **逐字**）/ §7 注销口径（K10）/
  *     §11 默认口径（#5 保留 200 条裁已读 · #6 灵气收件人集合 · #7 剩余天数 ceil · #8 limit 上限 200）
- *   总册 `docs/economy.spec.md`：§4-4（`jiazu_messages`）/ §4-5（`jiazu_ops_logs`）/ §4-6（`Tx.type`）/
+ *   总册 `docs/economy.spec.md`：§4-4（`jiapu_messages`）/ §4-5（`jiapu_ops_logs`）/ §4-6（`Tx.type`）/
  *     §6（接口）/ §8（权限口径）
  *   交叉 `docs/economy-market.spec.md` §5-6 / §10-7（注销前置 = `hasOpenListing` / `openListingGuard`）
  *
@@ -20,8 +20,8 @@
  *     grantAssets / appendOpsLog（**每笔一档**） / opsLogs（枚举 + 定序）/ adminUserAssets / deleteAccount /
  *     spiritRecipients
  *
- * **存储形态 v2（R1/R2，2026-10-03 Zang 裁定 · 路 B）**：`jiazu_messages` 改**每手机号一文档**
- * （`_id = 手机号明文`；文档体 `{ items: Message[], warned: {...} }`）、`jiazu_ops_logs` 改**每笔一文档**
+ * **存储形态 v2（R1/R2，2026-10-03 Zang 裁定 · 路 B）**：`jiapu_messages` 改**每手机号一文档**
+ * （`_id = 手机号明文`；文档体 `{ items: Message[], warned: {...} }`）、`jiapu_ops_logs` 改**每笔一文档**
  * （`_id = 该条日志的 id`）；灵石枚举型路径（全体 / 日志列表）改走 `store.listAll` 分页枚举。
  * 写入一律走 `store.mutateDoc` 的 **CAS**（冲突重读重放，上限 5 次），不再有单文档丢更新面。
  */
@@ -51,10 +51,10 @@ import { getAnchor } from './scope.js';
 
 // ---- 集合（§4-5 存储契约；改动先改总册） ----
 
-export const MESSAGES_COL = 'jiazu_messages';
-export const OPS_LOGS_COL = 'jiazu_ops_logs';
-export const USERS_COL = 'jiazu_users';
-export const ANCHORS_COL = 'jiazu_anchors';
+export const MESSAGES_COL = 'jiapu_messages';
+export const OPS_LOGS_COL = 'jiapu_ops_logs';
+export const USERS_COL = 'jiapu_users';
+export const ANCHORS_COL = 'jiapu_anchors';
 
 // ---- 常量（§4.2 / §5.3 / §11-5 · §11-8） ----
 
@@ -200,7 +200,7 @@ export function expiringCandidates(phone, user, now = new Date()) {
 }
 
 /**
- * 灵气预警候选（§4.4 第 3、4、5 行；**只读** `jiazu_spirit`，绝不写灵气状态）：
+ * 灵气预警候选（§4.4 第 3、4、5 行；**只读** `jiapu_spirit`，绝不写灵气状态）：
  * - `status='active'` 且 `0 < 灵气剩余 ≤ 30` → `@30`（M2）；
  * - `status='buffer'` → `@buffer`（M3），且 `0 < 缓冲期剩余 ≤ 7` → `@7`（M4）；
  * - 未镶嵌玉（无 `entry.jade`）/ `status='expired'` → 不生成。
@@ -254,7 +254,7 @@ export function trimMessages(items, limit = MESSAGE_KEEP_LIMIT) {
   return list;
 }
 
-// ==================== IO 层：jiazu_messages（每手机号一档 + CAS） ====================
+// ==================== IO 层：jiapu_messages（每手机号一档 + CAS） ====================
 
 const messageLocks = new Map();
 
@@ -525,8 +525,8 @@ function scrollsInsufficient(needPieces, currentPieces) {
  * `addScrollFragments`（**纯累加：照收、不拒绝、不截断、不自动合成** —— 自动合成 2026-09-26 裁定取消，
  * 合成改由用户手动触发 `/assets/scroll/synthesize`）、负向预检后标量扣减）。
  *
- * 副作用顺序（同一请求内）：① `jiazu_assets`（批次 / FIFO 扣减 / 碎片取余）→
- * ② `jiazu_ops_logs` 追加 `OpsLog` → ③ 目标用户 `txs` 追加 `Tx{type:'admin_grant'}`。
+ * 副作用顺序（同一请求内）：① `jiapu_assets`（批次 / FIFO 扣减 / 碎片取余）→
+ * ② `jiapu_ops_logs` 追加 `OpsLog` → ③ 目标用户 `txs` 追加 `Tx{type:'admin_grant'}`。
  * `evidence` 并入 `reason`（`'<原因>｜依据：<依据>'`，不新增集合字段，§5.2）。
  *
  * @param {string} operator 操作人手机号（路由取自 JWT，**不接受前端传**）
@@ -770,7 +770,7 @@ export async function adminUserAssets(phone, now = new Date()) {
  * ① 存在 `status='open'` 市集挂单 → **409「请先撤销未成交挂单」**（`openListingGuard`；**不自动撤单、
  *    不改挂单状态、不清资产**，`sold` / `cancelled` / `expired` 无碍）；
  * ② 通过 → 先写一条 `type='account_clear'` 流水，再整体置空六类资产与 `signin_date`（**不可恢复**）；
- * ③ **保留流水审计**（历史 `Tx` / `jiazu_ops_logs` / `jiazu_wallets` 不动）与 `jiazu_users` / `jiazu_anchors`。
+ * ③ **保留流水审计**（历史 `Tx` / `jiapu_ops_logs` / `jiapu_wallets` 不动）与 `jiapu_users` / `jiapu_anchors`。
  *
  * 六类口径（Kevin 2026-09-26 当面裁定，取代原「四类」写法）：`fragments` / `seeds` / `bamboos` / `jades`
  * **+ `scrolls`（兰帖，以**片**计）/ `scroll_fragments`（兰帖残页）**。兰帖批次 `qty` 线上**一律以片计**，

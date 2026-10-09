@@ -53,7 +53,7 @@ const USER = '16600008801';
 const OTHER = '16600008802';
 fs.mkdirSync(path.join(TMP, 'collections'), { recursive: true });
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_users.json'),
+  path.join(TMP, 'collections', 'jiapu_users.json'),
   JSON.stringify({
     [USER]: { _id: USER, phone: USER, nickname: '资产测试用户', role: 'user' },
     [OTHER]: { _id: OTHER, phone: OTHER, nickname: '资产测试用户二', role: 'user' },
@@ -531,7 +531,7 @@ test('并发两次扣费（Promise.all）：同一手机号只成功一次，绝
 
 test('存储形态 v2：seedAssets 后集合文件顶层键 = 手机号明文（_id=手机号、version≥1），无 global 单文档；getAssets 对外形状不含 _id/version', async () => {
   await seedAssets(USER, { fragments: 1, seeds: [], bamboos: [], jades: [], txs: [], signin_date: '' });
-  const raw = JSON.parse(fs.readFileSync(path.join(TMP, 'collections', 'jiazu_assets.json'), 'utf8'));
+  const raw = JSON.parse(fs.readFileSync(path.join(TMP, 'collections', 'jiapu_assets.json'), 'utf8'));
   assert.equal('global' in raw, false, '旧单文档 _id=global 必须消失');
   assert.ok(raw[USER], '必须存在以手机号为键的资产档');
   assert.equal(raw[USER]._id, USER, '档 _id = 手机号明文');
@@ -583,7 +583,7 @@ test('CAS 并发（R2）：同一档两路读改写（绕开进程内锁，直�
 
 test('CAS 断言有效性（反证）：同序下「无条件写」丢更新 —— 证明上一条并发断言不是摆设', async () => {
   const NPHONE = '16600008878';
-  const COL = 'jiazu_cas_probe';
+  const COL = 'jiapu_cas_probe';
   await store.colSet(COL, NPHONE, { _id: NPHONE, version: 1, n: 0, txs: [] });
 
   let aRead;
@@ -621,15 +621,15 @@ const ops = await import('./economy-ops.js');
 
 const CHIEF = '16600008803'; // chief_editor（运营侧唯一有权的角色）
 const STEWARD = '16600008804'; // tree_steward（非总编 → 403）
-await store.colSet('jiazu_users', CHIEF, { _id: CHIEF, phone: CHIEF, nickname: '资产运维总编', role: 'chief_editor' });
-await store.colSet('jiazu_users', STEWARD, { _id: STEWARD, phone: STEWARD, nickname: '族谱主理人', role: 'tree_steward' });
+await store.colSet('jiapu_users', CHIEF, { _id: CHIEF, phone: CHIEF, nickname: '资产运维总编', role: 'chief_editor' });
+await store.colSet('jiapu_users', STEWARD, { _id: STEWARD, phone: STEWARD, nickname: '族谱主理人', role: 'tree_steward' });
 
 let seq = 0;
 const gPhone = () => `1660001${String(9000 + (++seq))}`; // 11 位手机号（避免与既有夹具串号）
 /** 建一个已注册用户并返回手机号 */
 async function newUser(role = 'user') {
   const phone = gPhone();
-  await store.colSet('jiazu_users', phone, { _id: phone, phone, nickname: `运维用户${phone.slice(-4)}`, role });
+  await store.colSet('jiapu_users', phone, { _id: phone, phone, nickname: `运维用户${phone.slice(-4)}`, role });
   return phone;
 }
 const bearerAs = (phone, role) => {
@@ -637,7 +637,7 @@ const bearerAs = (phone, role) => {
   return { authorization: `${scheme} ${signJwt({ sub: phone, phone, role }, 3600)}` };
 };
 const logsOf = async () =>
-  (await store.listAll('jiazu_ops_logs')).map((d) => {
+  (await store.listAll('jiapu_ops_logs')).map((d) => {
     const rec = { ...d };
     delete rec._id;
     delete rec.version;
@@ -649,15 +649,15 @@ const jsonBody = (res) => JSON.parse(res.body);
 
 /** 市集（注销前置夹具）：**每挂单一档**（`_id = listing.id`）；先清空非 official 档再逐笔写入 */
 async function setMarket(listings = []) {
-  for (const d of await store.listAll('jiazu_market')) {
+  for (const d of await store.listAll('jiapu_market')) {
     const id = String(d?._id || '');
-    if (id && id !== 'official') await store.colDelete('jiazu_market', id);
+    if (id && id !== 'official') await store.colDelete('jiapu_market', id);
   }
-  for (const l of listings) await store.colSet('jiazu_market', l.id, { _id: l.id, version: 1, ...l });
+  for (const l of listings) await store.colSet('jiapu_market', l.id, { _id: l.id, version: 1, ...l });
   return listings;
 }
 const listingsOf = async () =>
-  (await store.listAll('jiazu_market'))
+  (await store.listAll('jiapu_market'))
     .filter((d) => d && d._id !== 'official')
     .map((d) => {
       const rec = { ...d };
@@ -1074,13 +1074,13 @@ test('注销（§7 · K10）：无挂单 → 清空六类资产 + signin_date �
   assert.equal(el.sumLots(seeded.scrolls), 250, '前置：兰帖非零（250 片）');
   assert.equal(seeded.scroll_fragments, 50, '前置：兰帖残页非零（50 片）');
   await grant({ target_phone: phone, delta: { seeds: 1 }, reason: '注销前流水留痕' });
-  await store.colSet('jiazu_wallets', 'global', {
+  await store.colSet('jiapu_wallets', 'global', {
     users: { [phone]: { balance_cents: 1990 } },
     trees: {},
     transactions: [{ id: 'wt_keep', phone, delta_cents: 1990 }],
     config: { tree_create_fee_cents: 990 },
   });
-  const walletsBefore = await store.colGet('jiazu_wallets', 'global');
+  const walletsBefore = await store.colGet('jiapu_wallets', 'global');
   const logsBefore = await logsOf();
   await setMarket([]); // 无未成交挂单
 
@@ -1105,9 +1105,9 @@ test('注销（§7 · K10）：无挂单 → 清空六类资产 + signin_date �
   assert.ok(after.txs.some((t) => t.id === 'tx_history'), '历史 Tx 保留（审计不可恢复地清空 → 但流水保留）');
   assert.ok(after.txs.some((t) => t.type === 'admin_grant'), '注销前的 admin_grant 流水保留');
 
-  assert.deepEqual(await logsOf(), logsBefore, 'jiazu_ops_logs 保留（不清审计）');
-  assert.deepEqual(await store.colGet('jiazu_wallets', 'global'), walletsBefore, 'jiazu_wallets 不受影响');
-  assert.ok(await store.colGet('jiazu_users', phone), 'jiazu_users 保留');
+  assert.deepEqual(await logsOf(), logsBefore, 'jiapu_ops_logs 保留（不清审计）');
+  assert.deepEqual(await store.colGet('jiapu_wallets', 'global'), walletsBefore, 'jiapu_wallets 不受影响');
+  assert.ok(await store.colGet('jiapu_users', phone), 'jiapu_users 保留');
   assert.equal((await call('/account/delete', 'POST', {})).statusCode, 401);
 
   // 注销后仍可再次调用（幂等语义：六类资产已空，写一条 delta 六键全 0 的 account_clear 流水）

@@ -25,7 +25,7 @@
  *   立支：结构校验 → 跨树体检 → 扣费 → createTreeFile（新树首写）→ updateTrees([原树, 宗谱]) 单事务
  *        → 详情随迁（best-effort）→ saveMeta → 任一步失败：回收新树文件 + 原路冲正 + 抛原错误
  *   汇宗：结构校验 → 跨树体检 → confirm_people 比对 → updateTrees([源树, 目标树]) 单事务
- *        → 详情随迁 → 删源树 tree-meta 条目 + 树 JSON → jiazu_spirit 折损并入 / 源树置 expired
+ *        → 详情随迁 → 删源树 tree-meta 条目 + 树 JSON → jiapu_spirit 折损并入 / 源树置 expired
  */
 import crypto from 'node:crypto';
 import {
@@ -65,7 +65,7 @@ import { chargeBase, readSpiritEntry, settle, withSpirit } from './economy-spiri
 
 // ---- 常量（§5-4 / §6-2-7；数值唯一真源见 lib/economy-fee.js 与 lib/wallet.js）----
 
-/** 立支费默认值（颗完整石榴籽；运行时以 jiazu_wallets.config.branch_fee_seeds 覆盖） */
+/** 立支费默认值（颗完整石榴籽；运行时以 jiapu_wallets.config.branch_fee_seeds 覆盖） */
 export const DEFAULT_BRANCH_FEE_SEEDS = FEE.branch_fee_seeds;
 /** 汇宗灵气折损比例默认值（0–1，默认 50%） */
 export const DEFAULT_CONVERGE_SPIRIT_RATIO = 0.5;
@@ -410,7 +410,7 @@ export function computeSpiritTransfer({ sourceExpiresAt = null, now = new Date()
 /**
  * 灵气折损并入（§6-2-6）：源树记录保留 + `status='expired'`；目标树**已镶嵌玉**时叠加顺延并入
  * （`max(now, 原值) + 折损天数`，绝不覆盖；并入后由惰性结算转 `active`、`buffer_until=null`）。
- * 目标树未镶嵌玉（无 `jiazu_spirit.trees[目标树]` 记录 / 无 jade）→ **不并入、只提示**（skipped_reason）。
+ * 目标树未镶嵌玉（无 `jiapu_spirit.trees[目标树]` 记录 / 无 jade）→ **不并入、只提示**（skipped_reason）。
  */
 export async function applySpiritTransfer({
   sourceTreeId,
@@ -929,7 +929,7 @@ export async function convergeClan({
     throw fail(INTERNAL_ERROR_TEXT, 500);
   }
 
-  // ---- ⑤ jiazu_spirit：目标树叠加折损天数；源树记录保留 + status='expired' ----
+  // ---- ⑤ jiapu_spirit：目标树叠加折损天数；源树记录保留 + status='expired' ----
   let spiritResult;
   try {
     spiritResult = await applySpiritTransfer({ sourceTreeId: treeId, targetTreeId: hit.tree_id, ratio, now });

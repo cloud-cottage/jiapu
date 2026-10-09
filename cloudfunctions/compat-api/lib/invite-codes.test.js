@@ -123,14 +123,14 @@ fs.mkdirSync(path.join(TMP, 'details'), { recursive: true });
 
 const role = (phone) => (phone === U.chief ? 'chief_editor' : 'user');
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_users.json'),
+  path.join(TMP, 'collections', 'jiapu_users.json'),
   JSON.stringify(
     Object.fromEntries(Object.values(U).map((phone) => [phone, { _id: phone, phone, nickname: `用户${phone.slice(-3)}`, role: role(phone) }])),
   ),
 );
 // 昵称缺失兜底（resolve 只给脱敏串）—— 单独一个无昵称的邀请人
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_anchors.json'),
+  path.join(TMP, 'collections', 'jiapu_anchors.json'),
   JSON.stringify({
     [U.inviter]: { _id: U.inviter, tree_id: TREE_ID, person_handle: 'n2', updated_at: '2026-08-01T00:00:00.000Z' },
     [U.inviterR]: { _id: U.inviterR, tree_id: TREE_ID, person_handle: 'n3', updated_at: '2026-08-01T00:00:00.000Z' },
@@ -142,7 +142,7 @@ fs.writeFileSync(
 const past = '2026-01-01T00:00:00.000Z';
 const future = '2099-01-01T00:00:00.000Z';
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_invite_codes.json'),
+  path.join(TMP, 'collections', 'jiapu_invite_codes.json'),
   JSON.stringify({
     // 过期（TTL 已过）
     '222222': { _id: '222222', kind: 'plain', inviter_phone: U.inviter, tree_id: null, person_handle: null, created_at: past, expires_at: past, max_uses: null, used_count: 0, used_by: [], revoked_at: null },
@@ -183,13 +183,13 @@ const json = (res) => JSON.parse(res.body);
 const treeHeaders = (extra = {}) => ({ 'X-Tree-Id': TREE_ID, ...extra });
 const anchorOf = async (phone) => json(await call('/api/admin/get-anchor', 'GET', bearer(U.chief, 'chief_editor'), null, { phone })).anchor;
 const logsOf = async () =>
-  (await listAll('jiazu_ops_logs')).map((d) => {
+  (await listAll('jiapu_ops_logs')).map((d) => {
     const rec = { ...d };
     delete rec._id;
     delete rec.version;
     return rec;
   });
-const codeDocs = () => JSON.parse(fs.readFileSync(path.join(TMP, 'collections', 'jiazu_invite_codes.json'), 'utf8'));
+const codeDocs = () => JSON.parse(fs.readFileSync(path.join(TMP, 'collections', 'jiapu_invite_codes.json'), 'utf8'));
 const txsOf = async (phone) => (await getAssets(phone)).txs || [];
 const issue = (who, r, payload) => call('/api/invite/code', 'POST', bearer(who, r), payload);
 const bind = (who, r, payload) => call('/api/invite/bind', 'POST', bearer(who, r), payload);
@@ -480,7 +480,7 @@ test('⑨ 奖励：两方各自 delta 逐条 + 重放不双发 + 跨码不重发
   assert.equal(inviterAssets.scroll_fragments, 12, '11 基础 + 1 加成');
   assert.equal(inviterAssets.bamboos.reduce((s, l) => s + l.qty, 0), 10);
   assert.equal(inviterAssets.fragments, 9);
-  assert.ok(await colGet('jiazu_invites', U.newbieR), '基础关系落 jiazu_invites（applyInvite 语义）');
+  assert.ok(await colGet('jiapu_invites', U.newbieR), '基础关系落 jiapu_invites（applyInvite 语义）');
 
   // 重放：400 + 不双发
   const replay = await bind(U.newbieR, 'user', { c: c1, decision: 'accept' });
@@ -503,14 +503,14 @@ test('⑨ 奖励：两方各自 delta 逐条 + 重放不双发 + 跨码不重发
 // ---- ⑩ 防伪造：明文参数不具绑定效力 ----
 
 test('⑩ 明文 tree_id / person_handle 但无 c ⇒ 400 且零绑定（防伪造）', async () => {
-  const anchorsBefore = fs.readFileSync(path.join(TMP, 'collections', 'jiazu_anchors.json'), 'utf8');
+  const anchorsBefore = fs.readFileSync(path.join(TMP, 'collections', 'jiapu_anchors.json'), 'utf8');
   const res = await bind(U.fake, 'user', { decision: 'replace', tree_id: TREE_ID, person_handle: 'n14' });
   assert.equal(res.statusCode, 400);
   assert.match(json(res).error, /c 必填/);
   const res2 = await bind(U.fake, 'user', { decision: 'accept', tree_id: TREE_ID, person_handle: 'n14' });
   assert.equal(res2.statusCode, 400);
   assert.equal(await anchorOf(U.fake), null, '无 c ⇒ 不产生任何绑定');
-  assert.equal(fs.readFileSync(path.join(TMP, 'collections', 'jiazu_anchors.json'), 'utf8'), anchorsBefore, '锚点集合逐字节不变');
+  assert.equal(fs.readFileSync(path.join(TMP, 'collections', 'jiapu_anchors.json'), 'utf8'), anchorsBefore, '锚点集合逐字节不变');
 });
 
 // ---- ⑪ 批 A 缺口：force 覆盖清锚点 + 审计 ----
@@ -534,7 +534,7 @@ test('⑪ force 覆盖：原占用者锚点已清空 + 审计记录已写 + reas
   assert.equal(await anchorOf(U.occ2), null, '原占用者锚点必须被一并清空（否则并存两条指向同一节点）');
   assert.equal((await anchorOf(U.forcee)).person_handle, 'n23');
   // 全站唯一复核：扫全表，n23 恰一条
-  const anchorsDoc = JSON.parse(fs.readFileSync(path.join(TMP, 'collections', 'jiazu_anchors.json'), 'utf8'));
+  const anchorsDoc = JSON.parse(fs.readFileSync(path.join(TMP, 'collections', 'jiapu_anchors.json'), 'utf8'));
   const holders = Object.values(anchorsDoc).filter((a) => a && a.person_handle === 'n23');
   assert.equal(holders.length, 1, '同一 handle 全表恰一条');
   assert.equal(holders[0]._id, U.forcee);
@@ -560,7 +560,7 @@ test('⑪ force 覆盖：原占用者锚点已清空 + 审计记录已写 + reas
   assert.equal(json(plain).reassigned_from, null);
 
   // 单点函数仍只此一份口径
-  assert.equal((SCOPE_SRC.match(/colAll\('jiazu_anchors'\)/g) || []).length, 1);
+  assert.equal((SCOPE_SRC.match(/colAll\('jiapu_anchors'\)/g) || []).length, 1);
   assert.match(SCOPE_SRC, /await clearAnchor\(occupierPhone\)/);
   assert.match(SCOPE_SRC, /reason: 'anchor_force_reassign'/);
 });
@@ -626,13 +626,13 @@ test('⑬ 源码判据：三条路由注册在树编辑闸门之前；X-Invite-C
   assert.equal(invc.INVITE_BIND_REWARD_INVITER_BAMBOO_PIECES, 10);
   assert.equal(invc.INVITE_BIND_REWARD_INVITEE_FRAGMENTS, 30);
   // 新集合必须进 upload 脚本（AGENTS.md §8：漏了云端首写报错）
-  assert.match(UPLOAD_SRC, /'jiazu_invite_codes'/);
+  assert.match(UPLOAD_SRC, /'jiapu_invite_codes'/);
   // /invite/bind 的绑定校验：走同一单点函数，且**传参里不出现 force**（本路由不适用 force）
   const bindCall = INVC_SRC.match(/assertAnchorBindable\(finalHandle, me, \{[^}]*\}\)/);
   assert.ok(bindCall, '/invite/bind 必须走 assertAnchorBindable 单点（含全站唯一 409）');
   assert.ok(!/force/.test(bindCall[0]), `/invite/bind 校验调用不得出现 force（实测 ${bindCall[0]}）`);
-  assert.equal((INVC_SRC.match(/colAll\('jiazu_anchors'\)/g) || []).length, 0, '本模块不得自扫锚点全表（唯一性口径只在 lib/scope.js）');
-  assert.equal((INVC_SRC.match(/colSet\('jiazu_anchors'/g) || []).length, 0, '本模块不得直写锚点集合（写入只走 scope.setAnchor）');
+  assert.equal((INVC_SRC.match(/colAll\('jiapu_anchors'\)/g) || []).length, 0, '本模块不得自扫锚点全表（唯一性口径只在 lib/scope.js）');
+  assert.equal((INVC_SRC.match(/colSet\('jiapu_anchors'/g) || []).length, 0, '本模块不得直写锚点集合（写入只走 scope.setAnchor）');
   // 纯函数判据：状态机五态
   assert.equal(invc.inviteCodeState(null), 'not_found');
   assert.equal(invc.inviteCodeState({ expires_at: past, max_uses: null }), 'expired');

@@ -629,7 +629,7 @@ test('withAssets：兰帖写入只经 mutator，回读一致；mutator 抛错 �
   assert.equal(txsOf(back, 'scroll_synth').length, 0, '纯累加不写任何合成流水');
 
   // 落盘位置 = /tmp 副本（绝不在真源里创建）
-  assert.ok(fs.existsSync(path.join(TMP, 'collections', 'jiazu_assets.json')), '副本集合文件已写入');
+  assert.ok(fs.existsSync(path.join(TMP, 'collections', 'jiapu_assets.json')), '副本集合文件已写入');
   assert.ok(!fs.existsSync(path.join(REAL_OUT, 'collections', '__scroll_items_probe.json')));
 
   // 409 整单拒绝：mutator 抛错 → colSet 不执行

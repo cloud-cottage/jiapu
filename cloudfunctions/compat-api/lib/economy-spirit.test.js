@@ -81,7 +81,7 @@ fs.mkdirSync(path.join(TMP, 'collections'), { recursive: true });
 fs.mkdirSync(path.join(TMP, 'trees'), { recursive: true });
 fs.mkdirSync(path.join(TMP, 'details'), { recursive: true });
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_users.json'),
+  path.join(TMP, 'collections', 'jiapu_users.json'),
   JSON.stringify({
     [MEMBER]: { _id: MEMBER, phone: MEMBER, nickname: '家族成员', role: 'user' },
     [OTHER]: { _id: OTHER, phone: OTHER, nickname: '登录非成员', role: 'user' },
@@ -89,7 +89,7 @@ fs.writeFileSync(
   }),
 );
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_anchors.json'),
+  path.join(TMP, 'collections', 'jiapu_anchors.json'),
   JSON.stringify({ [MEMBER]: { _id: MEMBER, tree_id: 'sp_f0', person_handle: 'h_member', updated_at: T0.toISOString() } }),
 );
 
@@ -132,9 +132,9 @@ async function setAssets(phone, { seeds = [], bamboos = [], jades = [] } = {}) {
 const assetsOf = (phone) => el.getAssets(phone);
 const seedSum = async (phone) => el.sumLots((await assetsOf(phone)).seeds);
 
-/** 读集合 jiazu_spirit 的某树记录（原始真源；**每树一档** `_id = tree_id`，剥离 `_id`/`version`） */
+/** 读集合 jiapu_spirit 的某树记录（原始真源；**每树一档** `_id = tree_id`，剥离 `_id`/`version`） */
 async function entryOf(treeId) {
-  const doc = await store.colGet('jiazu_spirit', treeId);
+  const doc = await store.colGet('jiapu_spirit', treeId);
   if (!doc) return null;
   const rec = { ...doc };
   delete rec._id;
@@ -142,7 +142,7 @@ async function entryOf(treeId) {
   return JSON.parse(JSON.stringify(rec));
 }
 async function setEntry(treeId, entry) {
-  await store.colSet('jiazu_spirit', treeId, { ...entry });
+  await store.colSet('jiapu_spirit', treeId, { ...entry });
 }
 
 /** 造「已镶永久玉的树 + 新账号」，返回 { treeId, phone, jade_id } */
@@ -176,10 +176,10 @@ const jsonOf = (res) => JSON.parse(res.body);
 const nowIso = () => new Date().toISOString();
 const isoFromNow = (days) => new Date(Date.now() + days * DAY).toISOString();
 
-/** 沙箱注册一个已登录用户（路由级用例：`authUser` 需要 `jiazu_users` 记录） */
+/** 沙箱注册一个已登录用户（路由级用例：`authUser` 需要 `jiapu_users` 记录） */
 async function newUser(role = 'user') {
   const phone = nextPhone();
-  await store.colSet('jiazu_users', phone, { _id: phone, phone, nickname: `路由用户${phone.slice(-4)}`, role });
+  await store.colSet('jiapu_users', phone, { _id: phone, phone, nickname: `路由用户${phone.slice(-4)}`, role });
   return phone;
 }
 
@@ -831,10 +831,10 @@ test('读口径 · 注入者反查（`injector`）：三态 + 昵称兜底 + 手
   // ② 正常态：注入者有本树锚点 → nickname + person_handle
   const treeA = nextTree();
   const injectorA = await newUser();
-  await store.colSet('jiazu_users', injectorA, { _id: injectorA, phone: injectorA, nickname: '注入者甲', role: 'user' });
+  await store.colSet('jiapu_users', injectorA, { _id: injectorA, phone: injectorA, nickname: '注入者甲', role: 'user' });
   await setAssets(injectorA, { jades: [jadeOf('jd_inj_a', null)] });
   await sp.mountJade(injectorA, treeA, 'jd_inj_a', T0);
-  await store.colSet('jiazu_anchors', injectorA, {
+  await store.colSet('jiapu_anchors', injectorA, {
     _id: injectorA, tree_id: treeA, person_handle: 'h_inj_a', updated_at: T0.toISOString(),
   });
   const ok = await sp.spiritInfo(treeA, null, T0);
@@ -848,7 +848,7 @@ test('读口径 · 注入者反查（`injector`）：三态 + 昵称兜底 + 手
   const injectorB = await newUser(); // newUser 已写昵称；**不建锚点**
   await setAssets(injectorB, { jades: [jadeOf('jd_inj_b', null)] });
   await sp.mountJade(injectorB, treeB, 'jd_inj_b', T0);
-  assert.equal(await store.colGet('jiazu_anchors', injectorB), null, '夹具前提：该注入者无锚点');
+  assert.equal(await store.colGet('jiapu_anchors', injectorB), null, '夹具前提：该注入者无锚点');
   const noAnchor = (await sp.spiritInfo(treeB, null, T0)).injector;
   assert.equal(noAnchor.person_handle, null, '无锚点 → person_handle = null');
   assert.ok(noAnchor.nickname, '无锚点态昵称仍有值');
@@ -859,7 +859,7 @@ test('读口径 · 注入者反查（`injector`）：三态 + 昵称兜底 + 手
   const injectorC = await newUser();
   await setAssets(injectorC, { jades: [jadeOf('jd_inj_c', null)] });
   await sp.mountJade(injectorC, treeC, 'jd_inj_c', T0);
-  await store.colSet('jiazu_anchors', injectorC, {
+  await store.colSet('jiapu_anchors', injectorC, {
     _id: injectorC, tree_id: 'sp_f0', person_handle: 'h_other_tree', updated_at: T0.toISOString(),
   });
   const crossTree = (await sp.spiritInfo(treeC, null, T0)).injector;
@@ -880,7 +880,7 @@ test('读口径 · 注入者反查（`injector`）：三态 + 昵称兜底 + 手
   // ⑥ 昵称缺失 → 脱敏手机号兜底，且仍不含完整手机号
   const treeE = nextTree();
   const nameless = await newUser();
-  await store.colSet('jiazu_users', nameless, { _id: nameless, phone: nameless, nickname: '', role: 'user' });
+  await store.colSet('jiapu_users', nameless, { _id: nameless, phone: nameless, nickname: '', role: 'user' });
   await setAssets(nameless, { jades: [jadeOf('jd_inj_e', null)] });
   await sp.mountJade(nameless, treeE, 'jd_inj_e', T0);
   const masked = (await sp.spiritInfo(treeE, null, T0)).injector;
@@ -931,9 +931,9 @@ test('路由 · 四条写路由未登录一律 401（无 Bearer / 无效 Bearer�
 test('路由 · K1 权限放开：非本树成员的普通登录用户镶嵌 200 + 灌注 200（无 403 档）', async () => {
   const treeId = nextTree();
   await setAssets(OTHER, { jades: [jadeOf('jd_k1', null)], seeds: [seedLot(50, 400, 'sl_k1')] });
-  const otherAnchor = await store.colGet('jiazu_anchors', OTHER);
+  const otherAnchor = await store.colGet('jiapu_anchors', OTHER);
   // 夹具前提（本文件 seed）：只有 MEMBER 有锚点（sp_f0）；OTHER = **无锚点的普通登录用户**
-  assert.equal(otherAnchor, null, '夹具前提：OTHER 无 jiazu_anchors 记录（登录非成员）');
+  assert.equal(otherAnchor, null, '夹具前提：OTHER 无 jiapu_anchors 记录（登录非成员）');
   assert.notEqual(treeId, 'sp_f0', '夹具前提：用例独占树 ≠ MEMBER 的锚点树');
 
   const mount = await call('/spirit/mount-jade', 'POST', bearer(OTHER), {}, { tree_id: treeId, jade_id: 'jd_k1' });

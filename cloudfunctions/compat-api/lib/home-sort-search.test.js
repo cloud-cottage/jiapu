@@ -410,28 +410,28 @@ writeTree({
 
 // ---- 互动事件集合（口径 A）----
 // aa_tree：join 2 + marriage(from_tree) 1 + clan(decided_at 回退) 1 = 4；founder 的 tree_id 是 zz_tree（master_tree_id=aa_tree 不计入）
-writeCol('jiazu_join_requests', [
+writeCol('jiapu_join_requests', [
   { _id: 'JR_1', tree_id: 'aa_tree', created_at: ago(1) },
   { _id: 'JR_2', tree_id: 'aa_tree', created_at: ago(29) },
 ]);
-writeCol('jiazu_marriage_requests', [
+writeCol('jiapu_marriage_requests', [
   { _id: 'MR_1', from_tree: 'aa_tree', to_tree: 'zz_tree', created_at: ago(2) },
 ]);
-writeCol('jiazu_founder_requests', [
+writeCol('jiapu_founder_requests', [
   { _id: 'FR_1', tree_id: 'zz_tree', master_tree_id: 'aa_tree', created_at: ago(3) },
 ]);
-writeCol('jiazu_clan_requests', [
+writeCol('jiapu_clan_requests', [
   { _id: 'CR_1', tree_id: 'aa_tree', created_at: '', decided_at: ago(5) },
   { _id: 'CR_2', tree_id: 'aa_tree' }, // 时间字段全缺 → 不计入
 ]);
-// 独立集合缺失对照：jiazu_* 之外不写，treeActivity 对不存在的树恒 0
+// 独立集合缺失对照：jiapu_* 之外不写，treeActivity 对不存在的树恒 0
 
 // ---- 口径 D-2 · N3 成员可见性：登录用户锚定 n3c_tree（= 真身 C 所在树）→ 该树 full 可见 ----
 const N3_MEMBER = '17700001234';
-writeCol('jiazu_users', [
+writeCol('jiapu_users', [
   { _id: N3_MEMBER, phone: N3_MEMBER, nickname: '龙氏成员', role: 'user' },
 ]);
-writeCol('jiazu_anchors', [
+writeCol('jiapu_anchors', [
   { _id: N3_MEMBER, phone: N3_MEMBER, tree_id: 'n3c_tree', person_handle: 'h_n3_c' },
 ]);
 

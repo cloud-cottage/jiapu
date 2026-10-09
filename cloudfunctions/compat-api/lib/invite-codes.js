@@ -1,10 +1,10 @@
 /**
- * 邀请码链路内核（jiazu_invite_codes）— **批 C-1**（Kevin 2026-09-30 逐条拍定）
+ * 邀请码链路内核（jiapu_invite_codes）— **批 C-1**（Kevin 2026-09-30 逐条拍定）
  *
  * 与既有 `lib/invite.js`（邀请码 = 邀请人手机号 · 裁定 v3 · I-1…I-9）**并存不冲突**：
- *   · `invite.js`   = 「谁邀请了谁」的**基础关系**（集合 `jiazu_invites`，每被邀请人一文档）；
+ *   · `invite.js`   = 「谁邀请了谁」的**基础关系**（集合 `jiapu_invites`，每被邀请人一文档）；
  *   · 本模块        = 「一条可撤回的**链接凭证**」的**签发 / 解析 / 放行 / 绑定 / 加成**
- *                    （集合 `jiazu_invite_codes`，一码一文档）。
+ *                    （集合 `jiapu_invite_codes`，一码一文档）。
  *   接受邀请时**优先沿用 `invite.applyInvite` 语义**记录基础关系与基础发奖（不得另造一套）。
  *
  * 口径（逐条实现，每条一句话可改）：
@@ -56,7 +56,7 @@ import { assertAnchorBindable, setAnchor, isPersonHandleTaken } from './scope.js
 
 // ---- 集合与常量 ----
 
-export const INVITE_CODES_COL = 'jiazu_invite_codes';
+export const INVITE_CODES_COL = 'jiapu_invite_codes';
 export const INVITE_CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 export const INVITE_CODE_LEN = 6;
 export const INVITE_CODE_TTL_DAYS = 30;
@@ -386,7 +386,7 @@ export async function bindInviteCode(opts = {}) {
     }
     await setAnchor(me, finalTree, finalHandle, { via_invite_code: code });
   }
-  // ⑥ 基础关系（三态都记；沿用既有 applyInvite 语义：校验 + 基础发奖 + jiazu_invites 落档）
+  // ⑥ 基础关系（三态都记；沿用既有 applyInvite 语义：校验 + 基础发奖 + jiapu_invites 落档）
   let invite_record = null;
   try {
     invite_record = await applyInvite(me, doc.inviter_phone, { now });

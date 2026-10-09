@@ -16,7 +16,7 @@
  *   node scripts/migrate-global-ids.mjs --root <repo>/migrate-output --confirm-real   # 真源（需显式确认）
  * 其它参数：--dry-run（只打印计划，不写任何文件）｜--master zhonghua（总谱 tree_id）
  *
- * 只碰数据根下的 trees/ · details/ · collections/jiazu_id_seq.json · id-migration*.json；
+ * 只碰数据根下的 trees/ · details/ · collections/jiapu_id_seq.json · id-migration*.json；
  * 绝不写 config/tree-meta.json，绝不碰其它目录。
  */
 import fs from 'node:fs';
@@ -58,7 +58,7 @@ const DETAILS_DIR = path.join(ROOT, 'details');
 const COLS_DIR = path.join(ROOT, 'collections');
 const MAP_FILE = path.join(ROOT, 'id-migration.json');
 const REPORT_FILE = path.join(ROOT, 'id-migration.report.json');
-const SEQ_FILE = path.join(COLS_DIR, 'jiazu_id_seq.json');
+const SEQ_FILE = path.join(COLS_DIR, 'jiapu_id_seq.json');
 
 const numOf = (id) => {
   const m = String(id || '').match(/^[IF]?(\d+)$/i);
@@ -124,7 +124,7 @@ const masterFamilyMax = masterFamilyIds.length ? Math.max(...masterFamilyIds) : 
 // 待重编号的树：除 zhonghua 外的全部树，按 tree_id 字典序
 const otherIds = [...trees.keys()].filter((id) => id !== MASTER).sort();
 
-/** 从 collections/jiazu_id_seq.json 读已有计数器（缺失 → 0） */
+/** 从 collections/jiapu_id_seq.json 读已有计数器（缺失 → 0） */
 function readSeqCounter(kind) {
   try {
     const raw = readJson(SEQ_FILE);

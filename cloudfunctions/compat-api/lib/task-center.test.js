@@ -86,7 +86,7 @@ const U = {
   expired: '16610000007',
 };
 const ALL_USERS = Object.values(U).map((phone) => [phone, { _id: phone, phone, nickname: `用户${phone.slice(-4)}`, role: 'user' }]);
-fs.writeFileSync(path.join(TMP, 'collections', 'jiazu_users.json'), JSON.stringify(Object.fromEntries(ALL_USERS)));
+fs.writeFileSync(path.join(TMP, 'collections', 'jiapu_users.json'), JSON.stringify(Object.fromEntries(ALL_USERS)));
 
 const L = await import('./economy-ledger.js');
 const F = await import('./friends.js');
@@ -712,7 +712,7 @@ test('⑬ TOCTOU：锁定读与兰帖扣减同锁（持锁期间读不得返回�
   await giveScrolls(me, 1, now); // 100 片 = 1 张
   const relDocSync = (id) => {
     try {
-      return JSON.parse(fs.readFileSync(path.join(TMP, 'collections', 'jiazu_friends.json'), 'utf8'))[id] || null;
+      return JSON.parse(fs.readFileSync(path.join(TMP, 'collections', 'jiapu_friends.json'), 'utf8'))[id] || null;
     } catch {
       return null;
     }

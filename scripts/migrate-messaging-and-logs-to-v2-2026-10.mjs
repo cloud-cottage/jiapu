@@ -2,9 +2,9 @@
 /**
  * 一次性数据手术（路 B 重构 · 遗留件补单）：三个本地集合单文档 `global` → **主体系文档**
  *
- *   ① jiazu_spirit    ：`{global:{trees:{<tree_id>:entry}}}`      → **每树一档** `_id = tree_id`，档体 = 原 `trees[tree_id]` 值 + `version`
- *   ② jiazu_messages  ：`{global:{items:{<phone>:…},warned:{…}}}` → **每手机号一档** `_id = 手机号明文`，档体 = `{items:[…], warned:{…}}` + `version`
- *   ③ jiazu_ops_logs  ：`{global:{logs:[…]}}`                      → **每笔一档** `_id = 该条日志 id`，档体 = 该条日志自身 + `version`
+ *   ① jiapu_spirit    ：`{global:{trees:{<tree_id>:entry}}}`      → **每树一档** `_id = tree_id`，档体 = 原 `trees[tree_id]` 值 + `version`
+ *   ② jiapu_messages  ：`{global:{items:{<phone>:…},warned:{…}}}` → **每手机号一档** `_id = 手机号明文`，档体 = `{items:[…], warned:{…}}` + `version`
+ *   ③ jiapu_ops_logs  ：`{global:{logs:[…]}}`                      → **每笔一档** `_id = 该条日志 id`，档体 = 该条日志自身 + `version`
  *
  * 口径与已落盘代码**逐字一致**（开工前已读源码核对，不得靠猜）：
  *   · economy-spirit.js  withSpirit/readSpiritEntry/stripEntry：档 `_id = tree_id`，档体 = entry 本身（不含 `_id`/`version`），`version` 自 1 起；
@@ -38,9 +38,9 @@ const COLS = path.join(OUT, 'collections');
 /** 备份目录：~/jiazu-backups/2026-10-03-ledger-v2/（日期逐字，与 assets 迁移同批同目录） */
 const BACKUP_DIR = path.join(os.homedir(), 'jiazu-backups', '2026-10-03-ledger-v2');
 
-const SPIRIT_FILE = path.join(COLS, 'jiazu_spirit.json');
-const MESSAGES_FILE = path.join(COLS, 'jiazu_messages.json');
-const OPS_LOGS_FILE = path.join(COLS, 'jiazu_ops_logs.json');
+const SPIRIT_FILE = path.join(COLS, 'jiapu_spirit.json');
+const MESSAGES_FILE = path.join(COLS, 'jiapu_messages.json');
+const OPS_LOGS_FILE = path.join(COLS, 'jiapu_ops_logs.json');
 
 const args = process.argv.slice(2);
 const apply = args.includes('--apply');
@@ -66,7 +66,7 @@ for (const f of [SPIRIT_FILE, MESSAGES_FILE, OPS_LOGS_FILE]) {
   }
 }
 
-// ==================== ① jiazu_spirit：global.trees → 每树一档 ====================
+// ==================== ① jiapu_spirit：global.trees → 每树一档 ====================
 
 function migrateSpirit(src) {
   const next = {};
@@ -96,7 +96,7 @@ function migrateSpirit(src) {
   return { next, mapping, alreadyMigrated, hasGlobal: Object.prototype.hasOwnProperty.call(src, 'global') };
 }
 
-// ==================== ② jiazu_messages：global.items/warned → 每手机号一档 ====================
+// ==================== ② jiapu_messages：global.items/warned → 每手机号一档 ====================
 
 function migrateMessages(src) {
   const next = {};
@@ -136,7 +136,7 @@ function migrateMessages(src) {
   return { next, mapping, alreadyMigrated, hasGlobal: Object.prototype.hasOwnProperty.call(src, 'global') };
 }
 
-// ==================== ③ jiazu_ops_logs：global.logs → 每笔一档 ====================
+// ==================== ③ jiapu_ops_logs：global.logs → 每笔一档 ====================
 
 function migrateOpsLogs(src) {
   const next = {};
@@ -164,9 +164,9 @@ function migrateOpsLogs(src) {
 // ==================== 执行：三个文件统一走「检测 → 报告 → (备份+写) ====================
 
 const JOBS = [
-  { name: 'jiazu_spirit', file: SPIRIT_FILE, migrate: migrateSpirit, report: (m) => `  ${m.treeId}  version=1  fields=${m.fields}  status=${m.status}  jade=${m.jade}  logs=${m.logs}` },
-  { name: 'jiazu_messages', file: MESSAGES_FILE, migrate: migrateMessages, report: (m) => `  ${m.phone}  version=1  items=${m.items}  warned=${m.warned}` },
-  { name: 'jiazu_ops_logs', file: OPS_LOGS_FILE, migrate: migrateOpsLogs, report: (m) => `  ${m.id}  version=1  ts=${m.ts}  operator=${m.operator}  target=${m.target_phone}${m.generated_id ? '  [生成 id]' : ''}` },
+  { name: 'jiapu_spirit', file: SPIRIT_FILE, migrate: migrateSpirit, report: (m) => `  ${m.treeId}  version=1  fields=${m.fields}  status=${m.status}  jade=${m.jade}  logs=${m.logs}` },
+  { name: 'jiapu_messages', file: MESSAGES_FILE, migrate: migrateMessages, report: (m) => `  ${m.phone}  version=1  items=${m.items}  warned=${m.warned}` },
+  { name: 'jiapu_ops_logs', file: OPS_LOGS_FILE, migrate: migrateOpsLogs, report: (m) => `  ${m.id}  version=1  ts=${m.ts}  operator=${m.operator}  target=${m.target_phone}${m.generated_id ? '  [生成 id]' : ''}` },
 ];
 
 const plans = [];

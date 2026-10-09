@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * 一次性数据手术（路 B 重构第 2 期·B 路）：`jiazu_market` 单文档 `_id='global'` → **每档一文档**
+ * 一次性数据手术（路 B 重构第 2 期·B 路）：`jiapu_market` 单文档 `_id='global'` → **每档一文档**
  *
- * 背景（根因）：市集集合 `jiazu_market` 原为单文档 `_id='global'`，内嵌 `listings` / `trades` 数组 +
+ * 背景（根因）：市集集合 `jiapu_market` 原为单文档 `_id='global'`，内嵌 `listings` / `trades` 数组 +
  * `official` 配置（写入仅进程内锁 ⇒ 云端多实例并发丢更新）。本脚本把存储形态迁到 v2：
  *
  *   迁移前：{ "global": { "_id":"global",
@@ -14,7 +14,7 @@
  *            "official":     { "_id":"official",     "version":1, ...official } }
  *
  * 口径（Zang 裁定 · 路 B 第 2 期·B 路）：
- *   · 只迁 `jiazu_market` 一个集合（本批范围；其它集合另期）；
+ *   · 只迁 `jiapu_market` 一个集合（本批范围；其它集合另期）；
  *   · listings 每挂单一档（`_id = listing.id`）· trades 每成交一档（`_id = trade.id`）·
  *     official 保留单档 `_id='official'`（配置类）；
  *   · 每档补 `_id` 与 `version`（缺省 1，非负整数自 1 起）；业务字段名 / 数值 / 计费口径一字不改；
@@ -22,7 +22,7 @@
  *   · **幂等**：无 `global` 键（已是 v2 形态）⇒ 零变更、exit 0（`--apply` 亦不写）。
  *
  * 安全：默认 **dry-run**（只打印计划，不写盘）；`--apply` 才写，且**写前自动备份**到
- *   `~/jiazu-backups/2026-10-03-ledger-v2/`（原文件 + `md5-before-jiazu_market.txt`）；报前后 md5。
+ *   `~/jiazu-backups/2026-10-03-ledger-v2/`（原文件 + `md5-before-jiapu_market.txt`）；报前后 md5。
  * 副本演练：`COMPAT_OUT_DIR=<副本根> node scripts/migrate-market-to-v2-2026-10.mjs …`
  *   （数据根 = `$COMPAT_OUT_DIR`，默认 = `<仓库>/migrate-output`）。
  *
@@ -41,7 +41,7 @@ const REPO = path.resolve(HERE, '..');
 
 // 数据根：副本演练优先；缺省 = 真源 migrate-output
 const OUT = process.env.COMPAT_OUT_DIR ? path.resolve(process.env.COMPAT_OUT_DIR) : path.join(REPO, 'migrate-output');
-const MARKET_FILE = path.join(OUT, 'collections', 'jiazu_market.json');
+const MARKET_FILE = path.join(OUT, 'collections', 'jiapu_market.json');
 /** 备份目录：~​/jiazu-backups/2026-10-03-ledger-v2/（日期逐字，Zang 裁定 R4；与本批资产迁移同一目录） */
 const BACKUP_DIR = path.join(os.homedir(), 'jiazu-backups', '2026-10-03-ledger-v2');
 /** 官方配置档 `_id`（与 lib/economy-market.js `OFFICIAL_ID` 一致） */
@@ -147,12 +147,12 @@ if (!apply) {
   process.exit(0);
 }
 
-// ---- 写前备份（原文件 + md5-before-jiazu_market.txt）----
+// ---- 写前备份（原文件 + md5-before-jiapu_market.txt）----
 fs.mkdirSync(BACKUP_DIR, { recursive: true });
-const backupFile = path.join(BACKUP_DIR, 'jiazu_market.json');
+const backupFile = path.join(BACKUP_DIR, 'jiapu_market.json');
 fs.writeFileSync(backupFile, beforeRaw);
-fs.writeFileSync(path.join(BACKUP_DIR, 'md5-before-jiazu_market.txt'), `${beforeMd5}  ${MARKET_FILE}\n`);
-console.log(`\n备份：${backupFile}（+ md5-before-jiazu_market.txt）`);
+fs.writeFileSync(path.join(BACKUP_DIR, 'md5-before-jiapu_market.txt'), `${beforeMd5}  ${MARKET_FILE}\n`);
+console.log(`\n备份：${backupFile}（+ md5-before-jiapu_market.txt）`);
 
 fs.writeFileSync(MARKET_FILE, nextRaw);
 console.log(`已写入：${MARKET_FILE}`);

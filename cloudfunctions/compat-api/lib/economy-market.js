@@ -1,15 +1,15 @@
 /**
- * 市集 + 官方竹简每日限量发售内核（P3）— 集合 jiazu_market（**每档一文档 · 存储形态 v2**）
+ * 市集 + 官方竹简每日限量发售内核（P3）— 集合 jiapu_market（**每档一文档 · 存储形态 v2**）
  *
  * 唯一真源：docs/economy-market.spec.md（市集分册）+ docs/economy.spec.md（总纲）
- *   §2 存储契约（jiazu_market.listings / trades / official）/ §3 资产流转总表（4 行：挂单 / 撤单 / 成交 / 官方购买）
+ *   §2 存储契约（jiapu_market.listings / trades / official）/ §3 资产流转总表（4 行：挂单 / 撤单 / 成交 / 官方购买）
  *   §4 手续费 `fee_seeds = floor(标价 × 1/100)`（0 免收；199 → 买方 199 / 卖方 198 / 销毁 1）
  *   §5 挂单锁定（**派生占量，不给 BambooLot 加 locked 字段**）与并发（状态条件更新为临界区）
  *   §6 惰性结算（批次 sweep + 挂单 sweep 到期释放锁定）/ §6-2 成交批次 `expires_at` 继承卖方原值（不重置）
  *   §7 官方发售（¥9.90/束 · 每日 21:00 惰性释放 · 当日不结转 · 售罄即止）
  *   总纲 §4-3 字段表 / §4-6 Tx.type / §5-4 惰性结算 / §5-7 并发与唯一写入路径 / §6-1 §6-2 接口 / §8 权限（`GET /market/listings` guest 可读）
  *
- * **存储形态 v2（2026-10-03 Zang 裁定 · 路 B 第 2 期·B 路）**：`jiazu_market` 由「全体共用单文档
+ * **存储形态 v2（2026-10-03 Zang 裁定 · 路 B 第 2 期·B 路）**：`jiapu_market` 由「全体共用单文档
  * `_id='global'`（内嵌 `listings` / `trades` 数组 + `official`）」改为：
  *   · 挂单 = **每挂单一档**（`_id = listing.id`，即 `lst_<毫秒>_<rand6>`）；
  *   · 成交 = **每成交一档**（`_id = trade.id`，即 `trd_<毫秒>_<rand6>`）；
@@ -29,10 +29,10 @@
  * **不重写第二套账本算法**：FIFO 扣减 / 整单拒绝 / 批次 sweep / 批次与流水读写全部复用
  * lib/economy-ledger.js（chargeLots / addLot / sumLots / sweep / recordTx / withAssets / getAssets /
  * assetInsufficient / beijingDate）；本模块只做「市集判定 + 官方发售判定 + 编排」。
- * ¥ 钱包（jiazu_wallets）只经 lib/wallet.js（人民币只用于购买官方竹简，§7 / §10 反变现约束）。
+ * ¥ 钱包（jiapu_wallets）只经 lib/wallet.js（人民币只用于购买官方竹简，§7 / §10 反变现约束）。
  *
  * 锁顺序（**不得颠倒**，防死锁）：`market(全局) → assets(phone)`；无任何路径先持 assets 锁再取 market 锁。
- * 跨集合（jiazu_market + jiazu_assets + jiazu_wallets）无事务 API：先写一侧，后续失败 → 用快照回滚（同
+ * 跨集合（jiapu_market + jiapu_assets + jiapu_wallets）无事务 API：先写一侧，后续失败 → 用快照回滚（同
  * economy-spirit.chargeSpirit 与 store.updateTrees 的「顺序写 + 失败回滚」口径）。
  */
 import { colGet, listAll, mutateDoc } from './store.js';
@@ -53,7 +53,7 @@ import * as wallet from './wallet.js';
 
 // ---- 集合与常量（§2-1 / §11-25：改动先改规格） ----
 
-export const MARKET_COL = 'jiazu_market';
+export const MARKET_COL = 'jiapu_market';
 /**
  * 官方发售配置档 `_id`（**单档，配置类**；§2-1）。存储形态 v2：挂单 / 成交各一档一文档，官方配置保留单档。
  * 旧「单文档 `_id='global'`（内嵌 `listings` / `trades` / `official`）」已废弃（迁后 `global` 键消失）。
@@ -918,7 +918,7 @@ export async function buyListing(phone, listingIdValue, now = new Date()) {
  * 官方购买（§3 行 4 / §7-3）：惰性释放 → **21:00 时点**（未到 → 409「未到发售时间」）→ 当日库存
  * （不足 → 409「今日已售罄」）→ ¥ 余额（不足 → 409，引导充值）→ 入 `BambooLot{100×bundles, now+365d,
  * source='official_purchase'}` + `Tx{type:'official_buy'}` → ¥ 钱包扣 `price_fen × bundles` 分
- * （`jiazu_wallets.transactions` 一条 `official_bamboo` 流水）→ `official.stock[today] -= bundles`
+ * （`jiapu_wallets.transactions` 一条 `official_bamboo` 流水）→ `official.stock[today] -= bundles`
  * （单档 CAS；重放后按最新档重新校验库存）。
  * 顺序写 + 校验前置：竹片写入失败则**不扣 ¥**（§3 官方购买行）；扣款作为最后一步，失败即回滚竹片。
  */

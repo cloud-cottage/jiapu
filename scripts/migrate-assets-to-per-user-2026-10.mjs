@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * 一次性数据手术（路 B 重构第 1 期）：`jiazu_assets` 单文档 → **每手机号一文档**
+ * 一次性数据手术（路 B 重构第 1 期）：`jiapu_assets` 单文档 → **每手机号一文档**
  *
- * 背景（根因）：账本集合 `jiazu_assets` 原为**全体用户共用单文档** `_id='global'`，内嵌
+ * 背景（根因）：账本集合 `jiapu_assets` 原为**全体用户共用单文档** `_id='global'`，内嵌
  * `users` 映射（`<手机号>` → 用户资产档）。写入仅进程内锁 ⇒ 云端多实例并发丢更新 / 双花
  * （docs/PENDING_DEPLOY.md §7-7 部署阻塞项）。本脚本把存储形态迁到 v2：
  *
@@ -10,7 +10,7 @@
  *   迁移后：{ "<手机号>": { "_id": "<手机号>", "version": 1, fragments, seeds, ... } }
  *
  * 口径（Zang 裁定 R1/R4）：
- *   · **只迁 `jiazu_assets`**（本批范围；其它集合另期）——字段名一律沿用旧 `users[phone]` 记录字段，
+ *   · **只迁 `jiapu_assets`**（本批范围；其它集合另期）——字段名一律沿用旧 `users[phone]` 记录字段，
  *     不改业务语义 / 数值 / 计费口径（含 `task_claims` 等未知字段原样保留）；
  *   · 每档补 `_id`（= 手机号明文）与 `version`（缺省 1，非负整数自 1 起）；
  *   · **迁后 `global` 键必须消失**（不是并留）；单轨、无兼容期；
@@ -36,7 +36,7 @@ const REPO = path.resolve(HERE, '..');
 
 // 数据根：副本演练优先；缺省 = 真源 migrate-output
 const OUT = process.env.COMPAT_OUT_DIR ? path.resolve(process.env.COMPAT_OUT_DIR) : path.join(REPO, 'migrate-output');
-const ASSETS_FILE = path.join(OUT, 'collections', 'jiazu_assets.json');
+const ASSETS_FILE = path.join(OUT, 'collections', 'jiapu_assets.json');
 /** 备份目录：~​/jiazu-backups/2026-10-03-ledger-v2/（日期逐字，Zang 裁定 R4） */
 const BACKUP_DIR = path.join(os.homedir(), 'jiazu-backups', '2026-10-03-ledger-v2');
 
@@ -122,7 +122,7 @@ if (!apply) {
 
 // ---- 写前备份（原文件 + md5-before.txt）----
 fs.mkdirSync(BACKUP_DIR, { recursive: true });
-const backupFile = path.join(BACKUP_DIR, 'jiazu_assets.json');
+const backupFile = path.join(BACKUP_DIR, 'jiapu_assets.json');
 fs.writeFileSync(backupFile, beforeRaw);
 fs.writeFileSync(path.join(BACKUP_DIR, 'md5-before.txt'), `${beforeMd5}  ${ASSETS_FILE}\n`);
 console.log(`\n备份：${backupFile}（+ md5-before.txt）`);

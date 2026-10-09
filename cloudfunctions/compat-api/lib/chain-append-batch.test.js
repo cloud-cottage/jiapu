@@ -300,7 +300,7 @@ const STEWARD = '16600000902';
 const GUEST = '16600000903';
 const USER_ONLY = '16600000904'; // 注册用户（锚点在别树 → 祖谱写权限范围外）
 fs.writeFileSync(
-  path.join(COLS_DIR, 'jiazu_users.json'),
+  path.join(COLS_DIR, 'jiapu_users.json'),
   JSON.stringify({
     [CHIEF]: { _id: CHIEF, phone: CHIEF, nickname: '总编辑', role: 'chief_editor' },
     [STEWARD]: { _id: STEWARD, phone: STEWARD, nickname: '主理人', role: 'tree_steward' },
@@ -308,7 +308,7 @@ fs.writeFileSync(
     [USER_ONLY]: { _id: USER_ONLY, phone: USER_ONLY, nickname: '注册用户', role: 'user' },
   }),
 );
-const SEQ_FILE = path.join(COLS_DIR, 'jiazu_id_seq.json');
+const SEQ_FILE = path.join(COLS_DIR, 'jiapu_id_seq.json');
 fs.writeFileSync(SEQ_FILE, JSON.stringify({ person: { _id: 'person', next: 500 }, family: { _id: 'family', next: 300 } }));
 
 // ---- 竹片（PUT /people 的扣费闸门需要余额；扣费失败会在已故锁之前 409）----

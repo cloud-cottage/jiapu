@@ -77,7 +77,7 @@ fs.mkdirSync(path.join(TMP, 'collections'), { recursive: true });
 fs.mkdirSync(path.join(TMP, 'details'), { recursive: true });
 fs.mkdirSync(path.join(TMP, 'trees'), { recursive: true });
 fs.writeFileSync(
-  path.join(TMP, 'collections', 'jiazu_users.json'),
+  path.join(TMP, 'collections', 'jiapu_users.json'),
   JSON.stringify({
     [STEWARD]: { _id: STEWARD, phone: STEWARD, nickname: '主理人', role: 'tree_steward' },
     [CHIEF]: { _id: CHIEF, phone: CHIEF, nickname: '总编辑', role: 'chief_editor' },
@@ -123,7 +123,7 @@ const detailPath = (treeId, handle) => path.join(TMP, 'details', `${treeId}:${ha
 const treeMd5 = (id) => md5(treePath(id));
 const detailMd5 = (treeId, handle) => (fs.existsSync(detailPath(treeId, handle)) ? md5(detailPath(treeId, handle)) : '');
 const readTree = (id) => JSON.parse(fs.readFileSync(treePath(id), 'utf8'));
-const assetsMd5 = () => md5(path.join(TMP, 'collections', 'jiazu_assets.json'));
+const assetsMd5 = () => md5(path.join(TMP, 'collections', 'jiapu_assets.json'));
 
 function writeTree(tree) {
   fs.mkdirSync(path.dirname(treePath(tree.tree_id)), { recursive: true });

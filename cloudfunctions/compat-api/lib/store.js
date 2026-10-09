@@ -5,8 +5,8 @@
  *   - 树 JSON / 详情：读写 migrate-output/（trees/ + details/）
  *   - 集合：读写 migrate-output/collections/<col>.json（模拟 CloudBase 文档集合）
  * cloud 模式（COMPAT_SOURCE=cloud，默认）：
- *   - 树 JSON：云存储（fileID 来自 jiazu_tree_meta.storage_files）
- *   - 详情 / 集合：CloudBase 文档库（jiazu_ 前缀集合）
+ *   - 树 JSON：云存储（fileID 来自 jiapu_tree_meta.storage_files）
+ *   - 详情 / 集合：CloudBase 文档库（jiapu_ 前缀集合）
  *
  * 全部 SDK 调用走 sdkCall 互斥队列（@cloudbase/node-sdk 并发会 aborted）。
  */
@@ -460,7 +460,7 @@ function sameMetaStamp(a, b) {
 }
 
 /**
- * 读 meta（local = 副本 / 真源文件；cloud = `jiazu_tree_meta/global` 文档）。
+ * 读 meta（local = 副本 / 真源文件；cloud = `jiapu_tree_meta/global` 文档）。
  *
  * ★ 为什么 local 模式要做「外部变更检测」（真实数据丢失事故的根因修复）：
  *   tree-meta 是**唯一没有乐观锁的全量落盘文件**。对比其它真源：
@@ -533,11 +533,11 @@ export async function getMeta() {
 
 /**
  * `_meta` 单档：`_schema` / `_description` / `storage_files`（配置类，先例 =
- * economy-market.js 的 `OFFICIAL_ID='official'`）。云端 = `jiazu_tree_meta/_meta`；
+ * economy-market.js 的 `OFFICIAL_ID='official'`）。云端 = `jiapu_tree_meta/_meta`；
  * local = `config/tree-meta.json` 顶层同名字段（路径与形状不变）。
  */
 export const META_DOC_ID = '_meta';
-const META_COL = 'jiazu_tree_meta';
+const META_COL = 'jiapu_tree_meta';
 
 /** 剥离存储元字段 `_id`（保留 `version`：每树档 `version` 非负整数自 1 起，是本期新增契约） */
 function stripMetaDoc(doc) {
@@ -988,7 +988,7 @@ export async function getDetail(treeId, handle) {
     if (!fs.existsSync(p)) return null;
     return JSON.parse(fs.readFileSync(p, 'utf8'));
   }
-  const r = await sdkCall(() => getApp().database().collection('jiazu_person_details').doc(`${treeId}:${handle}`).get());
+  const r = await sdkCall(() => getApp().database().collection('jiapu_person_details').doc(`${treeId}:${handle}`).get());
   const d = r?.data;
   return (Array.isArray(d) ? d[0] : d) || null;
 }
@@ -1003,7 +1003,7 @@ export async function saveDetail(detail) {
     fs.writeFileSync(p, JSON.stringify(detail, null, 2));
     return;
   }
-  await sdkCall(() => getApp().database().collection('jiazu_person_details').doc(id).set(data));
+  await sdkCall(() => getApp().database().collection('jiapu_person_details').doc(id).set(data));
 }
 
 export async function deleteDetail(treeId, handle) {
@@ -1013,7 +1013,7 @@ export async function deleteDetail(treeId, handle) {
     if (fs.existsSync(p)) fs.unlinkSync(p);
     return;
   }
-  await sdkCall(() => getApp().database().collection('jiazu_person_details').doc(id).remove());
+  await sdkCall(() => getApp().database().collection('jiapu_person_details').doc(id).remove());
 }
 
 export async function getAllDetails(treeId) {
@@ -1026,7 +1026,7 @@ export async function getAllDetails(treeId) {
     }
     return out;
   }
-  const r = await sdkCall(() => getApp().database().collection('jiazu_person_details').where({ tree_id: treeId }).limit(2000).get());
+  const r = await sdkCall(() => getApp().database().collection('jiapu_person_details').where({ tree_id: treeId }).limit(2000).get());
   return r?.data || [];
 }
 
