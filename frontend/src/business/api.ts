@@ -1488,7 +1488,7 @@ export interface FounderAttachment {
   relation_note: string;
 }
 
-/** 待审批的认祖申请条目（jiazu_founder_requests，docs/founder-attach.spec.md §3-4） */
+/** 待审批的认祖申请条目（jiapu_founder_requests，docs/founder-attach.spec.md §3-4） */
 export interface FounderRequestItem {
   _id: string;
   tree_id: string;
@@ -1759,7 +1759,7 @@ export interface ClanInfo {
   branches: ClanBranch[];
 }
 
-/** 建谱申请条目（jiazu_clan_requests，docs/clan-tree.spec.md §4-4） */
+/** 建谱申请条目（jiapu_clan_requests，docs/clan-tree.spec.md §4-4） */
 export interface ClanRequestItem {
   _id: string;
   surname: string;
@@ -2451,7 +2451,7 @@ export interface SpiritPlanItem {
   discount?: number;
 }
 
-/** 灌注流水条目（jiazu_spirit.trees[tree_id].logs[] = SpiritLog；追加写、不可改） */
+/** 灌注流水条目（jiapu_spirit.trees[tree_id].logs[] = SpiritLog；追加写、不可改） */
 export interface SpiritLogItem {
   id: string;
   ts: string;
@@ -2687,7 +2687,7 @@ export async function postDecomposeJade(jadeId: string): Promise<JadeDecomposeRe
 export type MarketListingStatus = 'open' | 'sold' | 'cancelled' | 'expired';
 
 /**
- * 市集挂单（`jiazu_market.listings[]`）。
+ * 市集挂单（`jiapu_market.listings[]`）。
  * **与家族树无关（K7）**：不含任何家族树字段，挂单/买入均不校验家族树归属。
  */
 export interface MarketListing {
@@ -2818,7 +2818,7 @@ export async function postOfficialBuy(bundles = 1): Promise<OfficialBuyResult> {
 export type MessageType = 'expiring' | 'spirit' | 'market' | 'system';
 
 /**
- * 站内信条目（`jiazu_messages.items[<手机号>][]`）。
+ * 站内信条目（`jiapu_messages.items[<手机号>][]`）。
  * `title` / `text` 为后端下发的**定稿文案**（M1–M4，docs/economy-ops.spec.md §6.2）：
  * 前端**逐字渲染**，不得改写、不得拼接、不得自行补标点。
  */
@@ -2867,7 +2867,7 @@ export async function postMessagesRead(ids?: string[]): Promise<MessagesReadResu
 
 // ---- 运营后台 · 资产运维（docs/economy-ops.spec.md §5；仅 chief_editor，其余角色 403）
 
-/** 运营审计日志条目（`jiazu_ops_logs.logs[]`；`delta` **保留符号**，负值原样记录） */
+/** 运营审计日志条目（`jiapu_ops_logs.logs[]`；`delta` **保留符号**，负值原样记录） */
 export interface OpsLog {
   id: string;
   ts: string;
@@ -2895,7 +2895,7 @@ export interface GrantSummary {
   bamboos_total_pieces: number;
   /** 玉的枚数 */
   jades: number;
-  /** 本次审计日志 id（`jiazu_ops_logs`） */
+  /** 本次审计日志 id（`jiapu_ops_logs`） */
   log_id: string;
   /** 发放后碎片满 10 即时合成的籽数（0 = 未触发） */
   synthesized?: number;
@@ -3006,7 +3006,7 @@ export interface DeleteAccountResult {
 
 /**
  * 注销账号：清空本人碎片 / 石榴籽 / 竹片 / 玉 / 兰帖 / 兰帖残页（写一条 `account_clear` 流水留痕），**不可恢复**；
- * 历史审计（`jiazu_ops_logs`、钱包流水、历史 `Tx`）与 `jiazu_users` / `jiazu_anchors` 保留。
+ * 历史审计（`jiapu_ops_logs`、钱包流水、历史 `Tx`）与 `jiapu_users` / `jiapu_anchors` 保留。
  * - 存在 `status='open'` 市集挂单 → 后端 **409「请先撤销未成交挂单」**（原文上抛，前端不改写）；
  * - 未登录 → 401。
  */

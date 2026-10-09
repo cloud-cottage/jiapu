@@ -771,7 +771,7 @@ async function confirmSplit() {
 // ---- 立支（普通节点 → 新家族树始祖；docs/branch-clan-ops.spec.md §6-1 / §9-1 / §9-2）----
 
 /**
- * 立支单价默认值（石榴籽；量词**不写死** —— 一律经 `asset-text.ts` 的 `SEED_QTY_UNIT`）：真源在后端 `jiazu_wallets.config.branch_fee_seeds`（默认 9999，§5-4），
+ * 立支单价默认值（石榴籽；量词**不写死** —— 一律经 `asset-text.ts` 的 `SEED_QTY_UNIT`）：真源在后端 `jiapu_wallets.config.branch_fee_seeds`（默认 9999，§5-4），
  * 前端只用于**提交前**确认文案的明示数字；实际扣费以后端响应 `fee.amount` 为准。
  */
 const BRANCH_FEE_SEEDS = 9999;

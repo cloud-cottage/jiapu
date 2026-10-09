@@ -9,7 +9,7 @@
 
 import { reactive } from 'vue';
 
-const STORAGE_KEY = 'jiazu_auth';
+const STORAGE_KEY = 'jiapu_auth';
 
 export interface AuthState {
   loggedIn: boolean;

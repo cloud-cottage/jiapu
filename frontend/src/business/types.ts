@@ -289,7 +289,7 @@ export interface EstablishBranchResult {
 
 /** 【汇宗】灵气折损明细（`ConvergeClanResult.spirit`，规格 §6-2-7 / §8-2） */
 export interface ConvergeSpiritTransfer {
-  /** 本次生效的折损比例（`jiazu_wallets.config.converge_spirit_ratio`，默认 0.5） */
+  /** 本次生效的折损比例（`jiapu_wallets.config.converge_spirit_ratio`，默认 0.5） */
   ratio: number;
   /** 源树灵气剩余天数（无记录 / 已过 → 0） */
   source_days_left: number;
@@ -430,7 +430,7 @@ export interface SiblingReorderSegment {
 // `AssetsSummary & Partial<ScrollSummaryFields>` 取交集（旧后端不返这些字段时可按缺省处理）。
 
 /**
- * 兰帖批次（`jiazu_assets.users[<手机号>].scrolls[]`，与 `seeds` / `bamboos` / `jades` 并列）。
+ * 兰帖批次（`jiapu_assets.users[<手机号>].scrolls[]`，与 `seeds` / `bamboos` / `jades` 并列）。
  * **计量单位 = 片**；**`expires_at` 恒 `null`（永久，无期限）** —— 写入由后端显式传 `null`，
  * 前端只读、不写、不排入到期排序。
  */

@@ -1478,7 +1478,7 @@ const canConvergeClan = computed(
 );
 
 /**
- * 汇宗折损比例（**仅供提交前预估展示**；真源 = 后端 `jiazu_wallets.config.converge_spirit_ratio`，
+ * 汇宗折损比例（**仅供提交前预估展示**；真源 = 后端 `jiapu_wallets.config.converge_spirit_ratio`，
  * 默认 0.5 = 50%，§5-4；实际折损天数以响应 `spirit` 为准）。
  */
 const CONVERGE_SPIRIT_RATIO = 0.5;
