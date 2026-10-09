@@ -24,7 +24,7 @@
 ## 目录结构
 
 ```
-jiazu/
+jiapu/
 ├── cloudfunctions/compat-api/  # 运行时后端：自有数据层兼容层 API（本地 3100 / 云端 CloudBase）
 │   ├── index.js                #   路由（输出 Gramps Web API 形状 → 前端零改动）
 │   └── lib/                    #   store（树 JSON/详情/集合）/ tree-write（写路径）/ scope / tree-access

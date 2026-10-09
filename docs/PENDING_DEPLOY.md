@@ -5902,3 +5902,24 @@ wc -c < cloudfunctions/deploy/compat-api/index.js; md5 -q cloudfunctions/deploy/
 - **R3 不属上云动作（一句话指路）**：本地目录 `/Users/kevin/bistro/jiazu` → `jiapu` + ctrl 面板 sid / group 改名的登记**落 `ctrl/PORTS.md`**（现证：**本仓无 `ctrl/` 目录**），**R3 时由 Jing 登记**；**本单不动控棚色 `ctrl/` 仓任何文件**。
 - **本节作者（Jing）只登记、不执行**：未跑任何打包 / `tcb` / `vercel` 写命令 / 未上传 / 未部署 / 未迁移；**未改任何代码 / `config/` / `migrate-output/`**；**未 `git` 任何写操作**；**未碰任何既有 `.qa.md`**（§0-5）；**未尝试写 `AGENTS.md`**。**只读探针已做**（Jing · 2026-10-09）：`git status --porcelain` / `git remote -v` / `git rev-parse HEAD` / `git ls-remote origin HEAD`、`ls` 迁移档、`COLLECTIONS` 读取、`grep` 集合与判据、`frontend/package.json` / `frontend/src/manifest.json` 读取 —— 均零写入。
 - **回写位**：§57-1 的**迁移对账读数**、§57-3 的**Vercel 冒烟结论**，**由执行 / 质检收口后回写**；R2 代码 / 真源改名回写位 = 另立批次登记。
+
+---
+
+### §57-5 追记（**R1 / R2 / R3 已落地** · 2026-10-09 · Jing · **只追加，不改 §57 已有行**）
+
+> **性质**：本节为 §57 的**落地追记**（**§57-0 ～ §57-4 全部已有行原文一字未改、一行未删**；承 `AGENTS.md` §0-4）。**登记时点 ＝ 2026-10-09（CST）**。
+
+**一、四批 R1–R4 当前状态（现证）**
+
+- **R1 ✓ 已落地**（品牌 / 仓库面）：GitHub 仓 `cloud-cottage/jiazu` → **`jiapu`**（Kevin 执行）；本地 `git remote` = **`https://github.com/cloud-cottage/jiapu.git`**（`git remote -v` 现证）；`README.md` / `AGENTS.md` 顶部**更名登记行**；本册 §57（commit **`0b62bb1`**）。
+- **R2 ✓ 已落地**（内部标识符）：`jiazu_` → `jiapu_` **72 文件 / 504 处**（含 `cloudfunctions/**` 与 `scripts/**`）+ **15 个本地真源集合文件改名**（`migrate-output/collections/jiazu_*.json` → `jiapu_*.json`，**内容 md5 逐文件一致**；现证 `ls -1 migrate-output/collections/` 中 `jiapu_` 前缀 = **15**、`jiazu_` 前缀 **0 残留**）+ 前端登录键 **`jiazu_auth` → `jiapu_auth`**（`frontend/src/business/auth.ts:12`）；改名工具入仓 = `scripts/rename-jiazu-to-jiapu-2026-10.mjs`（dry-run 默认）；副本演练 `npm test` **674/674/0**、type-check **EXIT 0**；commit **`4afcf4e`** + **`dc2215c`**；已推送。**真源备份** = `~/jiazu-backups/2026-10-09-jiazu-rename/`（`migrate-output` + `tree-meta.json` + `MD5-LEDGER.txt` = **344 行**）；前后集合 md5 **逐文件一致**。**旧登录态影响**：`jiazu_auth` → `jiapu_auth` 后**旧浏览器登录态失效、需重登一次**（新域名无影响）。
+- **R3 ✓ 已落地**（本地目录 + ctrl 面板）：目录 `/Users/kevin/bistro/jiazu` → **`/Users/kevin/bistro/jiapu`**；`ctrl/index.js` 的 `services` 两项 sid **`jiazu-api` → `jiapu-api`**（3100）、**`jiazu` → `jiapu`**（5199）、group **`jiazu` → `jiapu`**、cwd 两处指向新目录；`projects` 表 **`jiazu: {label:'家谱 jiazu', repo:'/Users/kevin/bistro/jiazu'}` → `jiapu: {label:'家谱 jiapu', repo:'/Users/kevin/bistro/jiapu'}`**；`ctrl/public/index.html` 的 `GROUP_LABELS` / `GROUP_COLORS` 键同步。**执行 ＝ Zang**（窗口内同步运维，非 Kong）；**备份** = `ctrl/versions/index.js.pre-jiapu-rename.bak`（md5 `8a1d2390e6eab81aa50de77282d723bb`）、`public-index.html.pre-jiapu-rename.bak`（md5 `20ceac283053437b715517b400b5a2bf`）、`rank.json.pre-jiapu-rename.bak`（md5 `a73b170cef5db18dc369066e43448103`）；面板重启后**逐条恢复 16/16 running**（`PM2 bistro-ctrl` 新 pid **91017**；`jiapu-api` pid **91045** cwd `/Users/kevin/bistro/jiapu`；`jiapu` pid **91074** cwd `.../jiapu/frontend`）。**R3 端口口径登记落 `ctrl/PORTS.md` v1.22**（§2 两行原位更正 + 新增复测行；**端口数值 3100 / 5199 不变**）。
+- **R4 待（未落地）**：Vercel 面 —— **待 Kevin 提供 Vercel 登录态**（项目 owner）**＋ `jiapu100.com` 解析生效**后方可绑定 / 冒烟（口径见 §57-3）。
+
+**二、云端集合迁移动作的目标名（R2 的云侧 · 清单不变）**
+
+- §57-1 所列**受影响集合 20 项**（迁移档 15 + 代码侧 5）**清单不变**，但其**动作目标名现一律为 `jiapu_*`**（本节仅把动作目标名由原 `jiazu_*` 表述更新为 `jiapu_*`；**§57-1 各既有行原文保留、未改**）。即：建新集合按 **`jiapu_anchors` / `jiapu_assets` / `jiapu_clan_requests` / `jiapu_founder_requests` / `jiapu_id_seq` / `jiapu_invite_codes` / `jiapu_leave_requests` / `jiapu_market` / `jiapu_marriage_requests` / `jiapu_messages` / `jiapu_ops_logs` / `jiapu_sms_codes` / `jiapu_spirit` / `jiapu_users` / `jiapu_wallets`**（15）＋ 代码侧 5 项 **`jiapu_person_details` / `jiapu_tree_meta` / `jiapu_friends` / `jiapu_invites` / `jiapu_join_requests`**。**判据**：`grep -c 'jiazu_'` 在 `cloudfunctions/` 的命中数**迁移后应为 0 命中**（**以执行时实测为准**，本阶段不预填）。**本阶段仍不上云、只登记**。
+
+**三、状态词（不变）**
+
+- 本批状态仍 = **「R1 / R2 / R3 已落地（本地 / 仓库面）；R4 待（Vercel 登录态 + 域名解析）」**；**不得写「已部署 / 已上云 / 云端已迁移 / 全部完成」**（§57-4 口径沿用）。
