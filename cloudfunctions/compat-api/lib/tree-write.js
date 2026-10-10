@@ -25,7 +25,7 @@ import {
   nextFamilyId,
 } from './store.js';
 import { metaEntryOf, isFounderMirror, isMirrorMarked, isUpperMirror, personEditLockMessage, resolveChainGen, MIRROR_LOCK_MESSAGE, treeKindOf, resolveFounderHandle, TREE_KIND } from './founder-attach.js';
-import { idAllocator, reserveFamilyIds } from './id-seq.js';
+import { idAllocator, idKey, reserveFamilyIds } from './id-seq.js';
 import { resolveNode } from './id-resolve.js';
 import { isKnownOriginCode, resolveOrigin } from './geo.js';
 // 出生地 / 居住地（契约 v2）：写路径白名单 + 归一 + 形状闸门 + 上限的唯一真源
@@ -1448,7 +1448,7 @@ export async function addSpouseNode({
  * 重新指定父节点（管理员）：在档案编辑里填「新父节点编号」→ 直接把 person 改挂到该节点家族下。
  *
  * 约定：
- * - 编号写法：I0101 / 0101 / 24 位 handle 均可（resolvePersonRef）
+ * - 编号写法：人物编号（`000000052` / `I000000052` / `000052` / `I000052` / `0052` / `I0052` / `52` 等新旧形态互认）/ handle 均可（resolvePersonRef）
  * - 新父节点槽位由性别决定：女 → 母亲位，男/未知 → 父亲位（parentSlot）
  * - 家族复用：该父节点已有「本人在对应槽位、另一半空着」的家族 → 直接挂进去；
  *   否则用该父节点任意家族（另一半由既存配偶担任）；都没有 → 新建家族
@@ -1612,17 +1612,21 @@ export async function reparentNode({
 }
 
 /**
- * 解析「人物编号 / 句柄」引用 → handle。三种写法都接受：I0101 / 0101 / 24 位 handle。
+ * 解析「人物编号 / 句柄」引用 → handle。三种写法都接受：
+ * - 人物编号（新旧形态互认：去可选前缀 + 去前导零比数值，共享纯函数 id-seq.idKey）：
+ *   `000000052` / `I000000052` / `000052` / `I000052` / `0052` / `I0052` / `52` / `I52` 全部等价；
+ * - handle（树内主键，精确命中）。
  * @returns {string|null} 找不到返回 null
  */
 export function resolvePersonRef(tree, ref) {
   const s = String(ref || '').trim();
   if (!s) return null;
   if (tree.people[s]) return s;
-  const want = s.toUpperCase().replace(/^I(?=\d)/, '');
+  const wantKey = idKey(s);
+  // 仅接受**人物**编号（家庭编号 F... / 非编号写法 → 找不到）
+  if (!wantKey || !wantKey.startsWith('person:')) return null;
   for (const p of Object.values(tree.people)) {
-    const id = String(p.gramps_id || '').toUpperCase();
-    if (id.replace(/^I(?=\d)/, '') === want) return p.handle;
+    if (idKey(p.gramps_id) === wantKey) return p.handle;
   }
   return null;
 }

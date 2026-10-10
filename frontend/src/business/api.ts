@@ -1249,7 +1249,7 @@ export async function marriageRequest(
     spouse_tree_id?: string;
     spouse_handle?: string;
     /**
-     * 配偶引用（兜底通道）：全局编号（`000052` / `I000052`）/ handle / 树内旧号，
+     * 配偶引用（兜底通道）：全局编号（`I000000052`，新旧形态互认）/ handle / 树内旧号，
      * 后端 `resolveNode` **全站**解析（编号自带所属树，无需 spouse_tree_id）。
      * 与 `spouse_handle` 二者皆认、编号优先（前端填了编号时只传本字段）。
      */

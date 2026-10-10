@@ -9,7 +9,9 @@
  * - 云端：store.colAtomicNext → db.collection.doc.update({ next: _.inc(delta) })（原子，绝不重号）
  * - 本地：进程内按 kind 串行（写锁）→ 读 → 写回；同一进程内绝不重号
  *
- * 编号格式（docs/id-system.spec.md §2）：人员 `I` + 6 位十进（I000052）；家族 `F` + 6 位（F000012）。
+ * 编号格式（docs/id-system.spec.md §2；2026-10-10 新口径）：
+ * - 人员：**9 位纯数字、无前缀**（存 `000000052`，UI 展示时才加 `I` → `I000000052`）；
+ * - 家族：`F` + 6 位（`F000012`，前缀保留）。
  * 一经分配**终身不变**：跨树迁移、改父、改名都不重编号（§8-4）。
  */
 import fs from 'fs';
@@ -19,31 +21,64 @@ import { colGet, colSet, colAtomicNext, PATHS, SOURCE } from './store.js';
 export const SEQ_COLLECTION = 'jiapu_id_seq';
 export const SEQ_PERSON = 'person';
 export const SEQ_FAMILY = 'family';
-export const ID_WIDTH = 6;
+/** 人编号宽度：9 位纯数字（存 `000000052`，**无 `I` 前缀**；加前缀只在 UI 展示层） */
+export const ID_WIDTH_PERSON = 9;
+/** 家庭编号宽度：`F` + 6 位（存 `F000012`，前缀保留） */
+export const ID_WIDTH_FAMILY = 6;
 
-/** 数字 → 人读编号（I000052 / F000012） */
+/**
+ * 数字 → **存号**（docs/id-system.spec.md §2；2026-10-10 新口径）：
+ * - 人（`I`：**不拼前缀**）：9 位纯数字 —— 52 → `000000052`；
+ * - 家庭（`F`）：`F` + 6 位 —— 12 → `F000012`。
+ * 只补零不改值；计数器 `jiapu_id_seq` 仍存纯数字 next（**语义不变**）。
+ */
 export function formatId(kind, n) {
-  const prefix = kind === SEQ_FAMILY ? 'F' : 'I';
-  return `${prefix}${String(Math.max(1, Number(n) || 0)).padStart(ID_WIDTH, '0')}`;
+  const digits = String(Math.max(1, Number(n) || 0));
+  return kind === SEQ_FAMILY
+    ? `F${digits.padStart(ID_WIDTH_FAMILY, '0')}`
+    : digits.padStart(ID_WIDTH_PERSON, '0');
 }
 
 export const formatPersonId = (n) => formatId(SEQ_PERSON, n);
 export const formatFamilyId = (n) => formatId(SEQ_FAMILY, n);
 
 /**
+ * 编号规范键（**共享纯函数**，新旧形态互认的唯一判据，docs/id-system.spec.md §5）：
+ * 去可选前缀（`I` / `F`，大小写不敏感）+ 去前导零 → `${kind}:${数值}`。
+ * - 人：`000000052` / `I000000052` / `000052` / `I000052` / `0052` / `I0052` / `52` / `I52` → `'person:52'`
+ * - 家庭：`F000012` / `F0012` / `000012` → `'family:12'`
+ * 非编号写法（handle / 空 / 含其它字母）→ `''`（= 不是编号写法）。
+ * ⚠️ `lib/id-resolve.js` 与 `lib/tree-write.js#resolvePersonRef` 一律走它，**不得各写一套**。
+ */
+export function idKey(ref) {
+  const m = String(ref == null ? '' : ref)
+    .trim()
+    .match(/^([IF]?)(\d+)$/i);
+  if (!m) return '';
+  const kind = (m[1] || '').toUpperCase() === 'F' ? SEQ_FAMILY : SEQ_PERSON;
+  return `${kind}:${parseInt(m[2], 10)}`;
+}
+
+/** 两串是否**同一个编号**（去前缀 + 去前导零比数值）；任一不是编号写法 → false */
+export function sameId(a, b) {
+  const ka = idKey(a);
+  return !!ka && ka === idKey(b);
+}
+
+/**
  * 解析「全局编号」写法（纯函数）：
  * `I000052` / `000052` / `i52` → { kind:'person', number:52 }；`F000012` / `000012` → { kind:'family', number:12 }
- * 非编号写法（handle、空）→ null。注意 1–6 位都收，超出 6 位不是编号写法。
+ * 非编号写法（handle、空）→ null。人编号新口径 9 位（`000000052`）⇒ 收 1–9 位。
  */
 export function parseGlobalId(ref) {
   const s = String(ref || '').trim();
-  const m = s.match(/^([IF]?)(\d{1,6})$/i);
+  const m = s.match(/^([IF]?)(\d{1,9})$/i);
   if (!m) return null;
   const prefix = (m[1] || '').toUpperCase();
   return { kind: prefix === 'F' ? SEQ_FAMILY : SEQ_PERSON, number: parseInt(m[2], 10) };
 }
 
-/** 编号的数值部分（非编号写法 → null） */
+/** 编号的数值部分（去可选前缀 + 去前导零；非编号写法 → null） */
 export function numberOfId(id) {
   const m = String(id || '').match(/^[IF]?(\d+)$/i);
   return m ? parseInt(m[1], 10) : null;
@@ -153,7 +188,7 @@ export async function reserveIds(kind, count = 1) {
   return Array.from({ length: n }, (_, i) => prev + 1 + i);
 }
 
-/** 预留 n 个人物编号 → ['I000138', ...] */
+/** 预留 n 个人物编号 → ['000000138', ...]（人：9 位纯数字） */
 export async function reservePersonIds(count = 1) {
   return (await reserveIds(SEQ_PERSON, count)).map(formatPersonId);
 }

@@ -611,7 +611,7 @@
 
         <!-- 兜底入口：按全局编号指定（编号自带所属树 → 填了编号可不必先选树；
              提交时**编号优先**，后端 resolveNode 全局解析，失败文案沿用后端现有文案） -->
-        <text class="field-label">按全局编号指定（兜底，如 000052 / I000052）</text>
+        <text class="field-label">按全局编号指定（兜底，如 I000000052）</text>
         <t-input
           :value="marryRefInput"
           placeholder="填了编号将优先按编号提交"
@@ -706,7 +706,7 @@
         <text class="field-label">目标节点全局编号 / handle</text>
         <t-input
           :value="convergeTargetId"
-          placeholder="如 000052 或 handle"
+          placeholder="如 I000000052 或 handle"
           class="search-input"
           @update:value="(v: any) => onConvergeTargetChange(v)"
         />
@@ -1874,7 +1874,7 @@ async function startDelete() {
 
 // ===== 编号复制（档案页「编号」行）=====
 
-/** 复制本节点全局编号（去掉 I 前缀展示值，粘贴即可用于各「编号」输入框） */
+/** 复制本节点全局编号（展示形态 I000000052，粘贴即可用于各「编号」输入框） */
 function copyPersonId() {
   const text = personIdDisplay(person.value?.gramps_id || '');
   if (!text) {
@@ -1904,7 +1904,7 @@ const editForm = ref({
   /** 带色称号（契约 docs/person-badge.spec.md）：称号文字 + 色板键（默认金棕）。仅 tree_steward+ 可编辑 */
   badgeLabel: '',
   badgeColor: BADGE_DEFAULT_COLOR_KEY as BadgeColorKey,
-  /** 改挂父节点：填全局编号（如 000052）/ handle；留空 = 不改。
+  /** 改挂父节点：填全局编号（如 I000000052）/ handle；留空 = 不改。
    *  编号属于别的家族树 → 自动跨树迁移（后端按全局编号识别所属树，无需选目标树） */
   parent_id: '',
   events: [] as Array<{ type: string; date: string; place: string }>,
@@ -2641,7 +2641,8 @@ async function doSave() {
   try {
     // ① 脏比对（发起 PUT 之前）：本表单与载入时原始值完全相同 → 不发请求、不扣费；
     //    但「只改了父节点编号」不算「未做修改」——改父走 reparent，必须照常执行（见下方 reparent 区块）。
-    const normRef = (v: any) => String(v).toUpperCase().replace(/^I(?=\d)/, '');
+    // 编号统一走展示层归一（去可选前缀 + 去前导零 + 加 I 前缀）：新旧形态互认，避免误判「已改动」
+    const normRef = (v: any) => personIdDisplay(String(v));
     const newParentId = (editForm.value.parent_id || '').trim();
     const curParents = [parentsFamily.value?.father?.gramps_id, parentsFamily.value?.mother?.gramps_id]
       .filter(Boolean)

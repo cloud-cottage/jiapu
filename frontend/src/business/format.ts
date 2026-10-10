@@ -2,22 +2,32 @@
  * 展示层格式化工具。
  *
  * 编号前缀约定：Gramps 记录类型前缀 I=Individual（个人）/ F=Family（家庭）。
- * **全站唯一编号**（docs/id-system.spec.md）：新节点人编号 I + 6 位（I000052），
- * 中华世本保留既有 4 位原号（I0052）；两类都按「剥离 I 前缀」展示（000052 / 0052），
- * 便于人工引用与跨树定位。存储/引用层必须保留前缀（编号全站唯一靠前缀 + 数字区分人/家族）。
+ * **全站唯一编号**（docs/id-system.spec.md；2026-10-10 新口径）：
+ * - 人：**存储 = 9 位纯数字**（`000000052`，无 `I`）；**展示 = `I` + 存值**（`I000000052`）。
+ * - 家庭：`F` + 6 位（`F000012`），展示原样。
+ * 过渡期新旧形态互认：入参 `I0052`（旧）/ `I000052` / `000000052` 一律归一化后加 `I` 前缀展示。
+ * 存储/引用层不得带 `I` 前缀（人号靠纯数字 + 家庭号靠 `F` 前缀区分）。
  */
+const PERSON_ID_WIDTH = 9;
+
 export function personIdDisplay(id?: string | null): string {
-  if (!id) return '';
-  // 仅当「I + 纯数字」时剥离首字母；其它形态（异常/无前缀/含字母）原样展示
-  return /^I\d+$/.test(id) ? id.slice(1) : id;
+  const s = (id || '').trim();
+  if (!s) return '';
+  const m = s.match(/^([IiFf]?)(\d+)$/);
+  // 异常 / 含其它字母（handle 等）→ 原样展示（既有兜底不丢）
+  if (!m) return s;
+  // 家庭编号：原样展示（F 前缀保留）
+  if (m[1].toUpperCase() === 'F') return s;
+  // 人：补零/归一（去可选前缀 + 去前导零）后加 I 前缀 → I000000052
+  return `I${String(parseInt(m[2], 10)).padStart(PERSON_ID_WIDTH, '0')}`;
 }
 
 /**
  * 「编号」输入框的统一提示（docs/id-system.spec.md §5）：
- * 全局编号（如 000052）或 handle —— 全局编号全站唯一定位，**无需再选目标家族树**。
+ * 全局编号（如 I000000052）或 handle —— 全局编号全站唯一定位，**无需再选目标家族树**。
  */
-export const PERSON_REF_HINT = '全局编号（如 000052）或 handle';
-export const PERSON_REF_PLACEHOLDER = '全局编号（如 000052）或 handle';
+export const PERSON_REF_HINT = '全局编号（如 I000000052）或 handle';
+export const PERSON_REF_PLACEHOLDER = '全局编号（如 I000000052）或 handle';
 
 /**
  * 生卒日期展示统一格式化（档案/列表共用，避免各处手写转换不一致）。

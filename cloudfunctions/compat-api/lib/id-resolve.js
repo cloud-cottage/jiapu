@@ -3,10 +3,10 @@
  *
  * `resolveNode(ref, treeId?, opts?)` → `{ tree_id, handle, gramps_id, matched }` | null
  *
- * 接受的写法：
+ * 接受的写法（新旧形态互认：**去可选前缀 + 去前导零比数值**）：
  * | 输入 | 示例 | 说明 |
  * |---|---|---|
- * | 全局编号 | `I000052` / `000052` | 全站唯一定位，**不需要指定树** |
+ * | 全局编号（新/旧人号） | `000000052` / `I000000052` / `000052` / `I000052` / `0052` / `I0052` / `52` | 全站唯一定位，**不需要指定树** |
  * | handle | `10400594c54f5203f61bf4fa4b20` | 精确锁定（主键） |
  * | 树内旧号（过渡期） | `0052` + `tree_id` | 兼容历史输入（迁移前的树内序号 / legacy_gramps_id） |
  *
@@ -22,11 +22,11 @@
  * 传入 F 开头的编号会被当作「非人物引用」→ 返回 null。
  */
 import { getTree, listTreeIds, getAllDetails } from './store.js';
-import { formatId, numberOfId, parseGlobalId, SEQ_PERSON } from './id-seq.js';
+import { formatId, idKey, numberOfId, parseGlobalId, SEQ_PERSON } from './id-seq.js';
 
 const HK_RE = /^[0-9a-f]{16,}$/i;
 
-/** 树 JSON 里按**精确**人读编号找 handle（全局编号用；字符串等价，大小写不敏感） */
+/** 树 JSON 里按**精确存号**找 handle（新形态全局编号用；字符串等价，大小写不敏感） */
 function findByExactId(tree, wantId) {
   const want = String(wantId || '').toUpperCase();
   for (const p of Object.values(tree?.people || {})) {
@@ -35,44 +35,25 @@ function findByExactId(tree, wantId) {
   return '';
 }
 
-/** 旧号（legacy）候选串集合：`0052` / `I0052` / `I000052` 互认 */
-function legacyVariants(ref) {
-  const num = numberOfId(ref);
-  const out = new Set();
-  const raw = String(ref || '').trim().toUpperCase();
-  if (raw) out.add(raw);
-  if (num !== null) {
-    out.add(String(num));
-    out.add(`I${num}`);
-    out.add(String(num).padStart(4, '0'));
-    out.add(`I${String(num).padStart(4, '0')}`);
-    out.add(formatId(SEQ_PERSON, num));
-  }
-  return out;
-}
-
-function legacyHit(node, variants) {
+/** 旧号（legacy）候选：与 ref **数值等价**（去可选前缀 + 去前导零），共享判据 = id-seq.idKey */
+function legacyHit(node, wantKey) {
   const legacy = node?.legacy_gramps_id;
   if (!legacy) return false;
-  const up = String(legacy).trim().toUpperCase();
-  if (variants.has(up)) return true;
-  const n = numberOfId(up);
-  return n !== null && variants.has(String(n)) ? true : false;
+  return idKey(legacy) === wantKey;
 }
 
 /** 树内旧号解析：数值等价 gramps_id → 树内 legacy_gramps_id → 详情文档 legacy_gramps_id */
-async function findLocalLegacy(tree, treeId, variants, { withDetails = true } = {}) {
+async function findLocalLegacy(tree, treeId, wantKey, { withDetails = true } = {}) {
+  if (!wantKey) return '';
   for (const p of Object.values(tree?.people || {})) {
     if (!p?.gramps_id) continue;
-    const n = numberOfId(p.gramps_id);
-    const raw = String(p.gramps_id).trim().toUpperCase();
-    if (variants.has(raw) || (n !== null && variants.has(String(n)))) return p.handle;
-    if (legacyHit(p, variants)) return p.handle;
+    if (idKey(p.gramps_id) === wantKey) return p.handle;
+    if (legacyHit(p, wantKey)) return p.handle;
   }
   if (!withDetails) return '';
   try {
     for (const d of await getAllDetails(treeId)) {
-      if (legacyHit(d, variants)) return d.handle;
+      if (legacyHit(d, wantKey)) return d.handle;
     }
   } catch {
     /* 详情目录不可用（云端/无详情）→ 忽略 */
@@ -139,7 +120,8 @@ export async function resolveNode(ref, treeId = '', opts = {}) {
     }
   }
   const num = numberOfId(s);
-  const variants = legacyVariants(s);
+  // 新旧形态互认的规范键（去可选前缀 + 去前导零比数值；共享纯函数 id-seq.idKey）
+  const wantKey = idKey(s);
 
   // ② 全局编号（人）：全站唯一 → 命中即锁定，不需要树上下文
   if (parsed && parsed.kind === SEQ_PERSON) {
@@ -155,11 +137,11 @@ export async function resolveNode(ref, treeId = '', opts = {}) {
   // ③ 树内旧号（过渡期）：显式指定目标树时只认该树
   if (scope) {
     const t = await treeOf(scope);
-    const h = await findLocalLegacy(t, scope, variants);
+    const h = await findLocalLegacy(t, scope, wantKey);
     return h ? hit(scope, h, 'legacy') : null;
   }
   if (local) {
-    const h = await findLocalLegacy(await treeOf(local), local, variants);
+    const h = await findLocalLegacy(await treeOf(local), local, wantKey);
     if (h) return hit(local, h, 'legacy');
   }
 
@@ -169,7 +151,7 @@ export async function resolveNode(ref, treeId = '', opts = {}) {
     if (id === local) continue;
     const t = await treeOf(id);
     if (!t?.people) continue;
-    const h = await findLocalLegacy(t, id, variants, { withDetails: false });
+    const h = await findLocalLegacy(t, id, wantKey, { withDetails: false });
     if (h) hits.push({ tree_id: id, handle: h, name: t.people[h]?.name || '' });
   }
   if (hits.length === 1) return hit(hits[0].tree_id, hits[0].handle, 'legacy');
