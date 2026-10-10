@@ -115,7 +115,21 @@ async function sdkCall(fn) {
 }
 
 function getApp() {
-  if (!app) app = cloudbase.init({ env: ENV, ...(process.env.CB_KEY ? { accessKey: process.env.CB_KEY } : {}) });
+  if (!app) {
+    // 凭据优先级（高 → 低），三者互不破坏：
+    //   ① CB_SECRET_ID + CB_SECRET_KEY —— 标准长期密钥（腾讯云 API 密钥，SDK 原生支持，见 types/index.d.ts:191-192）
+    //   ② CB_KEY —— 现有 accessKey 形态（行为不变）
+    //   ③ 都没有 —— 云函数内隐式身份（维持原兑底，不抛新错）
+    // 安全：只读凭据、绝不打印 / 落盘任何密钥值。
+    const { CB_SECRET_ID, CB_SECRET_KEY, CB_KEY } = process.env;
+    const creds =
+      CB_SECRET_ID && CB_SECRET_KEY
+        ? { secretId: CB_SECRET_ID, secretKey: CB_SECRET_KEY }
+        : CB_KEY
+          ? { accessKey: CB_KEY }
+          : {};
+    app = cloudbase.init({ env: ENV, ...creds });
+  }
   return app;
 }
 

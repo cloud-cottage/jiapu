@@ -35,7 +35,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '../../..');
 const MOD_SRC = path.join(HERE, 'task-center.js');
 const PKG_FILE = path.join(REPO, 'package.json');
-const REAL_OUT = path.join(REPO, 'migrate-output');
+const REAL_OUT = process.env.COMPAT_REAL_OUT || path.join(REPO, 'migrate-output');
 const REAL_CONFIG = path.join(REPO, 'config');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'jiazu-taskcenter-'));

@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '../../..');
 const REAL_META = path.join(REPO, 'config', 'tree-meta.json');
-const REAL_OUT = path.join(REPO, 'migrate-output');
+const REAL_OUT = process.env.COMPAT_REAL_OUT || path.join(REPO, 'migrate-output');
 const REAL_TREES = path.join(REAL_OUT, 'trees');
 const REAL_COLLECTIONS = path.join(REAL_OUT, 'collections');
 

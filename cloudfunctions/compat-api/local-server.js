@@ -6,6 +6,9 @@
  *   COMPAT_SOURCE=local node cloudfunctions/compat-api/local-server.js [port]
  *   （local 模式读 migrate-output/ + config/tree-meta.json，无需 CloudBase 凭据）
  *   COMPAT_SOURCE=cloud CB_ENV=<env> CB_KEY=<key> node cloudfunctions/compat-api/local-server.js [port]
+ *   COMPAT_SOURCE=cloud CB_ENV=<env> CB_SECRET_ID=<id> CB_SECRET_KEY=<key> node cloudfunctions/compat-api/local-server.js [port]
+ *   （cloud 模式凭据优先级：CB_SECRET_ID + CB_SECRET_KEY 同时存在 ⇒ 标准长期密钥；否则回落 CB_KEY ⇒ accessKey；都无 ⇒ 云函数内隐式身份）
+ *   （凭据仅从环境变量读取，不打印、不落盘）
  *
  * 验证: curl -H 'X-Tree-Id: ji_23395_01' http://localhost:3100/people/
  */

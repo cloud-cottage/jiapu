@@ -35,7 +35,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '../../..');
 const INDEX_SRC = fs.readFileSync(path.join(REPO, 'cloudfunctions', 'compat-api', 'index.js'), 'utf8');
 const SCOPE_SRC = fs.readFileSync(path.join(HERE, 'scope.js'), 'utf8');
-const REAL_OUT = path.join(REPO, 'migrate-output');
+const REAL_OUT = process.env.COMPAT_REAL_OUT || path.join(REPO, 'migrate-output');
 const REAL_CONFIG = path.join(REPO, 'config');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'jiazu-anchors-'));

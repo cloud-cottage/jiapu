@@ -32,7 +32,8 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '../../..');
 const REAL_META = path.join(REPO, 'config', 'tree-meta.json');
-const REAL_ASSETS = path.join(REPO, 'migrate-output', 'collections', 'jiapu_assets.json');
+const REAL_OUT = process.env.COMPAT_REAL_OUT || path.join(REPO, 'migrate-output');
+const REAL_ASSETS = path.join(REAL_OUT, 'collections', 'jiapu_assets.json');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'jiazu-geo-hot-'));
 const META_FILE = path.join(TMP, 'tree-meta.json');

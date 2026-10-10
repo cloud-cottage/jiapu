@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { computeAccess, computePersonDepth } from './tree-access.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const treesDir = path.join(__dirname, '..', '..', '..', 'migrate-output', 'trees');
+const treesDir = path.join(process.env.COMPAT_REAL_OUT || path.join(__dirname, '..', '..', '..', 'migrate-output'), 'trees');
 
 function loadTree(treeId) {
   return JSON.parse(fs.readFileSync(path.join(treesDir, `${treeId}.json`), 'utf8'));

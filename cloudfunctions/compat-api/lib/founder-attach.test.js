@@ -17,7 +17,8 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '../../..');
-const REAL_TREES = path.join(REPO, 'migrate-output', 'trees');
+const REAL_OUT = process.env.COMPAT_REAL_OUT || path.join(REPO, 'migrate-output');
+const REAL_TREES = path.join(REAL_OUT, 'trees');
 const REAL_META = path.join(REPO, 'config', 'tree-meta.json');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'jiazu-founder-attach-'));
 process.env.COMPAT_SOURCE = 'local';

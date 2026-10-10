@@ -35,7 +35,7 @@ const REPO = path.resolve(HERE, '../../..');
 const TC_SRC = fs.readFileSync(path.join(HERE, 'task-center.js'), 'utf8');
 const WALLET_SRC = fs.readFileSync(path.join(HERE, 'wallet.js'), 'utf8');
 const PKG_FILE = path.join(REPO, 'package.json');
-const REAL_OUT = path.join(REPO, 'migrate-output');
+const REAL_OUT = process.env.COMPAT_REAL_OUT || path.join(REPO, 'migrate-output');
 const REAL_CONFIG = path.join(REPO, 'config');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'jiazu-signin-'));

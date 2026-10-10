@@ -36,7 +36,7 @@ const INDEX_SRC = fs.readFileSync(path.join(REPO, 'cloudfunctions', 'compat-api'
 const SCOPE_SRC = fs.readFileSync(path.join(HERE, 'scope.js'), 'utf8');
 const INVC_SRC = fs.readFileSync(path.join(HERE, 'invite-codes.js'), 'utf8');
 const UPLOAD_SRC = fs.readFileSync(path.join(REPO, 'scripts', 'upload-migrated-to-cloudbase.mjs'), 'utf8');
-const REAL_OUT = path.join(REPO, 'migrate-output');
+const REAL_OUT = process.env.COMPAT_REAL_OUT || path.join(REPO, 'migrate-output');
 const REAL_CONFIG = path.join(REPO, 'config');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'jiazu-invite-codes-'));
