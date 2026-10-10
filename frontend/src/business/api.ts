@@ -11,6 +11,7 @@
 
 import { getAuthToken } from './auth';
 import { TITLE_DISPLAY_ORDER } from './format';
+import { badgeOf } from './badge';
 import { placeViewOf, placeViewsOf } from './place';
 import type {
   PersonDetail,
@@ -355,6 +356,9 @@ function toPersonSummary(raw: RawPerson): PersonSummary {
   const titles = TITLE_DISPLAY_ORDER.map((k) => (attrVals[k] || '').trim())
     .filter(Boolean)
     .join('·');
+  // 带色称号（契约 docs/person-badge.spec.md）：由 `称号` / `称号色` 两条 attribute 现算；
+  // 无 `称号` ⇒ undefined（`badgeOf` 返回 null，保持老数据兼容：不写该字段）
+  const badge = badgeOf(Object.keys(attrVals).map((k) => ({ key: k, value: attrVals[k] }))) || undefined;
   return {
     handle: raw.handle,
     gramps_id: raw.gramps_id,
@@ -372,6 +376,7 @@ function toPersonSummary(raw: RawPerson): PersonSummary {
     // 显式健在状态优先（compat 已存 is_living，可表达「已故但卒年不详」）；旧数据回退按卒年推断
     is_living: raw.is_living !== undefined ? raw.is_living : !death,
     titles,
+    badge,
     external_mirror: attrVals.external_mirror || '',
     external_tree: externalTree,
     external_link_type: externalLinkType,

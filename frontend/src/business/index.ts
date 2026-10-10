@@ -30,6 +30,20 @@ export {
 } from './jade-ops';
 export { buildPedigreeForest, flattenForest } from './pedigree';
 export { personIdDisplay, dateDisplay, titleLabel, nameWithTitles, attrMapOf, TITLE_ATTR_KEYS, TITLE_DISPLAY_ORDER } from './format';
+// 带色称号（纯逻辑单点；契约 docs/person-badge.spec.md）
+export {
+  BADGE_COLORS,
+  BADGE_COLOR_ORDER,
+  BADGE_COLOR_LABELS,
+  BADGE_DEFAULT_COLOR_KEY,
+  BADGE_DEFAULT_COLOR,
+  BADGE_ATTR_KEYS,
+  isBadgeColorKey,
+  badgeColorHex,
+  badgeOf,
+  canEditBadge,
+} from './badge';
+export type { BadgeColorKey, Badge } from './badge';
 export { provincesOf, citiesOf, countiesOf, resolveNames, pathOfCode, isKnownCode, SHOW_FILTER_NAMES, OVERSEAS_CODE } from './geo';
 export type { GeoProvince, GeoCity, GeoCounty, ResolvedOriginNames, OriginPath } from './geo';
 export { MAX_RESIDENCE_PLACES, emptyPlaceInput, normalizePlace, prunePlaces, placesDirty, placeDisplayOf, placeViewOf, placeViewsOf } from './place';

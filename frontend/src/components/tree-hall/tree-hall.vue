@@ -113,7 +113,7 @@
 
       <!-- 视图内容 -->
       <view v-if="view === 'pedigree'" class="view-body">
-        <TreePedigree :tree-id="treeId" :people-total="peopleTotal" :focus-handle="focusHandle" />
+        <TreePedigree :tree-id="treeId" :people-total="peopleTotal" :focus-handle="focusHandle" :key-markers="keyMarkers" />
       </view>
 
       <!-- 家族消息（审批入口） -->
@@ -412,6 +412,31 @@ const joinNote = ref('');
 const joined = ref(false);
 /** 当前用户在本树绑定的节点 handle（下传给树图：首屏聚焦 + 「我」标记；空串 = 不聚焦，行为与既有版本一致） */
 const focusHandle = ref('');
+
+/**
+ * 带色称号标注（传 TreePedigree 的 `keyMarkers`）：从**本树 people 的 `badge`** 现算（数据驱动）。
+ * 契约 docs/person-badge.spec.md §4-1（所有树均显示；数据来源 = `GET /people/?profile=all` 的既有
+ * `attribute_list`，见该册 §1 末条 —— 零新增路由）。无 `称号` 的节点行为与改造前完全一致。
+ */
+const keyMarkers = ref<Record<string, { label: string; color?: string }>>({});
+
+/** 从本树 people 派生带色称号标注（失败 / 无数据 → 空对象，不渲染 ★行，与既有默认一致） */
+async function loadKeyMarkers() {
+  if (!treeId.value) {
+    keyMarkers.value = {};
+    return;
+  }
+  try {
+    const res = await fetchPersonList(treeId.value, 0, 0);
+    const markers: Record<string, { label: string; color?: string }> = {};
+    for (const p of res.data) {
+      if (p.handle && p.badge) markers[p.handle] = { label: p.badge.label, color: p.badge.color };
+    }
+    keyMarkers.value = markers;
+  } catch {
+    keyMarkers.value = {};
+  }
+}
 
 // 文献地址（tree-meta archive_url）
 const archiveUrl = computed(() => hallInfo.value?.archive_url || '');
@@ -740,6 +765,8 @@ async function loadAll() {
     } catch (e) {
       console.error('加载谱系可见范围失败:', e);
     }
+    // 带色称号标注（数据驱动；契约 docs/person-badge.spec.md §4-1）：仅普通家族树树图需要
+    await loadKeyMarkers();
   }
 
   // 绑定状态：member（已加入）隐藏「申请加入」入口
@@ -765,6 +792,7 @@ function resetState() {
   peopleTotal.value = 0;
   joined.value = false;
   focusHandle.value = '';
+  keyMarkers.value = {};
   hasClan.value = false;
   canManageTree.value = false;
   view.value = 'pedigree';

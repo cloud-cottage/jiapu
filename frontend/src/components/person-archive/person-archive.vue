@@ -152,6 +152,12 @@
           <t-cell v-if="titleMap['封号']" title="封号" :note="titleMap['封号']" />
           <t-cell v-if="titleMap['谥号']" title="谥号" :note="titleMap['谥号']" />
           <t-cell v-if="titleMap['号']" title="号" :note="titleMap['号']" />
+          <!-- 带色称号（契约 docs/person-badge.spec.md §4-2）：仅在有 称号 时显示，文字按 称号色 着色 -->
+          <t-cell v-if="badgeView" title="称号">
+            <template #note>
+              <text :style="{ color: badgeView.color }">{{ badgeView.label }}</text>
+            </template>
+          </t-cell>
         </t-cell-group>
       </view>
 
@@ -399,6 +405,29 @@
           <t-input :value="editForm.hao" placeholder="如：青莲居士" class="field"
           @update:value="(v: any) => editForm.hao = v"
           />
+
+          <!-- 带色称号（契约 docs/person-badge.spec.md）：填/改门槛 tree_steward 及以上（总谱仅 chief_editor）。
+               权限不足 ⇒ 不渲染本两栏（§5）；只读镜像已被外层 v-if="!readonlyMode" 挡掉。 -->
+          <template v-if="canEditBadgeHere">
+            <text class="field-label">称号（带色标注，选填）</text>
+            <t-input :value="editForm.badgeLabel" placeholder="如：人文始祖 / 元圣" class="field"
+            @update:value="(v: any) => editForm.badgeLabel = v"
+            />
+            <text class="field-label">称号颜色</text>
+            <view class="badge-colors">
+              <view
+                v-for="c in BADGE_COLOR_ORDER"
+                :key="c"
+                class="badge-color-dot"
+                :class="{ active: editForm.badgeColor === c }"
+                :style="{ background: BADGE_COLORS[c] }"
+                @click="editForm.badgeColor = c"
+              >
+                <text v-if="editForm.badgeColor === c" class="badge-color-check">✓</text>
+              </view>
+            </view>
+            <text class="field-hint">{{ BADGE_COLOR_LABELS[editForm.badgeColor] }}（色板 6 色；清空称号即同时清除颜色）</text>
+          </template>
 
           <!-- 改挂父节点（管理员）：填全局编号或 handle → 本节点改挂到该节点家族下（槽位按新父节点性别）；
                编号属于别的家族树时 = 跨树迁移（自动识别所属树，无需再选目标树；编号终身不变） -->
@@ -853,7 +882,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import { fetchPerson, fetchPersonForEdit, savePerson, savePersonPlaces, isLiving, API_BASE, fetchTreeMetaRemote, searchPeople, searchMarriageCandidates, removeBranchLink, reparentNode, deleteNode, marriageRequest, marryEnd, founderRequest, fetchFounderRequests, attachFounder, detachFounder, resetFounder, createClan, fetchClans, treeKindLabel, treeKindOf, feeText, isAssetInsufficientError, showAssetInsufficientGuide, fetchPersonList, fetchFamilyList, fetchSpirit, postConvergeClan, mirrorNoteText, mirrorReadonlyViewOf, treeDisplayTitleOf, MAX_RESIDENCE_PLACES, emptyPlaceInput, normalizePlace, prunePlaces, placesDirty, placeDisplayOf, fetchMyAnchor, createInviteCode, inviteShortUrl, inviteLongUrl } from '@/business';
+import { fetchPerson, fetchPersonForEdit, savePerson, savePersonPlaces, isLiving, API_BASE, fetchTreeMetaRemote, searchPeople, searchMarriageCandidates, removeBranchLink, reparentNode, deleteNode, marriageRequest, marryEnd, founderRequest, fetchFounderRequests, attachFounder, detachFounder, resetFounder, createClan, fetchClans, treeKindLabel, treeKindOf, feeText, isAssetInsufficientError, showAssetInsufficientGuide, fetchPersonList, fetchFamilyList, fetchSpirit, postConvergeClan, mirrorNoteText, mirrorReadonlyViewOf, treeDisplayTitleOf, MAX_RESIDENCE_PLACES, emptyPlaceInput, normalizePlace, prunePlaces, placesDirty, placeDisplayOf, fetchMyAnchor, createInviteCode, inviteShortUrl, inviteLongUrl, badgeOf, canEditBadge, BADGE_COLOR_ORDER, BADGE_COLORS, BADGE_COLOR_LABELS, BADGE_DEFAULT_COLOR_KEY, BADGE_ATTR_KEYS, isBadgeColorKey } from '@/business';
+import type { BadgeColorKey } from '@/business';
 import { isAuthenticated, authState, getAuthToken } from '@/business/auth';
 // 邀请域文案单点（批 C-2 入口一）：组件内**不得**散落用户可见字面
 import {
@@ -1857,6 +1887,9 @@ const editForm = ref({
   hao: '',
   feng: '',
   shi: '',
+  /** 带色称号（契约 docs/person-badge.spec.md）：称号文字 + 色板键（默认金棕）。仅 tree_steward+ 可编辑 */
+  badgeLabel: '',
+  badgeColor: BADGE_DEFAULT_COLOR_KEY as BadgeColorKey,
   /** 改挂父节点：填全局编号（如 000052）/ handle；留空 = 不改。
    *  编号属于别的家族树 → 自动跨树迁移（后端按全局编号识别所属树，无需选目标树） */
   parent_id: '',
@@ -1879,8 +1912,12 @@ function personEditDirty(cur: any, base: any): boolean {
   const genderOf = (f: any) => editNorm(f?.gender).toUpperCase();
   // 健在 ⇒ 保存时不写卒年（与 doSave / 后端 applyLifespan 同口径）→ 卒年按空值比对
   const deathOf = (f: any) => (liveOf(f) ? '' : editNorm(f?.death_date));
-  for (const k of ['surname', 'first_name', 'hao', 'feng', 'shi']) {
+  for (const k of ['surname', 'first_name', 'hao', 'feng', 'shi', 'badgeLabel']) {
     if (editNorm(cur?.[k]) !== editNorm(base?.[k])) return true;
+  }
+  // 带色称号的颜色：仅当（任一侧）称号文字非空时才参与比对（称号空 ⇒ 颜色无意义，提交也不写）
+  if (editNorm(cur?.badgeLabel) || editNorm(base?.badgeLabel)) {
+    if (editNorm(cur?.badgeColor) !== editNorm(base?.badgeColor)) return true;
   }
   if (genderOf(cur) !== genderOf(base)) return true;
   if (editNorm(cur?.birth_date) !== editNorm(base?.birth_date)) return true;
@@ -2206,6 +2243,18 @@ const chainGen = computed<number | undefined>(() => {
 /** 称号三字段（号/封号/谥号）取值映射 */
 const titleMap = computed(() => attrMapOf(person.value?.attributes));
 
+/**
+ * 带色称号（契约 docs/person-badge.spec.md §4-2）：由 `称号` / `称号色` 两条 attribute 现算。
+ * 无 `称号` ⇒ `null`（详情页据此不渲染）。`color` 已是色值（色缺失/非法 ⇒ 默认金棕）。
+ */
+const badgeView = computed(() => badgeOf(person.value?.attributes));
+
+/**
+ * 带色称号编辑门槛（契约 docs/person-badge.spec.md §5；与后端同口径**单点** `canEditBadge`）：
+ * `tree_steward` 及以上；总谱（zhonghua）仅 `chief_editor`。权限不足 / 只读镜像 ⇒ 不渲染编辑控件。
+ */
+const canEditBadgeHere = computed(() => canEditBadge(authState.role, treeId.value));
+
 /** 姓名旁称号短标签（封号优先） */
 const titleTag = computed(() => titleLabel(person.value?.attributes));
 
@@ -2405,6 +2454,10 @@ async function openEdit() {
       hao: attrByKey['号'] || '',
       feng: attrByKey['封号'] || '',
       shi: attrByKey['谥号'] || '',
+      badgeLabel: attrByKey[BADGE_ATTR_KEYS.LABEL] || '',
+      badgeColor: (isBadgeColorKey(attrByKey[BADGE_ATTR_KEYS.COLOR])
+        ? attrByKey[BADGE_ATTR_KEYS.COLOR]
+        : BADGE_DEFAULT_COLOR_KEY) as BadgeColorKey,
       parent_id: '',
       events,
     };
@@ -2594,18 +2647,29 @@ async function doSave() {
       raw.birth_place = normalizePlace(editForm.value.birth_place);
       raw.residence_places = residenceRows;
       // 称号三字段（号/封号/谥号）：合并进 attribute_list —— 保留其它属性，清空即删除该项
-      const titleKeys = ['号', '封号', '谥号'];
-      const titleValues: Record<string, string> = {
+      const attrKeys = ['号', '封号', '谥号'];
+      const attrValues: Record<string, string> = {
         号: (editForm.value.hao || '').trim(),
         封号: (editForm.value.feng || '').trim(),
         谥号: (editForm.value.shi || '').trim(),
       };
+      // 带色称号（契约 docs/person-badge.spec.md §2 / §5）：仅当本用户达编辑门槛（tree_steward+；总谱仅
+      // chief_editor）才合并 `称号` / `称号色`；无权限者**保持既有两条 attribute 原样**（绝不改动）。
+      // ⚠️ attribute_list 是**全量替换**语义 ⇒ 必须在本节点**既有** attributes 基础上合并/覆写后再全量传，
+      // 绝不只传这两条（否则会静默清掉 RIN/_UID/external_relation_note/封号/谥号/号 等）。
+      if (canEditBadgeHere.value) {
+        attrKeys.push(BADGE_ATTR_KEYS.LABEL, BADGE_ATTR_KEYS.COLOR);
+        const badgeLabel = (editForm.value.badgeLabel || '').trim();
+        // 称号置空 ⇒ 同时移除 称号色（不允许「有颜色无文字」悬空态，spec §2-2）
+        attrValues[BADGE_ATTR_KEYS.LABEL] = badgeLabel;
+        attrValues[BADGE_ATTR_KEYS.COLOR] = badgeLabel ? editForm.value.badgeColor : '';
+      }
       const keptAttrs = (raw.attribute_list || []).filter((a: any) => {
         const k = typeof a.type === 'string' ? a.type : a.type?.string || '';
-        return !titleKeys.includes(k);
+        return !attrKeys.includes(k);
       });
-      for (const k of titleKeys) {
-        if (titleValues[k]) keptAttrs.push({ type: k, value: titleValues[k] });
+      for (const k of attrKeys) {
+        if (attrValues[k]) keptAttrs.push({ type: k, value: attrValues[k] });
       }
       raw.attribute_list = keptAttrs;
       // 扣费闸门：人物内容修改 1 片 / 节点（docs/economy-fee.spec.md §3-1 #1）→ 响应带 fee
@@ -2957,6 +3021,14 @@ async function doEndMarriage() {
 .modal-body { flex: 1; max-height: 55vh; }
 .field-label { font-size: 13px; color: #8B4513; font-weight: bold; display: block; margin: 12px 0 6px; }
 .field-hint { font-size: 12px; color: #A1887F; display: block; margin: 4px 0 2px; }
+/* 带色称号色板（契约 docs/person-badge.spec.md §3）：6 色圆点选择器 */
+.badge-colors { display: flex; align-items: center; gap: 10px; margin: 4px 0 2px; }
+.badge-color-dot {
+  width: 28px; height: 28px; border-radius: 50%; border: 2px solid #E0D5C8;
+  display: flex; align-items: center; justify-content: center;
+}
+.badge-color-dot.active { border-color: #3E2723; box-shadow: 0 0 0 2px rgba(62,39,35,0.2); }
+.badge-color-check { color: #fff; font-size: 14px; line-height: 1; }
 .field { margin-bottom: 8px; }
 .living-block { margin-top: 2px; }
 .event-edit-row { background: #FBF8F4; border-radius: 8px; padding: 8px; margin-bottom: 8px; }

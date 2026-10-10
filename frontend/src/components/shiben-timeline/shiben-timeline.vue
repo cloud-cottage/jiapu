@@ -69,7 +69,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { fetchTreeRank, fetchMasterTree, API_BASE, fetchMyAnchor } from '@/business';
+import { fetchTreeRank, fetchMasterTree, API_BASE, fetchMyAnchor, badgeOf } from '@/business';
 import type { TreeRankInfo } from '@/business/api';
 import { authState, isAuthenticated, getAuthToken } from '@/business/auth';
 import { personIdDisplay, TITLE_DISPLAY_ORDER } from '@/business/format';
@@ -201,8 +201,22 @@ async function fetchChainData(): Promise<any[]> {
   if (!res.ok) throw new Error('加载总谱失败');
   const raw = await res.json();
   const chain: any[] = [];
-  /** 本次命中的关键节点标注（handle → 标签/主题色） */
-  const markers: Record<string, { label: string; color?: string }> = {};
+  /**
+   * 数据优先：本树 people 的 `称号` / `称号色` 现算标注（**所有节点，不限链上**）。
+   * 契约 docs/person-badge.spec.md §2；旧硬编码 KEY_NODES 仅作兜底（见下）。
+   */
+  const dataMarkers: Record<string, { label: string; color?: string }> = {};
+  for (const p of raw) {
+    if (!p.handle) continue;
+    const attrs: Record<string, string> = {};
+    for (const a of p.attribute_list || []) {
+      if (typeof a.type === 'string') attrs[a.type] = a.value;
+    }
+    const badge = badgeOf(Object.keys(attrs).map((k) => ({ key: k, value: attrs[k] })));
+    if (badge) dataMarkers[p.handle] = { label: badge.label, color: badge.color };
+  }
+  /** 本次命中的关键节点标注（handle → 标签/主题色）：数据优先，KEY_NODES 常量兜底 */
+  const markers: Record<string, { label: string; color?: string }> = { ...dataMarkers };
   for (const p of raw) {
     const attrs: Record<string, string> = {};
     for (const a of p.attribute_list || []) {
@@ -215,10 +229,12 @@ async function fetchChainData(): Promise<any[]> {
       const fn = pn.first_name || '';
       // 显示名：姓在前（文子季 → 季文子）
       const displayName = sn && fn ? `${sn}${fn}` : `${fn}${sn}`.trim();
-      // 关键节点（KEY_NODES）：命中则记入 keyMarkers，由纵向树图画「★标签」+ 主题色
-      const keyInfo = matchKeyNode(fn, sn, attrs);
-      if (keyInfo) {
-        markers[p.handle] = { label: keyInfo.tag, color: KEY_THEME_COLORS[keyInfo.theme] };
+      // 关键节点（KEY_NODES）：数据无 badge 时命中常量则记入 keyMarkers（★标签 + 主题色）——兜底
+      if (!markers[p.handle]) {
+        const keyInfo = matchKeyNode(fn, sn, attrs);
+        if (keyInfo) {
+          markers[p.handle] = { label: keyInfo.tag, color: KEY_THEME_COLORS[keyInfo.theme] };
+        }
       }
       chain.push({
         handle: p.handle,

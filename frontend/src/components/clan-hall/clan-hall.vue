@@ -100,6 +100,7 @@
           :tree-id="treeId"
           default-layout="vertical"
           tree-manage
+          :key-markers="keyMarkers"
           @tree-changed="load"
         />
       </view>
@@ -216,7 +217,7 @@
  * 统计口径：祖谱人数不计入世本；普通树人数不计入祖谱。镜像分流判据 = `isRegistrationMirror`。
  */
 import { computed, onMounted, ref, watch } from 'vue';
-import { fetchClanInfo, openTreeHome, updateTreeMeta, fetchTreeMetaRemote, fetchMyAnchor, fetchPerson, treeKindOf } from '@/business';
+import { fetchClanInfo, openTreeHome, updateTreeMeta, fetchTreeMetaRemote, fetchMyAnchor, fetchPerson, fetchPersonList, treeKindOf } from '@/business';
 import type { ClanInfo, ClanMirrorNode } from '@/business/api';
 import type { TreeEntry, SetTreeOriginResult } from '@/business/types';
 import { authState, isAuthenticated, getAuthToken } from '@/business/auth';
@@ -353,6 +354,31 @@ const branches = computed(() => info.value?.branches || []);
 const ownCount = computed(() => info.value?.own_count ?? 0);
 const totalCount = computed(() => ownCount.value + allMirrors.value.length);
 
+/**
+ * 带色称号标注（传 TreePedigree 的 `keyMarkers`）：从**本祖谱自有世代 people 的 `badge`** 现算。
+ * 契约 docs/person-badge.spec.md §4-1（祖谱亦显示；数据来源 = `GET /people/?profile=all` 的既有
+ * `attribute_list`）。无 `称号` 的节点行为与改造前完全一致。
+ */
+const keyMarkers = ref<Record<string, { label: string; color?: string }>>({});
+
+/** 从本祖谱 people 派生带色称号标注（失败 / 无数据 → 空对象） */
+async function loadKeyMarkers() {
+  if (!props.treeId) {
+    keyMarkers.value = {};
+    return;
+  }
+  try {
+    const res = await fetchPersonList(props.treeId, 0, 0);
+    const markers: Record<string, { label: string; color?: string }> = {};
+    for (const p of res.data) {
+      if (p.handle && p.badge) markers[p.handle] = { label: p.badge.label, color: p.badge.color };
+    }
+    keyMarkers.value = markers;
+  } catch {
+    keyMarkers.value = {};
+  }
+}
+
 async function load() {
   if (!props.treeId) {
     error.value = '缺少 tree_id 参数';
@@ -376,6 +402,8 @@ async function load() {
       treeMetaByTree.value = {};
       clanEntry.value = null;
     }
+    // 带色称号标注（数据驱动；契约 docs/person-badge.spec.md §4-1）
+    await loadKeyMarkers();
   } catch (e: any) {
     error.value = e?.message || '加载祖谱失败';
   } finally {

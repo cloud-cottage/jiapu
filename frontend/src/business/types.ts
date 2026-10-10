@@ -98,6 +98,11 @@ export interface PersonSummary {
   is_living: boolean;
   /** 称号串（封号·谥号·号，按「封号→谥号→号」顺序拼接；无称号则空串） */
   titles?: string;
+  /**
+   * 带色称号（读响应派生：由 `称号` / `称号色` 两条 attribute 现算；**无 `称号` ⇒ 该字段缺省**）。
+   * `color` 已是**色值**（色缺失/非法 ⇒ 默认金棕 `#B26A00`）。契约 `docs/person-badge.spec.md`。
+   */
+  badge?: { label: string; color: string };
   primary_parent_family?: string;
   /** 跨树链接：目标家族树 id（分迁占位 / 出嫁） */
   external_tree?: string;

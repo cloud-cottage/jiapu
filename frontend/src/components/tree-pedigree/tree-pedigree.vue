@@ -716,6 +716,14 @@ function centerOnFocusOnce() {
   });
 }
 
+// 宿主按数据现算 keyMarkers（带色称号；契约 docs/person-badge.spec.md §4-1），可能在组件**首次渲染之后**
+// 才到（宿主异步取数）⇒ 变化时补渲一次（同下方 focusHandle 的「迟到补渲」理由；只重算 series 数据，
+// 不触碰图元尺寸/布局红线）。清空（换树 reload）由 loadData 的正常重载路径覆盖。
+watch(
+  () => props.keyMarkers,
+  () => scheduleRender(),
+);
+
 // 宿主可能在本组件渲染之后才拿到锚点（fetchMyAnchor 异步）。
 // 卡面「★我」标记与高亮色是在 renderChart → decorateTree 时按**当时的** props.focusHandle
 // 烘进 series 数据的 ⇒ 只在 watch 里 centerOnFocusOnce()（只改画布平移、不重算 series）
