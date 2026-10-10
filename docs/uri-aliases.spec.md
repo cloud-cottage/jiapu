@@ -179,3 +179,27 @@
 **另一处发现（不属本批 · 不得写成已修）**
 
 - `frontend/src/App.vue` / `frontend/src/business/cross-tree.ts` 的别名解析用**相对** `fetch('/api/tree-meta')`，而线上 `www.jiapu100.com` **并无 `/api` 映射**（API 在云函数域名上）⇒ 该异步分支**在生产本就不通**（**非本批引入**）。
+
+---
+
+**§10 追记（2026-10-10 上云已执行 · 两处口径纠正 + 三条边界 · 只追加 · 不改本节以上任何行）**
+
+> **本节地位**：本追记**只追加**、**不改 §0–§9 与本 §10 以上任何历史行**（承 `AGENTS.md` §0-4）。**上云动作与部署后冒烟实测的逐条回填**见 `docs/PENDING_DEPLOY.md` **§58-5 回写**；本批**上云动作 / Vercel env `VITE_API_BASE` 变更 / 真源零写入**登记见 `AGENTS.md` **§7 本批追加行**。
+
+**上云现状（Zang 实测）**
+
+- 本批**已由 Zang 统一收口并上线** —— `main` 已推 **`68b38ec..ae62646`**；Vercel 生产部署 **`jiapu-4rlrew632-kevins-projects-f98df261.vercel.app`** = **Ready（1m）**、**`www.jiapu100.com` 已跟随**。
+- **P0 env 已关账**（Zang 实测）：Production env `VITE_API_BASE` 由**旧值（缺 `/api`）**改为 **`https://liwu-d8gek6jjdab1d087c.service.tcloudbase.com/api`** 并**重新构建** —— 线上首页 `bodyLen` **108 → 29171**、`.t-cell` **0 → 14**；线上入口 chunk baked 串含 `tcloudbase.com/api` **× 1**。
+
+**两处口径纠正（Neng 实测 · 第二轮外部复核 · 必登）**
+
+- **纠正 ①（「仅改 hash 不桥接」的边界收窄 —— 只对根路径 `/` 与 `/pages/**` 成立）**：本批语境中「**已加载页面仅改 hash 不桥接**」这一边界**须收窄** —— **只对根路径 `/` 与 `/pages/**` 成立**；**别名页（`/z/`、`/ji_23395_01`）上仅改 hash，会被本批新增的 `frontend/src/App.vue` popstate 兜底桥接**（**Neng 实测**）⇒ **不得**再把该边界概括为「已加载页面」。
+- **纠正 ②（线上 `/api/tree-meta` 由 404 变 200 HTML · 结论不变）**：本节末尾「另一处发现（不属本批 · 不得写成已修）」的读数**已被 catch-all rewrite 改变** —— 线上 `/api/tree-meta` 现返 **200 `text/html`**（= `index.html`）；失败点由 **404** 变为 **`r.json()` 解析异常且被 `.catch` 吞** ⇒ **结论不变**（`frontend/src/business/cross-tree.ts` 的 `openTreeHome()` 可读别名改写、`frontend/src/App.vue` 的 `resolveHostTree()` 子域定位，在线上**静默失效**；**直载别名因正则短路仍正常**）；**属既有事项、非本批引入**。
+
+**三条边界（如实登 · 不得美化 · Neng 实测）**
+
+- **边界 ①（全站无真 404）**：catch-all `rewrite` ⇒ **全站无真 404**；未知路径（实测：`/pages/nonexistent/page`、`/foo_bar`、`/xyz`）返 **200 + 空白 SPA shell** ⇒ **SEO / 监控口径需知悉**。
+- **边界 ②（邀请短链仍为 `#` 形）**：邀请短链**仍以 `#/pages/invite/landing?c=` 形态生成**（`frontend/src/business/api.ts` 未改）；**打开被桥接、地址栏最终无 `#`**。
+- **边界 ③（首页 `🌐` 为原位视图切换）**：首页 `🌐` 为**原位视图切换**（**切世博后地址仍 `/`**，**既有设计**）。
+
+（**并登**：本批**真源零写入** —— 未触碰 `migrate-output/**` 与 `config/tree-meta.json`；**双会话冲突与 Kevin 仲裁（A 为准 · owner = Zang · B 已撤回存档）**登记见 `AGENTS.md` **§7 本批追加行**。）

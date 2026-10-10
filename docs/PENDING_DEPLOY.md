@@ -6168,6 +6168,17 @@ cd frontend && VITE_API_BASE=https://liwu-d8gek6jjdab1d087c.service.tcloudbase.c
 3. **地址形态**：地址栏**首页应为裸域**、**内部页不得出现 `#`**；
 4. **静态资源不受影响**：`rewrites` 采用「**先文件系统、后 `rewrites`**」优先级 ⇒ 静态资源（`/assets/*`）应正常 200。
 
+> **§58-5 回写（2026-10-10 上云已执行 · 逐条回填实测结论 · 追加行 · 不改 §58-0 – §58-4 与本 §58-5 以上各行）**：本批**已由 Zang 统一收口并上线**（口径真源 = `docs/uri-aliases.spec.md` **§10** + **§10 追记**；上云动作 / Vercel env `VITE_API_BASE` 变更 / 真源零写入登记 = `AGENTS.md` **§7 本批追加行**）。下列读数**逐条标注来源**（Zang 实测 / Neng 实测），**不推算、不预填**：
+
+- **P0 env 关账**（对应 §58-4 / §58-0 #3）：Vercel 项目 `kevins-projects-f98df261/jiapu` 的 **Production env `VITE_API_BASE` 旧值缺 `/api`**（自 R4 起存在）已改为 **`https://liwu-d8gek6jjdab1d087c.service.tcloudbase.com/api`** 并**重新构建** ——（Zang 实测 · 改前 → 改后）线上首页 `bodyLen` **108 → 29171**、`.t-cell` **0 → 14**（改前文案含「暂无已上线的家族数字馆」）、线上入口 chunk baked 串含 `tcloudbase.com/api` **× 1**。⇒ **P0 阻塞项已关账**。
+- **判据 1 首页数据面**（Zang 实测）：线上首页 `bodyLen` = **29171**、**不再出现空态文案**「暂无已上线的家族数字馆」。
+- **判据 2 首屏路径 200**（Zang 实测 · 预览与生产）：`/`、`/pages/mine/index`、`/z/`、`/z/ji_23395`、`/ji_23395_01` 均 **200 text/html**（**改前** `/z/`、`/ji_23395_01`、`/pages/*` 均 **404**）。
+- **判据 3 地址形态**（Zang 实测）：首页 `location.href` 恰为 **`https://www.jiapu100.com/`**（**无 `#`**）；「我的」tab → `/pages/mine/index`、回首页 → `/`；旧 `#/` 链在**新文档加载**下逐条桥接（`/#/pages/invite/landing?c=` → `/pages/invite/landing?c=`；`/#/pages/hall/index?tree_id=` → 同形 path；`/#/z/` → `/z/`）；首页 ↔ 树页 back / forward 不白屏。
+- **判据 4 静态资源不受影响 · 宿主层 rewrite 已验**（Zang 实测）：`/assets/index-DjxNOxNE.js` = **200 `application/javascript` 310449 B**（catch-all **未**吞静态资源）⇒ §58-0 #2「`rewrites` 在 Vercel 上生效」冒烟项关闭。
+- **上云与部署**（Zang 实测）：`main` 已推 **`68b38ec..ae62646`**；Vercel 生产部署 **`jiapu-4rlrew632-kevins-projects-f98df261.vercel.app`** = **Ready（1m）**、**`www.jiapu100.com` 已跟随**；校验分支 `verify/h5-history-spa` 及预览部署 `jiapu-nssajfwad-…` 已用完并**删除分支**（**部署记录保留**）。
+- **独立质检（Neng · 第二轮外部复核）= PASS**：13 条判据全过（含三 tab 地址逐条无 `#`、6 条深链直载 + 真实 reload 不回退、静态资源真身校验、旧链桥接 7 条、`/z/zhonghua` 与 `/zhonghua` 全收敛 `/z/`、入口 chunk `createWebHashHistory`=0 / `hashchange`=0 / `popstate`=3、本地副本 `build:h5` / `build:mp-weixin` EXIT 0、`type-check` EXIT 0、`npm test` **674 / 674 / 0** EXIT 0、注册数 40 == 磁盘 40、mp unminified 对照 9 个新标识串全 0 命中、`dist/build/mp-weixin/pages/index/index.js` = 8911 B）。**两处口径纠正 + 三条边界**见 `docs/uri-aliases.spec.md` **§10 追记**。
+- **真源零写入自证**：本批**未触碰** `migrate-output/**` 与 `config/tree-meta.json`（md5 前后同值；登记见 `AGENTS.md` **§7 本批追加行**）。
+
 ### §58-6 明确**不需要**上云的东西
 
 - 本批为**纯前端 + 宿主配置批次**：**无新集合 / 无数据修正 / 无云函数路由改动 / 无 `pages.json` 改动**；`migrate-output/**` 与 `config/tree-meta.json` 本批未被触碰。
