@@ -6109,3 +6109,72 @@ wc -c < cloudfunctions/deploy/compat-api/index.js; md5 -q cloudfunctions/deploy/
 - **状态** ＝ **「R4（Vercel 面）已部署 · `jiapu100.com` 已上线」**；本节**只追加、不改 §57-0 ～ §57-8 任何历史行**（承 §0-4）。
 - **不得写「小程序已上传」**（**未做**）；**不得写「全部完成」**（**小程序上传仍待 Kevin**）。
 - **登记 ≠ 重跑**：本节未跑任何 `vercel` / `tcb` / 打包写命令，未动真源 / 云端。
+
+---
+
+## §58 H5 路由 hash → history（首页裸域）+ Vercel SPA rewrite 批次（**纯前端 + 宿主配置** · **无新集合 · 无数据修正 · 无云函数改动 · 无 pages.json 改动** · 本阶段不上云 · 只登记 · 2026-10-10 · **只追加 · 不改 §0–§57 任何行**）（Jing 制度员）
+
+> **规格 / 口径**：`docs/uri-aliases.spec.md` **§10**（本批新增节：路由模式开关与取值、入口页 `path='/'` 与别名、首页裸域口径、SPA rewrite 与优先级、popstate 别名兜底与首页地址归一、两条已修缺陷、一条已知边界）。
+> **本批性质**：**纯前端 + 宿主配置批次**。**云端动作 = 无**（**无新集合**（`COLLECTIONS` 不动）· **无数据修正**（`migrate-output/**` 与 `config/tree-meta.json` 本批未被触碰）· **无云函数 `compat-api` 改动**（不新增 / 不变更任何路由）· **无 `pages.json` 改动**）。**本阶段不上云 · 只登记**（承 §57 形态）。
+> **已实测事实（逐字取自本批派单 · 不得自行添数字）**：见 §58-1 / §58-2 / §58-3 / §58-4 各行。
+
+### §58-0 批次定性与动作面（**2 项必登 + 1 项阻塞必改**）
+
+| # | 目标 | 动作 | 阻塞 |
+|---|---|---|---|
+| 1 | 前端 H5 产物 | **必须重打** `build:h5`（见 §58-2）；**不重打 ⇒ 线上仍旧地址（首页带 `#/`）** | 需先改 env（见 §58-4 P0） |
+| 2 | Vercel 配置 | `frontend/vercel.json` **新增 SPA `rewrites`**（见 §58-2）；**不更新 ⇒ 宿主层无 SPA fallback，`/z/` 、`/<tree_id>` 等首屏路径 404** | 无 |
+| ⚠️ 3 | **env（必改项）** | Vercel 项目 env 的 **`VITE_API_BASE` 缺 `/api` 后缀 ⇒ 数据全 404**（见 §58-4 P0）；**上云前必须先改 env、再构建** | **本批上云前置 = 改 env** |
+
+> ⚠️ **云端动作三项「无」**（逐字）：**无新集合** / **无数据修正** / **无云函数 `compat-api` 改动**。
+
+### §58-1 为什么需要
+
+- 本批把 **H5 由 hash 路由改为 history 路由**（目标：**首页地址为裸域**），并给 `frontend/vercel.json` **加 SPA fallback `rewrite`**。
+- **不重打产物** ⇒ 线上仍是**旧地址**（**首页带 `#/`**）；**不更新 Vercel 配置**（`frontend/vercel.json` 未随 `main` 上线）⇒ 宿主层无 SPA fallback，`/z/` 、`/ji_23395_01` 等**可读路径作为首屏地址直连会 404**。
+- 口径与代码事实见 `docs/uri-aliases.spec.md` **§10**（本清单只登记上云动作，**不复写口径**）。
+
+### §58-2 具体命令
+
+```bash
+cd frontend && VITE_API_BASE=https://liwu-d8gek6jjdab1d087c.service.tcloudbase.com/api npm run build:h5
+# 推 main 触发 Vercel 自动构建（项目 kevins-projects-f98df261/jiapu，RootDir=frontend，vercel.json 就在 frontend/）
+```
+
+- **宿主侧**：**推 `main` 触发 Vercel 自动构建**（项目 **`kevins-projects-f98df261/jiapu`**，**RootDir = `frontend`**，`vercel.json` **就在 `frontend/`** —— 承 §57-9 二 / 六的 Git-connected 形态：**`main` push 即触发生产构建**）。**本批不新增托管命令**。
+- ⚠️ **两动作先后（硬）**：**先改 env（§58-4 P0）→ 再构建**；否则产物 baked 的 `VITE_API_BASE` 仍缺 `/api`。
+
+### §58-3 本地验证证据（三轮真机质检 · **自建 SPA fallback 服务器**下的实测）
+
+> ⚠️ **尚未在 Vercel 上验证**：以下读数**均为自建 SPA fallback 服务器下的实测**；**`rewrites` 在 Vercel 上生效属上云后冒烟项**（见 §58-5）。
+
+- **首页裸域**：首页 **`pathname='/'` 且 `hash=''`（`bodyLen` 29171）**，且切 tab 回首页仍为 `'/'`。
+- **可读路径首屏直达**：`/z/` 与 `/ji_23395_01` 首屏直达 + `Page.reload` 均正常、**地址不回退**；家族页 / 世本页地址**无 `#`**。
+- **旧链兼容**：旧链 **`/#/pages/hall/index?tree_id=ji_23395_01`** 与 **`/#/z/`** 均被转成**等价 path 形态**；`/z/zhonghua` 与 `/zhonghua` **均收敛为 `/z/`**。
+- **打包产物特征**：产物里 **`createWebHashHistory` 与 `hashchange` 命中数均为 0**、**`popstate` >= 1**；全程**无未捕获异常 / console error**。
+- **缺陷 ②（别名地址前进 / 后退白屏）修复实测**：**修前** forward 回 `/ji_23395_01` 得 **`bodyLen` 3372** 空白且 **9s 不恢复**；**修后**稳定 **9545**、hero / canvas / lineage 节点齐备（两条已修缺陷与一条已知边界见 `docs/uri-aliases.spec.md` **§10**）。
+
+### §58-4 ⚠️ 阻塞点 / 必改项：P0 —— 线上 `VITE_API_BASE` 缺 `/api` 后缀（**上云前必须先改 env 再构建**）
+
+- **现线上读数（浏览器实测 · 逐字）**：云函数 HTTP 服务**只在 `/api/...` 下应答** —— **`/api/tree-meta` = 200**、**`/tree-meta` = 404**、**`/api/people/?profile=all` = 400（因缺 `X-Tree-Id` header）**、**`/people/?profile=all` = 404**。
+- **而线上 `www.jiapu100.com` 产物 baked 的 base 是「不带 `/api`」的** **`https://liwu-d8gek6jjdab1d087c.service.tcloudbase.com`**（承 §57-9 三：Vercel 项目 env `VITE_API_BASE` 现配为该值），`api.ts` 又是 **`fetch("${API_BASE}${path}")`** ⇒ **线上数据请求全部 404、首页显示「暂无已上线的家族数字馆」空态**（**浏览器实测 `bodyLen` 108**）。
+- **正确值应为** **`https://liwu-d8gek6jjdab1d087c.service.tcloudbase.com/api`**。**上云前必须先改 Vercel 项目 env 的 `VITE_API_BASE` 为带 `/api` 的值、再构建**。
+- **阻塞点（硬）**：**不改 env 就直接重打 / 上线 ⇒ 数据面仍全 404**（**首页空态**）。
+
+### §58-5 部署后冒烟验证（**按序做** · 每步 = 判据 + 期望；⚠️ 结论由执行 / 质检收口后回写，**本清单不预填**）
+
+1. **首页数据面（P0 判据）**：线上首页 **`bodyLen` 应明显大于 108**、**不再出现空态文案**「暂无已上线的家族数字馆」；
+2. **首屏路径 200**：`/z/` 与 `/ji_23395_01` 首屏应 **200 不 404**（Vercel SPA `rewrite` 生效）；
+3. **地址形态**：地址栏**首页应为裸域**、**内部页不得出现 `#`**；
+4. **静态资源不受影响**：`rewrites` 采用「**先文件系统、后 `rewrites`**」优先级 ⇒ 静态资源（`/assets/*`）应正常 200。
+
+### §58-6 明确**不需要**上云的东西
+
+- 本批为**纯前端 + 宿主配置批次**：**无新集合 / 无数据修正 / 无云函数路由改动 / 无 `pages.json` 改动**；`migrate-output/**` 与 `config/tree-meta.json` 本批未被触碰。
+- 真机质检用具（headless Chrome + CDP 脚本、**自建 SPA fallback 服务器**）：离线工具产物，**不进产物、不影响云端**。
+
+### §58-7 状态词与边界
+
+- **状态** = **「实现已落盘 + 三轮真机质检通过（自建 SPA fallback 服务器）；上云动作未执行」**。**不得写「已上云 / 已在 Vercel 验证」**（**本节未跑任何 `vercel` / `tcb` / 打包写命令，未动真源 / 云端**）。
+- **本节只追加、不改 §0–§57 任何历史行**（承 `AGENTS.md` §0-4）。
+- **遗留给上云**：**P0 必改 = 先改 Vercel env 的 `VITE_API_BASE`（补 `/api`）→ 再重打产物**；**`rewrites` 在 Vercel 上生效属上云后冒烟项**（§58-5）。

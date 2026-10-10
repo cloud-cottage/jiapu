@@ -132,3 +132,50 @@
 | `docs/chain-batch-append.spec.md` | 同批「批量添加子孙」扩展到祖谱（§3-5 祖谱档） |
 | `docs/chain-batch-append.qa.md` | §9 扩展轮质检（T1 URI 证据、真源体检） |
 | `docs/PENDING_DEPLOY.md` | 部署项 = §17（云函数重打包 + **§17-3 数据项 `path_alias`** + 前端 H5）、§20（tree_id 注音修复 + **§20-2 数据项 3 棵树改名**） |
+
+---
+
+## 10. H5 路由模式：hash → history（首页裸域）· SPA rewrite · 别名兜底（2026-10-10 本批，追加）
+
+> **本节的定位（硬）**：本节**只追加**、**不改动 §0–§9 任何历史行**（承 `AGENTS.md` §0-4）。**首页裸域**为**新增**口径，**不取代** §1 的三种路径形态（`/z/`、`/z/<tree_id>`、`/<tree_id>` 三形态**一律继续有效**）。§2 的 `#/z/` **接受形态继续有效**（作为**旧链兼容**保留，本批实测已验），见下表第 4 行。
+> **本批性质**：**纯前端 + 宿主配置**（`frontend/src/manifest.json` / `frontend/vercel.json` / `frontend/src/App.vue` / `frontend/src/business/cross-tree.ts` / `frontend/src/pages/person/detail.vue`）；**无云端数据 / 集合动作**。上云动作见 `docs/PENDING_DEPLOY.md` **§58**。
+
+| # | 项 | 口径 / 取值（逐字） |
+|---|---|---|
+| 1 | 路由模式开关（构建期） | `frontend/src/manifest.json` **新增顶层 `h5`** = **`{"router":{"mode":"history","base":"/"}}`**；取值判定在 `@dcloudio/uni-cli-shared/dist/vite/features.js` **约 140-145 行** —— 判 `webManifest.router.mode === 'history'`。 |
+| 2 | 运行期选路 | `@dcloudio/uni-h5/dist/uni-h5.es.js` 的 `initHistory()` **约 16552-16562 行** 按 `__UNI_FEATURE_ROUTER_MODE__` 选 **`createWebHistory`** / `createWebHashHistory`。 |
+| 3 | 入口页 `path` 与别名（判定事实） | uni-app H5 **入口页路由 `path` 恰为 `'/'`**；**`/pages/index/index` 只是它的 alias**（证据：`frontend/node_modules/@dcloudio/uni-h5-vite/dist/plugins/pagesJson.js` 的 `generatePageRoute`，**约 197-210 行**）。 |
+| 4 | §2 的 `#/z/` 接受形态 | **继续有效**（**旧链兼容保留**）；本批三轮真机质检已验：旧链 **`/#/pages/hall/index?tree_id=ji_23395_01`** 与 **`/#/z/`** 均被转成**等价 path 形态**。 |
+| 5 | 宿主层 SPA rewrite | `frontend/vercel.json` **保留原有 5 键** + **新增** `rewrites` = **`[{"source":"/(.*)","destination":"/index.html"}]`**。 |
+| 6 | Vercel 路由优先级（结论） | **先做文件系统检查、再评估 `rewrites`** ⇒ 静态资源不受影响；SPA fallback 的规范写法就是 `source` 为 **`/(.*)`**（**不应**用 negative lookahead 过度排除，属**反模式**）。 |
+
+**首页裸域口径（新增）**
+
+- 本批后**首页地址即裸域**（`pathname === '/'` 且 `hash === ''`）；**这是新增口径，不取代 §1 的三种路径形态** —— §1 的 `/z/` / `/z/<tree_id>` / `/<tree_id>` 三形态**一律继续有效**（承本节定位行）。
+
+**§3 那行的语义自本行起收窄（旧行原文保留）**
+
+- §3 现有行「**是否服务端 301/302：未做（无 hosting 重写规则改动）—— 属已拍板事实，不是缺陷**」**原文一律保留**；**该行的语义自本行起收窄**：宿主层**现已有 SPA fallback `rewrite`（不是 301/302 重定向）**，使 `/z/` 、`/<tree_id>` 等**可读路径可作为首屏地址直达**。
+
+**两个机制（各一句）**
+
+- **首页地址归一**（`frontend/src/App.vue`）：包装 `history.pushState` / `history.replaceState`，`pathname === '/pages/index/index'` 时**收敛为裸 `'/'`**，并传 `history.state` 以**保留 vue-router 状态**。
+- **popstate 别名兜底**（`frontend/src/App.vue` 的 `onPopStateAlias`）：地址**既非 `'/'` 也非 `/pages/...`** 时，`setTimeout 0ms` 后**复用 `resolveTreeAlias` 重派**，带 `aliasRepopPending` **防重入**、模块作用域**只注册一次**，在 **`#ifdef H5`** 内。
+
+**本批修掉的两条真缺陷**
+
+- **缺陷 ①（别名收敛处 `replaceState` 首参传 `null`）**：`replaceState` 首参传 `null` 会**清空 vue-router 的 `history.state`**；已改为传 **`history.state`**。**共 4 处**替换：`frontend/src/App.vue` 的 `keepMasterUrl` / `keepAliasUrl`、`frontend/src/business/cross-tree.ts` 的 `openTreeHome`、`frontend/src/pages/person/detail.vue` 的 `convergeUrlTo`。
+- **缺陷 ②（更关键的阻塞缺陷 —— 别名地址作为历史条目时前进 / 后退会白屏）**：**可读别名地址（`/ji_23395_01` 、`/z/`）作为历史条目时，浏览器前进 / 后退回到它会白屏**。根因 = **打包出的 vue-router 的 popstate 处理从 URL 解析路由、不用 `state.current`**，而**别名不是路由**；且**前进 / 后退不触发 `onPageNotFound`**。修法 = `frontend/src/App.vue` **新增 popstate 别名兜底**。**实测**：修前 forward 回 `/ji_23395_01` 得 **`bodyLen` 3372 空白且 9s 不恢复**；修后稳定 **9545**、hero / canvas / lineage 节点齐备。
+
+**已知边界（已接受差异 · 不得美化）**
+
+- 在**别名页**上用 `uni.navigateTo` 跳到内部页后，浏览器的 **back 会落在内部路由形态** `/pages/hall/index?tree_id=...`（**不再是 `/ji_23395_01` 别名形态**）；**内容正确、无白屏、无报错**。根因 = **vue-router 的 `push` 在 `pushState` 前先 `replaceState(a.current)`（内部路由 URL）覆盖了当前条目的别名 URL**。**若要保别名需在宿主页 `onShow` 重放 `keepAliasUrl`（本轮未做）**。**此行为非本批引入**（**别名层固有**；**hash 模式下同样丢别名**）。
+
+**三轮真机质检（headless Chrome + CDP，自建 SPA fallback 服务器）关键读数（逐字）**
+
+- 首页 **`pathname='/'` 且 `hash=''`（`bodyLen` 29171）**，且切 tab 回首页仍为 `'/'`；家族页 / 世本页地址**无 `#`**；`/z/` 与 `/ji_23395_01` 首屏直达 + `Page.reload` 均正常、**地址不回退**；旧链 **`/#/pages/hall/index?tree_id=ji_23395_01`** 与 **`/#/z/`** 均被转成**等价 path 形态**；`/z/zhonghua` 与 `/zhonghua` **均收敛为 `/z/`**；产物里 **`createWebHashHistory` 与 `hashchange` 命中数均为 0**、**`popstate` >= 1**；全程**无未捕获异常 / console error**。
+- ⚠️ **尚未在 Vercel 上验证**：上列读数均为**自建 SPA fallback 服务器**下的实测；**`rewrites` 在 Vercel 上生效属上云后冒烟项**（见 `docs/PENDING_DEPLOY.md` **§58-5**）。
+
+**另一处发现（不属本批 · 不得写成已修）**
+
+- `frontend/src/App.vue` / `frontend/src/business/cross-tree.ts` 的别名解析用**相对** `fetch('/api/tree-meta')`，而线上 `www.jiapu100.com` **并无 `/api` 映射**（API 在云函数域名上）⇒ 该异步分支**在生产本就不通**（**非本批引入**）。
