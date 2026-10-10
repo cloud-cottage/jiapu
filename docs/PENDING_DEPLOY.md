@@ -6334,3 +6334,112 @@ cd frontend && VITE_API_BASE=https://liwu-d8gek6jjdab1d087c.service.tcloudbase.c
 - **状态 = 「两小批均已执行（云端 env `liwu-d8gek6jjdab1d087c` 数据面已更新）+ 已独立质检（批 2 六项全 PASS）」**。
 - **本节只追加、不改 §0–§59 任何历史行**（承 `AGENTS.md` §0-4）；**未碰 `docs/*.qa.md`**（§0-5）。
 - **遗留 = 见 §60-7 两条**（**镜像一致性架构 C / A / D** / **带色称号数据化 6 决策点**）；**另 §60-1 待裁备注**（**`R5UMHH` 保留与否待 Kevin 定**）。
+
+## §61 带色称号数据化批次（**云函数重打包 + H5 / 小程序两产物重打 + 8 个锚点的数据写入** · **无新集合** · **未实施 · 只登记** · 2026-10-10 · **只追加 · 不改 §0–§60 任何行**）（Jing 制度员）
+
+> **性质（只追加）**：本节为**口径已拍定（Kevin 2026-10-10）、实现尚未落地**的批次**上云动作面登记**（§0–§60 既有行**原文一律保留、一字不改、一行不删**；承 `AGENTS.md` §0-4）。**规格唯一真源 = `docs/person-badge.spec.md`**；本节**不重复**该册语义，只登记**上云动作与判据**（本仓「四件事」体例：**为什么需要 / 具体命令 / 本地验证证据 / 阻塞点**）。
+> **上游**：本节即 `§60-7 条 2`（「带色称号数据化需求（待 Kevin 定 6 个决策点）」）的**落地登记**。
+
+### §61-0 批次定性
+
+| 项 | 值 |
+|---|---|
+| 代码面 | **有改动**：后端（字段级权限校验 + 读侧 `attribute_list` 出参口径）+ 前端（`shiben-timeline.vue` 删 `KEY_NODES` 改数据驱动；`tree-pedigree` 三通路接 `keyMarkers`；`person-archive` 编辑控件 + 详情一行） |
+| 集合面 | **无新集合**（不落任何**新**集合文件；`scripts/upload-migrated-to-cloudbase.mjs` 的 `COLLECTIONS` **无需增补**） |
+| 数据面 | **有数据写入**：**8 个 zhonghua 锚点**（`称号` + `称号色` 两条 attribute 落 `jiapu_person_details`）——**动作口径见 §61-4** |
+| 产物面 | **云函数重打包** + **H5 / 小程序两产物重打** |
+| 本阶段 | **不上云·只登记**（本批次**零执行**） |
+
+### §61-1 云函数 `compat-api` 重打包 + 部署
+
+- **为什么需要**：① 字段级称号权限校验（`称号` / `称号色` 且角色不足 ⇒ **403 且不扣费**）必须落在后端；② 读出口的 `attribute_list` 口径（供三通路 `keyMarkers` 现算）。
+- **具体命令（逐字）**：
+  ```bash
+  frontend/node_modules/.bin/esbuild cloudfunctions/compat-api/index.js \
+    --bundle --platform=node --format=cjs \
+    --external:@cloudbase/node-sdk \
+    --outfile=cloudfunctions/deploy/compat-api/index.js
+  yes | tcb fn deploy compat-api -e liwu-d8gek6jjdab1d087c
+  ```
+  产物 ~1.4 MB；两条 warning（`store.js` 的 `eval('__dirname')` / `import.meta` 与 cjs）**属预期、历次都有**。
+- **判据**：产物中文一律**大写 `\uXXXX` 转义形** ⇒ 用 `grep -cF` 的**转义形**：`称号` = `\u79F0\u53F7`、`称号色` = `\u79F0\u53F7\u8272`（**小写形命中 0 不等于没打进去**）；`tcb fn detail compat-api -e liwu-d8gek6jjdab1d087c` 核「修改时间 = 刚刚」。
+- **本地验证证据**：**无**（本批**未实施**）。
+- **阻塞点**：实现未落 + `docs/person-badge.spec.md` §7 四条待裁（称号长度上限 / 一人多色 / `KEY_NODES` 删除时点 / 5 个新键名拼写）。
+
+### §61-2 前端两产物重打
+
+- **为什么需要**：全树显示 + 详情页一行 + 编辑控件**全在前端**（`shiben-timeline.vue` / `tree-pedigree.vue` / `person-archive.vue`）。
+- **具体命令（逐字）**：
+  ```bash
+  cd frontend && VITE_API_BASE=https://liwu-d8gek6jjdab1d087c.service.tcloudbase.com/api npm run build:h5
+  cd frontend && npm run build:mp-weixin
+  ```
+- **判据**：H5 入口 chunk 的 baked 串以 `/api` 结尾（`VITE_API_BASE` **必须带 `/api` 后缀**，否则线上数据请求全 404、首页恒空态）；两产物内含 **6 色值**（`#B26A00` / `#C62828` / `#1565C0` / `#2E7D32` / `#6A1B9A` / `#455A64`）。
+- **本地验证证据**：**无**（本批**未实施**）。
+- **阻塞点**：同 §61-1。
+
+### §61-3 上云冒烟判据（无数据修正，仅本批新功能可见性）
+
+- 线上 `https://www.jiapu100.com/z/`：**世本卡片出现 `★title` 行 + 卡面文字着色**（8 锚点命中）；任一普通家族树 / 祖谱卡片同样生效（**所有树**）。
+- 前端零请求增量：`GET /api/people/?profile=all`（带 `X-Tree-Id`）出参 `attribute_list` **本就**含 `称号` / `称号色`（**无需新路由**）。
+- `docs/person-badge.spec.md` §8 所述「上云动作与判据」= **本节**。
+
+### §61-4 8 个锚点的数据写入（**有数据动作**）
+
+- **为什么需要**：唯一「彻底数据驱动」的前提 —— 现 8 个锚点标注是前端硬编码（`shiben-timeline.vue` 的 `KEY_NODES`，**现证 `:122`** / `KEY_THEME_COLORS` **:134**），须**先入数据**。
+- **写入内容**：`docs/person-badge.spec.md` §6 表**逐条照录**（`称号` 文字取自现 `tag`；`称号色` 键 = `warning→gold` / `danger→crimson` / `primary→indigo` / `success→bamboo`）。⚠️ **每个锚点的 `handle` 一律「待现证」**（**写入前先现取**，本册/本节**不预填、不推算**）。
+- **具体命令（两条路径，择一）**：
+  - **路径 A（推荐）**：走**运行中的写接口** —— `PUT /api/people/`（带 `chief_editor` token + `X-Tree-Id: zhonghua`）`attribute_list` 含 `称号` / `称号色`（**总谱节点仅 `chief_editor` 可写**，见规格 §5）。
+  - **路径 B（真源手术）**：按本仓**三步串写**体例（停 3100 → 脚本 `--apply` → 起 3100），**动手前 `cp -a` 到 `~/jiazu-backups/<批次>-<描述>/`** 并**登记前后 md5**。
+- **判据**：`GET /api/people/?profile=all`（`X-Tree-Id: zhonghua`）中 **8 个锚点的 `attribute_list` 各含 `称号` + `称号色` 两条**；`GET /api/tree/rank?tree_id=zhonghua` 的 `person_count` **不变**。
+- **本地验证证据**：**无**（**未实施**，**本轮零真源写入**）。
+- **阻塞点**：8 个 `handle` **待现证**；`KEY_NODES` 删除的**时间点待裁**（规格 §7 条第 3 项：须**先写数据、复核 8 锚点全命中、再删常量**）。
+
+### §61-5 状态词与边界
+
+- **状态 = 「口径已拍定（Kevin 2026-10-10）· 实现未落地 · 本阶段不上云 · 只登记」**。
+- **本节只追加、不改 §0–§60 任何历史行**（承 `AGENTS.md` §0-4）；**未碰 `docs/*.qa.md`**（§0-5）；**本轮零真源写入 · 零打包 · 零部署**。
+- **遗留 = `docs/person-badge.spec.md` §7 四条待裁**。
+
+## §62 镜像内容读侧派生批次（方案 A）（**云函数重打包** · **无两产物重打 · 无数据修正 · 无新集合** · **未实施 · 只登记** · 2026-10-10 · **只追加 · 不改 §0–§61 任何行**）（Jing 制度员）
+
+> **性质（只追加）**：本节为**口径已拍定（Kevin 2026-10-10 选 A）、实现尚未落地**的批次**上云动作面登记**（§0–§61 既有行**原文一律保留、一字不改、一行不删**；承 `AGENTS.md` §0-4）。**规格唯一真源 = `docs/mirror-content-derivation.spec.md`**；本节**只登记上云动作与判据**（四件事体例）。
+> **上游**：本节即 `§60-7 条 1`（「镜像一致性架构问题（待 Kevin 定 C / A / D）」）**选 A** 的**落地登记**。
+
+### §62-0 批次定性
+
+| 项 | 值 |
+|---|---|
+| 代码面 | **有改动，且只在后端**（compat-api **读路径**合并真身值） |
+| 集合面 | **无新集合** |
+| 数据面 | **无数据修正**（**不写回**任何树 JSON / 详情档；**不级联写镜像**） |
+| 产物面 | **云函数重打包**；**无 H5 重打、无小程序重打**（**前端零改动**） |
+| 本阶段 | **不上云·只登记**（本批次**零执行**） |
+
+### §62-1 云函数 `compat-api` 重打包 + 部署
+
+- **为什么需要**：读侧派生 = **后端读接口返回前**把镜像节点的身份类字段 / 称号类属性换成真身值（**前端零改动**）⇒ 逻辑**只**在后端。
+- **具体命令（逐字）**：
+  ```bash
+  frontend/node_modules/.bin/esbuild cloudfunctions/compat-api/index.js \
+    --bundle --platform=node --format=cjs \
+    --external:@cloudbase/node-sdk \
+    --outfile=cloudfunctions/deploy/compat-api/index.js
+  yes | tcb fn deploy compat-api -e liwu-d8gek6jjdab1d087c
+  ```
+- **判据**：产物中文用**大写 `\uXXXX` 转义形** `grep -cF`；`tcb fn detail compat-api -e liwu-d8gek6jjdab1d087c` 核「修改时间 = 刚刚」。
+- **本地验证证据**：**无**（本批**未实施**）。
+- **阻塞点**：实现未落 + `docs/mirror-content-derivation.spec.md` §7 六条待裁（C 补锁 / D 存量清理 / §60-7「29」口径对齐 / 真身日期非 ISO / 真身空值 / 21 个镜像缺档）。
+
+### §62-2 上云后冒烟判据（只读）
+
+- `GET /api/people/?profile=all`（带 `X-Tree-Id: <镜像所在树>`）里，**镜像节点**的身份 7 字段（`name` / `surname` / `given` / `gender` / `birth_date` / `death_date` / `is_living`）== **其真身值**；**出生地 / 居住地 == 镜像本树自填值**（**契约 v2 C6**）。
+- **只读不变量**：响应**前后**镜像所在树的 `version` / `updated_at` **不变**（读接口**不写回**）。
+- 真身不可达 ⇒ 返回**镜像副本** + 现有提示行为（`MIRROR_UNAVAILABLE_NOTE`）。
+- `docs/mirror-content-derivation.spec.md` §8 所述「上云动作与判据」= **本节**。
+
+### §62-3 状态词与边界
+
+- **状态 = 「口径已拍定（Kevin 2026-10-10 选 A）· 实现未落地 · 本阶段不上云 · 只登记」**。
+- **本节只追加、不改 §0–§61 任何历史行**（承 `AGENTS.md` §0-4）；**未碰 `docs/*.qa.md`**（§0-5）；**本轮零真源写入 · 零打包 · 零部署**。
+- **遗留 = `docs/mirror-content-derivation.spec.md` §7 六条待裁**（含 **C / D 两方案未裁** 与 **§60-7「29」口径未登记**）。
