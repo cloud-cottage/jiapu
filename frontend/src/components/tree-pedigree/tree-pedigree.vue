@@ -716,10 +716,22 @@ function centerOnFocusOnce() {
   });
 }
 
-// 宿主可能在本组件渲染之后才拿到锚点（fetchMyAnchor 异步）⇒ handle 一到就尝试一次
+// 宿主可能在本组件渲染之后才拿到锚点（fetchMyAnchor 异步）。
+// 卡面「★我」标记与高亮色是在 renderChart → decorateTree 时按**当时的** props.focusHandle
+// 烘进 series 数据的 ⇒ 只在 watch 里 centerOnFocusOnce()（只改画布平移、不重算 series）
+// 会让标记永远缺失（线上就是这条，见 permission-tier.spec.md §12-3）。
+// 反向时序（handle 先到、数据后到）由 renderChart 末尾那次 centerOnFocusOnce 覆盖。
+// ⇒ handle 由空变非空时重渲一次（scheduleRender；renderChart 末尾自会居中本人）。
+// 清空（reload / 换树）交给 loadData 的正常重载路径，这里不触发多余重渲。
 watch(
   () => props.focusHandle,
-  () => centerOnFocusOnce(),
+  (val) => {
+    if (!val) return;
+    // 目标变了 ⇒ 允许重渲后再居中一次（renderChart 末尾调用 centerOnFocusOnce；focusCentered
+    // 是「只居一次」的一次性闸门，此处重置仅针对「锚点本身变化」，用户拖动/缩放不经过这里）
+    focusCentered = false;
+    scheduleRender();
+  },
 );
 
 /** 滚轮提示文案（随布局变化：纵向上下 / 横向左右） */
