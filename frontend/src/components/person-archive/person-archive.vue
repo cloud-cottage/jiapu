@@ -445,10 +445,17 @@
           </text>
 
           <!-- 生卒：出生时间可填年份或完整日期；是否健在选择；已故时可选填离世时间 -->
+          <!-- 生卒日期输入规范（Kevin 2026-10-10）：自由文本 + 「｜📅」日期选择器并存；
+               选择器只回写 ISO YYYY-MM-DD，**不加任何格式校验/过滤、绝不清空文本框**（清空仍靠手动删除）。 -->
           <text class="field-label">出生时间（可填年份，如 1957；或完整日期，如 1957-12-04）</text>
-          <t-input :value="editForm.birth_date" placeholder="1957 或 1957-12-04" class="field"
-          @update:value="(v: any) => editForm.birth_date = v"
-          />
+          <view class="date-field-row">
+            <t-input :value="editForm.birth_date" placeholder="1957 或 1957-12-04" class="field date-field-input"
+            @update:value="(v: any) => editForm.birth_date = v"
+            />
+            <picker mode="date" :value="birthPickerValue" @change="onBirthDatePicked">
+              <view class="date-pick-btn">｜📅</view>
+            </picker>
+          </view>
         </template>
 
           <!-- 出生地（契约 v2）：结构化三级行政区划真源（只提交 origin_code）+ 备注；
@@ -478,9 +485,14 @@
 
           <view v-if="!editForm.is_living" class="living-block">
             <text class="field-label">离世时间（选填，可留空 = 已故但卒年不详）</text>
-            <t-input :value="editForm.death_date" placeholder="2020 或 2020-05-01" class="field"
-            @update:value="(v: any) => editForm.death_date = v"
-            />
+            <view class="date-field-row">
+              <t-input :value="editForm.death_date" placeholder="2020 或 2020-05-01" class="field date-field-input"
+              @update:value="(v: any) => editForm.death_date = v"
+              />
+              <picker mode="date" :value="deathPickerValue" @change="onDeathDatePicked">
+                <view class="date-pick-btn">｜📅</view>
+              </picker>
+            </view>
           </view>
         </template>
 
@@ -497,10 +509,12 @@
             <t-input :value="rp.note" placeholder="如：费县城关镇" class="field"
             @update:value="(v: any) => rp.note = v"
             />
-            <!-- 开始年份（契约 v3 F1）：仅居住地有此字段；4 位年份、数字键盘；选填 —— 只填年份也算一条有内容 -->
+            <!-- 开始年份（契约 v3 F1）：仅居住地有此字段；4 位年份、选填 —— 只填年份也算一条有内容。
+                 受控输入（契约 v3 §20-11-E 观察项 1 修复）：H5 下 `<input type=number>` **忽略 maxlength**
+                 （实测可超 4 位）⇒ 改 `type="text"`（maxlength 生效，H5 / 小程序同效）+ 处理器过滤非数字 + 截断 4 位。 -->
             <text class="field-label">开始年份（选填，4 位年份）</text>
-            <t-input :value="rp.start_year" type="number" :maxlength="4" placeholder="如 1960（选填，4 位年份）" class="field"
-            @update:value="(v: any) => rp.start_year = v"
+            <t-input :value="rp.start_year" type="text" :maxlength="4" :format="sanitizeStartYear" placeholder="如 1960（选填，4 位年份）" class="field"
+            @update:value="(v: any) => onStartYearInput(i, v)"
             />
             <t-button size="small" variant="outline" theme="danger" @click="removeResidence(i)">删除</t-button>
           </view>
@@ -1896,6 +1910,64 @@ const editForm = ref({
   events: [] as Array<{ type: string; date: string; place: string }>,
 });
 
+// >>> 生卒日期输入规范（Kevin 2026-10-10）：自由文本 + `<picker mode="date">` 日期选择器并存
+/** 真实存在的 YYYY-MM-DD 判定（仅供选择器定位初值用；不做任何格式校验 / 过滤 / 改写文本框） */
+function isValidYmd(y: number, m: number, d: number): boolean {
+  if (!(y >= 1 && y <= 9999) || m < 1 || m > 12 || d < 1) return false;
+  const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  const dim = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return d <= dim[m - 1];
+}
+
+/**
+ * 生卒时间文本框 → 日期选择器初值：**可解析为日期才回填，否则留空**。
+ * 支持 `YYYY` / `YYYY-MM` / `YYYY-MM-DD`（后两者补到 1 日供选择器定位）；
+ * 存量自由文本（`3月13,1958` / `BET EST 2005 AND 2010` / `-568`（公元前）等）一律落空值分支——
+ * **绝不清空文本框、绝不报错**（这是「保留自由文本」口径的硬要求）。
+ */
+function datePickerValueOf(raw: unknown): string {
+  const s = editNorm(raw);
+  let m: RegExpExecArray | null = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (m && isValidYmd(+m[1], +m[2], +m[3])) return s;
+  m = /^(\d{4})-(\d{2})$/.exec(s);
+  if (m && isValidYmd(+m[1], +m[2], 1)) return `${m[1]}-${m[2]}-01`;
+  m = /^(\d{4})$/.exec(s);
+  if (m && isValidYmd(+m[1], 1, 1)) return `${m[1]}-01-01`;
+  return '';
+}
+
+/** 出生时间选择器初值（随文本框实时变化；不可解析 ⇒ 空串） */
+const birthPickerValue = computed(() => datePickerValueOf(editForm.value.birth_date));
+/** 离世时间选择器初值（随文本框实时变化；不可解析 ⇒ 空串） */
+const deathPickerValue = computed(() => datePickerValueOf(editForm.value.death_date));
+
+/** 选择器选中出生日期 → 写回文本框（ISO `YYYY-MM-DD`）；选择器**不负责清空**（清空仍靠手动删除文本框内容） */
+function onBirthDatePicked(e: any) {
+  const v = e?.detail?.value;
+  if (typeof v === 'string' && v) editForm.value.birth_date = v;
+}
+/** 选择器选中离世日期 → 写回文本框（ISO `YYYY-MM-DD`）；同上**不负责清空** */
+function onDeathDatePicked(e: any) {
+  const v = e?.detail?.value;
+  if (typeof v === 'string' && v) editForm.value.death_date = v;
+}
+
+/**
+ * 居住地「开始年份」受控输入（契约 v3 §20-11-E 观察项 1 的修复）：
+ * H5 下 `<input type="number">` **忽略 `maxlength`**（实测可超 4 位）⇒ 输入框改 `type="text"`
+ * （`maxlength` 生效，H5 / 小程序同效）+ 本处理器**过滤非数字字符并截断至 4 位**。
+ * 既作 `:format`（失焦时清理展示）也作实时输入的落库值；后端 `^\d{4}$` + `1000–2100`
+ * 校验（`lib/person-places.js`）**一字不动**（双保险）。
+ */
+function sanitizeStartYear(v: any): string {
+  return String(v ?? '').replace(/\D/g, '').slice(0, 4);
+}
+function onStartYearInput(i: number, v: any) {
+  const row = editForm.value.residence_places[i];
+  if (!row) return;
+  row.start_year = sanitizeStartYear(v);
+}
+
 // >>> DIRTY-DIFF 编辑脏比对（纯函数；与后端 lib/economy-fee.js 的 personValueDiff 同口径）
 /** 归一化：字符串 trim；`''` / `undefined` / `null` 视为同一空值 */
 function editNorm(v: any): string {
@@ -3033,6 +3105,15 @@ async function doEndMarriage() {
 .living-block { margin-top: 2px; }
 .event-edit-row { background: #FBF8F4; border-radius: 8px; padding: 8px; margin-bottom: 8px; }
 .place-edit-row { background: #FBF8F4; border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+/* 生卒日期输入规范：自由文本输入框 + 「｜📅」日期选择器并排（选择器只写回、不清空文本框） */
+.date-field-row { display: flex; align-items: flex-start; }
+.date-field-input { flex: 1; min-width: 0; }
+.date-pick-btn {
+  flex-shrink: 0; margin: 0 0 8px 8px; padding: 0 10px; height: 40px; line-height: 40px;
+  font-size: 15px; color: #8B4513; background: #FBF6EF; border: 1px solid #E3D3BE;
+  border-radius: 8px; text-align: center;
+}
+.date-pick-btn:active { background: #F3E9DB; }
 .edit-error { text-align: center; color: #C62828; font-size: 13px; margin: 8px 0; }
 .modal-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .modal-sub { font-size: 12px; color: #999; display: block; text-align: center; margin: 6px 0 14px; }
