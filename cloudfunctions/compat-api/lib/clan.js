@@ -44,7 +44,7 @@ import {
   listAttachedTrees,
 } from './founder-attach.js';
 import { nextGrampsId, surnamePinyin } from './tree-write.js';
-import { idAllocator, reserveFamilyIds, reservePersonIds } from './id-seq.js';
+import { idAllocator, reserveFamilyIds, reservePersonIds, formatPersonId } from './id-seq.js';
 import { isKnownOriginCode, resolveOrigin } from './geo.js';
 
 /** 建谱申请集合（新建集合 → docs/PENDING_DEPLOY.md） */
@@ -295,7 +295,7 @@ export function clearClanTopMirror(tree, upperTreeId = '') {
 }
 
 /**
- * 取一个未被占用的 gramps_id：prefer（如始祖位 I0001）可用则用，否则取下一个未用 I 号。
+ * 取一个未被占用的 gramps_id：prefer（如始祖位 000000001）可用则用，否则取下一个未用 I 号。
  * 避免重复认祖时与自有段节点抢号。
  */
 export function freeGrampsId(tree, prefer = '') {
@@ -336,7 +336,8 @@ export function applyClanTopMirror({
   let index = 0;
   for (const m of masters) {
     // 镜像节点是全站节点（人读编号全站唯一）→ 有铸号器时用全局号，没有才退回树内序号
-    const grampsId = newPersonId ? newPersonId() : freeGrampsId(tree, index === 0 ? 'I0001' : '');
+    // 始祖位偏好编号 = 新口径人编号 1（`000000001`；docs/id-system.spec.md §9）
+    const grampsId = newPersonId ? newPersonId() : freeGrampsId(tree, index === 0 ? formatPersonId(1) : '');
     const mirror = planClanMirrorPerson({
       handle: m.handle,
       grampsId,

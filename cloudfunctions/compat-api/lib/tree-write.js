@@ -25,7 +25,7 @@ import {
   nextFamilyId,
 } from './store.js';
 import { metaEntryOf, isFounderMirror, isMirrorMarked, isUpperMirror, personEditLockMessage, resolveChainGen, MIRROR_LOCK_MESSAGE, treeKindOf, resolveFounderHandle, TREE_KIND } from './founder-attach.js';
-import { idAllocator, idKey, reserveFamilyIds } from './id-seq.js';
+import { idAllocator, idKey, reserveFamilyIds, formatId, parseGlobalId, SEQ_PERSON, SEQ_FAMILY } from './id-seq.js';
 import { resolveNode } from './id-resolve.js';
 import { isKnownOriginCode, resolveOrigin } from './geo.js';
 // 出生地 / 居住地（契约 v2）：写路径白名单 + 归一 + 形状闸门 + 上限的唯一真源
@@ -86,26 +86,24 @@ function genderToNum(g) {
 /**
  * 树内序号（**已废弃的口径，仅作纯函数兜底**）：docs/id-system.spec.md §6 —— 树内局部序号不再作为标识。
  * 新节点一律走 store.nextPersonId()/nextFamilyId()（全站唯一编号）；本函数仅在没有铸号器可用时兜底。
+ *
+ * 编号形态（docs/id-system.spec.md §9 · 2026-10-10 新口径）：**不再沿用既有编号的旧宽度**，统一按新存储口径
+ * 铸号 —— 人 = 9 位纯数字（`000000101`）、家庭 = `F` + 6 位（`F000048`）。新旧形态输入均按数值取最大。
  */
 export function nextGrampsId(tree, prefix) {
-  const re = new RegExp(`^${prefix}(\\d+)$`);
-  let max = -1;
-  let width = 0;
-  // 人与家族编号段各自独立，但同一棵树里必须整体取最大（家族编号也曾漏扫 → 新建家族拿到 F1 撞旧号）
-  for (const group of [tree.people, tree.families]) {
+  const isFamily = String(prefix).toUpperCase() === 'F';
+  let max = 0;
+  // 人与家族编号段各自独立（按编号前缀分派），同段内整体取最大（家族编号也曾漏扫 → 新建家族拿到 F1 撞旧号）
+  for (const group of [tree?.people, tree?.families]) {
     for (const o of Object.values(group || {})) {
-      const m = String(o.gramps_id || '').match(re);
-      if (!m) continue;
-      const n = parseInt(m[1], 10);
-      if (n > max || (n === max && m[1].length > width)) {
-        max = n;
-        width = m[1].length;
-      }
+      const parsed = parseGlobalId(o?.gramps_id);
+      if (!parsed) continue;
+      if ((parsed.kind === SEQ_FAMILY) !== isFamily) continue;
+      if (parsed.number > max) max = parsed.number;
     }
   }
-  // 无既有编号 → 从 1 开始；否则沿用既有补零宽度（I0100 → I0101，F0047 → F0048）
-  if (max < 0) return `${prefix}1`;
-  return `${prefix}${String(max + 1).padStart(width, '0')}`;
+  // 无既有编号 → 从 1 起；编号形态一律 = 新口径（人 9 位纯数字 / 家庭 F+6）
+  return formatId(isFamily ? SEQ_FAMILY : SEQ_PERSON, max + 1);
 }
 
 /** 从 Gramps RawPerson body 提取 attributes（type 字符串或 {string}） */
@@ -847,12 +845,14 @@ export function isChainBatchTree(kind) {
   return CHAIN_BATCH_KINDS.includes(String(kind || ''));
 }
 
-/** 祖谱始祖节点 handle：tree-meta.founder_handle → founder_gramps_id → 始祖位编号 I0001（与 lib/clan.js 同序） */
+/** 祖谱始祖节点 handle：tree-meta.founder_handle → founder_gramps_id → 始祖位编号（与 lib/clan.js 同序）
+ *  始祖位编号 = 人编号 1 的规范键（`idKey` 去可选前缀比数值 ⇒ 新旧形态 `I0001` / `000000001` 均命中） */
 export function clanFounderHandleOf(tree, entry = null) {
   const fh = resolveFounderHandle(tree, entry);
   if (fh) return fh;
+  const founderKey = idKey(formatId(SEQ_PERSON, 1));
   for (const p of Object.values(tree?.people || {})) {
-    if (String(p?.gramps_id || '') === 'I0001') return p.handle;
+    if (idKey(p?.gramps_id) === founderKey) return p.handle;
   }
   return '';
 }
