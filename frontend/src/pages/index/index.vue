@@ -1,8 +1,8 @@
 <template>
   <view class="container">
     <view class="header">
-      <text class="title">家族历史数字馆</text>
-      <text class="subtitle">多姓氏、多支派家谱数字化展示平台</text>
+      <text class="title">千秋祖脉绵世泽，万卷家乘振宗风</text>
+      <text class="subtitle">家谱 100 · 多姓氏家谱数字化珍藏平台</text>
     </view>
 
     <!-- 双视图：家谱列表 / 中华世本（浮动按钮切换，无 t-tabs） -->
@@ -591,8 +591,8 @@ function goToPage(path: string) {
 /* 页头：名称（主）22/700 深棕 → 副标题（次）13 辅助棕，拉开字号与字重层级 */
 .header { text-align: center; margin-bottom: 22px; }
 .title {
-  font-size: 22px; font-weight: 700; color: #3E2723;
-  letter-spacing: 1px; line-height: 1.35; display: block;
+  font-size: 19px; font-weight: 700; color: #3E2723;
+  letter-spacing: 1px; line-height: 1.5; display: block;
 }
 .subtitle {
   font-size: 13px; color: #A1887F;

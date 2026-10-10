@@ -3,19 +3,19 @@
     {
       "path": "pages/index/index",
       "style": {
-        "navigationBarTitleText": "家族历史数字馆"
+        "navigationBarTitleText": "家谱 100｜家族历史数字馆，多姓氏家谱数字化珍藏平台"
       }
     },
     {
       "path": "pages/family/index",
       "style": {
-        "navigationBarTitleText": "我的家族"
+        "navigationBarTitleText": "我的家族｜家谱 100"
       }
     },
     {
       "path": "pages/mine/index",
       "style": {
-        "navigationBarTitleText": "我的"
+        "navigationBarTitleText": "我的｜家谱 100"
       }
     },
     {

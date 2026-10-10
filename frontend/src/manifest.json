@@ -50,6 +50,7 @@
     "enable": false
   },
   "h5": {
+    "title": "家谱 100｜家族历史数字馆，多姓氏家谱数字化珍藏平台",
     "router": {
       "mode": "history",
       "base": "/"

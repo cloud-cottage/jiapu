@@ -222,6 +222,7 @@ import type { ClanInfo, ClanMirrorNode } from '@/business/api';
 import type { TreeEntry, SetTreeOriginResult } from '@/business/types';
 import { authState, isAuthenticated, getAuthToken } from '@/business/auth';
 import { personIdDisplay } from '@/business/format';
+import { setDynamicTitle } from '@/business/seo';
 import TreePedigree from '@/components/tree-pedigree/tree-pedigree.vue';
 import PersonDetailModal from '@/components/person-detail-modal/person-detail-modal.vue';
 import FamilyMessages from '@/components/family-messages/family-messages.vue';
@@ -391,6 +392,11 @@ async function load() {
     info.value = await fetchClanInfo(props.treeId);
     if (info.value.title) {
       uni.setNavigationBarTitle({ title: info.value.title });
+      // #ifdef H5
+      // 仅 H5：uni.setNavigationBarTitle 会连浏览器标签页一起改写（盖掉 mixin applySeo 的标题），此处补回「树名 + 品牌后缀」
+      // 用 setDynamicTitle 三连写（立即 + nextTick + setTimeout 0）跑赢 uni-h5 同 tick 后续 flush 的覆盖
+      setDynamicTitle(info.value.title);
+      // #endif
     }
     // 祖谱 tree-meta 条目（编辑表单回填；读不到就以 clan-info 为准）
     try {

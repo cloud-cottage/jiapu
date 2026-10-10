@@ -343,6 +343,7 @@ import type { TreeAccessInfo, SpiritInfo } from '@/business/api';
 import { authState, isAuthenticated, getAuthToken } from '@/business/auth';
 import type { TreeEntry, PersonSummary, SetTreeOriginResult } from '@/business/types';
 import { personIdDisplay, attrMapOf } from '@/business/format';
+import { setDynamicTitle } from '@/business/seo';
 import TreePedigree from '@/components/tree-pedigree/tree-pedigree.vue';
 import ClanHall from '@/components/clan-hall/clan-hall.vue';
 import WenpuBook from '@/components/wenpu-book/wenpu-book.vue';
@@ -738,6 +739,11 @@ async function loadAll() {
     // 导航栏标题 = 家族名称（家谱 tab 需保持「我的家族」→ 传 syncNavTitle=false 时不写）
     if (props.syncNavTitle && hallInfo.value?.display_title) {
       uni.setNavigationBarTitle({ title: hallInfo.value.display_title });
+      // #ifdef H5
+      // 仅 H5：uni.setNavigationBarTitle 会连浏览器标签页一起改写（盖掉 mixin applySeo 的标题），此处补回「树名 + 品牌后缀」
+      // 用 setDynamicTitle 三连写（立即 + nextTick + setTimeout 0）跑赢 uni-h5 同 tick 后续 flush 的覆盖
+      setDynamicTitle(hallInfo.value.display_title);
+      // #endif
     }
     // 已绑定祖谱判定（普通树才需要：总谱/祖谱页面不出现建谱入口）
     if (!isMaster.value && !isClan.value) {
