@@ -849,17 +849,18 @@ test('F-A 只做编排：资产只经 ledger 的 withAssets/导出读写（无�
 // ══ ⑯ 注册数 40 与磁盘一致 ══════════════════════════════════════════════════════
 // ⚠️ 本判据的基线必须跟随**磁盘真值**：新增第 37 个测试文件（anchors.test.js，批 A 锚点域）后残留旧基线 36 变成假红；
 //    批 C-1 又新增第 38 个（invite-codes.test.js）；路 B 第 3 期新增第 39 个（wallet.test.js，¥ 钱包 v2：每手机号一档 +
-//    config 单档 + 平台流水单档）；迁徙地图批次新增第 40 个（geo-bounds.test.js，边界数据管线单测）
-//    ⇒ 定额同步为实得真值 40。口径 = 「注册数 = 磁盘数 = 定额」，仍为精确等值 + 双向零缺口 + 去重。
-test('package.json 注册数 = 磁盘 *.test.js 数 = 40，且双向零缺口', async () => {
+//    config 单档 + 平台流水单档）；迁徙地图批次新增第 40 个（geo-bounds.test.js，边界数据管线单测）；
+//    带色称号批 1b-1 新增第 41 个（badge-permission.test.js，称号字段级写权限）
+//    ⇒ 定额同步为实得真值 41。口径 = 「注册数 = 磁盘数 = 定额」，仍为精确等值 + 双向零缺口 + 去重。
+test('package.json 注册数 = 磁盘 *.test.js 数 = 41，且双向零缺口', async () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));
   const registered = pkg.scripts.test
     .split(/\s+/)
     .filter((x) => x.endsWith('.test.js'))
     .map((x) => path.basename(x));
   const onDisk = fs.readdirSync(HERE).filter((f) => f.endsWith('.test.js')).sort();
-  assert.equal(registered.length, 40, `注册数应为 40，实得 ${registered.length}`);
-  assert.equal(onDisk.length, 40, `磁盘 *.test.js 应为 40，实得 ${onDisk.length}`);
+  assert.equal(registered.length, 41, `注册数应为 41，实得 ${registered.length}`);
+  assert.equal(onDisk.length, 41, `磁盘 *.test.js 应为 41，实得 ${onDisk.length}`);
   assert.equal(new Set(registered).size, registered.length, '注册项不得重复');
   const missingOnDisk = registered.filter((f) => !onDisk.includes(f));
   const unregistered = onDisk.filter((f) => !registered.includes(f));
@@ -869,6 +870,7 @@ test('package.json 注册数 = 磁盘 *.test.js 数 = 40，且双向零缺口', 
   assert.ok(registered.includes('signin-streak.test.js'), 'signin-streak.test.js 必须已注册');
   assert.ok(registered.includes('anchors.test.js'), 'anchors.test.js 必须已注册（未注册 = 假绿）');
   assert.ok(registered.includes('invite-codes.test.js'), 'invite-codes.test.js 必须已注册（批 C-1 · 未注册 = 假绿）');
+  assert.ok(registered.includes('badge-permission.test.js'), 'badge-permission.test.js 必须已注册（批 1b-1 · 未注册 = 假绿）');
 });
 
 // ══ ⑰ 真源零写入 ════════════════════════════════════════════════════════════════

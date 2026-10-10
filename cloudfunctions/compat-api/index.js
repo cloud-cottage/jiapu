@@ -99,6 +99,8 @@ import {
   treeOriginPatchOf,
   unknownOriginCodeMessage,
 } from './lib/person-places.js';
+// 带色称号字段级写权限（批 1b-1 · docs/person-badge.spec.md §5）：与前端 canEditBadge 同口径单点
+import { assertBadgeWritable } from './lib/badge-guard.js';
 
 const MASTER_TREE_ID = process.env.MASTER_TREE_ID || 'zhonghua';
 const MAX_DEPTH = 72;
@@ -3231,6 +3233,15 @@ async function handleRequest(event) {
     if (peMatch && method === 'PUT') {
       const u = await requireWriteUser(headers, treeId, pathname, peMatch[1], false);
       const body = parseBody(event);
+      // 带色称号字段级权限（批 1b-1 · docs/person-badge.spec.md §5）：请求体 `attribute_list` 含
+      // `称号` / `称号色` 时，普通树需 `tree_steward` 及以上、总谱仅 `chief_editor`；不足 ⇒ 403。
+      // **必须拦在扣费之前**（被拒请求不得扣费、不得写库、不得产生任何资产流水）——与前端 `canEditBadge`
+      // 同口径；**先过 requireWriteUser 节点编辑闸门、再过本册字段级称号校验**（两次都过才落库）。
+      try {
+        assertBadgeWritable(u.role, treeId, MASTER_TREE_ID, body.attribute_list);
+      } catch (e) {
+        return send(errorStatusOf(e, 403), { error: e.message });
+      }
       // ② 只读预检（始祖 / 上层镜像 → 403，不扣费）；请求体无可修改字段 → 无效请求，不扣费
       const putTree = await getTree(treeId);
       // 地点字段形状闸门（写路径 C1′/C2′）：`residence_places` 显式提供但非数组、
