@@ -207,7 +207,104 @@ function profileFamily(tree, fam) {
   return out;
 }
 
-function toRawPerson(tree, person, detail) {
+// ---- 镜像内容读侧派生（方案 A · docs/mirror-content-derivation.spec.md）----
+// 口径（Kevin 2026-10-10 拍定）：`marriage` / `child` 型镜像可写会漂移 ⇒ 在读路径把身份类 7 字段与
+// 称号类 5 属性**以真身为准**补齐（`founder` / `chain` 型因整节点只读由构造保证，同一不变量）；
+// **只读不写回**（树 version / updated_at 不变）；真身不可达（孤儿镜像）⇒ 回退镜像本树副本（现状行为）。
+/** 称号类属性键（读出以真身为准的那 5 类；既有 3 + `docs/person-badge.spec.md` 新增 2） */
+const MIRROR_TITLE_ATTR_KEYS = ['封号', '谥号', '号', '称号', '称号色'];
+
+/**
+ * 读侧派生 · 属性合并：**只替换称号类 5 个 key** —— 删掉镜像自有的这 5 类，再插入真身对应的
+ * （真身没有 ⇒ 该称号在读出结果里不存在）；**其余 key 一律保留镜像本树的值**（绝不整数组覆盖）。
+ * @param {object|null} mirrorDetail 镜像详情档
+ * @param {object|null} realDetail 真身详情档（真身缺档 ⇒ 无称号，镜像称号被清）
+ * @returns {object} 合并后的详情档（events / media 等非属性字段仍取镜像）
+ */
+function mergeMirrorTitleAttributes(mirrorDetail, realDetail) {
+  const keys = new Set(MIRROR_TITLE_ATTR_KEYS);
+  const base = Array.isArray(mirrorDetail?.attributes) ? mirrorDetail.attributes : [];
+  const kept = base.filter((a) => a && !keys.has(a.key));
+  const realTitles = (Array.isArray(realDetail?.attributes) ? realDetail.attributes : []).filter(
+    (a) => a && keys.has(a.key),
+  );
+  return { ...(mirrorDetail || {}), attributes: [...kept, ...realTitles] };
+}
+
+/**
+ * 读侧派生 · 落点辅助：为给定树的**镜像节点**解析真身（`external_tree` 树里 `external_person_handle`
+ * 指向的节点 + 其详情档），供 `toRawPerson` 在读出前合并。
+ *
+ * - 判据 = `String(external_mirror) === 'true'` 且 `external_person_handle` 齐备
+ *   （⚠️ **不得**用「有 `external_*`」当判据：真身自身也带 external_* 配偶指针，见 :2896-2897）。
+ * - 真身不可达（无 `external_tree` / 真身树缺 / 真身 handle 不在）⇒ **不入表** ⇒ 调用方回退镜像副本（不报错）。
+ * - 真身详情档**按真身树批量取一次**（同 `detailMap` 套路，杜绝逐个镜像串行 await 的 N+1）。
+ * - **纯读**：只 `getTree` / `getAllDetails`，绝不写回（树 version / updated_at 不变）。
+ * @param {object} tree 镜像所在树
+ * @param {Set<string>} [onlyHandles] 仅解析这些镜像 handle（单对象读出口用；省略 = 全部）
+ * @returns {Promise<Map<string, {person: object, detail: object|null}>>} mirrorHandle → 真身
+ */
+async function buildMirrorRealBodies(tree, onlyHandles) {
+  const out = new Map();
+  const people = tree?.people || {};
+  const mirrors = Object.values(people).filter(
+    (p) =>
+      p &&
+      String(p.external_mirror) === 'true' &&
+      p.external_person_handle &&
+      (!onlyHandles || onlyHandles.has(p.handle)),
+  );
+  if (!mirrors.length) return out;
+  const byRealTree = new Map(); // realTreeId → mirror[]
+  for (const m of mirrors) {
+    const tid = String(m.external_tree || '').trim();
+    if (!tid) continue; // 孤儿镜像（无 external_tree）→ 回退镜像副本
+    if (!byRealTree.has(tid)) byRealTree.set(tid, []);
+    byRealTree.get(tid).push(m);
+  }
+  for (const [tid, list] of byRealTree) {
+    let realTree = null;
+    try {
+      realTree = await getTree(tid);
+    } catch {
+      realTree = null;
+    }
+    if (!realTree || !realTree.people) continue; // 真身树缺 → 本组全部回退
+    let realDetailMap = new Map();
+    try {
+      const ds = await getAllDetails(tid);
+      realDetailMap = new Map(ds.map((d) => [d.handle, d]));
+    } catch {
+      realDetailMap = new Map();
+    }
+    for (const m of list) {
+      const real = realTree.people[m.external_person_handle];
+      if (!real) continue; // 真身 handle 不在 → 回退
+      out.set(m.handle, { person: real, detail: realDetailMap.get(real.handle) || null });
+    }
+  }
+  return out;
+}
+
+function toRawPerson(tree, person, detail, realBody) {
+  // 读侧派生（方案 A）：`realBody` 由 `buildMirrorRealBodies` 解析而来 ⇒ 镜像节点以真身为准合并
+  // 身份类 7 字段 + 称号类 5 属性。**不派生**出生地 / 居住地（契约 v2 C6 本树自填）、external_* 指针、
+  // handle / gramps_id / parent_family / spouse_families（结构以本树为准）；真身值空 ⇒ 该空就空
+  // （严格以真身为准）；真身不可达（孤儿镜像）由调用方不传 `realBody` ⇒ 回退镜像副本（现状行为）。
+  if (realBody && realBody.person) {
+    const rp = realBody.person;
+    person = {
+      ...person,
+      name: rp.name,
+      surname: rp.surname,
+      given: rp.given,
+      gender: rp.gender,
+      birth_date: rp.birth_date,
+      death_date: rp.death_date,
+      is_living: rp.is_living,
+    };
+    detail = mergeMirrorTitleAttributes(detail, realBody.detail);
+  }
   const attributes = [];
   for (const a of detail?.attributes || []) attributes.push(attrEntry(a.key, a.value));
   for (const k of tw.EXTERNAL_KEYS) {
@@ -3407,7 +3504,9 @@ async function handleRequest(event) {
       if (!person) return send(404, { error: 'person not found' });
       if (readAccess.isHiddenPerson(person.handle)) return send(404, { error: '该节点暂不可见（近代世谱系仅家族成员可见）' });
       const detail = await getDetail(treeId, person.handle);
-      return send(200, toRawPerson(tree, person, detail));
+      // 读侧派生（方案 A）：镜像节点以真身为准（仅解析本 handle 的真身，不触及其余镜像）
+      const mirrorReals = await buildMirrorRealBodies(tree, new Set([person.handle]));
+      return send(200, toRawPerson(tree, person, detail, mirrorReals.get(person.handle)));
     }
 
     // GET /people/
@@ -3416,9 +3515,11 @@ async function handleRequest(event) {
       const access = (await resolveInviteCodeAccess(header('x-invite-code'), treeId, tree)) || readAccess;
       const details = await getAllDetails(treeId);
       const detailMap = new Map(details.map((d) => [d.handle, d]));
+      // 读侧派生（方案 A）：镜像节点以真身为准（真身详情档按真身树批量取，杜绝 N+1）
+      const mirrorReals = await buildMirrorRealBodies(tree);
       const out = Object.values(tree.people)
         .filter((p) => !access.isHiddenPerson(p.handle))
-        .map((p) => toRawPerson(tree, p, detailMap.get(p.handle)));
+        .map((p) => toRawPerson(tree, p, detailMap.get(p.handle), mirrorReals.get(p.handle)));
       return send(200, out);
     }
 
@@ -3444,20 +3545,22 @@ async function handleRequest(event) {
       const limit = parseInt(query.pagesize || '20', 10) || 20;
       const details = await getAllDetails(treeId);
       const detailMap = new Map(details.map((d) => [d.handle, d]));
+      // 读侧派生（方案 A）：命中的镜像节点以真身为准
+      const mirrorReals = await buildMirrorRealBodies(tree);
       const matched = [];
       // 编号 / 句柄检索（docs/id-system.spec.md §5：搜索也是「选节点」入口）：
       // 全局编号（I000052 / 000052）/ handle / 树内旧号命中本树 → 置顶返回
       const refHit = await resolveNode(String(query.query || '').trim(), treeId);
       if (refHit && refHit.tree_id === treeId && tree.people[refHit.handle] && !readAccess.isHiddenPerson(refHit.handle)) {
         const p = tree.people[refHit.handle];
-        matched.push({ handle: p.handle, object: toRawPerson(tree, p, detailMap.get(p.handle)) });
+        matched.push({ handle: p.handle, object: toRawPerson(tree, p, detailMap.get(p.handle), mirrorReals.get(p.handle)) });
       }
       for (const p of Object.values(tree.people)) {
         if (readAccess.isHiddenPerson(p.handle)) continue;
         if (matched.some((m) => m.handle === p.handle)) continue;
         const hay = `${p.name}${p.surname}${p.given}`.toLowerCase();
         if (hay.includes(q)) {
-          matched.push({ handle: p.handle, object: toRawPerson(tree, p, detailMap.get(p.handle)) });
+          matched.push({ handle: p.handle, object: toRawPerson(tree, p, detailMap.get(p.handle), mirrorReals.get(p.handle)) });
           if (matched.length >= limit) break;
         }
       }
