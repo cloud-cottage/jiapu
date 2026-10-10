@@ -6629,3 +6629,23 @@ cd frontend && VITE_API_BASE=https://liwu-d8gek6jjdab1d087c.service.tcloudbase.c
 - `jiapu_id_seq` 云端 / 本地已相等（person=414 / family=250），本批**未动**（窄路径不含）。
 - 旧 `jiazu_*` 集合仍保留未删（与本批无关）。
 - **待裁** 仍 = `docs/id-system.spec.md` §9-7 三项。
+
+### §64-6 执行实况 · 前端展示面 + `migrate-output/` 归档 + 上云后本地直连口径（**2026-10-11 追加** · Zang · 只追加）
+
+> **状态更新**：§64-5「④ 未完成 / 待办」所记的**前端两产物未重打**项**已在本节收口**（**该旧行原文一律保留、不回改**）。本节只追加，**§64-0 – §64-5 原文一字不改**（承 `AGENTS.md` §0-4）；未碰 `docs/*.qa.md`。
+
+**① 前端展示面（已上线）**
+- H5 入口 chunk md5 = **`ca2baa5a41101156e77acbef42518d86`**；Vercel 生产部署 = **`jiapu-g6773qo5u-…`** = **Ready**（**22:21:55**）。
+- **真实浏览器实测**（非产物判据）：伏羲详情页「编号（全站唯一）」行 = **`I000000052`** + 「点此复制」；沈氏树 = **`沈克强 I000000277`** ⇒ **UI 显示 = `I` + 存储值** 口径线上生效。
+
+**② 小程序待上传**
+- 小程序主包 = **2,050,292 B**（上限 **2,097,152 B**，余 **46,860 B**）⇒ **待 Kevin 上传**（开发者工具）。
+
+**③ 上云后本地直连口径（架构级）**
+- 本地 dev 数据源**默认直连云端（单一真源）**：ctrl 面板 sid **`jiapu-api`**（`3100`）= `env: { COMPAT_SOURCE: 'cloud' }` + 凭据走 `~/.config/jiapu/cloudbase.env`（chmod **600**，**面板文件内不含密钥**；原面板备份 = `~/bistro/ctrl/index.js.bak-20261011`）。
+- **`migrate-output/` 已归档**至 `~/jiazu-backups/2026-10-11-migrate-output-archive/migrate-output`（**342 文件 / 1.7M**，旁有 `config/` 副本）⇒ **仓内已无该目录、不再是运行期真源**；铁证 = 归档后 `3100` 重启仍正常（`rank 118`）⇒ 只读云端。
+- **测试数据源 = 归档**：`npm test`（无 env）缺省读归档副本（`COMPAT_REAL_OUT` 缺省 = `package.json` 的 `test` 脚本）；口径落点 = `docs/LOCAL_DEV.md`「数据真源与测试」节。
+
+**④ 待裁 / 边界（登记 · 不当作已解决）**
+- **无 `migrate-output` 后 25 个数据写入类脚本**（`upload-*.mjs` / `migrate-*.mjs` / `gedcom-*.mjs` 等）**失去本地数据源** ⇒ **需先恢复归档或改用云端数据才能重跑**。
+- 待裁仍 = `docs/id-system.spec.md` §9-7 三项。

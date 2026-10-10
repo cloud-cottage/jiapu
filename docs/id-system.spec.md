@@ -132,3 +132,11 @@
 - **状态 = 「Kevin 2026-10-10 拍定 · 本阶段不落代码 / 不改真源 · 只落规格」**（实现归另单）。
 - 本节**只追加、不改 §1–§8 任何历史行**（承 `AGENTS.md` §0-4）；**未碰 `docs/*.qa.md`**（§0-5）；**零真源写入 · 零打包 · 零部署**。
 - **代码锚点（落笔前 `grep -n` 现证）**：铸号格式化点 = `cloudfunctions/compat-api/lib/id-seq.js:22`（`ID_WIDTH = 6`）+ `:27`（`formatId` prefix 拼装）；编号解析 = 同文件 `:40`（`parseGlobalId` 正则）；候选集生成 = `cloudfunctions/compat-api/lib/id-resolve.js:44-49`（`:47-48` = 4 位补零候选）；`resolvePersonRef` = `cloudfunctions/compat-api/lib/tree-write.js:1618`；前端显示 = `frontend/src/business/format.ts:9`（`personIdDisplay`，现逻辑 `:12` 剥 `I`）+ `:19`（`PERSON_REF_HINT`）。
+
+### §9-9 上云执行回写（**指针** · **只追加，不改 §1–§8 与 §9-1–§9-8 任何行** · 2026-10-11）
+
+- **上云已完成**（**2026-10-10** 数据面 + 代码面；**2026-10-11** 前端展示面）—— **执行实况** = `docs/PENDING_DEPLOY.md` **§64-5**（数据面全量重传 + 代码面重打包 + 线上冒烟）· **§64-6**（前端展示面上线读数 + 小程序待上传 + 上云后本地直连口径）；**本地真源迁移登记** = `AGENTS.md` **§7** 追加行。
+- **迁移读数（指针）** = **320 文件 / 730 处**（**只补零、不改值**；三项自证：数值不变 **320/320** · 格式 人 `^\d{9}$` **324** / 家 `^F\d{6}$` **227**、违例 **0** · 唯一性 人 **324** / 家 **227**、重复 **0**、撞号 **0**）；备份 = `~/jiazu-backups/2026-10-10-gramps-id-9digits/`（`files/` **320 份** + `MD5-LEDGER.txt`）。
+- **上云读数（指针）** = 云端回读 **19/19** 树 md5 == 本地；云函数产物 md5 **`cc81b93d03bdf73b58d774cd0106ed81`**、`tcb fn detail` 修改时间 **2026-10-10 22:20:15**；线上冒烟：zhonghua **118** 人 / 非 9 位编号 **0** / `000000052` 与 `I0052` **均命中** handle `103ff65ee4c1610b597b5fd47c34`。
+- **上云后本地直连口径（指针）** = 本地 dev 默认**直连云端（单一真源）**；`migrate-output/` **已归档**（`~/jiazu-backups/2026-10-11-migrate-output-archive/migrate-output`）、**不再是运行期真源**；测试数据源 = **归档**（`COMPAT_REAL_OUT`）；口径 = `docs/PENDING_DEPLOY.md` **§64-6** + `docs/LOCAL_DEV.md`「数据真源与测试」节。
+- **本节只追加、不改 §1–§8 与 §9-1–§9-8 任何历史行**（承 `AGENTS.md` §0-4）；**未碰 `docs/*.qa.md`**（§0-5）。
