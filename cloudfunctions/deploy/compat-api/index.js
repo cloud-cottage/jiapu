@@ -32,7 +32,8 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // cloudfunctions/compat-api/lib/id-seq.js
 var id_seq_exports = {};
 __export(id_seq_exports, {
-  ID_WIDTH: () => ID_WIDTH,
+  ID_WIDTH_FAMILY: () => ID_WIDTH_FAMILY,
+  ID_WIDTH_PERSON: () => ID_WIDTH_PERSON,
   SEQ_COLLECTION: () => SEQ_COLLECTION,
   SEQ_FAMILY: () => SEQ_FAMILY,
   SEQ_PERSON: () => SEQ_PERSON,
@@ -40,6 +41,7 @@ __export(id_seq_exports, {
   formatId: () => formatId,
   formatPersonId: () => formatPersonId,
   idAllocator: () => idAllocator,
+  idKey: () => idKey,
   initSeqIfMissing: () => initSeqIfMissing,
   nextFamilyId: () => nextFamilyId,
   nextPersonId: () => nextPersonId,
@@ -49,17 +51,29 @@ __export(id_seq_exports, {
   reserveFamilyIds: () => reserveFamilyIds,
   reserveIds: () => reserveIds,
   reservePersonIds: () => reservePersonIds,
+  sameId: () => sameId,
   unusedIdsNotice: () => unusedIdsNotice,
   withFallback: () => withFallback,
   writeSeq: () => writeSeq
 });
 function formatId(kind, n) {
-  const prefix = kind === SEQ_FAMILY ? "F" : "I";
-  return `${prefix}${String(Math.max(1, Number(n) || 0)).padStart(ID_WIDTH, "0")}`;
+  const digits = String(Math.max(1, Number(n) || 0));
+  return kind === SEQ_FAMILY ? `F${digits.padStart(ID_WIDTH_FAMILY, "0")}` : digits.padStart(ID_WIDTH_PERSON, "0");
+}
+function idKey(ref) {
+  const m = String(ref == null ? "" : ref).trim().match(/^([IF]?)(\d+)$/i);
+  if (!m)
+    return "";
+  const kind = (m[1] || "").toUpperCase() === "F" ? SEQ_FAMILY : SEQ_PERSON;
+  return `${kind}:${parseInt(m[2], 10)}`;
+}
+function sameId(a, b) {
+  const ka = idKey(a);
+  return !!ka && ka === idKey(b);
 }
 function parseGlobalId(ref) {
   const s = String(ref || "").trim();
-  const m = s.match(/^([IF]?)(\d{1,6})$/i);
+  const m = s.match(/^([IF]?)(\d{1,9})$/i);
   if (!m)
     return null;
   const prefix = (m[1] || "").toUpperCase();
@@ -176,7 +190,7 @@ function idAllocator(ids = []) {
 function withFallback(id, fallbackFn) {
   return id || (typeof fallbackFn === "function" ? fallbackFn() : "");
 }
-var import_fs, import_path, SEQ_COLLECTION, SEQ_PERSON, SEQ_FAMILY, ID_WIDTH, formatPersonId, formatFamilyId, seqLocks;
+var import_fs, import_path, SEQ_COLLECTION, SEQ_PERSON, SEQ_FAMILY, ID_WIDTH_PERSON, ID_WIDTH_FAMILY, formatPersonId, formatFamilyId, seqLocks;
 var init_id_seq = __esm({
   "cloudfunctions/compat-api/lib/id-seq.js"() {
     import_fs = __toESM(require("fs"), 1);
@@ -185,7 +199,8 @@ var init_id_seq = __esm({
     SEQ_COLLECTION = "jiapu_id_seq";
     SEQ_PERSON = "person";
     SEQ_FAMILY = "family";
-    ID_WIDTH = 6;
+    ID_WIDTH_PERSON = 9;
+    ID_WIDTH_FAMILY = 6;
     formatPersonId = (n) => formatId(SEQ_PERSON, n);
     formatFamilyId = (n) => formatId(SEQ_FAMILY, n);
     seqLocks = /* @__PURE__ */ new Map();
@@ -31290,47 +31305,28 @@ function findByExactId(tree, wantId) {
   }
   return "";
 }
-function legacyVariants(ref) {
-  const num = numberOfId(ref);
-  const out = /* @__PURE__ */ new Set();
-  const raw = String(ref || "").trim().toUpperCase();
-  if (raw)
-    out.add(raw);
-  if (num !== null) {
-    out.add(String(num));
-    out.add(`I${num}`);
-    out.add(String(num).padStart(4, "0"));
-    out.add(`I${String(num).padStart(4, "0")}`);
-    out.add(formatId(SEQ_PERSON, num));
-  }
-  return out;
-}
-function legacyHit(node, variants) {
+function legacyHit(node, wantKey) {
   const legacy = node?.legacy_gramps_id;
   if (!legacy)
     return false;
-  const up = String(legacy).trim().toUpperCase();
-  if (variants.has(up))
-    return true;
-  const n = numberOfId(up);
-  return n !== null && variants.has(String(n)) ? true : false;
+  return idKey(legacy) === wantKey;
 }
-async function findLocalLegacy(tree, treeId, variants, { withDetails = true } = {}) {
+async function findLocalLegacy(tree, treeId, wantKey, { withDetails = true } = {}) {
+  if (!wantKey)
+    return "";
   for (const p of Object.values(tree?.people || {})) {
     if (!p?.gramps_id)
       continue;
-    const n = numberOfId(p.gramps_id);
-    const raw = String(p.gramps_id).trim().toUpperCase();
-    if (variants.has(raw) || n !== null && variants.has(String(n)))
+    if (idKey(p.gramps_id) === wantKey)
       return p.handle;
-    if (legacyHit(p, variants))
+    if (legacyHit(p, wantKey))
       return p.handle;
   }
   if (!withDetails)
     return "";
   try {
     for (const d of await getAllDetails(treeId)) {
-      if (legacyHit(d, variants))
+      if (legacyHit(d, wantKey))
         return d.handle;
     }
   } catch {
@@ -31388,7 +31384,7 @@ async function resolveNode(ref, treeId = "", opts = {}) {
     }
   }
   const num = numberOfId(s);
-  const variants = legacyVariants(s);
+  const wantKey = idKey(s);
   if (parsed && parsed.kind === SEQ_PERSON) {
     const want = formatId(SEQ_PERSON, parsed.number);
     for (const id of candidates) {
@@ -31402,11 +31398,11 @@ async function resolveNode(ref, treeId = "", opts = {}) {
     return null;
   if (scope) {
     const t = await treeOf(scope);
-    const h = await findLocalLegacy(t, scope, variants);
+    const h = await findLocalLegacy(t, scope, wantKey);
     return h ? hit(scope, h, "legacy") : null;
   }
   if (local) {
-    const h = await findLocalLegacy(await treeOf(local), local, variants);
+    const h = await findLocalLegacy(await treeOf(local), local, wantKey);
     if (h)
       return hit(local, h, "legacy");
   }
@@ -31417,7 +31413,7 @@ async function resolveNode(ref, treeId = "", opts = {}) {
     const t = await treeOf(id);
     if (!t?.people)
       continue;
-    const h = await findLocalLegacy(t, id, variants, { withDetails: false });
+    const h = await findLocalLegacy(t, id, wantKey, { withDetails: false });
     if (h)
       hits.push({ tree_id: id, handle: h, name: t.people[h]?.name || "" });
   }
@@ -31467,24 +31463,20 @@ function genderFromNum(g) {
   return "U";
 }
 function nextGrampsId(tree, prefix) {
-  const re = new RegExp(`^${prefix}(\\d+)$`);
-  let max = -1;
-  let width = 0;
-  for (const group of [tree.people, tree.families]) {
+  const isFamily = String(prefix).toUpperCase() === "F";
+  let max = 0;
+  for (const group of [tree?.people, tree?.families]) {
     for (const o of Object.values(group || {})) {
-      const m = String(o.gramps_id || "").match(re);
-      if (!m)
+      const parsed = parseGlobalId(o?.gramps_id);
+      if (!parsed)
         continue;
-      const n = parseInt(m[1], 10);
-      if (n > max || n === max && m[1].length > width) {
-        max = n;
-        width = m[1].length;
-      }
+      if (parsed.kind === SEQ_FAMILY !== isFamily)
+        continue;
+      if (parsed.number > max)
+        max = parsed.number;
     }
   }
-  if (max < 0)
-    return `${prefix}1`;
-  return `${prefix}${String(max + 1).padStart(width, "0")}`;
+  return formatId(isFamily ? SEQ_FAMILY : SEQ_PERSON, max + 1);
 }
 function attrOf(a) {
   return { key: typeof a?.type === "string" ? a.type : a?.type?.string || "", value: a?.value ?? "" };
@@ -32085,8 +32077,9 @@ function clanFounderHandleOf(tree, entry = null) {
   const fh = resolveFounderHandle(tree, entry);
   if (fh)
     return fh;
+  const founderKey = idKey(formatId(SEQ_PERSON, 1));
   for (const p of Object.values(tree?.people || {})) {
-    if (String(p?.gramps_id || "") === "I0001")
+    if (idKey(p?.gramps_id) === founderKey)
       return p.handle;
   }
   return "";
@@ -35193,7 +35186,7 @@ function applyClanTopMirror({
   let founderMirror = "";
   let index = 0;
   for (const m of masters) {
-    const grampsId = newPersonId ? newPersonId() : freeGrampsId(tree, index === 0 ? "I0001" : "");
+    const grampsId = newPersonId ? newPersonId() : freeGrampsId(tree, index === 0 ? formatPersonId(1) : "");
     const mirror = planClanMirrorPerson({
       handle: m.handle,
       grampsId,

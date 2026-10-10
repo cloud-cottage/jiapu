@@ -6598,3 +6598,34 @@ cd frontend && VITE_API_BASE=https://liwu-d8gek6jjdab1d087c.service.tcloudbase.c
 - **状态 = 「Kevin 2026-10-10 拍定 · 本阶段不上云 · 只登记」**（实现归另单）。
 - 本节**只追加、不改 §0–§63 任何历史行**（承 `AGENTS.md` §0-4）；**未碰 `docs/*.qa.md`**（§0-5）；**本轮零真源写入 · 零打包 · 零部署**。
 - **待裁 = `docs/id-system.spec.md` §9-7 三项**（展示是否补零 / 旧短编号是否永久兼容 / 家庭编号未来是否去前缀）。
+
+### §64-5 执行实况（**2026-10-10 上云已执行** · Zang · 只追加）
+
+> **状态更新**：§64-1（数据面）+ §64-2（代码面）登记的**上云动作已执行完毕**。本节只追加，**§64-0 – §64-4 原文一字不改**（承 `AGENTS.md` §0-4）；未碰 `docs/*.qa.md`。
+
+**① 数据面（全量重传 · 窄路径）**
+- 云端独有的 2 笔线上编辑（`称号` / `称号色`）**先回流本地**再上传（备份 `~/jiazu-backups/2026-10-10-badge-refull/`）：
+  - 风华胥 `zhonghua:6dfb6ba8dc8a57625a115395`：本地加 `称号=始祖母` + `称号色=crimson`，`封号=中华民族始祖母` **保留**（并存）；md5 `b5e1efc9941459507679c5963a514461` → `68056fb74dc94ff86b4b7f5bafa9dd8c`。
+  - 姬陆终 `zhonghua:92d03c30e92509b93348a113`：本地加 `称号=黄氏得姓始祖` + `称号色=gold`，`号=黄氏得姓始祖` **保留**（并存）；md5 `c16bd9bcec8acc3fd0fd464d3902d5c4` → `9e0190a50c42f500b6330f8206d1085e`。
+- 重传方式 = **新增窄路径脚本** `scripts/upload-id-core-to-cloudbase.mjs` —— **仅**覆盖 4 项：云存储 `trees/*.json`(19) + `jiapu_person_details`(303) + `jiapu_tree_meta`(19 树档 + `_meta`) + `jiapu_founder_requests`(2)。
+  **硬排除**：`jiapu_assets / jiapu_spirit / jiapu_messages / jiapu_ops_logs / jiapu_market / jiapu_wallets`（上传后逐档 md5 与 22:15 云端备份**完全一致**，证明未被改动）及 `jiapu_users / anchors / sms_codes / invite_codes / invites / friends / id_seq` 等。
+- 回读校验：**19/19** 棵树云存储回读 md5 == 本地（例 `zhonghua = 0d32d3d692de183ed992be36998a1dbc`）。
+- 云端编号已成新存储形态：人 9 位纯数字（`000000052`）、家庭 `F` + 6（`F000123`）；`tree_meta.founder_gramps_id` **8** 个均 9 位；`founder_requests` **2** 档均 9 位。
+
+**② 代码面（云函数 `compat-api`）**
+- 重打包产物 `cloudfunctions/deploy/compat-api/index.js` = **1,408,147 B** / md5 **`cc81b93d03bdf73b58d774cd0106ed81`**（命令 = §1-① 口径；两条 warning 属预期）。
+- 产物含新铸号 / 解析：`ID_WIDTH_PERSON = 9` / `ID_WIDTH_FAMILY = 6` / 解析正则 `\d{1,9}`（`\d{1,6}` 命中 0）。
+- `tcb fn deploy compat-api -e liwu-d8gek6jjdab1d087c` **成功**；`tcb fn detail` 修改时间 **2026-10-10 22:20:15**。
+
+**③ 线上冒烟（`https://liwu-d8gek6jjdab1d087c.service.tcloudbase.com/api`）**
+- `GET /people/?profile=all`（`X-Tree-Id: zhonghua`）n=**118**，`gramps_id` 非 9 位纯数字 = **0**。
+- `GET /tree/rank?tree_id=zhonghua` ⇒ `person_count = 118`（不变）。
+- 新旧形态解析同一人：`000000052` 与 `I0052` **均**命中 handle `103ff65ee4c1610b597b5fd47c34`。
+- 镜像派生未回归：`ji_23395_01` handle `4fb0172be158d263afc1319d`（`I000253`）⇒ `沈伟` / 生日 `3月13,1958` / 卒 `2月2,2010`（真身 `shen_27784_01`）。
+- 两档带色称号线上可见：风华胥 `称号=始祖母` + `称号色=crimson`（并保 `封号`）；姬陆终 `称号=黄氏得姓始祖` + `称号色=gold`（并保 `号`）。
+
+**④ 未完成 / 待办**
+- 前端 **H5 + 小程序两产物尚未重打**（`personIdDisplay` 改「加 `I`」显示口径，承 §64-2 / §4）—— 线上 H5 仍按旧口径显示编号，属未执行项。
+- `jiapu_id_seq` 云端 / 本地已相等（person=414 / family=250），本批**未动**（窄路径不含）。
+- 旧 `jiazu_*` 集合仍保留未删（与本批无关）。
+- **待裁** 仍 = `docs/id-system.spec.md` §9-7 三项。
