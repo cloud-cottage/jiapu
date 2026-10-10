@@ -19,7 +19,7 @@
     <!-- 窄屏不得压缩书页 ⇒ 外层横向滚动容器，纸页居中 -->
     <scroll-view v-else class="book-scroll" scroll-x :show-scrollbar="false">
       <view class="book-scroll-inner">
-        <view class="book-page">
+        <view class="book-page" :class="flipClass">
           <!-- 书口（左 / 右）：文案已是繁体、视图层零字形转换；空串 ⇒ 整条不渲染 -->
           <view v-if="leftLabel" class="side-label side-label-left">
             <text class="side-label-text">{{ leftLabel }}</text>
@@ -57,21 +57,21 @@
       </view>
     </scroll-view>
 
-    <!-- 翻页控件（纸页外 · 文案简体）：首 / 末页对应按钮禁用 -->
+    <!-- 翻页控件（纸页外 · 文案简体）：左 = 后叶（下一页）、右 = 前叶（上一页）；首 / 末页对应按钮禁用 -->
     <view v-if="showPager" class="pager">
-      <view class="pager-btn" :class="{ disabled: !canPrev }" @click="prevPage">
-        <text class="pager-btn-text">◀ 上一页</text>
-      </view>
-      <text class="page-indicator">页 {{ pageIndex + 1 }} / {{ totalPages }}</text>
       <view class="pager-btn" :class="{ disabled: !canNext }" @click="nextPage">
-        <text class="pager-btn-text">下一页 ▶</text>
+        <text class="pager-btn-text">◀ 后叶</text>
+      </view>
+      <text class="page-indicator">叶 {{ pageIndex + 1 }} / {{ totalPages }}</text>
+      <view class="pager-btn" :class="{ disabled: !canPrev }" @click="prevPage">
+        <text class="pager-btn-text">前叶 ▶</text>
       </view>
     </view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, nextTick } from 'vue';
 // #ifdef H5
 import { getCurrentInstance, onUnmounted } from 'vue';
 // #endif
@@ -87,6 +87,33 @@ const loadError = ref('');
 const pageIndex = ref(0);
 /** 工具条「⋯ 更多」菜单开合 */
 const menuOpen = ref(false);
+/** 翻页动效 class：''（静止）/ 'flip-next'（后叶 · 向左翻）/ 'flip-prev'（前叶 · 向右翻） */
+const flipClass = ref<'' | 'flip-next' | 'flip-prev'>('');
+/** 动效时长（ms）：与 style 内 keyframes 的 300ms 对齐，略留余量后清 class */
+const FLIP_MS = 320;
+let flipTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * 触发一次「拟翻书」翻页动效：**仅真翻页时**调用 —— 边界守卫在 `prevPage()` / `nextPage()` 内（首页再往前 /
+ * 末页再往后不进函数体）⇒ 边界自然不播；首次加载与换树 `load()` 直接写 `pageIndex` ⇒ 也不播。
+ * 同一方向连续翻页：先把 class 清空、下一帧再挂上（Vue 批处理下同值不重触发动画）；到时清 class
+ * ⇒ 静止态不残留动画 class 与内联 transform（回未旋转、不透明）。
+ * 实现 = `@keyframes` + class 切换（H5 与小程序 wxss 两端同源支持；**不用** Vue `<transition>` 包元素）。
+ */
+function playFlip(dir: 'flip-next' | 'flip-prev') {
+  if (flipTimer) {
+    clearTimeout(flipTimer);
+    flipTimer = null;
+  }
+  flipClass.value = '';
+  nextTick(() => {
+    flipClass.value = dir;
+    flipTimer = setTimeout(() => {
+      flipClass.value = '';
+      flipTimer = null;
+    }, FLIP_MS);
+  });
+}
 
 const pages = computed<WenpuPage[]>(() => book.value?.pages || []);
 const totalPages = computed(() => pages.value.length);
@@ -129,11 +156,15 @@ async function load() {
 }
 
 function prevPage() {
-  if (canPrev.value) pageIndex.value -= 1;
+  if (!canPrev.value) return;
+  pageIndex.value -= 1;
+  playFlip('flip-prev');
 }
 
 function nextPage() {
-  if (canNext.value) pageIndex.value += 1;
+  if (!canNext.value) return;
+  pageIndex.value += 1;
+  playFlip('flip-next');
 }
 
 /** PDF 导出（弱化入口）：保持既有 stub，不新增 PDF 渲染引擎 */
@@ -173,7 +204,7 @@ function bookRootEl(): Element | null {
 }
 
 /**
- * 键盘翻页：`ArrowLeft` = 上一页、`ArrowRight` = 下一页。以下条件**同时**为真才响应：
+ * 键盘翻页：`ArrowLeft` = 后叶（下一页）、`ArrowRight` = 前叶（上一页）。以下条件**同时**为真才响应：
  * 1. 根元素可见（`getBoundingClientRect()` 宽 > 0 且高 > 0）——本组件虽由 `tree-hall` 以 `v-if` 链渲染，
  *    但宿主页被 keep-alive 缓存 / 页被隐藏时监听仍挂着，须防「幽灵响应」；
  * 2. `showPager` 为真（加载中 / 谱文读取失败 / 空谱「暫無譜文」/ 无页 ⇒ 一律不响应）；
@@ -200,14 +231,14 @@ function onKeydown(event: KeyboardEvent) {
     if (target.isContentEditable === true) return;
   }
   if (event.key === 'ArrowLeft') {
-    if (!canPrev.value) return;
+    if (!canNext.value) return;
     event.preventDefault();
-    prevPage();
+    nextPage();
     return;
   }
-  if (!canNext.value) return;
+  if (!canPrev.value) return;
   event.preventDefault();
-  nextPage();
+  prevPage();
 }
 
 // handler 为具名同一引用 ⇒ 解绑必然命中（不得用匿名函数包一层）
@@ -276,6 +307,25 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown));
   border: 1px solid #222;
   font-family: "Noto Serif TC", SimSun, serif;
 }
+
+/* 「拟翻书」翻页动效（轻微、有方向感）：纯 CSS @keyframes + class 切换，H5 与小程序两端同源支持
+   （**不用** Vue <transition> 包元素，小程序不支持）。
+   方向映射：后叶（下一页）⇒ 纸页「向左翻」；前叶（上一页）⇒「向右翻」。绕纸页竖直轴 rotateY + perspective
+   卷动，叠加小幅横向位移与淡出 / 淡入 ⇒ 即便个别小程序内核不认 3D 变换，位移 + 透明度仍能表达方向
+   （等价 2.5D，不静默降级成无动画）。幅度轻微：旋转峰值 16deg、位移 8px；总时长 300ms、ease-out；
+   结束回 rotateY(0) / opacity 1 ⇒ 静止态外观与改动前一致（class 由 playFlip() 在 320ms 后清掉）。 */
+@keyframes wenpu-flip-next {
+  0% { transform: perspective(1200px) rotateY(0deg) translateX(0); opacity: 1; }
+  40% { transform: perspective(1200px) rotateY(-16deg) translateX(-8px); opacity: 0.72; }
+  100% { transform: perspective(1200px) rotateY(0deg) translateX(0); opacity: 1; }
+}
+@keyframes wenpu-flip-prev {
+  0% { transform: perspective(1200px) rotateY(0deg) translateX(0); opacity: 1; }
+  40% { transform: perspective(1200px) rotateY(16deg) translateX(8px); opacity: 0.72; }
+  100% { transform: perspective(1200px) rotateY(0deg) translateX(0); opacity: 1; }
+}
+.book-page.flip-next { animation: wenpu-flip-next 300ms ease-out; }
+.book-page.flip-prev { animation: wenpu-flip-prev 300ms ease-out; }
 
 /* 书口：绝对定位、竖排、12px、字间距 2px、#333 */
 .side-label {

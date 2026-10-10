@@ -37,8 +37,8 @@
  *      `季？` ⇒「？」、`辛本荣 六婶` ⇒「辛氏 本荣 六婶」（含空格，数据原样）。
  * 3) 日期一律农历（`lunar.ts` 的 `solarToLunarText`；「只有年月」档 = 该公历月 15 日所在农历月）。
  * 4) 分页：每页固定 4 行、不足补 `null`；某人栏数 > 30 时多余栏**挤占下一行**（同样占行位、不丢内容）。
- * 5) 书口：`leftLabel` = `▲ <谱名> 頁<汉字序>`（谱名 = `genealogy_name`，空则 `display_title`）、
- *    `rightLabel` = `▲ <堂号> 頁<汉字序>`（堂号 = `hall_name`）；**`hall_name` 空或字面「暂无」⇒ `rightLabel = ''`**。
+ * 5) 书口：`leftLabel` = `▲ <谱名> 葉<汉字序>`（谱名 = `genealogy_name`，空则 `display_title`）、
+ *    `rightLabel` = `▲ <堂号> 葉<汉字序>`（堂号 = `hall_name`）；**`hall_name` 空或字面「暂无」⇒ `rightLabel = ''`**。
  *    页码：第 k 页（0 起）左 = `2k+1`、右 = `2k+2`（**汉字序**，两侧各 +2 / 翻一页 ⇒ 一组书口内两页连号）。
  * 6) 繁体：所有栏文本 + 两侧书口**一律繁体**（`traditional.ts` 的 `toTraditional`，OpenCC s2t 纯字形）；
  *    **只在渲染派生**：零回写、不进请求参数、不落真源。
@@ -539,8 +539,8 @@ export async function buildWenpuBook(treeId: string): Promise<WenpuBook> {
       const rightNo = leftNo + 1;
       pages.push({
         rows: slice,
-        leftLabel: '▲ ' + title + ' 頁' + chineseNum(leftNo),
-        rightLabel: hall ? '▲ ' + hall + ' 頁' + chineseNum(rightNo) : '',
+        leftLabel: '▲ ' + title + ' 葉' + chineseNum(leftNo),
+        rightLabel: hall ? '▲ ' + hall + ' 葉' + chineseNum(rightNo) : '',
       });
     }
     return { pages, title, hall, rowCount: rows.length, empty: false };
