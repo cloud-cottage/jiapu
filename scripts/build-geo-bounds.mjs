@@ -39,7 +39,9 @@ const REPO = path.resolve(HERE, '..');
 /** 边界真源目录（**新增目录**；进 Git） */
 export const TRUTH_DIR = path.join(REPO, 'config', 'geo-bounds');
 const TREE_META = path.join(REPO, 'config', 'tree-meta.json');
-const TREES_DIR = path.join(REPO, 'migrate-output', 'trees');
+/** 数据真源根（`migrate-output/`）：本地已归档，可用 `COMPAT_REAL_OUT` 覆盖指向归档 / 副本 */
+const REAL_OUT = process.env.COMPAT_REAL_OUT || path.join(REPO, 'migrate-output');
+const TREES_DIR = path.join(REAL_OUT, 'trees');
 
 const DATAV = 'https://geo.datav.aliyun.com/areas_v3/bound';
 /** 合法 `origin_code` 形状（与 `lib/geo.js` / `build-geo-divisions.mjs` 的 `CODE_RE` 逐字一致） */

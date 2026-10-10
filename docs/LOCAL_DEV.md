@@ -73,3 +73,15 @@ env -u PYTHONPATH ... .venv/bin/python scripts/run-gramps-webapi.py \
 3. **必须用 `env -u PYTHONPATH`**：本机全局 PYTHONPATH 指向 Hermes venv，会干扰依赖解析。
 4. **数据库目录**：脚本设置 `GRAMPS_DATABASE_PATH=gramps_data/grampsdb` 并预创建（Gramps 的 `os.mkdir` 不建父目录）。
 5. **官方 pip 包缺 alembic 目录**：从源码复制到 `gramps_config/alembic_users/`。
+
+## 数据真源与测试（2026-10 起：本地直连云端）
+
+- 本地已改为**直连云端**（compat-api 的 ctrl 面板 `jiapu-api` 为 `COMPAT_SOURCE=cloud`，凭据经 shell source 自 `~/.config/jiapu/cloudbase.env` 注入）——**本地不再有数据真源**。
+- 仓内 `migrate-output/` 已**归档**到：
+  `/Users/kevin/jiazu-backups/2026-10-11-migrate-output-archive/migrate-output`（342 文件；旁有 `config/` 副本）。
+- `npm test` **默认读归档**：`package.json` 的 `test` 脚本把 `COMPAT_REAL_OUT` 缺省设为上述归档路径
+  （`COMPAT_REAL_OUT="${COMPAT_REAL_OUT:-$HOME/jiazu-backups/2026-10-11-migrate-output-archive/migrate-output}" node --test …`）。
+- 指向别处的真源副本时显式覆盖即可（显式值优先于缺省）：
+  `COMPAT_REAL_OUT=/path/to/migrate-output npm test`
+- 读 `migrate-output` 的仅测试 / 构建路径（如 `scripts/build-geo-bounds.mjs` 的 trees 收集）；
+  `config/` 下的真源（`config/geo-bounds/`、`config/tree-meta.json`）仍在仓内、入 Git，不受影响。
