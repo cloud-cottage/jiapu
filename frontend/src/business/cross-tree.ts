@@ -102,8 +102,11 @@ export function openTreeHome(treeId: string): void {
       .then((r) => (r.ok ? r.json() : null))
       .then((meta: TreeMeta | null) => {
         // 仅当仍停留在该树的首页时才改写地址栏（避免覆盖后续跳转）
-        if (location.hash.includes(`pages/hall/index?tree_id=${treeId}`)) {
-          history.replaceState(null, '', treePathAlias(treeId, meta));
+        if (
+          location.pathname === '/pages/hall/index' &&
+          location.search.includes('tree_id=' + treeId)
+        ) {
+          history.replaceState(history.state, '', treePathAlias(treeId, meta));
         }
       })
       .catch(() => {});

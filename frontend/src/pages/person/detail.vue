@@ -83,15 +83,14 @@ function onLoadFailed() {
   convergeUrlTo(origin.treeId, origin.handle);
 }
 
-/** H5 地址栏收敛到目标坐标（App.vue 的别名路由不受影响：本页只在 hash 路由下出现） */
+/** H5 地址栏收敛到目标坐标（history 路由下本页 pathname 为 /pages/person/detail；App.vue 的别名路由不受影响） */
 function convergeUrlTo(t: string, h: string) {
   // #ifdef H5
-  const hash = window.location.hash || '';
-  if (hash.includes('/pages/person/detail')) {
+  if (window.location.pathname === '/pages/person/detail') {
     window.history.replaceState(
-      null,
+      history.state,
       '',
-      `#/pages/person/detail?tree_id=${encodeURIComponent(t)}&handle=${encodeURIComponent(h)}`,
+      `/pages/person/detail?tree_id=${encodeURIComponent(t)}&handle=${encodeURIComponent(h)}`,
     );
   }
   // #endif

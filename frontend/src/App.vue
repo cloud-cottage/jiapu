@@ -3,6 +3,55 @@ import { onLaunch, onShow, onHide } from '@dcloudio/uni-app';
 import { resolveTreeIdByHost } from '@/business';
 
 // #ifdef H5
+/** 首页入口别名路径：history 模式下被导航到该路径时收敛回裸域 */
+const HOME_ALIAS_PATH = '/pages/index/index';
+
+/** 首页地址归一：地址栏停在 /pages/index/index 时替换为裸域（保留 query / hash） */
+function normalizeHomeUrl() {
+  if (location.pathname === HOME_ALIAS_PATH) {
+    history.replaceState(history.state, '', '/' + location.search + location.hash);
+  }
+}
+
+// 包装 pushState / replaceState：任意一次路由提交后都尝试把首页地址收敛为裸域
+const __origPushState = history.pushState;
+const __origReplaceState = history.replaceState;
+history.pushState = function (...args: Parameters<History['pushState']>) {
+  __origPushState.apply(history, args);
+  normalizeHomeUrl();
+};
+history.replaceState = function (...args: Parameters<History['replaceState']>) {
+  __origReplaceState.apply(history, args);
+  normalizeHomeUrl();
+};
+normalizeHomeUrl();
+
+/**
+ * popstate 别名兜底：history 前进/后退回到可读别名地址（/ji_23395_01、/z/ 等）时，
+ * vue-router 的 popstate 处理是从 URL 解析路由（createCurrentLocation(base, location)，
+ * 不用 state.current），而可读别名并不是 vue-router 路由（入口路由为 '/' alias '/pages/index/index'，
+ * 其余为 /pages/...）⇒ 匹配不到、渲染空白；且浏览器前进/后退不触发 onPageNotFound，
+ * 别名重派无人接管。故在此监听 popstate，复用已有 resolveTreeAlias() 重派。
+ * - 根路径 '/'（去斜杠后为空串）交给路由与 normalizeHomeUrl，直接返回；
+ * - '/pages/' 开头为内部路由，交给 vue-router，直接返回；
+ * - 其余（可读别名形态，如 ji_23395_01、z、z/ji_23395）统一交给 resolveTreeAlias()
+ *   （已处理 /z/、/z/<tree_id>、旧 /zhonghua、单段别名、RESERVED_PATHS 与 CLAN_PATH_RE）。
+ * 仅在模块作用域注册一次；用 setTimeout(…, 0) 让先注册的 vue-router popstate 处理跑完后再重派。
+ */
+let aliasRepopPending = false;
+function onPopStateAlias() {
+  if (aliasRepopPending) return;
+  const seg = location.pathname.replace(/^\/+|\/+$/g, '');
+  if (!seg) return; // 根路径 '/'：交给路由与 normalizeHomeUrl
+  if (location.pathname.startsWith('/pages/')) return; // 内部路由：交给 vue-router
+  aliasRepopPending = true;
+  setTimeout(() => {
+    aliasRepopPending = false;
+    resolveTreeAlias();
+  }, 0);
+}
+window.addEventListener('popstate', onPopStateAlias);
+
 /** 非家族树路径保留段（避免误解析静态资源/页面路径） */
 const RESERVED_PATHS = new Set([
   'pages', 'static', 'assets', 'api', 'index.html', 'favicon.ico', 'node_modules', 'z',
@@ -27,6 +76,13 @@ const LEGACY_MASTER_HASH_RE = /^zhonghua$/;
  * - hash 形式 #/ji_23395_01 / #/z/ji_23395 → 同上
  */
 function resolveTreeAlias() {
+  // 旧 hash 分享链接兼容（如 #/pages/hall/index?tree_id=X、#/pages/person/detail?...）：
+  // 转成等价 path 形态交给 history 路由；reLaunch 后 hash 清空，不会重入。
+  if (location.hash.startsWith('#/pages/')) {
+    const legacyHashPath = location.hash.replace(/^#\/?/, '');
+    uni.reLaunch({ url: '/' + legacyHashPath });
+    return;
+  }
   const pathname = location.pathname.replace(/\/+$/, '');
   const hashPath = location.hash.replace(/^#\/?/, '');
   const onInternalRoute = hashPath.startsWith('pages/') || pathname.startsWith('/pages/');
@@ -121,13 +177,9 @@ function openAlias(alias: string, isHash: boolean, isClan = false) {
   gotoAlias(treeId, alias, isHash, isClan);
 }
 
-function gotoAlias(treeId: string, alias: string, isHash: boolean, isClan = false) {
-  if (isHash) {
-    // hash 形式：替换为内部页面路由
-    location.replace(`#/pages/hall/index?tree_id=${treeId}`);
-    return;
-  }
-  // 路径形式：reLaunch 到首页，地址栏保持可读 uri（世本固定 /z/；祖谱带 /z/ 前缀）
+function gotoAlias(treeId: string, alias: string, _isHash: boolean, isClan = false) {
+  // history 模式：hash 与 path 形态统一走 reLaunch（同文档 hash 变更不被 history 路由监听），
+  // 再等待内部路由提交后把地址栏改写为可读 uri（_isHash 仅保留形参以兼容调用点）。
   uni.reLaunch({ url: `/pages/hall/index?tree_id=${treeId}` });
   const readablePath = treeId === MASTER_TREE_ID ? MASTER_PATH : isClan ? `/z/${alias}` : `/${alias}`;
   keepAliasUrl(alias, treeId, readablePath);
@@ -144,8 +196,11 @@ function openMasterHome() {
 
 /** 等待内部路由提交后把地址栏改写为 /z/（旧地址 /zhonghua 至此被替换掉） */
 function keepMasterUrl(tries = 0) {
-  if (location.hash.includes(`pages/hall/index?tree_id=${MASTER_TREE_ID}`)) {
-    history.replaceState(null, '', MASTER_PATH);
+  if (
+    location.pathname === '/pages/hall/index' &&
+    location.search.includes('tree_id=' + MASTER_TREE_ID)
+  ) {
+    history.replaceState(history.state, '', MASTER_PATH);
     return;
   }
   if (tries < 30) {
@@ -155,8 +210,11 @@ function keepMasterUrl(tries = 0) {
 
 /** 等待内部路由提交后，把地址栏改写为可读 uri（/ji_23395_01 或祖谱 /z/ji_23395） */
 function keepAliasUrl(alias: string, treeId: string, readablePath: string, tries = 0) {
-  if (location.hash.includes(`pages/hall/index?tree_id=${treeId}`)) {
-    history.replaceState(null, '', readablePath);
+  if (
+    location.pathname === '/pages/hall/index' &&
+    location.search.includes('tree_id=' + treeId)
+  ) {
+    history.replaceState(history.state, '', readablePath);
     return;
   }
   if (tries < 30) {
@@ -172,9 +230,10 @@ onLaunch(() => {
   resolveHostTree();
   // 兜底：hash 形式别名（#/ji_23395_01）未命中内部路由时重定向
   uni.onPageNotFound(() => {
-    const hashPath = location.hash.replace(/^#\/?/, '');
-    if (/^[a-z0-9_]+$/.test(hashPath) && !RESERVED_PATHS.has(hashPath)) {
-      openAlias(hashPath, true);
+    // history 模式：以 pathname（去首尾斜杠后）兜底别名，形如 /ji_23395_01
+    const seg = location.pathname.replace(/^\/+|\/+$/g, '');
+    if (/^[a-z0-9_]+$/.test(seg) && !RESERVED_PATHS.has(seg)) {
+      openAlias(seg, true);
     }
   });
   // #endif
