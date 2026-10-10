@@ -36752,6 +36752,46 @@ function getGeoHot() {
   return defaultReader.getGeoHot();
 }
 
+// cloudfunctions/compat-api/lib/badge-guard.js
+var BADGE_ATTR_KEYS = (
+  /** @type {const} */
+  ["\u79F0\u53F7", "\u79F0\u53F7\u8272"]
+);
+var BADGE_FORBIDDEN_MESSAGE = "\u79F0\u53F7\u4EC5\u6811\u4E3B\u7406\u4EBA\uFF08tree_steward\uFF09\u53CA\u4EE5\u4E0A\u53EF\u7F16\u8F91\uFF1B\u4E2D\u534E\u4E16\u672C\u603B\u8C31\u4EC5\u603B\u7F16\u8F91\uFF08chief_editor\uFF09\u53EF\u7F16\u8F91";
+function attrKeyOf2(a) {
+  if (!a)
+    return "";
+  if (typeof a.type === "string")
+    return a.type;
+  if (a.type && typeof a.type.string === "string")
+    return a.type.string;
+  if (typeof a.key === "string")
+    return a.key;
+  return "";
+}
+function hasBadgeAttr(attributeList) {
+  if (!Array.isArray(attributeList))
+    return false;
+  return attributeList.some((a) => BADGE_ATTR_KEYS.includes(attrKeyOf2(a)));
+}
+function canEditBadge(role, treeId, masterTreeId) {
+  const r = String(role || "").trim();
+  if (!r || r === "guest")
+    return false;
+  if (treeId === masterTreeId)
+    return r === "chief_editor";
+  return r === "tree_steward" || r === "chief_editor";
+}
+function assertBadgeWritable(role, treeId, masterTreeId, attributeList) {
+  if (!hasBadgeAttr(attributeList))
+    return;
+  if (!canEditBadge(role, treeId, masterTreeId)) {
+    const e = new Error(BADGE_FORBIDDEN_MESSAGE);
+    e.status = 403;
+    throw e;
+  }
+}
+
 // cloudfunctions/compat-api/index.js
 var MASTER_TREE_ID2 = process.env.MASTER_TREE_ID || "zhonghua";
 var MAX_DEPTH = 72;
@@ -39565,6 +39605,11 @@ async function handleRequest(event) {
     if (peMatch && method === "PUT") {
       const u = await requireWriteUser(headers, treeId, pathname, peMatch[1], false);
       const body = parseBody(event);
+      try {
+        assertBadgeWritable(u.role, treeId, MASTER_TREE_ID2, body.attribute_list);
+      } catch (e) {
+        return send(errorStatusOf(e, 403), { error: e.message });
+      }
       const putTree = await getTree(treeId);
       try {
         assertPlaceFieldShapes(body);
