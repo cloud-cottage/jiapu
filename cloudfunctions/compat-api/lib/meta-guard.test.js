@@ -153,25 +153,25 @@ test('祖谱认祖世本（clan.attachClanToMaster，真实写路径）→ 只�
   writeTree({
     _schema: '1.0',
     tree_id: 'zhonghua',
-    founder_gramps_id: 'I0001',
+    founder_gramps_id: '000000001',
     version: 7,
     people: {
       mRoot: {
-        handle: 'mRoot', gramps_id: 'I0001', name: '风伏羲', surname: '风', given: '伏羲', gender: 'M',
+        handle: 'mRoot', gramps_id: '000000001', name: '风伏羲', surname: '风', given: '伏羲', gender: 'M',
         birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: ['mf1'],
       },
       mX: {
-        handle: 'mX', gramps_id: 'I0100', name: '季始祖公', surname: '季', given: '始祖公', gender: 'M',
+        handle: 'mX', gramps_id: '000000100', name: '季始祖公', surname: '季', given: '始祖公', gender: 'M',
         birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: 'mf1', spouse_families: ['mf2'],
       },
       mChild: {
-        handle: 'mChild', gramps_id: 'I0101', name: '季二世', surname: '季', given: '二世', gender: 'M',
+        handle: 'mChild', gramps_id: '000000101', name: '季二世', surname: '季', given: '二世', gender: 'M',
         birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: 'mf2', spouse_families: [],
       },
     },
     families: {
-      mf1: { handle: 'mf1', gramps_id: 'F0001', father_handle: 'mRoot', mother_handle: '', child_handles: ['mX'] },
-      mf2: { handle: 'mf2', gramps_id: 'F0002', father_handle: 'mX', mother_handle: '', child_handles: ['mChild'] },
+      mf1: { handle: 'mf1', gramps_id: 'F000001', father_handle: 'mRoot', mother_handle: '', child_handles: ['mX'] },
+      mf2: { handle: 'mf2', gramps_id: 'F000002', father_handle: 'mX', mother_handle: '', child_handles: ['mChild'] },
     },
   });
   writeDetail({ _id: 'zhonghua:mRoot', tree_id: 'zhonghua', handle: 'mRoot', name: '风伏羲', events: [], attributes: [{ key: 'external_chain_gen', value: '0', type: 'external_chain_gen' }] });
@@ -181,11 +181,11 @@ test('祖谱认祖世本（clan.attachClanToMaster，真实写路径）→ 只�
     _schema: '1.0',
     tree_id: CLAN_ID,
     kind: 'clan',
-    founder_gramps_id: 'I0001',
+    founder_gramps_id: '000000001',
     version: 1,
     people: {
       own_ji: {
-        handle: 'own_ji', gramps_id: 'I0002', name: '季花', surname: '季', given: '花', gender: 'M',
+        handle: 'own_ji', gramps_id: '000000002', name: '季花', surname: '季', given: '花', gender: 'M',
         birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [],
         external_tree: '', external_person_handle: '', external_link_type: '',
       },
@@ -227,7 +227,7 @@ test('树 / 详情 / 集合写入也都落在副本（migrate-output 一个字�
     _schema: '1.0',
     tree_id: TREE_ID,
     version: 1,
-    people: { f: { handle: 'f', gramps_id: 'I0001', name: '护栏', surname: '季', gender: 'M' } },
+    people: { f: { handle: 'f', gramps_id: '000000001', name: '护栏', surname: '季', gender: 'M' } },
     families: {},
   });
   await store.saveDetail({ _id: `${TREE_ID}:f`, tree_id: TREE_ID, handle: 'f', name: '护栏', events: [] });

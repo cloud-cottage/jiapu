@@ -112,23 +112,23 @@ const P = (handle, gramps_id, surname, given, extra = {}) => ({
 const zhonghua = {
   _schema: '1.0',
   tree_id: ZH,
-  founder_gramps_id: 'I000052',
+  founder_gramps_id: '000000052',
   version: 7,
   people: {
-    'zh-fu': P('zh-fu', 'I000052', '风', '伏羲', { spouse_families: ['zh-fam-fu'] }),
-    'zh-w1': P('zh-w1', 'I000053', '风', '女娲', { gender: 'F', spouse_families: ['zh-fam-fu'] }),
-    'zh-fu2': P('zh-fu2', 'I000054', '风', '二号父'),
-    'zh-fu3': P('zh-fu3', 'I000055', '风', '九世父'),
-    'zh-root': P('zh-root', 'I000104', '风', '华胥', { gender: 'F' }),
-    'zh-agg': P('zh-agg', 'I000099', '风', '聚合虚位'),
-    'zh-off': P('zh-off', 'I000098', '风', '不在链上'),
-    'zh-at1': P('zh-at1', 'I000060', '风', '原子一'),
-    'zh-at0': P('zh-at0', 'I000059', '风', '见证父'),
-    'zh-at2': P('zh-at2', 'I000061', '风', '原子二'),
-    'zh-at3': P('zh-at3', 'I000062', '风', '原子三'),
-    'zh-dead': P('zh-dead', 'I000065', '风', '已故对照', { is_living: false }),
-    'zh-eq1': P('zh-eq1', 'I000063', '姬', '等价一'),
-    'zh-eq2': P('zh-eq2', 'I000064', '姬', '等价二'),
+    'zh-fu': P('zh-fu', '000000052', '风', '伏羲', { spouse_families: ['zh-fam-fu'] }),
+    'zh-w1': P('zh-w1', '000000053', '风', '女娲', { gender: 'F', spouse_families: ['zh-fam-fu'] }),
+    'zh-fu2': P('zh-fu2', '000000054', '风', '二号父'),
+    'zh-fu3': P('zh-fu3', '000000055', '风', '九世父'),
+    'zh-root': P('zh-root', '000000104', '风', '华胥', { gender: 'F' }),
+    'zh-agg': P('zh-agg', '000000099', '风', '聚合虚位'),
+    'zh-off': P('zh-off', '000000098', '风', '不在链上'),
+    'zh-at1': P('zh-at1', '000000060', '风', '原子一'),
+    'zh-at0': P('zh-at0', '000000059', '风', '见证父'),
+    'zh-at2': P('zh-at2', '000000061', '风', '原子二'),
+    'zh-at3': P('zh-at3', '000000062', '风', '原子三'),
+    'zh-dead': P('zh-dead', '000000065', '风', '已故对照', { is_living: false }),
+    'zh-eq1': P('zh-eq1', '000000063', '姬', '等价一'),
+    'zh-eq2': P('zh-eq2', '000000064', '姬', '等价二'),
   },
   families: {
     'zh-fam-fu': { handle: 'zh-fam-fu', gramps_id: 'F000048', father_handle: 'zh-fu', mother_handle: 'zh-w1', child_handles: [] },
@@ -139,7 +139,7 @@ const otherTree = {
   _schema: '1.0',
   tree_id: OTHER,
   version: 1,
-  people: { 'ot-1': P('ot-1', 'I009000', '王', '一号') },
+  people: { 'ot-1': P('ot-1', '000009000', '王', '一号') },
   families: {},
 };
 
@@ -154,16 +154,16 @@ const CLAN = 'cb_clan';
 const clanTree = {
   _schema: '1.0',
   tree_id: CLAN,
-  founder_gramps_id: 'I000320',
+  founder_gramps_id: '000000320',
   version: 1,
   people: {
-    'cl-f': P('cl-f', 'I000320', '刘', '姬累', { spouse_families: ['cl-fam1'], is_living: false }),
-    'cl-1': P('cl-1', 'I000321', '刘', '一世', { parent_family: 'cl-fam1', spouse_families: ['cl-fam2'] }),
-    'cl-2': P('cl-2', 'I000322', '刘', '二世', { parent_family: 'cl-fam2', spouse_families: ['cl-fam3'] }),
-    'cl-3': P('cl-3', 'I000323', '刘', '三世', { parent_family: 'cl-fam3' }),
-    'cl-self': P('cl-self', 'I000324', '刘', '继承', { parent_family: 'cl-fam1' }),
-    'cl-dead': P('cl-dead', 'I000326', '刘', '已故对照', { is_living: false }),
-    'cl-loose': P('cl-loose', 'I000325', '刘', '断链'),
+    'cl-f': P('cl-f', '000000320', '刘', '姬累', { spouse_families: ['cl-fam1'], is_living: false }),
+    'cl-1': P('cl-1', '000000321', '刘', '一世', { parent_family: 'cl-fam1', spouse_families: ['cl-fam2'] }),
+    'cl-2': P('cl-2', '000000322', '刘', '二世', { parent_family: 'cl-fam2', spouse_families: ['cl-fam3'] }),
+    'cl-3': P('cl-3', '000000323', '刘', '三世', { parent_family: 'cl-fam3' }),
+    'cl-self': P('cl-self', '000000324', '刘', '继承', { parent_family: 'cl-fam1' }),
+    'cl-dead': P('cl-dead', '000000326', '刘', '已故对照', { is_living: false }),
+    'cl-loose': P('cl-loose', '000000325', '刘', '断链'),
   },
   families: {
     'cl-fam1': { handle: 'cl-fam1', gramps_id: 'F000090', father_handle: 'cl-f', mother_handle: '', child_handles: ['cl-1', 'cl-self'] },
@@ -407,7 +407,7 @@ test('正常路 3 代：世数递 1 / 一条线 / 随父姓 / 全 M / 全已故 
     [['风高', 49], ['风昌', 50], ['风旦', 51]],
     '名字 = 姓 + 名，世数逐个递 1',
   );
-  assert.deepEqual(body.added.map((a) => a.gramps_id), ['I000500', 'I000501', 'I000502'], '铸号器逐个取号');
+  assert.deepEqual(body.added.map((a) => a.gramps_id), ['000000500', '000000501', '000000502'], '铸号器逐个取号');
   for (const a of body.added) assert.match(a.handle, /^[0-9a-f]{24}$/);
 
   // —— 树 JSON：3 个新节点，字段与单节点续编 mode='new' 逐字一致 ——
@@ -474,7 +474,7 @@ test('正常路 3 代：世数递 1 / 一条线 / 随父姓 / 全 M / 全已故 
     }
   }
   for (const a of body.added) assert.equal(seen.get(a.gramps_id), 1, `${a.gramps_id} 必须全站唯一`);
-  const nums = body.added.map((a) => parseInt(a.gramps_id.slice(1), 10));
+  const nums = body.added.map((a) => parseInt(a.gramps_id, 10));
   assert.deepEqual(nums, [...nums].sort((x, y) => x - y), '编号递增');
   assert.equal(new Set(nums).size, 3);
 });
@@ -735,12 +735,12 @@ test('clanGenerationOf：始祖（founder_handle → founder_gramps_id → I0001
   const t = {
     tree_id: 'clan_pure',
     people: Object.fromEntries([
-      n('a', 'I0001', { spouse_families: ['F1'] }),
-      n('b', 'I0002', { parent_family: 'F1', spouse_families: ['F2'] }),
-      n('c', 'I0003', { parent_family: 'F2' }),
-      n('z', 'I0009'),
+      n('a', '000000001', { spouse_families: ['F000001'] }),
+      n('b', '000000002', { parent_family: 'F000001', spouse_families: ['F000002'] }),
+      n('c', '000000003', { parent_family: 'F000002' }),
+      n('z', '000000009'),
     ]),
-    families: Object.fromEntries([fam('F1', 'a', ['b']), fam('F2', 'b', ['c'])]),
+    families: Object.fromEntries([fam('F000001', 'a', ['b']), fam('F000002', 'b', ['c'])]),
   };
   assert.deepEqual(tw.clanGenerationOf(t, 'a'), { inLineage: true, gen: 1 }, '始祖 = 第 1 世');
   assert.deepEqual(tw.clanGenerationOf(t, 'b'), { inLineage: true, gen: 2 }, 'BFS 递 1');
@@ -753,9 +753,9 @@ test('clanGenerationOf：始祖（founder_handle → founder_gramps_id → I0001
   assert.deepEqual(tw.clanGenerationOf(t, 'c', { selfGen }), { inLineage: true, gen: 8 }, '其后代按自身世数递推');
   // 始祖解析：founder_handle 优先 → founder_gramps_id → I0001 兜底
   assert.equal(tw.clanFounderHandleOf(t, { founder_handle: 'c' }), 'c', 'meta.founder_handle 优先');
-  const t2 = { tree_id: 'x', people: Object.fromEntries([n('p', 'I0007'), n('q', 'I0001', { spouse_families: ['G1'] })]), families: Object.fromEntries([fam('G1', 'q', [])]) };
-  assert.equal(tw.clanFounderHandleOf(t2, { founder_gramps_id: 'I0007' }), 'p', 'meta 无 handle → founder_gramps_id');
-  assert.equal(tw.clanFounderHandleOf({ tree_id: 'y', people: Object.fromEntries([n('q', 'I0001', { spouse_families: ['G1'] })]), families: Object.fromEntries([fam('G1', 'q', [])]) }, null), 'q', 'I0001 兜底');
+  const t2 = { tree_id: 'x', people: Object.fromEntries([n('p', '000000007'), n('q', '000000001', { spouse_families: ['G1'] })]), families: Object.fromEntries([fam('G1', 'q', [])]) };
+  assert.equal(tw.clanFounderHandleOf(t2, { founder_gramps_id: '000000007' }), 'p', 'meta 无 handle → founder_gramps_id');
+  assert.equal(tw.clanFounderHandleOf({ tree_id: 'y', people: Object.fromEntries([n('q', '000000001', { spouse_families: ['G1'] })]), families: Object.fromEntries([fam('G1', 'q', [])]) }, null), 'q', 'I0001 兜底');
   assert.equal(tw.clanFounderHandleOf({ tree_id: 'z', people: {}, families: {} }, null), '', '解析不到 → 空（调用方 400）');
 });
 

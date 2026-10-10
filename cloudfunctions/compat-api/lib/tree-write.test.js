@@ -123,21 +123,21 @@ test('聚合虚位节点（代表多世）→ 拒绝续编', () => {
 // ---- Gramps 编号分配（nextGrampsId）：人/家族编号段独立，家族编号曾漏扫 ----
 
 test('新建人编号沿用既有补零宽度（I0100 → I0101）', () => {
-  const tree = { people: { a: { gramps_id: 'I0001' }, b: { gramps_id: 'I0100' } }, families: {} };
-  assert.equal(nextGrampsId(tree, 'I'), 'I0101');
+  const tree = { people: { a: { gramps_id: '000000001' }, b: { gramps_id: '000000100' } }, families: {} };
+  assert.equal(nextGrampsId(tree, 'I'), '000000101');
 });
 
 test('新建家族编号必须扫 families（F0047 → F0048，不得撞回 F1）', () => {
   const tree = {
-    people: { a: { gramps_id: 'I0100' } },
-    families: { f1: { gramps_id: 'F0000' }, f2: { gramps_id: 'F0047' } },
+    people: { a: { gramps_id: '000000100' } },
+    families: { f1: { gramps_id: 'F000000' }, f2: { gramps_id: 'F000047' } },
   };
-  assert.equal(nextGrampsId(tree, 'F'), 'F0048');
+  assert.equal(nextGrampsId(tree, 'F'), 'F000048');
 });
 
 test('无既有编号 → 从 1 起；混合宽度 → 取最大值的宽度', () => {
-  assert.equal(nextGrampsId({ people: {}, families: {} }, 'I'), 'I1');
-  assert.equal(nextGrampsId({ people: { a: { gramps_id: 'I0001' }, b: { gramps_id: 'I500057' } }, families: {} }, 'I'), 'I500058');
+  assert.equal(nextGrampsId({ people: {}, families: {} }, 'I'), '000000001');
+  assert.equal(nextGrampsId({ people: { a: { gramps_id: '000000001' }, b: { gramps_id: '000500057' } }, families: {} }, 'I'), '000500058');
 });
 
 // ---- 新建家族树 tree_id 生成（nextTreeId） ----
@@ -287,19 +287,19 @@ test('本人未知 → 按配偶性别反推；都未知 → 本人 father 兜�
 
 const TREE = {
   people: {
-    hA: { handle: 'hA', gramps_id: 'I0001', name: '风华胥', gender: 'F', spouse_families: ['f1'], parent_family: '' },
-    hB: { handle: 'hB', gramps_id: 'I0052', name: '风伏羲', gender: 'M', spouse_families: ['f2'], parent_family: 'f1' },
-    hC: { handle: 'hC', gramps_id: 'I0101', name: '姬高', gender: 'M', spouse_families: ['f3'], parent_family: 'f2' },
+    hA: { handle: 'hA', gramps_id: '000000001', name: '风华胥', gender: 'F', spouse_families: ['f1'], parent_family: '' },
+    hB: { handle: 'hB', gramps_id: '000000052', name: '风伏羲', gender: 'M', spouse_families: ['f2'], parent_family: 'f1' },
+    hC: { handle: 'hC', gramps_id: '000000101', name: '姬高', gender: 'M', spouse_families: ['f3'], parent_family: 'f2' },
   },
   families: {
-    f1: { handle: 'f1', gramps_id: 'F0001', father_handle: '', mother_handle: 'hA', child_handles: ['hB'] },
-    f2: { handle: 'f2', gramps_id: 'F0002', father_handle: 'hB', mother_handle: '', child_handles: ['hC'] },
-    f3: { handle: 'f3', gramps_id: 'F0003', father_handle: 'hC', mother_handle: '', child_handles: [] },
+    f1: { handle: 'f1', gramps_id: 'F000001', father_handle: '', mother_handle: 'hA', child_handles: ['hB'] },
+    f2: { handle: 'f2', gramps_id: 'F000002', father_handle: 'hB', mother_handle: '', child_handles: ['hC'] },
+    f3: { handle: 'f3', gramps_id: 'F000003', father_handle: 'hC', mother_handle: '', child_handles: [] },
   },
 };
 
 test('编号解析：I0101 / 0101 / handle 都能定位；找不到返回 null', () => {
-  assert.equal(resolvePersonRef(TREE, 'I0052'), 'hB');
+  assert.equal(resolvePersonRef(TREE, '000000052'), 'hB');
   assert.equal(resolvePersonRef(TREE, '0052'), 'hB');
   assert.equal(resolvePersonRef(TREE, 'i0052'), 'hB');
   assert.equal(resolvePersonRef(TREE, 'hC'), 'hC');

@@ -77,7 +77,7 @@ const families = {};
 for (let i = 1; i <= DEPTH; i += 1) {
   people[`n${i}`] = {
     handle: `n${i}`,
-    gramps_id: `I${String(i).padStart(4, '0')}`,
+    gramps_id: `${String(i).padStart(9, '0')}`,
     name: `季第${i}`,
     surname: '季',
     given: `第${i}`,
@@ -93,10 +93,10 @@ const OTHER_TREE = {
   tree_id: OTHER_TREE_ID,
   version: 1,
   people: {
-    p1: { handle: 'p1', gramps_id: 'I9001', name: '潘甲', surname: '潘', given: '甲', gender: 'M' },
-    p2: { handle: 'p2', gramps_id: 'I9002', name: '潘乙', surname: '潘', given: '乙', gender: 'M' },
+    p1: { handle: 'p1', gramps_id: '000009001', name: '潘甲', surname: '潘', given: '甲', gender: 'M' },
+    p2: { handle: 'p2', gramps_id: '000009002', name: '潘乙', surname: '潘', given: '乙', gender: 'M' },
   },
-  families: { g1: { handle: 'g1', gramps_id: 'F9001', father_handle: 'p1', mother_handle: '', child_handles: ['p2'] } },
+  families: { g1: { handle: 'g1', gramps_id: 'F009001', father_handle: 'p1', mother_handle: '', child_handles: ['p2'] } },
 };
 
 const U = {

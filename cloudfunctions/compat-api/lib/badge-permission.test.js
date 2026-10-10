@@ -166,11 +166,11 @@ function bgTree(id) {
     ...SCHEMA,
     tree_id: id,
     people: {
-      [p(1)]: node(p(1), 'I0500', '甲一', '甲', '一'),
-      [p(2)]: node(p(2), 'I0501', '甲二', '甲', '二'),
+      [p(1)]: node(p(1), '000000500', '甲一', '甲', '一'),
+      [p(2)]: node(p(2), '000000501', '甲二', '甲', '二'),
     },
     families: {},
-    founder_gramps_id: 'I0500',
+    founder_gramps_id: '000000500',
   };
 }
 /** 总谱夹具：已故节点（世本节点一律已故） */
@@ -179,7 +179,7 @@ function masterTree() {
     ...SCHEMA,
     tree_id: 'zhonghua',
     people: {
-      'zhonghua-m1': node('zhonghua-m1', 'I0600', '华祖', '华', '祖', { is_living: false, death_date: '1900-01-01' }),
+      'zhonghua-m1': node('zhonghua-m1', '000000600', '华祖', '华', '祖', { is_living: false, death_date: '1900-01-01' }),
     },
     families: {},
   };
@@ -258,7 +258,7 @@ test('badge-guard 纯函数：判定表（普通树 / 总谱 × 全角色）+ �
 
 test('① 普通树 tree_steward 带 称号 ⇒ 200（1 片、称号落详情）', async () => {
   await scene({ trees: [bgTree('bg_family')], phone: STEWARD, bamboos: 5 });
-  writeDetail(plainDetail('bg_family', 'bg_family-p1', 'I0500', '甲一'));
+  writeDetail(plainDetail('bg_family', 'bg_family-p1', '000000500', '甲一'));
 
   const res = await call('/people/bg_family-p1', 'PUT', H('bg_family', STEWARD), {}, editBody({ attribute_list: TITLE }));
   const body = bodyOf(res);
@@ -276,7 +276,7 @@ test('① 普通树 tree_steward 带 称号 ⇒ 200（1 片、称号落详情）
 
 test('② 普通树 user（可编辑本节点）带 称号 ⇒ 403 + 零资产流水（不扣费 / 不写库）', async () => {
   await scene({ trees: [bgTree('bg_family')], phone: USER1, bamboos: 5 });
-  writeDetail(plainDetail('bg_family', 'bg_family-p1', 'I0500', '甲一'));
+  writeDetail(plainDetail('bg_family', 'bg_family-p1', '000000500', '甲一'));
 
   const beforeTree = treeMd5('bg_family');
   const beforeDetail = detailMd5('bg_family', 'bg_family-p1');
@@ -324,7 +324,7 @@ test('③ 总谱非 chief 带 称号 ⇒ 403 + 零资产流水', async () => {
 
 test('④ 不带 称号 的普通编辑 ⇒ 200（其它字段权限不变）', async () => {
   await scene({ trees: [bgTree('bg_plain')], phone: STEWARD, bamboos: 5 });
-  writeDetail(plainDetail('bg_plain', 'bg_plain-p1', 'I0500', '甲一'));
+  writeDetail(plainDetail('bg_plain', 'bg_plain-p1', '000000500', '甲一'));
 
   // STEWARD（tree_steward）改姓名，不带任何称号字段 → 照旧 1 片
   const res = await call('/people/bg_plain-p1', 'PUT', H('bg_plain', STEWARD), {}, editBody({ attribute_list: [{ type: '号', value: '青莲居士' }] }));
@@ -334,7 +334,7 @@ test('④ 不带 称号 的普通编辑 ⇒ 200（其它字段权限不变）', 
 
   // USER1（user）改本人节点姓名，不带称号 → 放行（字段级校验只针对称号）
   await scene({ trees: [bgTree('bg_family')], phone: USER1, bamboos: 5 });
-  writeDetail(plainDetail('bg_family', 'bg_family-p1', 'I0500', '甲一'));
+  writeDetail(plainDetail('bg_family', 'bg_family-p1', '000000500', '甲一'));
   const res2 = await call('/people/bg_family-p1', 'PUT', H('bg_family', USER1), {}, editBody({ attribute_list: [{ type: '号', value: '青莲居士' }] }));
   assert.equal(res2.statusCode, 200, `user 无称号的普通编辑应 200（实际 ${res2.statusCode} ${res2.body}）`);
 });

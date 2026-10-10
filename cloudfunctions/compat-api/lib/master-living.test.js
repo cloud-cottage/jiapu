@@ -20,7 +20,7 @@ function readTree(id) {
   return JSON.parse(fs.readFileSync(path.join(TMP, 'trees', `${id}.json`), 'utf8'));
 }
 function person(handle, extra = {}) {
-  return { handle, gramps_id: 'I0001', name: '季甲', surname: '季', given: '甲', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [], external_tree: '', external_person_handle: '', external_link_type: '', ...extra };
+  return { handle, gramps_id: '000000001', name: '季甲', surname: '季', given: '甲', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [], external_tree: '', external_person_handle: '', external_link_type: '', ...extra };
 }
 
 test('applyLifespan：总谱锁定 → 恒落 is_living=false（生卒仍可写）', () => {

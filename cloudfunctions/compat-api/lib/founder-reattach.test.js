@@ -2,7 +2,7 @@
  * 「重置始祖后重新认祖」测试 — 无始祖态（tree-meta.founder_state==='none'）
  *
  * 缺口（本文件回归的对象）：重置始祖后前端会在**任意节点**显示「⛩ 认祖」（person-archive 的
- * founderMissing 分支），但后端认祖入口守卫仍按老口径解析「始祖位置」并硬兜底 'I0001' ——
+ * founderMissing 分支），但后端认祖入口守卫仍按老口径解析「始祖位置」并硬兜底 '000000001' ——
  * 于是像 **gu_39038_01**（真实数据：22 人、编号 I0035…I0073、始祖 顾清学 I0070、树里根本没有
  * I0001、meta 为 founder_state='none'）这样的树，用户从任意节点发起认祖会被 400 拒绝。
  *
@@ -11,7 +11,7 @@
  *   回写 tree-meta 的 founder_handle / founder_gramps_id / founder_name = 被指定节点，
  *   并删除 founder_state（语义：无始祖时的认祖 = 指定始祖；祖谱同理）。
  * - 已有登记始祖 → 仍只允许始祖节点发起（其他节点 400）。
- * - 不再兜底 'I0001'：未登记始祖的树不得把 I0001 当始祖（与前端 isFounderNode 同口径）。
+ * - 不再兜底 '000000001'：未登记始祖的树不得把 I0001 当始祖（与前端 isFounderNode 同口径）。
  *
  * 数据安全：COMPAT_OUT_DIR / COMPAT_META_FILE 一律指向 /tmp 副本；文末用 md5 断言真实
  * migrate-output/ 与 config/tree-meta.json 逐字节未变（照 reset-founder.test.js 的模式）。
@@ -53,7 +53,7 @@ const metaFixture = {
     // 已有登记始祖的祖谱（负例：非始祖节点不得发起认祖）
     gu_clan: {
       tree_id: 'gu_clan', kind: 'clan', path_alias: '/z/gu_clan', surname: '顾', surname_char: '顾',
-      display_title: '顾氏祖谱', founder_handle: 'own_gu', founder_gramps_id: 'I0002',
+      display_title: '顾氏祖谱', founder_handle: 'own_gu', founder_gramps_id: '000000002',
       founder_name: '顾清学', master_tree_id: 'zhonghua', master_handle: 'mGu', master_name: '顾始祖',
     },
     // 重置后的祖谱（无始祖态）
@@ -69,7 +69,7 @@ const metaFixture = {
     // 已有登记始祖的普通家族树
     gu_family_reg: {
       tree_id: 'gu_family_reg', kind: 'family', path_alias: '/gu_family_reg', display_title: '顾氏家族（已登记始祖）',
-      founder_handle: 'h70', founder_gramps_id: 'I0070', founder_name: '顾清学',
+      founder_handle: 'h70', founder_gramps_id: '000000070', founder_name: '顾清学',
     },
     // 路由 / 端到端用例：重置后待认祖的家族树
     gu_family_r: {
@@ -121,7 +121,7 @@ function metaCopyMd5() {
 }
 /** 树内是否出现了 I0001（真实 gu_39038_01 没有；认祖不得凭空造出 I0001 始祖位） */
 function hasI0001(tree) {
-  return Object.values(tree.people).some((p) => String(p.gramps_id || '') === 'I0001');
+  return Object.values(tree.people).some((p) => String(p.gramps_id || '') === '000000001');
 }
 /** meta 副本里某树条目的 JSON（断言「变了 / 没变」用） */
 function entryJsonOf(treeId) {
@@ -138,11 +138,11 @@ const person = (handle, grampsId, name, extra = {}) => ({
 writeTree({
   _schema: '1.0',
   tree_id: 'zhonghua',
-  founder_gramps_id: 'I0001',
+  founder_gramps_id: '000000001',
   version: 3,
   people: {
-    mRoot: person('mRoot', 'I0001', '风伏羲'),
-    mGu: person('mGu', 'I0120', '顾始祖'),
+    mRoot: person('mRoot', '000000001', '风伏羲'),
+    mGu: person('mGu', '000000120', '顾始祖'),
   },
   families: {},
 });
@@ -153,11 +153,11 @@ writeTree({
   _schema: '1.0',
   tree_id: 'gu_clan',
   kind: 'clan',
-  founder_gramps_id: 'I0001',
+  founder_gramps_id: '000000001',
   version: 2,
   people: {
-    own_gu: person('own_gu', 'I0002', '顾清学', { external_tree: '', external_person_handle: '', external_link_type: '' }),
-    own_kid: person('own_kid', 'I0003', '顾子'),
+    own_gu: person('own_gu', '000000002', '顾清学', { external_tree: '', external_person_handle: '', external_link_type: '' }),
+    own_kid: person('own_kid', '000000003', '顾子'),
   },
   families: {},
 });
@@ -170,8 +170,8 @@ writeTree({
   kind: 'clan',
   version: 1,
   people: {
-    own_qx: person('own_qx', 'I0002', '顾清学', { external_tree: '', external_person_handle: '', external_link_type: '' }),
-    own_zi: person('own_zi', 'I0003', '顾子'),
+    own_qx: person('own_qx', '000000002', '顾清学', { external_tree: '', external_person_handle: '', external_link_type: '' }),
+    own_zi: person('own_zi', '000000003', '顾子'),
   },
   families: {},
 });
@@ -183,10 +183,10 @@ writeTree({
   tree_id: 'gu_family',
   version: 4,
   people: {
-    h70: person('h70', 'I0070', '顾清学', { spouse_families: ['fam70'] }),
-    h71: person('h71', 'I0071', '顾子', { parent_family: 'fam70' }),
+    h70: person('h70', '000000070', '顾清学', { spouse_families: ['fam70'] }),
+    h71: person('h71', '000000071', '顾子', { parent_family: 'fam70' }),
   },
-  families: { fam70: { handle: 'fam70', gramps_id: 'F0040', father_handle: 'h70', mother_handle: '', child_handles: ['h71'] } },
+  families: { fam70: { handle: 'fam70', gramps_id: 'F000040', father_handle: 'h70', mother_handle: '', child_handles: ['h71'] } },
 });
 writeDetail({ _id: 'gu_family:h70', tree_id: 'gu_family', handle: 'h70', name: '顾清学', events: [], attributes: [{ key: '封号', value: '某某公' }] });
 writeDetail({ _id: 'gu_family:h71', tree_id: 'gu_family', handle: 'h71', name: '顾子', events: [] });
@@ -196,7 +196,7 @@ writeTree({
   _schema: '1.0',
   tree_id: 'gu_family_reg',
   version: 2,
-  people: { h70: person('h70', 'I0070', '顾清学'), h71: person('h71', 'I0071', '顾子') },
+  people: { h70: person('h70', '000000070', '顾清学'), h71: person('h71', '000000071', '顾子') },
   families: {},
 });
 
@@ -205,7 +205,7 @@ writeTree({
   _schema: '1.0',
   tree_id: 'gu_family_r',
   version: 1,
-  people: { h74: person('h74', 'I0074', '顾承祖'), h75: person('h75', 'I0075', '顾小乙') },
+  people: { h74: person('h74', '000000074', '顾承祖'), h75: person('h75', '000000075', '顾小乙') },
   families: {},
 });
 
@@ -233,19 +233,19 @@ test('无始祖态判定与认祖入口守卫：founder_state=none → 任意节
   assert.equal(fa.canInitiateAttach({ tree: regTree, person: regTree.people.h71, entry: regEntry }), false);
 
   // 未登记始祖的树：不得把 I0001 当始祖（真实 gu_39038_01 里根本没有 I0001）
-  const orphan = { tree_id: 't_orphan', people: { a: { handle: 'a', gramps_id: 'I0001' } } };
+  const orphan = { tree_id: 't_orphan', people: { a: { handle: 'a', gramps_id: '000000001' } } };
   assert.equal(fa.canInitiateAttach({ tree: orphan, person: orphan.people.a, entry: { tree_id: 't_orphan' } }), false);
   // 祖谱顶端的上层镜像仍可发起认祖（重认）
-  const mirror = { handle: 'mir_mGu', gramps_id: 'I0001', external_mirror: 'true', external_tree: 'zhonghua', external_link_type: 'founder' };
+  const mirror = { handle: 'mir_mGu', gramps_id: '000000001', external_mirror: 'true', external_tree: 'zhonghua', external_link_type: 'founder' };
   assert.equal(fa.canInitiateAttach({ tree: { tree_id: 'c', people: { mir_mGu: mirror } }, person: mirror, entry: { tree_id: 'c', kind: 'clan' }, treeId: 'c' }), true);
 });
 
 test('planFounderRegister：回写始祖三字段 + 删除 founder_state，其他元数据原样保留且不改原对象', () => {
   const entry = { tree_id: 'gu_family', kind: 'family', display_title: '顾氏家族', hall_name: '顾氏宗祠', founder_state: 'none' };
-  const next = fa.planFounderRegister(entry, { handle: 'h70', gramps_id: 'I0070', name: '顾清学' });
+  const next = fa.planFounderRegister(entry, { handle: 'h70', gramps_id: '000000070', name: '顾清学' });
   assert.deepEqual(Object.keys(next).sort(), ['display_title', 'founder_gramps_id', 'founder_handle', 'founder_name', 'hall_name', 'kind', 'tree_id']);
   assert.equal(next.founder_handle, 'h70');
-  assert.equal(next.founder_gramps_id, 'I0070');
+  assert.equal(next.founder_gramps_id, '000000070');
   assert.equal(next.founder_name, '顾清学');
   assert.equal('founder_state' in next, false, '回到「有始祖」态');
   assert.equal(next.hall_name, '顾氏宗祠');
@@ -278,7 +278,7 @@ test('无始祖家族树（gu_39038_01 形状）从任意节点认祖成功：�
   // ① tree-meta：该节点被登记为始祖，founder_state 删除
   const entry = readMetaCopy().trees.gu_family;
   assert.equal(entry.founder_handle, 'h70');
-  assert.equal(entry.founder_gramps_id, 'I0070');
+  assert.equal(entry.founder_gramps_id, '000000070');
   assert.equal(entry.founder_name, '顾清学');
   assert.equal('founder_state' in entry, false, '认祖成功后回到「有始祖」态');
   assert.equal(entry.display_title, '顾氏家族', '其他元数据不受影响');
@@ -292,7 +292,7 @@ test('无始祖家族树（gu_39038_01 形状）从任意节点认祖成功：�
   assert.equal(after.people.h70.external_link_type, 'founder');
   assert.equal(after.people.h70.external_mirror, '', 'R2：本树始祖是登记指针，不是镜像（写了就被 R3 只读锁死）');
   assert.equal(after.people.h70.name, '顾清学', '姓名原样保留（真身不被上层覆盖）');
-  assert.equal(after.people.h70.gramps_id, 'I0070', '被指定节点原位不动（不是 I0001）');
+  assert.equal(after.people.h70.gramps_id, '000000070', '被指定节点原位不动（不是 I0001）');
   assert.equal(hasI0001(after), false, '树内不得凭空出现 I0001');
   assert.equal(after.tree_id, 'gu_family');
   assert.notEqual(treeFileMd5('gu_family'), treeBefore);
@@ -353,7 +353,7 @@ test('已有登记始祖的树：非始祖节点认祖仍 400，且不写任何�
   assert.equal(r.founder_registered, false, '已有始祖登记的树不需要回写');
   const entry = readMetaCopy().trees.gu_family_reg;
   assert.equal(entry.founder_handle, 'h70');
-  assert.equal(entry.founder_gramps_id, 'I0070');
+  assert.equal(entry.founder_gramps_id, '000000070');
   assert.equal(entry.founder_state, undefined);
   assert.equal(readTree('gu_family_reg').people.h71.external_link_type, undefined, '非始祖节点不得被写成镜像');
 });
@@ -422,7 +422,7 @@ test('路由 /admin/founder-request：无始祖树任意节点 200；有始祖�
   assert.equal(result.founder_registered, true);
   const entry = readMetaCopy().trees.gu_family_r;
   assert.equal(entry.founder_handle, 'h74');
-  assert.equal(entry.founder_gramps_id, 'I0074');
+  assert.equal(entry.founder_gramps_id, '000000074');
   assert.equal(entry.founder_name, '顾承祖', 'R2：回写取**本树始祖真身**的名字（不再被上层真身覆盖）');
   assert.equal('founder_state' in entry, false);
   assert.equal(fa.isFounderMissing(entry), false);
@@ -454,7 +454,7 @@ test('路由：祖谱无始祖（重置后）任意节点认祖世本 → 通过
   // meta：三字段回写 + founder_state 删除 + 上层指针
   const entry = readMetaCopy().trees.gu_clan_r;
   assert.equal(entry.founder_handle, 'own_qx');
-  assert.equal(entry.founder_gramps_id, 'I0002');
+  assert.equal(entry.founder_gramps_id, '000000002');
   assert.equal(entry.founder_name, '顾清学');
   assert.equal('founder_state' in entry, false, '祖谱认祖成功后回到「有始祖」态');
   assert.equal(entry.master_tree_id, 'zhonghua');
@@ -479,7 +479,7 @@ test('路由：祖谱无始祖（重置后）任意节点认祖世本 → 通过
   assert.equal(hit.founder_name, '风伏羲');
   // 始祖镜像的编号 = 全站唯一铸号（docs/id-system.spec.md §3）：此处与树内该镜像节点一致
   assert.equal(hit.founder_gramps_id, tree.people.mir_mRoot.gramps_id);
-  assert.match(hit.founder_gramps_id, /^I\d{6}$/);
+  assert.match(hit.founder_gramps_id, /^\d{9}$/);
 });
 
 // ============ 真实数据保护 ============

@@ -51,7 +51,7 @@ let gid = 9000;
 function P(handle, name, gender, extra = {}) {
   return {
     handle,
-    gramps_id: `I${gid++}`,
+    gramps_id: `${String(gid++).padStart(9, '0')}`,
     name,
     surname: name.slice(0, 1),
     given: name.slice(1),
@@ -95,17 +95,17 @@ function guardTree(treeId) {
       il4: P('il4', '外季', 'M', { spouse_families: ['f_d4b'] }),
     },
     families: {
-      f_g: { handle: 'f_g', gramps_id: 'F09001', father_handle: 'g1', mother_handle: '', child_handles: ['f1'] },
+      f_g: { handle: 'f_g', gramps_id: 'F009001', father_handle: 'g1', mother_handle: '', child_handles: ['f1'] },
       f_f1: {
         handle: 'f_f1',
-        gramps_id: 'F09002',
+        gramps_id: 'F009002',
         father_handle: 'f1',
         mother_handle: 'w1',
         child_handles: ['d1', 'd2', 's1', 'd4'],
       },
-      f_d1: { handle: 'f_d1', gramps_id: 'F09003', father_handle: 'il1', mother_handle: 'd1', child_handles: ['il2'] },
-      f_d4a: { handle: 'f_d4a', gramps_id: 'F09004', father_handle: '', mother_handle: 'd4', child_handles: [] },
-      f_d4b: { handle: 'f_d4b', gramps_id: 'F09005', father_handle: 'il4', mother_handle: 'd4', child_handles: [] },
+      f_d1: { handle: 'f_d1', gramps_id: 'F009003', father_handle: 'il1', mother_handle: 'd1', child_handles: ['il2'] },
+      f_d4a: { handle: 'f_d4a', gramps_id: 'F009004', father_handle: '', mother_handle: 'd4', child_handles: [] },
+      f_d4b: { handle: 'f_d4b', gramps_id: 'F009005', father_handle: 'il4', mother_handle: 'd4', child_handles: [] },
     },
   };
 }
@@ -116,7 +116,7 @@ function masterTree(treeId) {
   tree.tree_id = treeId;
   tree.people.huaxu = P('huaxu', '华胥', 'F', { spouse_families: ['f_hx'] });
   tree.people.fuxi = P('fuxi', '风伏羲', 'M', { parent_family: 'f_hx' });
-  tree.families.f_hx = { handle: 'f_hx', gramps_id: 'F09006', father_handle: '', mother_handle: 'huaxu', child_handles: ['fuxi'] };
+  tree.families.f_hx = { handle: 'f_hx', gramps_id: 'F009006', father_handle: '', mother_handle: 'huaxu', child_handles: ['fuxi'] };
   return tree;
 }
 
@@ -241,7 +241,7 @@ test('规则 3：本族已婚配女性名下添子女（父槽为空）→ 无�
   // 单亲母亲（自己第一个家庭父槽为空、树内无配偶）→ 不受本规则影响，可连续添子女
   const single = guardTree('single_ctl');
   single.people.d2.spouse_families = ['f_d2'];
-  single.families.f_d2 = { handle: 'f_d2', gramps_id: 'F09007', father_handle: '', mother_handle: 'd2', child_handles: ['kd2'] };
+  single.families.f_d2 = { handle: 'f_d2', gramps_id: 'F009007', father_handle: '', mother_handle: 'd2', child_handles: ['kd2'] };
   single.people.kd2 = P('kd2', '元儿', 'M', { parent_family: 'f_d2' });
   assert.equal(hasSpouseInTree(single, 'd2'), false, '父不详家族不算婚配');
   assert.doesNotThrow(() => assertChildWriteAllowed({ tree: single, kind: 'family', personHandle: 'd2' }), '单亲母亲不受限');

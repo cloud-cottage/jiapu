@@ -114,29 +114,29 @@ function readDetailDoc(treeId, handle) {
 writeTree({
   _schema: '1.0',
   tree_id: 'zhonghua',
-  founder_gramps_id: 'I0001',
+  founder_gramps_id: '000000001',
   version: 7,
   people: {
     mRoot: {
-      handle: 'mRoot', gramps_id: 'I0001', name: '风伏羲', surname: '风', given: '伏羲', gender: 'M',
+      handle: 'mRoot', gramps_id: '000000001', name: '风伏羲', surname: '风', given: '伏羲', gender: 'M',
       birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [],
     },
     mX: {
-      handle: 'mX', gramps_id: 'I0100', name: '季始祖公', surname: '季', given: '始祖公', gender: 'M',
+      handle: 'mX', gramps_id: '000000100', name: '季始祖公', surname: '季', given: '始祖公', gender: 'M',
       birth_date: '前1200', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: ['mf1'],
     },
     mChild: {
-      handle: 'mChild', gramps_id: 'I0101', name: '季二世', surname: '季', given: '二世', gender: 'M',
+      handle: 'mChild', gramps_id: '000000101', name: '季二世', surname: '季', given: '二世', gender: 'M',
       birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: 'mf1', spouse_families: ['mf2'],
     },
     mGrand: {
-      handle: 'mGrand', gramps_id: 'I0102', name: '季三世', surname: '季', given: '三世', gender: 'M',
+      handle: 'mGrand', gramps_id: '000000102', name: '季三世', surname: '季', given: '三世', gender: 'M',
       birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: 'mf2', spouse_families: [],
     },
   },
   families: {
-    mf1: { handle: 'mf1', gramps_id: 'F0001', father_handle: 'mX', mother_handle: '', child_handles: ['mChild'] },
-    mf2: { handle: 'mf2', gramps_id: 'F0002', father_handle: 'mChild', mother_handle: '', child_handles: ['mGrand'] },
+    mf1: { handle: 'mf1', gramps_id: 'F000001', father_handle: 'mX', mother_handle: '', child_handles: ['mChild'] },
+    mf2: { handle: 'mf2', gramps_id: 'F000002', father_handle: 'mChild', mother_handle: '', child_handles: ['mGrand'] },
   },
 });
 writeDetail({ _id: 'zhonghua:mRoot', tree_id: 'zhonghua', handle: 'mRoot', name: '风伏羲', events: [], attributes: [{ key: 'external_chain_gen', value: '0', type: 'external_chain_gen' }] });
@@ -148,20 +148,20 @@ function seedTree(tag) {
   writeTree({
     _schema: '1.0',
     tree_id: treeId,
-    founder_gramps_id: 'I0001',
+    founder_gramps_id: '000000001',
     version: 3,
     people: {
       f: {
-        handle: 'f', gramps_id: 'I0001', name: '季某', surname: '季', given: '某', gender: 'M',
+        handle: 'f', gramps_id: '000000001', name: '季某', surname: '季', given: '某', gender: 'M',
         birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: ['fam'],
       },
       kid: {
-        handle: 'kid', gramps_id: 'I0002', name: '季子', surname: '季', given: '子', gender: 'M',
+        handle: 'kid', gramps_id: '000000002', name: '季子', surname: '季', given: '子', gender: 'M',
         birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: 'fam', spouse_families: [],
       },
     },
     families: {
-      fam: { handle: 'fam', gramps_id: 'F0001', father_handle: 'f', mother_handle: '', child_handles: ['kid'] },
+      fam: { handle: 'fam', gramps_id: 'F000001', father_handle: 'f', mother_handle: '', child_handles: ['kid'] },
     },
   });
   return treeId;
@@ -178,12 +178,12 @@ function seedClan(tag, { masterHandle = 'mX', ownHandle = 'own_ji', ownName = '�
     _schema: '1.0',
     tree_id: treeId,
     kind: 'clan',
-    founder_gramps_id: 'I0001',
+    founder_gramps_id: '000000001',
     version: 1,
     updated_at: '',
     people: {
       [ownHandle]: {
-        handle: ownHandle, gramps_id: 'I0002', name: ownName, surname, given: ownName.slice(1), gender: 'M',
+        handle: ownHandle, gramps_id: '000000002', name: ownName, surname, given: ownName.slice(1), gender: 'M',
         birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [],
         external_tree: '', external_person_handle: '', external_link_type: '',
       },
@@ -224,20 +224,20 @@ test('始祖节点解析：tree-meta.founder_handle 优先 → founder_gramps_id
   const tree = {
     tree_id: 't',
     people: {
-      h58: { handle: 'h58', gramps_id: 'I0058', name: '季始祖' },
-      h01: { handle: 'h01', gramps_id: 'I0001', name: '另一人' },
+      h58: { handle: 'h58', gramps_id: '000000058', name: '季始祖' },
+      h01: { handle: 'h01', gramps_id: '000000001', name: '另一人' },
     },
   };
   // ① meta.founder_handle 显式指定
   assert.equal(fa.resolveFounderHandle(tree, { founder_handle: 'h01' }), 'h01');
   // ② meta.founder_gramps_id（ji_23395_01 实测：I0058）
-  assert.equal(fa.resolveFounderHandle(tree, { founder_gramps_id: 'I0058' }), 'h58');
-  assert.equal(fa.founderGrampsIdOf(tree, { founder_gramps_id: 'I0058' }), 'I0058');
+  assert.equal(fa.resolveFounderHandle(tree, { founder_gramps_id: '000000058' }), 'h58');
+  assert.equal(fa.founderGrampsIdOf(tree, { founder_gramps_id: '000000058' }), '000000058');
   // ③ meta 无信息 → 树 JSON 的 founder_gramps_id（仍有效）；都没有 → ''（绝不兜底 I0001）
-  assert.equal(fa.resolveFounderHandle({ ...tree, founder_gramps_id: 'I0058' }, null), 'h58');
+  assert.equal(fa.resolveFounderHandle({ ...tree, founder_gramps_id: '000000058' }, null), 'h58');
   assert.equal(fa.resolveFounderHandle(tree, null), '', '未登记始祖时不得把 I0001 当始祖');
-  assert.equal(fa.resolveFounderHandle({ ...tree, founder_gramps_id: 'I0001' }, null), 'h01', '树 JSON 显式登记 I0001 时才认');
-  const plain = { tree_id: 't2', people: { a: { handle: 'a', gramps_id: 'I0001' } } };
+  assert.equal(fa.resolveFounderHandle({ ...tree, founder_gramps_id: '000000001' }, null), 'h01', '树 JSON 显式登记 I0001 时才认');
+  const plain = { tree_id: 't2', people: { a: { handle: 'a', gramps_id: '000000001' } } };
   assert.equal(fa.resolveFounderHandle(plain, null), '', '无登记 + 只有 I0001 → 不认（前端同口径）');
   assert.equal(fa.resolveFounderHandle({ tree_id: 't3', people: {} }, null), '');
   assert.equal(fa.founderGrampsIdOf({}, null), '', '不兜底 I0001');
@@ -247,41 +247,41 @@ test('始祖节点解析：tree-meta.founder_handle 优先 → founder_gramps_id
 test('只读判定（R2/R2b/R3）：镜像 → 锁；真身始祖与「未认祖的自建始祖位」→ 放行', async () => {
   const tree = {
     tree_id: 'mt',
-    founder_gramps_id: 'I0001',
+    founder_gramps_id: '000000001',
     people: {
-      f: { handle: 'f', gramps_id: 'I0001', name: '季始祖公', external_tree: 'zhonghua', external_person_handle: 'mX', external_link_type: 'founder', external_mirror: 'true' },
-      kid: { handle: 'kid', gramps_id: 'I0002', name: '季子' },
+      f: { handle: 'f', gramps_id: '000000001', name: '季始祖公', external_tree: 'zhonghua', external_person_handle: 'mX', external_link_type: 'founder', external_mirror: 'true' },
+      kid: { handle: 'kid', gramps_id: '000000002', name: '季子' },
     },
   };
   assert.equal(fa.founderLockMessage(tree.people.f, tree, 'zhonghua'), fa.MIRROR_LOCK_MESSAGE);
   assert.equal(fa.founderLockMessage(tree.people.f, tree, 'zhonghua'), '始祖节点信息需在中华世本（总谱）中修改');
   // 孤儿镜像（镜像标记在、真身不可达）→ 只读（R2b：本文案只保留给这一支）
-  const orphan = { handle: 'orph', gramps_id: 'I0001', name: '孤儿镜像', external_link_type: 'founder', external_mirror: 'true' };
-  const orphanTree = { tree_id: 'mt_orph', founder_gramps_id: 'I0001', people: { orph: orphan } };
+  const orphan = { handle: 'orph', gramps_id: '000000001', name: '孤儿镜像', external_link_type: 'founder', external_mirror: 'true' };
+  const orphanTree = { tree_id: 'mt_orph', founder_gramps_id: '000000001', people: { orph: orphan } };
   assert.equal(fa.isOrphanMirror(orphan), true);
   assert.equal(fa.founderLockMessage(orphan, orphanTree, 'zhonghua'), fa.PLACEHOLDER_LOCK_MESSAGE);
   // R2b：取消「空白占位锁」—— 始祖位置 + 无姓名 + 无链接（未认祖的自建始祖位）→ 可自行填写
-  const phTree = { tree_id: 'mt_ph', founder_gramps_id: 'I0001', people: { ph: { handle: 'ph', gramps_id: 'I0001', name: '' } } };
+  const phTree = { tree_id: 'mt_ph', founder_gramps_id: '000000001', people: { ph: { handle: 'ph', gramps_id: '000000001', name: '' } } };
   assert.equal(fa.founderLockMessage(phTree.people.ph, phTree, 'zhonghua'), '', '自建始祖位不再上锁');
   assert.equal(await fa.personEditLockMessage(phTree.people.ph, phTree, 'zhonghua'), '', '写路径同判据');
   // 真身始祖 + 登记指针（R2：指向宗谱，不是镜像）→ 可编辑
   const regTree = {
     tree_id: 'mt_reg',
-    founder_gramps_id: 'I0001',
-    people: { f: { handle: 'f', gramps_id: 'I0001', name: '季某', external_tree: 'mc_clan', external_person_handle: 'own_ji', external_link_type: 'founder', external_mirror: '' } },
+    founder_gramps_id: '000000001',
+    people: { f: { handle: 'f', gramps_id: '000000001', name: '季某', external_tree: 'mc_clan', external_person_handle: 'own_ji', external_link_type: 'founder', external_mirror: '' } },
   };
   assert.equal(fa.founderLockMessage(regTree.people.f, regTree, 'zhonghua'), '', 'R2：家族树真身始祖可写');
   // 普通节点（非始祖位置）正常可编辑
   assert.equal(fa.founderLockMessage(tree.people.kid, tree, 'zhonghua'), '');
   // 有姓名的未挂载始祖（新建树常态）可编辑
-  const namedTree = { tree_id: 'mt_named', founder_gramps_id: 'I0001', people: { f2: { handle: 'f2', gramps_id: 'I0001', name: '季某' } } };
+  const namedTree = { tree_id: 'mt_named', founder_gramps_id: '000000001', people: { f2: { handle: 'f2', gramps_id: '000000001', name: '季某' } } };
   assert.equal(fa.founderLockMessage(namedTree.people.f2, namedTree, 'zhonghua'), '');
   // 总谱自身不受锁
   assert.equal(fa.founderLockMessage(tree.people.f, { ...tree, tree_id: 'zhonghua' }, 'zhonghua'), '');
 });
 
 test('字段计划：认祖登记不覆盖真身身份；解除只清指针（真身数据保留）；镜像计划仍供登记镜像用', () => {
-  const founder = { handle: 'f', gramps_id: 'I0001', name: '季某', surname: '季', given: '某', gender: 'M', birth_date: '1901', death_date: '', parent_family: '', spouse_families: ['fam'], external_tree: '', external_person_handle: '', external_link_type: '' };
+  const founder = { handle: 'f', gramps_id: '000000001', name: '季某', surname: '季', given: '某', gender: 'M', birth_date: '1901', death_date: '', parent_family: '', spouse_families: ['fam'], external_tree: '', external_person_handle: '', external_link_type: '' };
   const master = { handle: 'mX', name: '季始祖公', surname: '季', given: '始祖公', gender: 'M', birth_date: '前1200', death_date: '' };
   const masterMirror = fa.planFounderMirror(founder, master, 'zhonghua', 12, '16600000000');
   assert.equal(masterMirror.external_tree, 'zhonghua');
@@ -307,7 +307,7 @@ test('字段计划：认祖登记不覆盖真身身份；解除只清指针（�
   // R2：解除 = 只清跨树指针与上层登记，真身身份数据保留
   const detached = fa.planFounderDetach({ ...reg, external_prev_clan_founder_handle: 'own_ji' });
   assert.equal(detached.handle, 'f');
-  assert.equal(detached.gramps_id, 'I0001', '始祖位置不变');
+  assert.equal(detached.gramps_id, '000000001', '始祖位置不变');
   assert.deepEqual(detached.spouse_families, ['fam'], '本树家族关系不受影响');
   assert.equal(detached.name, '季某', '真身姓名保留');
   assert.equal(detached.surname, '季');
@@ -332,7 +332,7 @@ test('申请单：构造字段完整；待审批过滤 chief 看全部 / steward
   const req = fa.buildFounderRequest({
     id: 'r1',
     treeId: 'mt_a',
-    founder: { handle: 'f', gramps_id: 'I0001', name: '季某' },
+    founder: { handle: 'f', gramps_id: '000000001', name: '季某' },
     masterTreeId: 'zhonghua',
     masterPerson: { handle: 'mX', name: '季始祖公' },
     requestedBy: '16600000001',
@@ -380,7 +380,7 @@ test('认祖登记（family→clan）：本树始祖保持真身 + 宗谱自有�
   assert.equal(f.external_mirror, '', 'R2：真身不写镜像标记（写了就被 R3 锁死）');
   assert.equal(f.name, '季某', 'R2：本树始祖身份字段不被上层数据覆盖');
   assert.equal(f.gender, 'M', 'R2：性别不被覆盖');
-  assert.equal(f.gramps_id, 'I0001', '始祖位置不变');
+  assert.equal(f.gramps_id, '000000001', '始祖位置不变');
   assert.equal(after.version, 4, '挂载树版本 +1');
 
   // ② 宗谱侧（R4）：自有段新增 1 条只读登记镜像，指向本家族树始祖
@@ -510,7 +510,7 @@ test('只读 403（祖谱顶端链镜像）：chain 镜像整节点只读，文�
   writeTree(tree);
   const after = readTree(clanId);
   assert.equal(after.people[mirrorHandleOf('mX')].external_link_type, 'founder');
-  assert.equal(after.people[mirrorHandleOf('mX')].gramps_id, 'I0001', '始祖位 = 顶端镜像');
+  assert.equal(after.people[mirrorHandleOf('mX')].gramps_id, '000000001', '始祖位 = 顶端镜像');
   assert.equal(after.people[mirrorHandleOf('mChild')].external_link_type, 'chain');
   assert.equal(after.people[mirrorHandleOf('mChild')].external_mirror, 'true');
   assert.equal(after.people[mirrorHandleOf('mGrand')].external_link_type, 'chain');
@@ -552,7 +552,7 @@ test('解除登记（R2）：真身数据保留、不再回空白占位；宗谱
 
   const after = readTree(treeId);
   const f = after.people.f;
-  assert.equal(f.gramps_id, 'I0001');
+  assert.equal(f.gramps_id, '000000001');
   assert.equal(f.name, '季某', 'R2：真身姓名保留');
   assert.equal(f.surname, '季');
   assert.equal(f.gender, 'M');
@@ -590,7 +590,7 @@ test('读侧推导：listAttachedTrees 由 tree-meta 的始祖节点读 external
       zhonghua: { tree_id: 'zhonghua', kind: 'master', display_title: '中华世本' },
       [clanId]: { tree_id: clanId, kind: 'clan', display_title: '季氏祖谱' },
       [a]: { tree_id: a, kind: 'family', display_title: '季氏测试家族', surname_char: '季', founder_handle: 'f' },
-      [b]: { tree_id: b, kind: 'family', display_title: '季氏测试家族二', surname_char: '季', founder_gramps_id: 'I0001' },
+      [b]: { tree_id: b, kind: 'family', display_title: '季氏测试家族二', surname_char: '季', founder_gramps_id: '000000001' },
       mt_none: { tree_id: 'mt_missing', display_title: '不存在的树', surname_char: '无' },
     },
   };

@@ -150,13 +150,13 @@ function familyTree(treeId, founderExtra = {}) {
   return {
     ...SCHEMA,
     tree_id: treeId,
-    founder_gramps_id: 'I0001',
+    founder_gramps_id: '000000001',
     version: 2,
     people: {
-      f: node('f', 'I0001', '季某', '季', '某', founderExtra),
-      kid: node('kid', 'I0002', '季子', '季', '子', { parent_family: 'fam' }),
+      f: node('f', '000000001', '季某', '季', '某', founderExtra),
+      kid: node('kid', '000000002', '季子', '季', '子', { parent_family: 'fam' }),
     },
-    families: { fam: { handle: 'fam', gramps_id: 'F0001', father_handle: 'f', mother_handle: '', child_handles: ['kid'] } },
+    families: { fam: { handle: 'fam', gramps_id: 'F000001', father_handle: 'f', mother_handle: '', child_handles: ['kid'] } },
   };
 }
 
@@ -166,9 +166,9 @@ function clanTree(treeId, ownName = '季花') {
     ...SCHEMA,
     tree_id: treeId,
     kind: 'clan',
-    founder_gramps_id: 'I0001',
+    founder_gramps_id: '000000001',
     version: 1,
-    people: { own_ji: node('own_ji', 'I0002', ownName, ownName.slice(0, 1), ownName.slice(1)) },
+    people: { own_ji: node('own_ji', '000000002', ownName, ownName.slice(0, 1), ownName.slice(1)) },
     families: {},
   };
 }
@@ -187,7 +187,7 @@ function addTopMirror(tree) {
 }
 
 /** 在祖谱上挂一条指向家族树始祖真身的登记镜像（R4） */
-function addRegistration(clan, { handle, familyTreeId, familyTreeTitle, familyFounder, grampsId = 'I0900', prev = '' }) {
+function addRegistration(clan, { handle, familyTreeId, familyTreeTitle, familyFounder, grampsId = '000000900', prev = '' }) {
   fa.applyClanRegistration({
     clan,
     registration: fa.planClanRegistrationMirror({
@@ -203,15 +203,15 @@ const MIRROR_MX = `${clanLib.CLAN_MIRROR_PREFIX}mX`;
 writeTree({
   ...SCHEMA,
   tree_id: 'zhonghua',
-  founder_gramps_id: 'I0001',
+  founder_gramps_id: '000000001',
   version: 7,
   people: {
-    mRoot: node('mRoot', 'I0001', '风伏羲', '风', '伏羲'),
-    mX: node('mX', 'I0100', '季始祖公', '季', '始祖公', { spouse_families: ['mf1'] }),
-    mChild: node('mChild', 'I0101', '季二世', '季', '二世', { parent_family: 'mf1', spouse_families: ['mf2'] }),
+    mRoot: node('mRoot', '000000001', '风伏羲', '风', '伏羲'),
+    mX: node('mX', '000000100', '季始祖公', '季', '始祖公', { spouse_families: ['mf1'] }),
+    mChild: node('mChild', '000000101', '季二世', '季', '二世', { parent_family: 'mf1', spouse_families: ['mf2'] }),
   },
   families: {
-    mf1: { handle: 'mf1', gramps_id: 'F0001', father_handle: 'mX', mother_handle: '', child_handles: ['mChild'] },
+    mf1: { handle: 'mf1', gramps_id: 'F000001', father_handle: 'mX', mother_handle: '', child_handles: ['mChild'] },
   },
 });
 writeDetail({ _id: 'zhonghua:mX', tree_id: 'zhonghua', handle: 'mX', name: '季始祖公', events: [], attributes: [{ key: 'external_chain_gen', value: '12', type: 'external_chain_gen' }] });
@@ -296,7 +296,7 @@ test('R2 家族树始祖真身：未认祖的始祖位可写；登记后（指�
   assert.equal(a2.surname, '季');
   assert.equal(a2.given, '某隆');
   assert.equal(a2.birth_date, '1901');
-  assert.equal(a2.gramps_id, 'I0001', '始祖位置不变');
+  assert.equal(a2.gramps_id, '000000001', '始祖位置不变');
   assert.equal(a2.external_tree, 'mc_a_reg', '登记指针不受编辑影响');
   assert.equal(a2.external_person_handle, 'own_ji');
   assert.equal(a2.external_link_type, 'founder');
@@ -309,10 +309,10 @@ test('R2b 未登记始祖位可自填姓名生卒；孤儿镜像（镜像标记�
   // ① 未登记（meta 无 founder_handle）+ 只填姓名生卒 → 成功
   writeTree({
     ...familyTree('mt_b_noreg'),
-    founder_gramps_id: 'I0001',
+    founder_gramps_id: '000000001',
     people: {
-      f: node('f', 'I0001', '', '', ''),
-      kid: node('kid', 'I0002', '季子', '季', '子', { parent_family: 'fam' }),
+      f: node('f', '000000001', '', '', ''),
+      kid: node('kid', '000000002', '季子', '季', '子', { parent_family: 'fam' }),
     },
   });
   const t1 = readTree('mt_b_noreg');
@@ -328,7 +328,7 @@ test('R2b 未登记始祖位可自填姓名生卒；孤儿镜像（镜像标记�
   // ② 孤儿镜像（external_mirror='true' + external_tree 空）→ 只读，文案 = PLACEHOLDER_LOCK_MESSAGE
   writeTree({
     ...familyTree('mt_b_orphan', { external_mirror: 'true', external_link_type: 'founder' }),
-    founder_gramps_id: 'I0001',
+    founder_gramps_id: '000000001',
   });
   const t2 = readTree('mt_b_orphan');
   const orph = t2.people.f;
@@ -365,7 +365,7 @@ test('R3 双向只读：指向下层家族树 / 上层祖谱 / 世本 / 世系�
   const c3 = familyTree('mt_c3', {
     external_tree: 'zhonghua', external_person_handle: 'mX', external_link_type: 'founder', external_mirror: 'true',
   });
-  c3.people.chain1 = node('chain1', 'I0003', '季二世', '季', '二世', {
+  c3.people.chain1 = node('chain1', '000000003', '季二世', '季', '二世', {
     external_tree: 'zhonghua', external_person_handle: 'mChild', external_link_type: 'chain', external_mirror: 'true',
   });
   writeTree(c3);
@@ -504,7 +504,7 @@ test('R4 一树一登记：宗谱内已有登记再登记 → 400；登记镜像
   assert.equal(f.external_tree, '', '指针已清');
   assert.equal(f.external_link_type, '');
   assert.equal(f.external_mirror, '');
-  assert.equal(f.gramps_id, 'I0001', '始祖位置不变');
+  assert.equal(f.gramps_id, '000000001', '始祖位置不变');
   assert.equal(f.birth_date, '', '真身生卒原样（未变过）');
   assert.equal(f.name, '季某', 'R2：真身姓名保留（未被清成空白占位）');
   assert.equal(await fa.personEditLockMessage(f, readTree('mt_e2'), 'zhonghua', TREES.mt_e2), '', '解除登记后本树始祖可写');
@@ -623,19 +623,19 @@ test('R6 世数下钻：沿 external_* 链取链底真身的 attributes.external
   });
   writeTree(clan);
   const fam = familyTree('mt_r6');
-  fam.people.mir_mir = node('mir_mir', 'I0003', '季某', '季', '某', {
+  fam.people.mir_mir = node('mir_mir', '000000003', '季某', '季', '某', {
     external_tree: 'mc_r6', external_person_handle: MIRROR_MX, external_link_type: 'founder', external_mirror: 'true',
   });
-  fam.people.broken = node('broken', 'I0004', '断链', '季', '断链', {
+  fam.people.broken = node('broken', '000000004', '断链', '季', '断链', {
     external_tree: 'mc_r6', external_person_handle: 'ghost', external_link_type: 'founder', external_mirror: 'true',
   });
-  fam.people.noptr = node('noptr', 'I0005', '无指针', '季', '无指针', { external_link_type: 'founder', external_mirror: 'true' });
-  fam.people.loop_a = node('loop_a', 'I0006', '环A', '季', '环A', {
+  fam.people.noptr = node('noptr', '000000005', '无指针', '季', '无指针', { external_link_type: 'founder', external_mirror: 'true' });
+  fam.people.loop_a = node('loop_a', '000000006', '环A', '季', '环A', {
     external_tree: 'mc_r6', external_person_handle: 'loop_b', external_link_type: 'founder', external_mirror: 'true',
   });
   writeTree(fam);
   const clan2 = readTree('mc_r6');
-  clan2.people.loop_b = node('loop_b', 'I0007', '环B', '季', '环B', {
+  clan2.people.loop_b = node('loop_b', '000000007', '环B', '季', '环B', {
     external_tree: 'mt_r6', external_person_handle: 'loop_a', external_link_type: 'founder', external_mirror: 'true',
   });
   writeTree(clan2);
@@ -724,7 +724,7 @@ test('J 方向无关的 isClanRegistration：clanRegistrations 收向下登记�
   assert.equal(await fa.registerClanFounderIfVacant('mc_j2'), true);
   const metaAfter = JSON.parse(fs.readFileSync(META_FILE, 'utf8'));
   assert.equal(metaAfter.trees.mc_j2.founder_handle, 'reg_j2');
-  assert.equal(metaAfter.trees.mc_j2.founder_gramps_id, 'I0900');
+  assert.equal(metaAfter.trees.mc_j2.founder_gramps_id, '000000900');
   assert.equal(metaAfter.trees.mc_j2.founder_name, '季某');
   // 已有登记（前任）时保留，不再改写
   assert.equal(await fa.registerClanFounderIfVacant('mc_j2'), false, '已有宗谱始祖登记 → 保留');

@@ -88,9 +88,9 @@ writeTree({
   version: 1,
   updated_at: '2026-09-05T00:00:00.000Z',
   people: {
-    h_p1: { handle: 'h_p1', gramps_id: 'I000801', name: '钱一', surname: '钱', given: '一', gender: 'M' },
-    h_p2: { handle: 'h_p2', gramps_id: 'I000802', name: '钱二', surname: '钱', given: '二', gender: 'M', external_person_handle: 'X9' },
-    h_p3: { handle: 'h_p3', gramps_id: 'I000803', name: '钱三', surname: '钱', given: '三', gender: 'F', external_mirror: 'false' },
+    h_p1: { handle: 'h_p1', gramps_id: '000000801', name: '钱一', surname: '钱', given: '一', gender: 'M' },
+    h_p2: { handle: 'h_p2', gramps_id: '000000802', name: '钱二', surname: '钱', given: '二', gender: 'M', external_person_handle: 'X9' },
+    h_p3: { handle: 'h_p3', gramps_id: '000000803', name: '钱三', surname: '钱', given: '三', gender: 'F', external_mirror: 'false' },
   },
   families: {},
 });
@@ -107,7 +107,7 @@ const mirTree = {
 };
 for (let i = 1; i <= 20; i++) {
   mirTree.people[`h_g${i}`] = {
-    handle: `h_g${i}`, gramps_id: `I${700 + i}`, name: `沈${i}`, surname: '沈', given: String(i), gender: 'M',
+    handle: `h_g${i}`, gramps_id: `${String(700 + i).padStart(9, '0')}`, name: `沈${i}`, surname: '沈', given: String(i), gender: 'M',
   };
 }
 for (let i = 1; i < 20; i++) {
@@ -115,13 +115,13 @@ for (let i = 1; i < 20; i++) {
 }
 // 镜像变体（期望计入 = 3：h_m1 缺 external_person_handle 仍计、h_m2 正常计、
 // h_m4 为布尔 true —— `String(true) === 'true'` 是规格谓词的天然结果，同样计入）
-mirTree.people.h_m1 = { handle: 'h_m1', gramps_id: 'I000811', name: '外树甲', surname: '外', given: '甲', gender: 'M', external_mirror: 'true' };
-mirTree.people.h_m2 = { handle: 'h_m2', gramps_id: 'I000812', name: '外树乙', surname: '外', given: '乙', gender: 'M', external_mirror: 'true', external_person_handle: 'EXT_H2' };
-mirTree.people.h_m3 = { handle: 'h_m3', gramps_id: 'I000813', name: '外树丙', surname: '外', given: '丙', gender: 'M', external_mirror: 'false', external_person_handle: 'EXT_H3' };
-mirTree.people.h_m4 = { handle: 'h_m4', gramps_id: 'I000814', name: '外树丁', surname: '外', given: '丁', gender: 'M', external_mirror: true, external_person_handle: 'EXT_H4' };
-mirTree.people.h_m5 = { handle: 'h_m5', gramps_id: 'I000815', name: '外树戊', surname: '外', given: '戊', gender: 'M', external_mirror: 'TRUE' };
-mirTree.people.h_m6 = { handle: 'h_m6', gramps_id: 'I000816', name: '外树己', surname: '外', given: '己', gender: 'M', external_person_handle: 'EXT_H6' };
-mirTree.people.h_m7 = { handle: 'h_m7', gramps_id: 'I000817', name: '外树庚', surname: '外', given: '庚', gender: 'M', external_mirror: '1' };
+mirTree.people.h_m1 = { handle: 'h_m1', gramps_id: '000000811', name: '外树甲', surname: '外', given: '甲', gender: 'M', external_mirror: 'true' };
+mirTree.people.h_m2 = { handle: 'h_m2', gramps_id: '000000812', name: '外树乙', surname: '外', given: '乙', gender: 'M', external_mirror: 'true', external_person_handle: 'EXT_H2' };
+mirTree.people.h_m3 = { handle: 'h_m3', gramps_id: '000000813', name: '外树丙', surname: '外', given: '丙', gender: 'M', external_mirror: 'false', external_person_handle: 'EXT_H3' };
+mirTree.people.h_m4 = { handle: 'h_m4', gramps_id: '000000814', name: '外树丁', surname: '外', given: '丁', gender: 'M', external_mirror: true, external_person_handle: 'EXT_H4' };
+mirTree.people.h_m5 = { handle: 'h_m5', gramps_id: '000000815', name: '外树戊', surname: '外', given: '戊', gender: 'M', external_mirror: 'TRUE' };
+mirTree.people.h_m6 = { handle: 'h_m6', gramps_id: '000000816', name: '外树己', surname: '外', given: '己', gender: 'M', external_person_handle: 'EXT_H6' };
+mirTree.people.h_m7 = { handle: 'h_m7', gramps_id: '000000817', name: '外树庚', surname: '外', given: '庚', gender: 'M', external_mirror: '1' };
 for (let k = 1; k <= 7; k++) {
   mirTree.families[`f_m${k}`] = { handle: `f_m${k}`, father_handle: 'h_g10', mother_handle: '', child_handles: [`h_m${k}`] };
 }
@@ -198,14 +198,14 @@ const assertGidsInRealTree = (tid, gids) => {
  * external_link_type 全为空串），故移出点名集合；其余点名节点仍为 `'true'`。
  * 点名仅作「真源未被再次漂移」的锚，总数一律由 realMirrors() 动态推导。
  */
-const GU_MIRROR_GIDS = ['I000292', 'I000293', 'I000294', 'I000367'];
+const GU_MIRROR_GIDS = ['000000292', '000000293', '000000294', '000000367'];
 /**
  * 真源 ji 的镜像 handle 点名（包含式断言，不约束总数）。
  * 原点名 I000209（季花）已在真源就地反转为非镜像，故移出点名集合。
  */
-const JI_MIRROR_GIDS = ['I000253', 'I000291', 'I000365'];
+const JI_MIRROR_GIDS = ['000000253', '000000291', '000000365'];
 /** 真源 gu 被新口径（纯血缘图）排除的 handle 点名：婚入男镜像 I000292 + 其子 child 镜像 I000293 / I000294 */
-const GU_EXCLUDED_GIDS = ['I000292', 'I000293', 'I000294'];
+const GU_EXCLUDED_GIDS = ['000000292', '000000293', '000000294'];
 /**
  * 真源 ji 被新口径（纯血缘图）排除的 handle 点名：**当前为空**。
  * 2026-09-19 真源清理：原需剔除的姑父 I000238 / 妹夫 I000240 等 28 个非成员真节点已删除，

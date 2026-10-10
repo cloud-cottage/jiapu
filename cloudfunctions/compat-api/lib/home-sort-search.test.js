@@ -104,7 +104,7 @@ writeTree({
   updated_at: '2026-09-01T00:00:00.000Z',
   people: {
     h_aa_name: {
-      handle: 'h_aa_name', gramps_id: 'I000900', name: '张三三', surname: '张', given: '三三',
+      handle: 'h_aa_name', gramps_id: '000000900', name: '张三三', surname: '张', given: '三三',
       gender: 'M', birth_date: '1900-01-01', death_date: '',
     },
     h_aa_123: {
@@ -120,7 +120,7 @@ writeTree({
   tree_id: 'bb_tree',
   version: 1,
   people: {
-    h_bb_1: { handle: 'h_bb_1', gramps_id: 'I000901', name: '李四', surname: '李', given: '四', gender: 'M', birth_date: '', death_date: '' },
+    h_bb_1: { handle: 'h_bb_1', gramps_id: '000000901', name: '李四', surname: '李', given: '四', gender: 'M', birth_date: '', death_date: '' },
   },
   families: {},
 });
@@ -132,7 +132,7 @@ writeTree({
   updated_at: '2026-08-15T12:00:00.000Z',
   people: {
     h_zz_123: {
-      handle: 'h_zz_123', gramps_id: 'I000123', name: '支小五', surname: '支', given: '小五',
+      handle: 'h_zz_123', gramps_id: '000000123', name: '支小五', surname: '支', given: '小五',
       gender: 'M', birth_date: '1950-05-05', death_date: '2000-01-01',
     },
   },
@@ -148,7 +148,7 @@ for (let i = 1; i <= DEEP_N; i++) {
   const given = i === 1 ? '深根' : i === DEEP_N ? '深深' : `深${i}`;
   deepPeople[h] = {
     handle: h,
-    gramps_id: `I000${String(i).padStart(3, '0')}`,
+    gramps_id: `${String(i).padStart(9, '0')}`,
     name: `王${given}`,
     surname: '王',
     given,
@@ -178,17 +178,17 @@ writeTree({
   version: 1,
   people: {
     h_nn_real: {
-      handle: 'h_nn_real', gramps_id: 'I000950', name: '季清昆', surname: '季', given: '清昆',
+      handle: 'h_nn_real', gramps_id: '000000950', name: '季清昆', surname: '季', given: '清昆',
       gender: 'M', birth_date: '1935-03-03', death_date: '',
       external_person_handle: 'h_nn_spouse', external_tree: 'nn_tree', // 真身自带 external_*（配偶指针）——不得被当成镜像
     },
     h_nn_spouse: {
-      handle: 'h_nn_spouse', gramps_id: 'I000951', name: '季秦氏', surname: '季', given: '秦氏',
+      handle: 'h_nn_spouse', gramps_id: '000000951', name: '季秦氏', surname: '季', given: '秦氏',
       gender: 'F', birth_date: '', death_date: '',
       external_person_handle: 'h_nn_real', external_tree: 'nn_tree',
     },
     h_nn_id: {
-      handle: 'h_nn_id', gramps_id: 'I000970', name: '季承业', surname: '季', given: '承业',
+      handle: 'h_nn_id', gramps_id: '000000970', name: '季承业', surname: '季', given: '承业',
       gender: 'M', birth_date: '', death_date: '',
     },
   },
@@ -202,22 +202,22 @@ writeTree({
   version: 1,
   people: {
     h_mm_m1: { // M1：季清昆 的镜像（真身 nn_tree/h_nn_real，guest 可见）
-      handle: 'h_mm_m1', gramps_id: 'I000960', name: '季清昆', surname: '季', given: '清昆',
+      handle: 'h_mm_m1', gramps_id: '000000960', name: '季清昆', surname: '季', given: '清昆',
       gender: 'M', birth_date: '1935-03-03', death_date: '',
       external_mirror: 'true', external_person_handle: 'h_nn_real', external_tree: 'nn_tree',
     },
     h_mm_hid: { // M2：季望舒 的镜像（真身 mdeep_tree/h_md_20，第 20 世 → guest 被裁剪）
-      handle: 'h_mm_hid', gramps_id: 'I000961', name: '季望舒', surname: '季', given: '望舒',
+      handle: 'h_mm_hid', gramps_id: '000000961', name: '季望舒', surname: '季', given: '望舒',
       gender: 'M', birth_date: '1960-06-06', death_date: '',
       external_mirror: 'true', external_person_handle: 'h_md_20', external_tree: 'mdeep_tree',
     },
     h_mm_id: { // M3：季承业 的镜像（编号 I000971 被精确命中）
-      handle: 'h_mm_id', gramps_id: 'I000971', name: '季承业', surname: '季', given: '承业',
+      handle: 'h_mm_id', gramps_id: '000000971', name: '季承业', surname: '季', given: '承业',
       gender: 'M', birth_date: '', death_date: '',
       external_mirror: 'true', external_person_handle: 'h_nn_id', external_tree: 'nn_tree',
     },
     h_mm_fake: { // 反例：非镜像节点（无 external_mirror），即便名字与上面的人无关也不得被折叠
-      handle: 'h_mm_fake', gramps_id: 'I000962', name: '季独行', surname: '季', given: '独行',
+      handle: 'h_mm_fake', gramps_id: '000000962', name: '季独行', surname: '季', given: '独行',
       gender: 'M', birth_date: '', death_date: '',
     },
   },
@@ -232,7 +232,7 @@ for (let i = 1; i <= MDEEP_N; i++) {
   const h = `h_md_${i}`;
   mdeepPeople[h] = {
     handle: h,
-    gramps_id: `I000${700 + i}`,
+    gramps_id: `${String(700 + i).padStart(9, '0')}`,
     name: i === MDEEP_N ? '季望舒' : `季望${i}`,
     surname: '季',
     given: i === MDEEP_N ? '望舒' : `望${i}`,
@@ -259,7 +259,7 @@ writeTree({
   version: 1,
   people: {
     h_pp_same: {
-      handle: 'h_pp_same', gramps_id: 'I000980', name: '傅明远', surname: '傅', given: '明远',
+      handle: 'h_pp_same', gramps_id: '000000980', name: '傅明远', surname: '傅', given: '明远',
       gender: 'M', birth_date: '', death_date: '',
     },
   },
@@ -270,7 +270,7 @@ writeTree({
   version: 1,
   people: {
     h_qq_same: {
-      handle: 'h_qq_same', gramps_id: 'I000981', name: '傅明远', surname: '傅', given: '明远',
+      handle: 'h_qq_same', gramps_id: '000000981', name: '傅明远', surname: '傅', given: '明远',
       gender: 'M', birth_date: '', death_date: '',
     },
   },
@@ -284,7 +284,7 @@ writeTree({
   version: 1,
   people: {
     h_n1_m: {
-      handle: 'h_n1_m', gramps_id: 'I000991', name: '岳千山', surname: '岳', given: '千山',
+      handle: 'h_n1_m', gramps_id: '000000991', name: '岳千山', surname: '岳', given: '千山',
       gender: 'M', birth_date: '1940-02-02', death_date: '',
       external_mirror: 'true', external_person_handle: 'h_n1_r', external_tree: 'n1r_tree',
     },
@@ -296,7 +296,7 @@ writeTree({
   version: 1,
   people: {
     h_n1_r: {
-      handle: 'h_n1_r', gramps_id: 'I000992', name: '岳千山', surname: '岳', given: '千山',
+      handle: 'h_n1_r', gramps_id: '000000992', name: '岳千山', surname: '岳', given: '千山',
       gender: 'M', birth_date: '1940-02-02', death_date: '',
     },
   },
@@ -310,7 +310,7 @@ writeTree({
   version: 1,
   people: {
     h_n3_a: {
-      handle: 'h_n3_a', gramps_id: 'I000993', name: '龙云舟', surname: '龙', given: '云舟',
+      handle: 'h_n3_a', gramps_id: '000000993', name: '龙云舟', surname: '龙', given: '云舟',
       gender: 'M', birth_date: '', death_date: '',
       external_mirror: 'true', external_person_handle: 'h_n3_b', external_tree: 'n3b_tree',
     },
@@ -322,7 +322,7 @@ writeTree({
   version: 1,
   people: {
     h_n3_b: {
-      handle: 'h_n3_b', gramps_id: 'I000994', name: '龙云舟', surname: '龙', given: '云舟',
+      handle: 'h_n3_b', gramps_id: '000000994', name: '龙云舟', surname: '龙', given: '云舟',
       gender: 'M', birth_date: '', death_date: '',
       external_mirror: 'true', external_person_handle: 'h_n3_c', external_tree: 'n3c_tree',
     },
@@ -337,7 +337,7 @@ for (let i = 1; i <= N3C_N; i++) {
   const h = isC ? 'h_n3_c' : `h_n3c_${i}`;
   n3cPeople[h] = {
     handle: h,
-    gramps_id: isC ? 'I000995' : `I001${String(i).padStart(3, '0')}`,
+    gramps_id: isC ? '000000995' : `${String(1000 + i).padStart(9, '0')}`,
     name: isC ? '龙云舟' : `龙云${i}`,
     surname: '龙',
     given: isC ? '云舟' : `云${i}`,
@@ -364,7 +364,7 @@ writeTree({
   version: 1,
   people: {
     h_n4_a: {
-      handle: 'h_n4_a', gramps_id: 'I000996', name: '花无涯', surname: '花', given: '无涯',
+      handle: 'h_n4_a', gramps_id: '000000996', name: '花无涯', surname: '花', given: '无涯',
       gender: 'M', birth_date: '', death_date: '',
       external_mirror: 'true', external_person_handle: 'h_n4_b', external_tree: 'n4b_tree',
     },
@@ -376,7 +376,7 @@ writeTree({
   version: 1,
   people: {
     h_n4_b: {
-      handle: 'h_n4_b', gramps_id: 'I000997', name: '花无涯', surname: '花', given: '无涯',
+      handle: 'h_n4_b', gramps_id: '000000997', name: '花无涯', surname: '花', given: '无涯',
       gender: 'M', birth_date: '', death_date: '',
       external_mirror: 'true', external_person_handle: 'h_n4_a', external_tree: 'n4a_tree',
     },
@@ -390,7 +390,7 @@ writeTree({
   version: 1,
   people: {
     h_n5_a: {
-      handle: 'h_n5_a', gramps_id: 'I000998', name: '慕容怀', surname: '慕容', given: '怀',
+      handle: 'h_n5_a', gramps_id: '000000998', name: '慕容怀', surname: '慕容', given: '怀',
       gender: 'M', birth_date: '', death_date: '',
     },
   },
@@ -401,7 +401,7 @@ writeTree({
   version: 1,
   people: {
     h_n5_b: {
-      handle: 'h_n5_b', gramps_id: 'I000999', name: '慕容怀', surname: '慕容', given: '怀',
+      handle: 'h_n5_b', gramps_id: '000000999', name: '慕容怀', surname: '慕容', given: '怀',
       gender: 'M', birth_date: '', death_date: '',
     },
   },
@@ -563,7 +563,7 @@ test('B1 /search/global：全局编号命中置顶且 matched == "id"（不被 t
   assert.equal(status, 200);
   assert.equal(body[0].tree_id, 'zz_tree', '置顶的是编号命中（zz_tree 字典序最后）');
   assert.equal(body[0].handle, 'h_zz_123');
-  assert.equal(body[0].gramps_id, 'I000123');
+  assert.equal(body[0].gramps_id, '000000123');
   assert.equal(body[0].matched, 'id');
   assert.equal(body[0].tree_title, '支氏宗谱');
   assert.equal(body[0].name, '支小五');
@@ -577,10 +577,10 @@ test('B1 /search/global：全局编号命中置顶且 matched == "id"（不被 t
   assert.ok(body.indexOf(aa) > 0, '非置顶命中排在置顶命中之后');
 
   // 同一编号的三种写法都应命中 I000123
-  for (const q of ['I000123', '123']) {
+  for (const q of ['000000123', '123']) {
     const r = await json('/search/global', { query: { query: q } });
     assert.equal(r.status, 200);
-    assert.ok(r.body.some((x) => x.gramps_id === 'I000123'), `query=${q} 应命中 I000123`);
+    assert.ok(r.body.some((x) => x.gramps_id === '000000123'), `query=${q} 应命中 I000123`);
   }
 
   // 不需要 X-Tree-Id（且未被树编辑闸门拦成 400）
@@ -596,7 +596,7 @@ test('B2 /search/global：姓名包含命中 + tree_title 正确（大小写/空
   assert.equal(body[0].tree_title, '甲氏宗谱', 'tree_title = meta.display_title');
   assert.equal(body[0].tree_id, 'aa_tree');
   assert.equal(body[0].matched, 'name');
-  assert.equal(body[0].gramps_id, 'I000900');
+  assert.equal(body[0].gramps_id, '000000900');
   assert.equal(body[0].birth_date, '1900-01-01');
   assert.equal(body[0].death_date, '', '原字段缺失 → 空串');
 
@@ -654,7 +654,7 @@ test('B5 /search/global：meta 登记了 tree_id 但无树文件 → 不 500，�
   assert.ok(!body.some((x) => x.tree_id === 'ghost_tree'), '无树文件的 tree_id 不得出现在结果');
 
   // 幽灵树也不参与编号扫描
-  const byId = await json('/search/global', { query: { query: 'I000123' } });
+  const byId = await json('/search/global', { query: { query: '000000123' } });
   assert.equal(byId.status, 200);
   assert.ok(!byId.body.some((x) => x.tree_id === 'ghost_tree'));
 
@@ -674,7 +674,7 @@ test('M1 /search/global：真身 + 同名镜像 → 恰好 1 条（取真身，r
   const it = body[0];
   assert.equal(it.tree_id, 'nn_tree', '取真身所在树');
   assert.equal(it.handle, 'h_nn_real');
-  assert.equal(it.gramps_id, 'I000950');
+  assert.equal(it.gramps_id, '000000950');
   assert.equal(it.tree_title, '季氏本宗');
   assert.equal(it.name, '季清昆');
   assert.equal(it.matched, 'name');
@@ -683,7 +683,7 @@ test('M1 /search/global：真身 + 同名镜像 → 恰好 1 条（取真身，r
 
   const raw = JSON.stringify(body);
   assert.ok(!raw.includes('h_mm_m1'), '不得出现镜像自身 handle');
-  assert.ok(!raw.includes('I000960'), '不得出现镜像自身编号');
+  assert.ok(!raw.includes('000000960'), '不得出现镜像自身编号');
   assert.ok(!raw.includes('mm_tree'), '不得出现镜像所在树 id');
   assert.ok(!raw.includes('external_'), '不得把 external_* 镜像内部字段透出');
 
@@ -704,7 +704,7 @@ test('M2 /search/global：真身被可见分层裁剪 → 返回镜像条 + rest
   // 先证明真身确实存在且确实被裁剪（否则本用例会「假绿」）
   const mdTree = JSON.parse(fs.readFileSync(path.join(TMP, 'trees', 'mdeep_tree.json'), 'utf8'));
   assert.equal(mdTree.people.h_md_20.name, '季望舒', '夹具：真身存在于深树第 20 世');
-  assert.equal(mdTree.people.h_md_20.gramps_id, 'I000720');
+  assert.equal(mdTree.people.h_md_20.gramps_id, '000000720');
   const hiddenReal = await json('/search/global', { query: { query: '季望1' } });
   assert.equal(hiddenReal.body.length, 1, 'guest 仅见深树第 1 世（第 3–20 世被裁剪）');
 
@@ -714,7 +714,7 @@ test('M2 /search/global：真身被可见分层裁剪 → 返回镜像条 + rest
   const it = body[0];
   assert.equal(it.tree_id, 'mm_tree', 'tree_id 取镜像自身所在树');
   assert.equal(it.handle, 'h_mm_hid', 'handle 取镜像自身');
-  assert.equal(it.gramps_id, 'I000961', 'gramps_id 取镜像自身');
+  assert.equal(it.gramps_id, '000000961', 'gramps_id 取镜像自身');
   assert.equal(it.tree_title, '季氏支谱', 'tree_title 取镜像自身所在树');
   assert.equal(it.name, '季望舒');
   assert.equal(it.birth_date, '1960-06-06', '生卒取镜像自身');
@@ -723,7 +723,7 @@ test('M2 /search/global：真身被可见分层裁剪 → 返回镜像条 + rest
 
   const raw = JSON.stringify(body);
   assert.ok(!raw.includes('h_md_20'), '不得泄漏真身 handle');
-  assert.ok(!raw.includes('I000720'), '不得泄漏真身 gramps_id');
+  assert.ok(!raw.includes('000000720'), '不得泄漏真身 gramps_id');
   assert.ok(!raw.includes('mdeep_tree'), '不得泄漏真身所在 tree_id');
   assert.ok(!raw.includes('季氏远谱'), '不得泄漏真身所在树名');
 });
@@ -732,17 +732,17 @@ test('M3 /search/global：编号精确命中镜像 → 取被命中的镜像节�
   // 【口径 D-2 修订】旧断言「代表 = 被命中的镜像节点」正是假受限缺陷的同一条路径：h_mm_id 的真身 h_nn_id
   // 对该访问者（guest）可见 → 按派单口径代表必须取真身（见 N1）。用例名与 matched==='id' 断言保留，
   // 仅把代表断言改到真身上。
-  for (const q of ['I000971', '000971', '971']) {
+  for (const q of ['000000971', '000971', '971']) {
     const { status, body } = await json('/search/global', { query: { query: q } });
     assert.equal(status, 200, `query=${q}`);
     assert.equal(body.length, 1, `query=${q}：编号只指向镜像节点 → 1 条（不得再出真身第二条）`);
     assert.equal(body[0].tree_id, 'nn_tree', `query=${q}：真身可见 → 代表取真身所在树`);
     assert.equal(body[0].handle, 'h_nn_id', `query=${q}：代表 handle 取真身`);
-    assert.equal(body[0].gramps_id, 'I000970', `query=${q}：代表编号取真身`);
+    assert.equal(body[0].gramps_id, '000000970', `query=${q}：代表编号取真身`);
     assert.equal(body[0].matched, 'id', `query=${q}：编号精确命中 → matched=id`);
     assert.equal(body[0].restricted, false, `query=${q}：真身可见 → 不得报假受限`);
     assert.ok(!JSON.stringify(body).includes('h_mm_id'), `query=${q}：不得出现镜像 handle`);
-    assert.ok(!JSON.stringify(body).includes('I000971'), `query=${q}：不得出现镜像编号`);
+    assert.ok(!JSON.stringify(body).includes('000000971'), `query=${q}：不得出现镜像编号`);
   }
 
   // 真身（季承业，nn_tree）也能被姓名检索到 —— 证明上面的 1 条不是「真身不存在」
@@ -752,7 +752,7 @@ test('M3 /search/global：编号精确命中镜像 → 取被命中的镜像节�
   assert.equal(real.body[0].handle, 'h_nn_id');
   assert.equal(real.body[0].restricted, false);
   const raw = JSON.stringify(real.body);
-  assert.ok(!raw.includes('h_mm_id') && !raw.includes('I000971'), '不得出现镜像 handle / 编号');
+  assert.ok(!raw.includes('h_mm_id') && !raw.includes('000000971'), '不得出现镜像 handle / 编号');
 });
 
 test('M4 /search/global：两个不同真身同名（无镜像关系）→ 仍返回 2 条（不得按姓名合并）', async () => {
@@ -797,14 +797,14 @@ test('N1 /search/global：编号精确命中镜像 + 真身对访问者可见 �
   assert.equal(m.people.h_n1_m.external_person_handle, 'h_n1_r');
   assert.equal(m.people.h_n1_m.external_tree, 'n1r_tree');
 
-  for (const q of ['I000991', '000991', '991']) {
+  for (const q of ['000000991', '000991', '991']) {
     const { status, body } = await json('/search/global', { query: { query: q } });
     assert.equal(status, 200, `query=${q}`);
     assert.equal(body.length, 1, `query=${q}：同一人只出一条`);
     const it = body[0];
     assert.equal(it.tree_id, 'n1r_tree', `query=${q}：代表必须取真身所在树（编号只命中镜像也不得留在镜像树）`);
     assert.equal(it.handle, 'h_n1_r', `query=${q}：代表 handle 取真身`);
-    assert.equal(it.gramps_id, 'I000992', `query=${q}：代表编号取真身`);
+    assert.equal(it.gramps_id, '000000992', `query=${q}：代表编号取真身`);
     assert.equal(it.tree_title, '岳氏本宗', `query=${q}：tree_title 取真身所在树`);
     assert.equal(it.name, '岳千山');
     assert.equal(it.matched, 'id', `query=${q}：保留原命中类型（编号命中）`);
@@ -812,7 +812,7 @@ test('N1 /search/global：编号精确命中镜像 + 真身对访问者可见 �
     assert.deepEqual(Object.keys(it).sort(), [...RESULT_KEYS].sort(), '不得新增字段');
     const raw = JSON.stringify(body);
     assert.ok(!raw.includes('h_n1_m'), '不得泄漏镜像 handle');
-    assert.ok(!raw.includes('I000991'), '不得泄漏镜像编号');
+    assert.ok(!raw.includes('000000991'), '不得泄漏镜像编号');
     assert.ok(!raw.includes('n1_tree'), '不得泄漏镜像所在 tree_id');
     assert.ok(!raw.includes('external_'), '不得透出 external_* 内部字段');
   }
@@ -832,20 +832,20 @@ test('N2 /search/global：真身不可见 + 镜像可见 → 代表=镜像、res
   assert.equal(mdTree.tree_id, 'mdeep_tree');
 
   // ① 编号只命中镜像（h_mm_hid 自己的编号）
-  for (const q of ['I000961', '961']) {
+  for (const q of ['000000961', '961']) {
     const { status, body } = await json('/search/global', { query: { query: q } });
     assert.equal(status, 200, `query=${q}`);
     assert.equal(body.length, 1, `query=${q}：真身被裁剪 → 只出一条镜像条`);
     const it = body[0];
     assert.equal(it.tree_id, 'mm_tree', `query=${q}：代表保持镜像所在树`);
     assert.equal(it.handle, 'h_mm_hid', `query=${q}：代表保持镜像 handle`);
-    assert.equal(it.gramps_id, 'I000961', `query=${q}：代表保持镜像编号`);
+    assert.equal(it.gramps_id, '000000961', `query=${q}：代表保持镜像编号`);
     assert.equal(it.tree_title, '季氏支谱', `query=${q}：tree_title 取镜像所在树`);
     assert.equal(it.matched, 'id');
     assert.equal(it.restricted, true, `query=${q}：真身不可见 → restricted=true`);
     const raw = JSON.stringify(body);
     assert.ok(!raw.includes('h_md_20'), `query=${q}：不得泄漏真身 handle`);
-    assert.ok(!raw.includes('I000720'), `query=${q}：不得泄漏真身 gramps_id`);
+    assert.ok(!raw.includes('000000720'), `query=${q}：不得泄漏真身 gramps_id`);
     assert.ok(!raw.includes('mdeep_tree'), `query=${q}：不得泄漏真身 tree_id`);
     assert.ok(!raw.includes('季氏远谱'), `query=${q}：不得泄漏真身 tree_title`);
   }
@@ -872,15 +872,15 @@ test('N3 /search/global：三级镜像链 A→B→C —— 只出 1 条；C 可�
   assert.equal(memberName.body.length, 1, '三级链 → 同一人只出 1 条');
   assert.equal(memberName.body[0].handle, 'h_n3_c', 'C 可见 → 代表 = C');
   assert.equal(memberName.body[0].tree_id, 'n3c_tree');
-  assert.equal(memberName.body[0].gramps_id, 'I000995');
+  assert.equal(memberName.body[0].gramps_id, '000000995');
   assert.equal(memberName.body[0].restricted, false);
   assert.equal(memberName.body[0].matched, 'name');
 
-  const memberId = await json('/search/global', { query: { query: 'I000993' }, headers: bearer() });
+  const memberId = await json('/search/global', { query: { query: '000000993' }, headers: bearer() });
   assert.equal(memberId.body.length, 1, '编号只命中镜像 A，真身 C 可见 → 仍只出 1 条');
   assert.equal(memberId.body[0].handle, 'h_n3_c', 'C 可见 → 代表跨链取 C（即使编号只命中一级镜像）');
   assert.equal(memberId.body[0].tree_id, 'n3c_tree');
-  assert.equal(memberId.body[0].gramps_id, 'I000995');
+  assert.equal(memberId.body[0].gramps_id, '000000995');
   assert.equal(memberId.body[0].matched, 'id');
   assert.equal(memberId.body[0].restricted, false);
 
@@ -891,14 +891,14 @@ test('N3 /search/global：三级镜像链 A→B→C —— 只出 1 条；C 可�
   assert.equal(guestName.body[0].handle, 'h_n3_a');
   assert.equal(guestName.body[0].restricted, true, 'C 不可见 → restricted=true');
 
-  const guestId = await json('/search/global', { query: { query: 'I000993' } });
+  const guestId = await json('/search/global', { query: { query: '000000993' } });
   assert.equal(guestId.body.length, 1);
   assert.equal(guestId.body[0].handle, 'h_n3_a');
   assert.equal(guestId.body[0].matched, 'id');
   assert.equal(guestId.body[0].restricted, true);
   const raw = JSON.stringify(guestId.body) + JSON.stringify(guestName.body);
   assert.ok(!raw.includes('h_n3_c'), '不得泄漏真身 handle');
-  assert.ok(!raw.includes('I000995'), '不得泄漏真身 gramps_id');
+  assert.ok(!raw.includes('000000995'), '不得泄漏真身 gramps_id');
   assert.ok(!raw.includes('n3c_tree'), '不得泄漏真身 tree_id');
   assert.ok(!raw.includes('龙氏深处'), '不得泄漏真身 tree_title');
 });
@@ -913,7 +913,7 @@ test('N4 /search/global：环状镜像（A→B→A）→ 不抛、不死循环�
   assert.ok(byName.body.every((x) => x.matched === 'name'));
 
   // 编号路径同样收敛
-  for (const [q, h] of [['I000996', 'h_n4_a'], ['I000997', 'h_n4_b']]) {
+  for (const [q, h] of [['000000996', 'h_n4_a'], ['000000997', 'h_n4_b']]) {
     const r = await json('/search/global', { query: { query: q } });
     assert.equal(r.status, 200, `query=${q}`);
     assert.equal(r.body.length, 1, `query=${q}：只出被命中的镜像条`);

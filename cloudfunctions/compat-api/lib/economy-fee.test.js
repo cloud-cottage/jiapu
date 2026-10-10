@@ -193,7 +193,7 @@ function chainTree(id, n = 5, base = 100) {
   const people = {};
   const families = {};
   handles.forEach((handle, i) => {
-    people[handle] = person(handle, `I${base + i}`, `节点${i}`, 'M', i === 0 ? '' : `${id}-fam-${i - 1}`);
+    people[handle] = person(handle, `${String(base + i).padStart(9, '0')}`, `节点${i}`, 'M', i === 0 ? '' : `${id}-fam-${i - 1}`);
   });
   handles.forEach((handle, i) => {
     if (i === handles.length - 1) return;
@@ -214,7 +214,7 @@ function chainTree(id, n = 5, base = 100) {
 /** 单人树（跨树迁移的目标父容器 / 只读镜像用例） */
 function singleTree(id, { mirror = false, base = 900 } = {}) {
   const handle = `${id}-host`;
-  const node = person(handle, `I${base}`, mirror ? '镜像节点' : '目标父', 'M');
+  const node = person(handle, `${String(base).padStart(9, '0')}`, mirror ? '镜像节点' : '目标父', 'M');
   if (mirror) {
     node.external_mirror = 'true';
     node.external_tree = 'zhonghua';

@@ -160,21 +160,21 @@ function reorderTree(id = 'sr_main') {
   return {
     ...SCHEMA,
     tree_id: id,
-    founder_gramps_id: 'I0400',
+    founder_gramps_id: '000000400',
     people: {
-      f1: node('f1', 'I0400', '甲父', { spouse_families: ['fam1', 'fam2'] }),
-      m1: node('m1', 'I0401', '甲母', { gender: 'F', spouse_families: ['fam1'] }),
-      m2: node('m2', 'I0402', '甲继母', { gender: 'F', spouse_families: ['fam2'] }),
-      c1: node('c1', 'I0403', '甲一', { parent_family: 'fam1' }),
-      c2: node('c2', 'I0404', '甲二', { parent_family: 'fam1' }),
-      c3: node('c3', 'I0405', '甲三', { parent_family: 'fam1' }),
-      c4: node('c4', 'I0406', '甲四', { parent_family: 'fam1' }),
-      d1: node('d1', 'I0407', '甲五', { parent_family: 'fam2' }),
-      d2: node('d2', 'I0408', '甲六', { parent_family: 'fam2' }),
+      f1: node('f1', '000000400', '甲父', { spouse_families: ['fam1', 'fam2'] }),
+      m1: node('m1', '000000401', '甲母', { gender: 'F', spouse_families: ['fam1'] }),
+      m2: node('m2', '000000402', '甲继母', { gender: 'F', spouse_families: ['fam2'] }),
+      c1: node('c1', '000000403', '甲一', { parent_family: 'fam1' }),
+      c2: node('c2', '000000404', '甲二', { parent_family: 'fam1' }),
+      c3: node('c3', '000000405', '甲三', { parent_family: 'fam1' }),
+      c4: node('c4', '000000406', '甲四', { parent_family: 'fam1' }),
+      d1: node('d1', '000000407', '甲五', { parent_family: 'fam2' }),
+      d2: node('d2', '000000408', '甲六', { parent_family: 'fam2' }),
     },
     families: {
-      fam1: { handle: 'fam1', gramps_id: 'F0400', father_handle: 'f1', mother_handle: 'm1', child_handles: ['c1', 'c2', 'c3', 'c4'] },
-      fam2: { handle: 'fam2', gramps_id: 'F0401', father_handle: 'f1', mother_handle: 'm2', child_handles: ['d1', 'd2'] },
+      fam1: { handle: 'fam1', gramps_id: 'F000400', father_handle: 'f1', mother_handle: 'm1', child_handles: ['c1', 'c2', 'c3', 'c4'] },
+      fam2: { handle: 'fam2', gramps_id: 'F000401', father_handle: 'f1', mother_handle: 'm2', child_handles: ['d1', 'd2'] },
     },
   };
 }
@@ -184,20 +184,20 @@ function mirrorTree(id = 'sr_mirror') {
   return {
     ...SCHEMA,
     tree_id: id,
-    founder_gramps_id: 'I0500',
+    founder_gramps_id: '000000500',
     people: {
-      f1: node('f1', 'I0500', '乙父', { spouse_families: ['fam1'] }),
-      m1: node('m1', 'I0501', '乙母', { gender: 'F', spouse_families: ['fam1'] }),
-      mi1: node('mi1', 'I0502', '乙镜像', {
+      f1: node('f1', '000000500', '乙父', { spouse_families: ['fam1'] }),
+      m1: node('m1', '000000501', '乙母', { gender: 'F', spouse_families: ['fam1'] }),
+      mi1: node('mi1', '000000502', '乙镜像', {
         external_mirror: 'true',
         external_tree: 'zhonghua',
         external_link_type: 'founder',
         parent_family: 'fam1',
       }),
-      mc1: node('mc1', 'I0503', '乙子', { parent_family: 'fam1' }),
+      mc1: node('mc1', '000000503', '乙子', { parent_family: 'fam1' }),
     },
     families: {
-      fam1: { handle: 'fam1', gramps_id: 'F0500', father_handle: 'f1', mother_handle: 'm1', child_handles: ['mi1', 'mc1'] },
+      fam1: { handle: 'fam1', gramps_id: 'F000500', father_handle: 'f1', mother_handle: 'm1', child_handles: ['mi1', 'mc1'] },
     },
   };
 }

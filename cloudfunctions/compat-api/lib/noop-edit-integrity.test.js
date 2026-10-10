@@ -170,16 +170,16 @@ const node = (h, gid, name, surname, given, extra = {}) => ({
 function noopTree(id = 'noop_put') {
   const p = (n) => `${id}-p${n}`;
   const people = {
-    [p(1)]: node(p(1), 'I0300', '甲三', '甲', '三', { is_living: true, birth_place: '临淄' }),
-    [p(2)]: node(p(2), 'I0301', '刘佳玉', '刘', '佳玉', { birth_place: '安达市' }),
-    [p(3)]: node(p(3), 'I0302', '甲古', '甲', '古', { is_living: false, death_date: '1980-05-01' }),
-    [p(4)]: node(p(4), 'I0303', '甲姻', '甲', '姻', {
+    [p(1)]: node(p(1), '000000300', '甲三', '甲', '三', { is_living: true, birth_place: '临淄' }),
+    [p(2)]: node(p(2), '000000301', '刘佳玉', '刘', '佳玉', { birth_place: '安达市' }),
+    [p(3)]: node(p(3), '000000302', '甲古', '甲', '古', { is_living: false, death_date: '1980-05-01' }),
+    [p(4)]: node(p(4), '000000303', '甲姻', '甲', '姻', {
       external_tree: 'zhonghua',
       external_person_handle: 'deadbeefdeadbeef',
       external_link_type: 'marriage',
     }),
   };
-  return { ...SCHEMA, tree_id: id, people, families: {}, founder_gramps_id: 'I0300' };
+  return { ...SCHEMA, tree_id: id, people, families: {}, founder_gramps_id: '000000300' };
 }
 /** no-op 夹具树的 4 个 handle（避开把辅助字段写进树 JSON）；每个用例自己取，勿跨用例复用 */
 const HANDLES = (id) => [1, 2, 3, 4].map((n) => `${id}-p${n}`);
@@ -190,7 +190,7 @@ function noopDetail(treeId, handle) {
   return {
     tree_id: treeId,
     handle,
-    gramps_id: 'I0300',
+    gramps_id: '000000300',
     name: '甲三',
     events: [],
     media: [],
@@ -378,7 +378,7 @@ test('缺陷 A：no-op 保存（GET→不改任何东西→PUT）→ 200 unchang
   const handles = HANDLES('noop_put'); // 本用例自己取句柄（noopTree 不再回传 handles）
   await scene({ trees: [tree], phone: STEWARD, bamboos: 5 });
   writeDetail(noopDetail('noop_put', handles[0]));
-  writeDetail(plainDetail('noop_put', handles[2], 'I0302', '甲古'));
+  writeDetail(plainDetail('noop_put', handles[2], '000000302', '甲古'));
   // 预热：真实形态是先 GET（读路径）再 PUT，进程内 treeCache 已被填充
   for (const h of handles) {
     const warm = await call(`/people/${h}`, 'GET', H('noop_put'));
@@ -420,7 +420,7 @@ test('缺陷 A 反向对照：只改称号 → 1 片照旧；改姓名 → 1 片
   const handles = HANDLES('noop_fee'); // 本用例自己取句柄
   await scene({ trees: [tree], phone: STEWARD, bamboos: 5 });
   writeDetail(noopDetail('noop_fee', handles[0]));
-  writeDetail(plainDetail('noop_fee', handles[2], 'I0302', '甲古'));
+  writeDetail(plainDetail('noop_fee', handles[2], '000000302', '甲古'));
 
   // ① 只改称号（封号 毕公 → 周公）：树 JSON 与详情都要写，扣 1 片
   const h1 = handles[0];
@@ -476,7 +476,7 @@ test('缺陷 B：updateTree 落盘失败（树文件 0444）→ 同进程读回�
   const tree = noopTree('wh_tree');
   const handles = HANDLES('wh_tree'); // 本用例自己取句柄
   await scene({ trees: [tree], phone: STEWARD, bamboos: 5 });
-  writeDetail(plainDetail('wh_tree', handles[1], 'I0301', '刘佳玉'));
+  writeDetail(plainDetail('wh_tree', handles[1], '000000301', '刘佳玉'));
   const h1 = handles[0];
   const h2 = handles[1];
   const diskBefore = treeMd5('wh_tree');
@@ -510,7 +510,7 @@ test('缺陷 B：updateTree 落盘失败（树文件 0444）→ 同进程读回�
   const rereadApi = await call(`/people/${h1}`, 'GET', H('wh_tree'));
   assert.equal(rereadApi.statusCode, 200);
   assert.equal(bodyOf(rereadApi).primary_name.first_name, '三', '同进程读接口不得显示幻影名');
-  assert.equal(bodyOf(rereadApi).gramps_id, 'I0300');
+  assert.equal(bodyOf(rereadApi).gramps_id, '000000300');
 
   // ★ 夹具 C：幻影不得随另一次正常写入落盘
   const h2Warm = formBodyFrom(bodyOf(await call(`/people/${h2}`, 'GET', H('wh_tree'))));
@@ -618,10 +618,10 @@ function chainNodeTree(id = 'chain_np') {
   return {
     ...SCHEMA,
     tree_id: id,
-    founder_gramps_id: 'I0900',
+    founder_gramps_id: '000000900',
     families: {},
     people: {
-      [h]: node(h, 'I0900', '风甲', '风', '甲', {
+      [h]: node(h, '000000900', '风甲', '风', '甲', {
         external_tree: '',
         external_person_handle: '',
         external_link_type: '',
@@ -636,7 +636,7 @@ function chainNodeDetail(treeId, handle) {
   return {
     tree_id: treeId,
     handle,
-    gramps_id: 'I0900',
+    gramps_id: '000000900',
     name: '风甲',
     events: [],
     media: [],

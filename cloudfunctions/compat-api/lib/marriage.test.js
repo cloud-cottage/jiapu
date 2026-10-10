@@ -20,7 +20,7 @@ function treeA() {
     tree_id: 'tree_a',
     version: 1,
     people: {
-      hA: { handle: 'hA', gramps_id: 'I0001', name: '风华胥', surname: '风', given: '华胥', gender: 'F', parent_family: '', spouse_families: [] },
+      hA: { handle: 'hA', gramps_id: '000000001', name: '风华胥', surname: '风', given: '华胥', gender: 'F', parent_family: '', spouse_families: [] },
     },
     families: {},
   };
@@ -30,7 +30,7 @@ function treeB() {
     tree_id: 'tree_b',
     version: 1,
     people: {
-      hB: { handle: 'hB', gramps_id: 'I0052', name: '风伏羲', surname: '风', given: '伏羲', gender: 'M', parent_family: '', spouse_families: [] },
+      hB: { handle: 'hB', gramps_id: '000000052', name: '风伏羲', surname: '风', given: '伏羲', gender: 'M', parent_family: '', spouse_families: [] },
     },
     families: {},
   };
@@ -180,7 +180,7 @@ test('家族不空时结束婚姻：保留家族与子女，只清掉镜像槽�
   const B = treeB();
   const r = applyMarriage({ treeA: A, treeB: B, handleA: 'hA', handleB: 'hB', direction: 'out', marriageId: 'mid1' });
   // A 侧家族加一个孩子
-  A.people.hKid = { handle: 'hKid', gramps_id: 'I0002', name: '风某', gender: 'M', parent_family: r.family_a, spouse_families: [] };
+  A.people.hKid = { handle: 'hKid', gramps_id: '000000002', name: '风某', gender: 'M', parent_family: r.family_a, spouse_families: [] };
   A.families[r.family_a].child_handles.push('hKid');
   applyMarriageEnd({ treeA: A, treeB: B, handleA: 'hA', handleB: 'hB', marriageId: 'mid1', kind: '合离' });
   const fam = A.families[r.family_a];

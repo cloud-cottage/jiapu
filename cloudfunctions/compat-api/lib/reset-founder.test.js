@@ -45,13 +45,13 @@ const metaFixture = {
     // 老的、非镜像的真人始祖（本次要支持的场景：顾清学 I0070）
     rt_plain: {
       tree_id: 'rt_plain', kind: 'family', path_alias: '/rt_plain', surname_char: '顾',
-      display_title: '顾氏测试家族', founder_handle: 'f', founder_gramps_id: 'I0070',
+      display_title: '顾氏测试家族', founder_handle: 'f', founder_gramps_id: '000000070',
       founder_name: '顾清学', hall_name: '顾氏宗祠', enable_custom_domain: false,
     },
     // 已认祖的镜像始祖（须先解除挂载）
     rt_mirror: {
       tree_id: 'rt_mirror', kind: 'family', path_alias: '/rt_mirror', surname_char: '季',
-      display_title: '季氏测试家族（镜像）', founder_handle: 'f', founder_gramps_id: 'I0001',
+      display_title: '季氏测试家族（镜像）', founder_handle: 'f', founder_gramps_id: '000000001',
       founder_name: '季始祖公', enable_custom_domain: false,
     },
     // 无始祖态（重置后的状态；再重置应幂等）
@@ -59,7 +59,7 @@ const metaFixture = {
     // 路由层正常重置用例（主理人自助重置）
     rt_route: {
       tree_id: 'rt_route', kind: 'family', display_title: '路由测试家族',
-      founder_handle: 'f', founder_gramps_id: 'I0070', founder_name: '顾清学',
+      founder_handle: 'f', founder_gramps_id: '000000070', founder_name: '顾清学',
     },
   },
 };
@@ -105,38 +105,38 @@ function metaCopyMd5() {
 writeTree({
   _schema: '1.0',
   tree_id: 'zhonghua',
-  founder_gramps_id: 'I0001',
+  founder_gramps_id: '000000001',
   version: 5,
   people: {
     mRoot: {
-      handle: 'mRoot', gramps_id: 'I0001', name: '风伏羲', surname: '风', given: '伏羲', gender: 'M',
+      handle: 'mRoot', gramps_id: '000000001', name: '风伏羲', surname: '风', given: '伏羲', gender: 'M',
       birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [],
     },
     mX: {
-      handle: 'mX', gramps_id: 'I0100', name: '季始祖公', surname: '季', given: '始祖公', gender: 'M',
+      handle: 'mX', gramps_id: '000000100', name: '季始祖公', surname: '季', given: '始祖公', gender: 'M',
       birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: ['mf1'],
     },
   },
-  families: { mf1: { handle: 'mf1', gramps_id: 'F0001', father_handle: 'mX', mother_handle: '', child_handles: [] } },
+  families: { mf1: { handle: 'mf1', gramps_id: 'F000001', father_handle: 'mX', mother_handle: '', child_handles: [] } },
 });
 
 /** 老的真人始祖（非镜像）：顾清学 I0070 + 其子 */
 writeTree({
   _schema: '1.0',
   tree_id: 'rt_plain',
-  founder_gramps_id: 'I0001',
+  founder_gramps_id: '000000001',
   version: 4,
   people: {
     f: {
-      handle: 'f', gramps_id: 'I0070', name: '顾清学', surname: '顾', given: '清学', gender: 'M',
+      handle: 'f', gramps_id: '000000070', name: '顾清学', surname: '顾', given: '清学', gender: 'M',
       birth_date: '1899', death_date: '1970', birth_place: '', death_place: '', parent_family: '', spouse_families: ['fam'],
     },
     kid: {
-      handle: 'kid', gramps_id: 'I0071', name: '顾子', surname: '顾', given: '子', gender: 'M',
+      handle: 'kid', gramps_id: '000000071', name: '顾子', surname: '顾', given: '子', gender: 'M',
       birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: 'fam', spouse_families: [],
     },
   },
-  families: { fam: { handle: 'fam', gramps_id: 'F0001', father_handle: 'f', mother_handle: '', child_handles: ['kid'] } },
+  families: { fam: { handle: 'fam', gramps_id: 'F000001', father_handle: 'f', mother_handle: '', child_handles: ['kid'] } },
 });
 writeDetail({ _id: 'rt_plain:f', tree_id: 'rt_plain', handle: 'f', name: '顾清学', events: [], attributes: [{ key: '封号', value: '某某公' }] });
 writeDetail({ _id: 'rt_plain:kid', tree_id: 'rt_plain', handle: 'kid', name: '顾子', events: [] });
@@ -145,11 +145,11 @@ writeDetail({ _id: 'rt_plain:kid', tree_id: 'rt_plain', handle: 'kid', name: '�
 writeTree({
   _schema: '1.0',
   tree_id: 'rt_mirror',
-  founder_gramps_id: 'I0001',
+  founder_gramps_id: '000000001',
   version: 2,
   people: {
     f: {
-      handle: 'f', gramps_id: 'I0001', name: '季始祖公', surname: '季', given: '始祖公', gender: 'M',
+      handle: 'f', gramps_id: '000000001', name: '季始祖公', surname: '季', given: '始祖公', gender: 'M',
       birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [],
       external_tree: 'zhonghua', external_person_handle: 'mX', external_link_type: 'founder',
       external_mirror: 'true', external_relation_note: '季始祖公（中华世本 · 第 12 世）',
@@ -165,7 +165,7 @@ writeTree({
   version: 1,
   people: {
     a: {
-      handle: 'a', gramps_id: 'I0001', name: '顾某', surname: '顾', given: '某', gender: 'M',
+      handle: 'a', gramps_id: '000000001', name: '顾某', surname: '顾', given: '某', gender: 'M',
       birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [],
     },
   },
@@ -175,7 +175,7 @@ writeTree({
 // ============ 纯函数 ============
 
 test('planFounderReset：删除始祖登记三字段 + founder_state=none，其他元数据原样保留', () => {
-  const entry = { tree_id: 'rt_plain', kind: 'family', founder_handle: 'f', founder_gramps_id: 'I0070', founder_name: '顾清学', hall_name: '顾氏宗祠' };
+  const entry = { tree_id: 'rt_plain', kind: 'family', founder_handle: 'f', founder_gramps_id: '000000070', founder_name: '顾清学', hall_name: '顾氏宗祠' };
   const next = fa.planFounderReset(entry);
   assert.deepEqual(Object.keys(next).sort(), ['founder_state', 'hall_name', 'kind', 'tree_id']);
   assert.equal(next.founder_state, 'none');
@@ -196,13 +196,13 @@ test('currentFounderHandle / assertFounderResettable：镜像优先识别；总�
   assert.equal(fa.currentFounderHandle(mirrorTree, { founder_handle: 'someone_else' }), 'f');
   // 无 meta 信息 + 树内无登记 → ''（不兜底 I0001）；树缺失 → ''
   assert.equal(
-    fa.currentFounderHandle({ people: { a: { handle: 'a', gramps_id: 'I0001' } } }, null),
+    fa.currentFounderHandle({ people: { a: { handle: 'a', gramps_id: '000000001' } } }, null),
     '',
     '未登记始祖的树不得把 I0001 当始祖',
   );
   // 树 JSON 自己登记了始祖位 → 仍按树内登记解析
   assert.equal(
-    fa.currentFounderHandle({ people: { a: { handle: 'a', gramps_id: 'I0001' } }, founder_gramps_id: 'I0001' }, null),
+    fa.currentFounderHandle({ people: { a: { handle: 'a', gramps_id: '000000001' } }, founder_gramps_id: '000000001' }, null),
     'a',
   );
   assert.equal(fa.currentFounderHandle(null, null), '');
@@ -222,14 +222,14 @@ test('currentFounderHandle / assertFounderResettable：镜像优先识别；总�
   assert.throws(
     () => fa.assertFounderResettable({
       entry: { kind: 'family', founder_handle: 'f' },
-      tree: { people: { f: { handle: 'f', gramps_id: 'I0001', external_mirror: 'true', external_link_type: 'chain' } } },
+      tree: { people: { f: { handle: 'f', gramps_id: '000000001', external_mirror: 'true', external_link_type: 'chain' } } },
     }),
     (e) => e.status === 400,
   );
   // 真人始祖 → 放行并回报 previous 三字段
   assert.deepEqual(
     fa.assertFounderResettable({ entry: { kind: 'family', founder_handle: 'f' }, tree: plainTree }),
-    { founder_handle: 'f', founder_gramps_id: 'I0070', founder_name: '顾清学' },
+    { founder_handle: 'f', founder_gramps_id: '000000070', founder_name: '顾清学' },
   );
 });
 
@@ -243,7 +243,7 @@ test('resetFounder：只写 tree-meta 副本（三字段删除 + founder_state=n
   assert.equal(r.ok, true);
   assert.equal(r.tree_id, 'rt_plain');
   assert.equal(r.founder_state, 'none');
-  assert.deepEqual(r.previous, { founder_handle: 'f', founder_gramps_id: 'I0070', founder_name: '顾清学' });
+  assert.deepEqual(r.previous, { founder_handle: 'f', founder_gramps_id: '000000070', founder_name: '顾清学' });
   assert.match(r.message, /暂无始祖/);
 
   const entry = readMetaCopy().trees.rt_plain;
@@ -340,11 +340,11 @@ test('路由 POST /admin/reset-founder：本树主理人重置成功（返回 pr
   writeTree({
     _schema: '1.0',
     tree_id: 'rt_route',
-    founder_gramps_id: 'I0001',
+    founder_gramps_id: '000000001',
     version: 1,
     people: {
       f: {
-        handle: 'f', gramps_id: 'I0070', name: '顾清学', surname: '顾', given: '清学', gender: 'M',
+        handle: 'f', gramps_id: '000000070', name: '顾清学', surname: '顾', given: '清学', gender: 'M',
         birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [],
       },
     },
@@ -358,7 +358,7 @@ test('路由 POST /admin/reset-founder：本树主理人重置成功（返回 pr
   assert.equal(body.ok, true);
   assert.equal(body.tree_id, 'rt_route');
   assert.equal(body.founder_state, 'none');
-  assert.deepEqual(body.previous, { founder_handle: 'f', founder_gramps_id: 'I0070', founder_name: '顾清学' });
+  assert.deepEqual(body.previous, { founder_handle: 'f', founder_gramps_id: '000000070', founder_name: '顾清学' });
   assert.match(body.message, /可在任意节点用「⛩ 认祖」重新指定/);
 
   const entry = readMetaCopy().trees.rt_route;

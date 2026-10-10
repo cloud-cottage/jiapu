@@ -53,7 +53,7 @@ const metaFixture = {
     rc_dst: { tree_id: 'rc_dst', kind: 'family', display_title: '乙氏家族（目标树）' },
     rc_founder: {
       tree_id: 'rc_founder', kind: 'family', display_title: '丙氏家族（始祖源树）',
-      founder_handle: 'rc_founder-son', founder_gramps_id: 'I0102', founder_name: '儿子',
+      founder_handle: 'rc_founder-son', founder_gramps_id: '000000102', founder_name: '儿子',
     },
     rc_mirror: { tree_id: 'rc_mirror', kind: 'family', display_title: '丁氏家族（镜像源树）' },
     rc_amb_src: { tree_id: 'rc_amb_src', kind: 'family', display_title: '戊氏家族（重号源树）' },
@@ -114,19 +114,19 @@ function srcFamily(id) {
       tree_id: id,
       version: 3,
       people: {
-        [h.gp]: { handle: h.gp, gramps_id: 'I0100', name: '祖父', surname: '甲', given: '祖父', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.gp] },
-        [h.gm]: { handle: h.gm, gramps_id: 'I0101', name: '祖母', surname: '甲', given: '祖母', gender: 'F', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.gp] },
-        [h.son]: { handle: h.son, gramps_id: 'I0102', name: '儿子', surname: '甲', given: '儿子', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.gp, spouse_families: [fam.son] },
-        [h.wife]: { handle: h.wife, gramps_id: 'I0103', name: '媳妇', surname: '丙', given: '媳妇', gender: 'F', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.son] },
-        [h.kid1]: { handle: h.kid1, gramps_id: 'I0104', name: '孙子', surname: '甲', given: '孙子', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.son, spouse_families: [] },
-        [h.kid2]: { handle: h.kid2, gramps_id: 'I0105', name: '孙次', surname: '甲', given: '孙次', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.son, spouse_families: [fam.kid2] },
-        [h.w2]: { handle: h.w2, gramps_id: 'I0106', name: '孙媳', surname: '丁', given: '孙媳', gender: 'F', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.kid2] },
-        [h.gk]: { handle: h.gk, gramps_id: 'I0107', name: '曾孙', surname: '甲', given: '曾孙', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.kid2, spouse_families: [] },
+        [h.gp]: { handle: h.gp, gramps_id: '000000100', name: '祖父', surname: '甲', given: '祖父', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.gp] },
+        [h.gm]: { handle: h.gm, gramps_id: '000000101', name: '祖母', surname: '甲', given: '祖母', gender: 'F', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.gp] },
+        [h.son]: { handle: h.son, gramps_id: '000000102', name: '儿子', surname: '甲', given: '儿子', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.gp, spouse_families: [fam.son] },
+        [h.wife]: { handle: h.wife, gramps_id: '000000103', name: '媳妇', surname: '丙', given: '媳妇', gender: 'F', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.son] },
+        [h.kid1]: { handle: h.kid1, gramps_id: '000000104', name: '孙子', surname: '甲', given: '孙子', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.son, spouse_families: [] },
+        [h.kid2]: { handle: h.kid2, gramps_id: '000000105', name: '孙次', surname: '甲', given: '孙次', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.son, spouse_families: [fam.kid2] },
+        [h.w2]: { handle: h.w2, gramps_id: '000000106', name: '孙媳', surname: '丁', given: '孙媳', gender: 'F', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.kid2] },
+        [h.gk]: { handle: h.gk, gramps_id: '000000107', name: '曾孙', surname: '甲', given: '曾孙', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.kid2, spouse_families: [] },
       },
       families: {
-        [fam.gp]: { handle: fam.gp, gramps_id: 'F0100', father_handle: h.gp, mother_handle: h.gm, child_handles: [h.son] },
-        [fam.son]: { handle: fam.son, gramps_id: 'F0101', father_handle: h.son, mother_handle: h.wife, child_handles: [h.kid1, h.kid2] },
-        [fam.kid2]: { handle: fam.kid2, gramps_id: 'F0102', father_handle: h.kid2, mother_handle: h.w2, child_handles: [h.gk] },
+        [fam.gp]: { handle: fam.gp, gramps_id: 'F000100', father_handle: h.gp, mother_handle: h.gm, child_handles: [h.son] },
+        [fam.son]: { handle: fam.son, gramps_id: 'F000101', father_handle: h.son, mother_handle: h.wife, child_handles: [h.kid1, h.kid2] },
+        [fam.kid2]: { handle: fam.kid2, gramps_id: 'F000102', father_handle: h.kid2, mother_handle: h.w2, child_handles: [h.gk] },
       },
     },
   };
@@ -142,15 +142,15 @@ function dstTree(id, { base = 9000, parentGender = 'M', mirrorChildOf = '', mirr
   const h = { p: `${id}-p`, other: `${id}-other`, mirror1: `${id}-mirror-child`, mirror2: `${id}-mirror-spouse` };
   const fam = { p: `${id}-fam`, m2: `${id}-fam-mirror-spouse` };
   const people = {
-    [h.p]: { handle: h.p, gramps_id: `I${base}`, name: '目标父', surname: '乙', given: '目标父', gender: parentGender, birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.p] },
-    [h.other]: { handle: h.other, gramps_id: `I${base + 1}`, name: '无关节点', surname: '乙', given: '无关', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [] },
+    [h.p]: { handle: h.p, gramps_id: `${String(base).padStart(9, '0')}`, name: '目标父', surname: '乙', given: '目标父', gender: parentGender, birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.p] },
+    [h.other]: { handle: h.other, gramps_id: `${String(base + 1).padStart(9, '0')}`, name: '无关节点', surname: '乙', given: '无关', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [] },
   };
   const families = {
     [fam.p]: { handle: fam.p, gramps_id: `F${base}`, father_handle: parentGender === 'F' ? '' : h.p, mother_handle: parentGender === 'F' ? h.p : '', child_handles: [] },
   };
   if (mirrorChildOf) {
     people[h.mirror1] = {
-      handle: h.mirror1, gramps_id: `I${base + 2}`, name: '镜像子', surname: '甲', given: '镜像子', gender: 'M',
+      handle: h.mirror1, gramps_id: `${String(base + 2).padStart(9, '0')}`, name: '镜像子', surname: '甲', given: '镜像子', gender: 'M',
       birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.p, spouse_families: [],
       external_tree: 'SRC', external_person_handle: mirrorChildOf, external_link_type: 'child', external_mirror: 'true',
     };
@@ -158,7 +158,7 @@ function dstTree(id, { base = 9000, parentGender = 'M', mirrorChildOf = '', mirr
   }
   if (mirrorSpouseOf) {
     people[h.mirror2] = {
-      handle: h.mirror2, gramps_id: `I${base + 3}`, name: '镜像配偶', surname: '甲', given: '镜像配偶', gender: 'F',
+      handle: h.mirror2, gramps_id: `${String(base + 3).padStart(9, '0')}`, name: '镜像配偶', surname: '甲', given: '镜像配偶', gender: 'F',
       birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.m2],
       external_tree: 'SRC', external_person_handle: mirrorSpouseOf, external_link_type: 'marriage', external_mirror: 'true',
     };
@@ -293,7 +293,7 @@ test('跨树改父（自动识别编号所属树）：两棵树各 +1 版本，�
   assert.equal(r.target_tree_id, d.id);
   assert.equal(r.moved_people, 4);
   assert.equal(r.parent_name, '目标父');
-  assert.equal(r.parent_gramps_id, `I${base}`);
+  assert.equal(r.parent_gramps_id, `${String(base).padStart(9, '0')}`);
   assert.equal(r.chain_shift, null);
   assert.match(r.message, /迁移到/);
 
@@ -318,7 +318,7 @@ test('跨树改父：详情文档随迁（目标树新 key + 新编号，源树�
   writeTree(s.tree);
   writeTree(d.tree);
   writeDetail({
-    _id: `rc_x2:${s.h.son}`, tree_id: 'rc_x2', handle: s.h.son, gramps_id: 'I0102', name: '儿子',
+    _id: `rc_x2:${s.h.son}`, tree_id: 'rc_x2', handle: s.h.son, gramps_id: '000000102', name: '儿子',
     events: [{ handle: 'e9', type: 'Birth', date: '1900' }], attributes: [{ key: '号', value: '某', type: '号' }],
     media: [], citations: [], notes: [],
   });
@@ -326,7 +326,7 @@ test('跨树改父：详情文档随迁（目标树新 key + 新编号，源树�
   const r = await tw.reparentNode({
     treeId: 'rc_x2',
     personHandle: s.h.son,
-    newParentRef: `I${9000 + dstSeq * 100}`,
+    newParentRef: `${String(9000 + dstSeq * 100).padStart(9, '0')}`,
     masterTreeId: 'zhonghua',
   });
   assert.equal(r.cross_tree, true);
@@ -349,7 +349,7 @@ test('跨树改父：指定目标树但编号不存在 → 明确报错；多树
   const dstBefore = treeMd5(d.id);
 
   await assert.rejects(
-    () => tw.reparentNode({ treeId: 'rc_x3', personHandle: s.h.son, newParentRef: 'I999999', targetTreeId: d.id, masterTreeId: 'zhonghua' }),
+    () => tw.reparentNode({ treeId: 'rc_x3', personHandle: s.h.son, newParentRef: '000999999', targetTreeId: d.id, masterTreeId: 'zhonghua' }),
     /目标家族树 .* 中找不到编号/,
   );
   assert.equal(treeMd5('rc_x3'), srcBefore, '校验先行：不写源树');
@@ -386,7 +386,7 @@ test('同树改父不受影响（回归）：cross_tree=false，不碰别的树'
   const r = await tw.reparentNode({
     treeId: 'rc_same',
     personHandle: s.h.kid1,
-    newParentRef: 'I0108', // 同树编号（不存在的次子）→ 找不到 → 报错
+    newParentRef: '000000108', // 同树编号（不存在的次子）→ 找不到 → 报错
     masterTreeId: 'zhonghua',
   }).catch((e) => e);
   assert.ok(r instanceof Error, '同树找不到该编号且别的树也没有 → 报错');
@@ -411,7 +411,7 @@ test('跨树改父：世代上限（复用 maxDepth/depthOf 口径）→ 403 且
       tw.reparentNode({
         treeId: 'rc_depth_src',
         personHandle: s.h.son,
-        newParentRef: `I${9000 + dstSeq * 100}`,
+        newParentRef: `${String(9000 + dstSeq * 100).padStart(9, '0')}`,
         masterTreeId: 'zhonghua',
         maxDepth: 3,
         depthOf: () => 4, // 目标树基础深度已到 4 > 上限 3
@@ -424,8 +424,8 @@ test('跨树改父：世代上限（复用 maxDepth/depthOf 口径）→ 403 且
 
 test('跨树改父：拒绝总谱（源/目标）、始祖节点、镜像节点', async () => {
   writeTree({
-    _schema: '1.0', tree_id: 'zhonghua', version: 2, founder_gramps_id: 'I0001',
-    people: { mRoot: { handle: 'mRoot', gramps_id: 'I0001', name: '风伏羲', surname: '风', given: '伏羲', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [] } },
+    _schema: '1.0', tree_id: 'zhonghua', version: 2, founder_gramps_id: '000000001',
+    people: { mRoot: { handle: 'mRoot', gramps_id: '000000001', name: '风伏羲', surname: '风', given: '伏羲', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [] } },
     families: {},
   });
   const d = mkDst('guard');
@@ -444,12 +444,12 @@ test('跨树改父：拒绝总谱（源/目标）、始祖节点、镜像节点'
   );
   // 源 = 总谱
   await assert.rejects(
-    () => tw.reparentNode({ treeId: 'zhonghua', personHandle: 'mRoot', newParentRef: `I${dBase}`, targetTreeId: d.id, masterTreeId: 'zhonghua' }),
+    () => tw.reparentNode({ treeId: 'zhonghua', personHandle: 'mRoot', newParentRef: `${String(dBase).padStart(9, '0')}`, targetTreeId: d.id, masterTreeId: 'zhonghua' }),
     (e) => e.status === 403 && /总谱/.test(e.message),
   );
   // 来源树不存在目标节点（防止误配 targetTreeId 时静默改错树）
   await assert.rejects(
-    () => tw.reparentNode({ treeId: 'rc_src', personHandle: 'rc_src-son', newParentRef: 'I9000', targetTreeId: 'rc_dst_不存在', masterTreeId: 'zhonghua' }),
+    () => tw.reparentNode({ treeId: 'rc_src', personHandle: 'rc_src-son', newParentRef: '000009000', targetTreeId: 'rc_dst_不存在', masterTreeId: 'zhonghua' }),
     (e) => /不存在/.test(e.message),
   );
   assert.equal(treeMd5('rc_src'), gsBefore, '拒绝时源树一字未写');
@@ -469,7 +469,7 @@ test('跨树改父：迁移范围含始祖节点 / 含镜像节点 → 403 且�
       tw.reparentNode({
         treeId: 'rc_founder',
         personHandle: f.h.son,
-        newParentRef: `I${9000 + dstSeq * 100}`,
+        newParentRef: `${String(9000 + dstSeq * 100).padStart(9, '0')}`,
         masterTreeId: 'zhonghua',
       }),
     (e) => e.status === 403 && /始祖/.test(e.message),
@@ -481,15 +481,15 @@ test('跨树改父：迁移范围含始祖节点 / 含镜像节点 → 403 且�
   writeTree({
     _schema: '1.0', tree_id: 'rc_mirror', version: 1,
     people: {
-      'rc_mirror-real': { handle: 'rc_mirror-real', gramps_id: 'I0200', name: '本树真人', surname: '甲', given: '真人', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [] },
-      'rc_mirror-m': { handle: 'rc_mirror-m', gramps_id: 'I0201', name: '外树镜像', surname: '乙', given: '镜像', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [], external_tree: 'rc_dst_guard', external_person_handle: 'x', external_link_type: 'marriage', external_mirror: 'true' },
+      'rc_mirror-real': { handle: 'rc_mirror-real', gramps_id: '000000200', name: '本树真人', surname: '甲', given: '真人', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [] },
+      'rc_mirror-m': { handle: 'rc_mirror-m', gramps_id: '000000201', name: '外树镜像', surname: '乙', given: '镜像', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [], external_tree: 'rc_dst_guard', external_person_handle: 'x', external_link_type: 'marriage', external_mirror: 'true' },
     },
     families: {},
   });
   const d2 = mkDst('mirror');
   writeTree(d2.tree);
   await assert.rejects(
-    () => tw.reparentNode({ treeId: 'rc_mirror', personHandle: 'rc_mirror-m', newParentRef: `I${9000 + dstSeq * 100}`, targetTreeId: d2.id, masterTreeId: 'zhonghua' }),
+    () => tw.reparentNode({ treeId: 'rc_mirror', personHandle: 'rc_mirror-m', newParentRef: `${String(9000 + dstSeq * 100).padStart(9, '0')}`, targetTreeId: d2.id, masterTreeId: 'zhonghua' }),
     (e) => e.status === 403 && /镜像/.test(e.message),
   );
 });
@@ -507,7 +507,7 @@ test('跨树改父：tree-meta 统计字段（若存在）双侧刷新；无统�
   const r = await tw.reparentNode({
     treeId: 'rc_stats_src',
     personHandle: s.h.son,
-    newParentRef: `I${9000 + dstSeq * 100}`,
+    newParentRef: `${String(9000 + dstSeq * 100).padStart(9, '0')}`,
     targetTreeId: 'rc_stats_dst',
     masterTreeId: 'zhonghua',
   });
@@ -554,7 +554,7 @@ test('路由 POST /admin/reparent（跨树）：200 + 双树落库；未登录 4
     ];
   });
   const token = signJwt({ sub: phone, phone, role: 'tree_steward' }, 3600);
-  const refId = `I${9000 + dstSeq * 100}`;
+  const refId = `${String(9000 + dstSeq * 100).padStart(9, '0')}`;
 
   const anon = await handleRequest({
     path: '/admin/reparent', httpMethod: 'POST', headers: {},

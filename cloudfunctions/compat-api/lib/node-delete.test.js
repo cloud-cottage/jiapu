@@ -55,7 +55,7 @@ const metaFixture = {
     nd_confirm: { tree_id: 'nd_confirm', kind: 'family', display_title: '丁氏测试家族（二次确认）' },
     nd_founder: {
       tree_id: 'nd_founder', kind: 'family', display_title: '戊氏测试家族（始祖）',
-      founder_handle: 'nd_founder-son', founder_gramps_id: 'I0102', founder_name: '儿子',
+      founder_handle: 'nd_founder-son', founder_gramps_id: '000000102', founder_name: '儿子',
     },
     nd_mirror: { tree_id: 'nd_mirror', kind: 'family', display_title: '己氏测试家族（镜像）' },
     nd_mirror_child: { tree_id: 'nd_mirror_child', kind: 'family', display_title: '庚氏测试家族（后代镜像）' },
@@ -66,7 +66,7 @@ const metaFixture = {
     nd_ref_meta: { tree_id: 'nd_ref_meta', kind: 'family', display_title: '丑氏测试家族（meta 始祖登记）' },
     nd_ref_meta_upper: {
       tree_id: 'nd_ref_meta_upper', kind: 'family', display_title: '寅氏测试家族（始祖登记方）',
-      founder_handle: 'nd_ref_meta-gk', founder_gramps_id: 'I0107', founder_name: '曾孙',
+      founder_handle: 'nd_ref_meta-gk', founder_gramps_id: '000000107', founder_name: '曾孙',
     },
     nd_route: { tree_id: 'nd_route', kind: 'family', display_title: '卯氏测试家族（路由）' },
     shen_27784_01: { tree_id: 'shen_27784_01', kind: 'family', display_title: '沈氏临沂家族（副本）' },
@@ -122,20 +122,20 @@ function familyFixture(id) {
       tree_id: id,
       version: 3,
       people: {
-        [h.gp]: { handle: h.gp, gramps_id: 'I0100', name: '祖父', surname: '甲', given: '祖父', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.gp] },
-        [h.gm]: { handle: h.gm, gramps_id: 'I0101', name: '祖母', surname: '乙', given: '祖母', gender: 'F', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.gp] },
-        [h.son]: { handle: h.son, gramps_id: 'I0102', name: '儿子', surname: '甲', given: '儿子', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.gp, spouse_families: [fam.son] },
-        [h.wife]: { handle: h.wife, gramps_id: 'I0103', name: '媳妇', surname: '丙', given: '媳妇', gender: 'F', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.son] },
-        [h.kid1]: { handle: h.kid1, gramps_id: 'I0104', name: '孙子', surname: '甲', given: '孙子', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.son, spouse_families: [] },
-        [h.kid2]: { handle: h.kid2, gramps_id: 'I0105', name: '孙次', surname: '甲', given: '孙次', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.son, spouse_families: [fam.kid2] },
-        [h.w2]: { handle: h.w2, gramps_id: 'I0106', name: '孙媳', surname: '丁', given: '孙媳', gender: 'F', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.kid2] },
-        [h.gk]: { handle: h.gk, gramps_id: 'I0107', name: '曾孙', surname: '甲', given: '曾孙', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.kid2, spouse_families: [] },
-        [h.son2]: { handle: h.son2, gramps_id: 'I0108', name: '次子', surname: '甲', given: '次子', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.gp, spouse_families: [] },
+        [h.gp]: { handle: h.gp, gramps_id: '000000100', name: '祖父', surname: '甲', given: '祖父', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.gp] },
+        [h.gm]: { handle: h.gm, gramps_id: '000000101', name: '祖母', surname: '乙', given: '祖母', gender: 'F', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.gp] },
+        [h.son]: { handle: h.son, gramps_id: '000000102', name: '儿子', surname: '甲', given: '儿子', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.gp, spouse_families: [fam.son] },
+        [h.wife]: { handle: h.wife, gramps_id: '000000103', name: '媳妇', surname: '丙', given: '媳妇', gender: 'F', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.son] },
+        [h.kid1]: { handle: h.kid1, gramps_id: '000000104', name: '孙子', surname: '甲', given: '孙子', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.son, spouse_families: [] },
+        [h.kid2]: { handle: h.kid2, gramps_id: '000000105', name: '孙次', surname: '甲', given: '孙次', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.son, spouse_families: [fam.kid2] },
+        [h.w2]: { handle: h.w2, gramps_id: '000000106', name: '孙媳', surname: '丁', given: '孙媳', gender: 'F', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [fam.kid2] },
+        [h.gk]: { handle: h.gk, gramps_id: '000000107', name: '曾孙', surname: '甲', given: '曾孙', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.kid2, spouse_families: [] },
+        [h.son2]: { handle: h.son2, gramps_id: '000000108', name: '次子', surname: '甲', given: '次子', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: fam.gp, spouse_families: [] },
       },
       families: {
-        [fam.gp]: { handle: fam.gp, gramps_id: 'F0100', father_handle: h.gp, mother_handle: h.gm, child_handles: [h.son, h.son2] },
-        [fam.son]: { handle: fam.son, gramps_id: 'F0101', father_handle: h.son, mother_handle: h.wife, child_handles: [h.kid1, h.kid2] },
-        [fam.kid2]: { handle: fam.kid2, gramps_id: 'F0102', father_handle: h.kid2, mother_handle: h.w2, child_handles: [h.gk] },
+        [fam.gp]: { handle: fam.gp, gramps_id: 'F000100', father_handle: h.gp, mother_handle: h.gm, child_handles: [h.son, h.son2] },
+        [fam.son]: { handle: fam.son, gramps_id: 'F000101', father_handle: h.son, mother_handle: h.wife, child_handles: [h.kid1, h.kid2] },
+        [fam.kid2]: { handle: fam.kid2, gramps_id: 'F000102', father_handle: h.kid2, mother_handle: h.w2, child_handles: [h.gk] },
       },
     },
   };
@@ -177,7 +177,7 @@ test('断代工具：整支 BFS 顺序 / 子树高度 / 节点世代', () => {
   const created = tw.ensureParentFamily(gmFixt.tree, gmFixt.h.son2);
   assert.equal(created.created, true);
   assert.equal(created.family.father_handle, gmFixt.h.son2, '男 → 父亲位');
-  assert.equal(created.family.gramps_id, 'F0103', '新建家族按既有编号段续号');
+  assert.equal(created.family.gramps_id, 'F000103', '新建家族按既有编号段续号');
 });
 
 test('removePeopleFromTree：删人与家族侧引用清理一次到位，存活配偶登记同步清空', () => {
@@ -259,8 +259,8 @@ test('checkTreeIntegrity / repairTreeRefs：悬空引用可检出并可修复', 
 test('删子树（无跨树引用）：本人及全部后代、连带的空家族、详情一并删除；版本 +1', async () => {
   const f = familyFixture('nd_sub');
   writeTree(f.tree);
-  writeDetail({ _id: 'nd_sub:' + f.h.son, tree_id: 'nd_sub', handle: f.h.son, gramps_id: 'I0102', name: '儿子', events: [{ handle: 'e1', type: 'Birth' }], attributes: [], media: [], citations: [], notes: [] });
-  writeDetail({ _id: 'nd_sub:' + f.h.gk, tree_id: 'nd_sub', handle: f.h.gk, gramps_id: 'I0107', name: '曾孙', events: [], attributes: [] });
+  writeDetail({ _id: 'nd_sub:' + f.h.son, tree_id: 'nd_sub', handle: f.h.son, gramps_id: '000000102', name: '儿子', events: [{ handle: 'e1', type: 'Birth' }], attributes: [], media: [], citations: [], notes: [] });
+  writeDetail({ _id: 'nd_sub:' + f.h.gk, tree_id: 'nd_sub', handle: f.h.gk, gramps_id: '000000107', name: '曾孙', events: [], attributes: [] });
 
   const r = await tw.deleteNode({ treeId: 'nd_sub', personHandle: f.h.son, masterTreeId: 'zhonghua' });
   assert.equal(r.mode, 'subtree');
@@ -293,7 +293,7 @@ test('dry-run 只统计不写：人数/家族数/文案齐备，树文件逐字�
   assert.equal(r.people_count, 4);
   assert.equal(r.families_count, 2);
   assert.equal(r.people.length, 4);
-  assert.deepEqual(r.people.map((p) => p.gramps_id).sort(), ['I0102', 'I0104', 'I0105', 'I0107']);
+  assert.deepEqual(r.people.map((p) => p.gramps_id).sort(), ['000000102', '000000104', '000000105', '000000107']);
   assert.match(r.message, /不可恢复/, '二次确认文案写明人数与不可恢复');
   assert.match(r.message, /将删除「[^」]+」及其全部后代共 4 人（含 2 个家族记录），不可恢复/);
   assert.equal(treeMd5('nd_dry'), before, 'dry-run 不得写树');
@@ -302,7 +302,7 @@ test('dry-run 只统计不写：人数/家族数/文案齐备，树文件逐字�
 test('promote 模式（仅删本节点）：子女随配偶留在原家族，后代不受影响', async () => {
   const f = familyFixture('nd_promote');
   writeTree(f.tree);
-  writeDetail({ _id: 'nd_promote:' + f.h.son, tree_id: 'nd_promote', handle: f.h.son, gramps_id: 'I0102', name: '儿子', events: [], attributes: [] });
+  writeDetail({ _id: 'nd_promote:' + f.h.son, tree_id: 'nd_promote', handle: f.h.son, gramps_id: '000000102', name: '儿子', events: [], attributes: [] });
 
   // 先 dry_run：0 人上提时文案必须写「子女留在原家族」，不得出现「其 0 个子节点上提一级」
   const dry = await tw.deleteNode({ treeId: 'nd_promote', personHandle: f.h.son, mode: 'promote', masterTreeId: 'zhonghua', dryRun: true });
@@ -358,8 +358,8 @@ test('二次确认：confirm_count 与实际人数不一致 → 409 且不写树
 
 test('拒绝：总谱（中华世本）节点不可删除（tree_id 命中与 meta kind=master 两条路径）', async () => {
   writeTree({
-    _schema: '1.0', tree_id: 'zhonghua', version: 2, founder_gramps_id: 'I0001',
-    people: { mRoot: { handle: 'mRoot', gramps_id: 'I0001', name: '风伏羲', surname: '风', given: '伏羲', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [] } },
+    _schema: '1.0', tree_id: 'zhonghua', version: 2, founder_gramps_id: '000000001',
+    people: { mRoot: { handle: 'mRoot', gramps_id: '000000001', name: '风伏羲', surname: '风', given: '伏羲', gender: 'M', birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [] } },
     families: {},
   });
   await assert.rejects(
@@ -387,7 +387,7 @@ test('拒绝：删除范围包含本树始祖节点 → 403（请先重置始祖
 test('拒绝：镜像节点本身不可删；删除范围内含镜像节点也不可删', async () => {
   // ① 本身是跨树婚姻镜像
   writeTree(simpleTree('nd_mirror', {
-    'nd_mirror-ji': { gramps_id: 'I0001', name: '季志全', gender: 'M', external_tree: 'nd_ref_other', external_person_handle: 'real-1', external_link_type: 'marriage', external_mirror: true },
+    'nd_mirror-ji': { gramps_id: '000000001', name: '季志全', gender: 'M', external_tree: 'nd_ref_other', external_person_handle: 'real-1', external_link_type: 'marriage', external_mirror: true },
   }));
   await assert.rejects(
     () => tw.deleteNode({ treeId: 'nd_mirror', personHandle: 'nd_mirror-ji', masterTreeId: 'zhonghua' }),
@@ -413,7 +413,7 @@ test('①② 跨树引用：自身被外树引用 / 子树内后代被外树引�
   const a = familyFixture('nd_ref_self');
   writeTree(a.tree);
   writeTree(simpleTree('nd_ref_other', {
-    'nd_ref_other-mirror': { gramps_id: 'I500005', name: '甲儿子镜像', gender: 'M', external_tree: 'nd_ref_self', external_person_handle: a.h.son, external_link_type: 'marriage', external_mirror: true },
+    'nd_ref_other-mirror': { gramps_id: '000500005', name: '甲儿子镜像', gender: 'M', external_tree: 'nd_ref_self', external_person_handle: a.h.son, external_link_type: 'marriage', external_mirror: true },
   }));
   const selfBefore = treeMd5('nd_ref_self');
   const otherBefore = treeMd5('nd_ref_other');
@@ -433,7 +433,7 @@ test('①② 跨树引用：自身被外树引用 / 子树内后代被外树引�
   const b = familyFixture('nd_ref_child');
   writeTree(b.tree);
   writeTree(simpleTree('nd_ref_child_other', {
-    'nd_ref_child_other-mirror': { gramps_id: 'I500006', name: '甲曾孙镜像', gender: 'M', external_tree: 'nd_ref_child', external_person_handle: b.h.gk, external_link_type: 'child', external_mirror: true },
+    'nd_ref_child_other-mirror': { gramps_id: '000500006', name: '甲曾孙镜像', gender: 'M', external_tree: 'nd_ref_child', external_person_handle: b.h.gk, external_link_type: 'child', external_mirror: true },
   }));
   const childBefore = treeMd5('nd_ref_child');
   await assert.rejects(

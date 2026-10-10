@@ -161,7 +161,7 @@ function chainTree(id, { clanId = 'bc_clan', clanHandle = 'own_ji', extraMirror 
   const H = { m: `${id}-m`, top: `${id}-top`, side: `${id}-side`, mid: `${id}-mid`, n: `${id}-n`, kid: `${id}-kid` };
   const F = { ftop: `${id}-ftop`, fmid: `${id}-fmid`, fn: `${id}-fn`, fkid: `${id}-fkid` };
   const people = {
-    [H.m]: P(H.m, 'I0001', `季${id}始祖镜像`, {
+    [H.m]: P(H.m, '000000001', `季${id}始祖镜像`, {
       given: '始祖镜像',
       spouse_families: [F.ftop],
       external_tree: clanId,
@@ -170,14 +170,14 @@ function chainTree(id, { clanId = 'bc_clan', clanHandle = 'own_ji', extraMirror 
       external_mirror: 'true',
       external_relation_note: `「季${id}立支点」（${clanId} 宗谱镜像）`,
     }),
-    [H.top]: P(H.top, 'I0010', `季${id}上移一`, { given: '上移一', parent_family: F.ftop, spouse_families: [F.fmid] }),
-    [H.side]: P(H.side, 'I0011', `季${id}旁支`, { given: '旁支', parent_family: F.ftop }),
-    [H.mid]: P(H.mid, 'I0012', `季${id}上移二`, { given: '上移二', parent_family: F.fmid, spouse_families: [F.fn] }),
-    [H.n]: P(H.n, 'I0013', `季${id}立支点`, { given: '立支点', parent_family: F.fn, spouse_families: [F.fkid] }),
-    [H.kid]: P(H.kid, 'I0014', `季${id}后代`, { given: '后代', parent_family: F.fkid }),
+    [H.top]: P(H.top, '000000010', `季${id}上移一`, { given: '上移一', parent_family: F.ftop, spouse_families: [F.fmid] }),
+    [H.side]: P(H.side, '000000011', `季${id}旁支`, { given: '旁支', parent_family: F.ftop }),
+    [H.mid]: P(H.mid, '000000012', `季${id}上移二`, { given: '上移二', parent_family: F.fmid, spouse_families: [F.fn] }),
+    [H.n]: P(H.n, '000000013', `季${id}立支点`, { given: '立支点', parent_family: F.fn, spouse_families: [F.fkid] }),
+    [H.kid]: P(H.kid, '000000014', `季${id}后代`, { given: '后代', parent_family: F.fkid }),
   };
   if (extraMirror) {
-    people[`${id}-m2`] = P(`${id}-m2`, 'I0015', `季${id}婚姻镜像`, {
+    people[`${id}-m2`] = P(`${id}-m2`, '000000015', `季${id}婚姻镜像`, {
       given: '婚姻镜像',
       external_tree: 'bc_ref_other',
       external_person_handle: 'bc_ref_other-real',
@@ -188,14 +188,14 @@ function chainTree(id, { clanId = 'bc_clan', clanHandle = 'own_ji', extraMirror 
   return {
     _schema: '1.0',
     tree_id: id,
-    founder_gramps_id: 'I0001',
+    founder_gramps_id: '000000001',
     version: 3,
     people,
     families: {
-      [F.ftop]: { handle: F.ftop, gramps_id: 'F0001', father_handle: H.m, mother_handle: '', child_handles: [H.top, H.side] },
-      [F.fmid]: { handle: F.fmid, gramps_id: 'F0002', father_handle: H.top, mother_handle: '', child_handles: [H.mid] },
-      [F.fn]: { handle: F.fn, gramps_id: 'F0003', father_handle: H.mid, mother_handle: '', child_handles: [H.n] },
-      [F.fkid]: { handle: F.fkid, gramps_id: 'F0004', father_handle: H.n, mother_handle: '', child_handles: [H.kid] },
+      [F.ftop]: { handle: F.ftop, gramps_id: 'F000001', father_handle: H.m, mother_handle: '', child_handles: [H.top, H.side] },
+      [F.fmid]: { handle: F.fmid, gramps_id: 'F000002', father_handle: H.top, mother_handle: '', child_handles: [H.mid] },
+      [F.fn]: { handle: F.fn, gramps_id: 'F000003', father_handle: H.mid, mother_handle: '', child_handles: [H.n] },
+      [F.fkid]: { handle: F.fkid, gramps_id: 'F000004', father_handle: H.n, mother_handle: '', child_handles: [H.kid] },
     },
   };
 }
@@ -207,18 +207,18 @@ function plainTree(id) {
   return {
     _schema: '1.0',
     tree_id: id,
-    founder_gramps_id: 'I0001',
+    founder_gramps_id: '000000001',
     version: 2,
     people: {
-      [H.top]: P(H.top, 'I0001', `季${id}始祖真身`, { given: '始祖真身', spouse_families: [F.fmid] }),
-      [H.mid]: P(H.mid, 'I0012', `季${id}上移`, { given: '上移', parent_family: F.fmid, spouse_families: [F.fn] }),
-      [H.n]: P(H.n, 'I0013', `季${id}立支点`, { given: '立支点', parent_family: F.fn, spouse_families: [F.fkid] }),
-      [H.kid]: P(H.kid, 'I0014', `季${id}后代`, { given: '后代', parent_family: F.fkid }),
+      [H.top]: P(H.top, '000000001', `季${id}始祖真身`, { given: '始祖真身', spouse_families: [F.fmid] }),
+      [H.mid]: P(H.mid, '000000012', `季${id}上移`, { given: '上移', parent_family: F.fmid, spouse_families: [F.fn] }),
+      [H.n]: P(H.n, '000000013', `季${id}立支点`, { given: '立支点', parent_family: F.fn, spouse_families: [F.fkid] }),
+      [H.kid]: P(H.kid, '000000014', `季${id}后代`, { given: '后代', parent_family: F.fkid }),
     },
     families: {
-      [F.fmid]: { handle: F.fmid, gramps_id: 'F0002', father_handle: H.top, mother_handle: '', child_handles: [H.mid] },
-      [F.fn]: { handle: F.fn, gramps_id: 'F0003', father_handle: H.mid, mother_handle: '', child_handles: [H.n] },
-      [F.fkid]: { handle: F.fkid, gramps_id: 'F0004', father_handle: H.n, mother_handle: '', child_handles: [H.kid] },
+      [F.fmid]: { handle: F.fmid, gramps_id: 'F000002', father_handle: H.top, mother_handle: '', child_handles: [H.mid] },
+      [F.fn]: { handle: F.fn, gramps_id: 'F000003', father_handle: H.mid, mother_handle: '', child_handles: [H.n] },
+      [F.fkid]: { handle: F.fkid, gramps_id: 'F000004', father_handle: H.n, mother_handle: '', child_handles: [H.kid] },
     },
   };
 }
@@ -227,23 +227,23 @@ function plainTree(id) {
 function targetTree(id, variant = 'none') {
   const H = { x: `${id}-x`, w: `${id}-w`, mir: `${id}-mir` };
   const F = { fx: `${id}-fx` };
-  const people = { [H.x]: P(H.x, 'I0300', `季${id}落点`, { given: '落点' }) };
+  const people = { [H.x]: P(H.x, '000000300', `季${id}落点`, { given: '落点' }) };
   const families = {};
   if (variant === 'slot-empty' || variant === 'slot-filled') {
     people[H.x].spouse_families = [F.fx];
     if (variant === 'slot-filled') {
-      people[H.w] = P(H.w, 'I0301', `季${id}落点配偶`, { given: '落点配偶', gender: 'F', spouse_families: [F.fx] });
+      people[H.w] = P(H.w, '000000301', `季${id}落点配偶`, { given: '落点配偶', gender: 'F', spouse_families: [F.fx] });
     }
     families[F.fx] = {
       handle: F.fx,
-      gramps_id: 'F0300',
+      gramps_id: 'F000300',
       father_handle: H.x,
       mother_handle: variant === 'slot-filled' ? H.w : '',
       child_handles: [],
     };
   }
   if (variant === 'mirror') {
-    people[H.mir] = P(H.mir, 'I0302', `季${id}外树镜像`, {
+    people[H.mir] = P(H.mir, '000000302', `季${id}外树镜像`, {
       given: '外树镜像',
       external_tree: 'bc_clan',
       external_person_handle: 'own_ji',
@@ -258,8 +258,8 @@ function targetTree(id, variant = 'none') {
 /** 宗谱树（自有段落点 own_*；owner 为空 → 落点未设置） */
 function clanTree(id, ownHandle) {
   const people = {};
-  if (ownHandle) people[ownHandle] = P(ownHandle, 'I0002', `季氏宗谱${id}自有段`, { given: `宗谱${id}` });
-  return { _schema: '1.0', tree_id: id, kind: 'clan', founder_gramps_id: 'I0001', version: 1, people, families: {} };
+  if (ownHandle) people[ownHandle] = P(ownHandle, '000000002', `季氏宗谱${id}自有段`, { given: `宗谱${id}` });
+  return { _schema: '1.0', tree_id: id, kind: 'clan', founder_gramps_id: '000000001', version: 1, people, families: {} };
 }
 
 function writeTree(tree) {
@@ -396,11 +396,11 @@ writeTree(clanTree('bc_clan', 'own_ji'));
 writeTree(clanTree('bc_clan_rb', 'own_rb'));
 writeTree(clanTree('bc_clan2', ''));
 writeTree(clanTree('bc_clan3', 'own_ts'));
-writeTree({ _schema: '1.0', tree_id: 'zhonghua', founder_gramps_id: 'I0001', version: 1, people: { mRoot: P('mRoot', 'I0001', '风伏羲', { given: '伏羲' }) }, families: {} });
+writeTree({ _schema: '1.0', tree_id: 'zhonghua', founder_gramps_id: '000000001', version: 1, people: { mRoot: P('mRoot', '000000001', '风伏羲', { given: '伏羲' }) }, families: {} });
 
 // bc_ref_other：外树镜像指向 bc_ref 的上移链节点（红线用例）
 const refOther = readTreeDisk('bc_ref_other');
-refOther.people['bc_ref_other-mir'] = P('bc_ref_other-mir', 'I0500', '季bc_ref上移二镜像', {
+refOther.people['bc_ref_other-mir'] = P('bc_ref_other-mir', '000000500', '季bc_ref上移二镜像', {
   given: '上移二镜像',
   external_tree: 'bc_ref',
   external_person_handle: 'bc_ref-mid',
@@ -410,7 +410,7 @@ refOther.people['bc_ref_other-mir'] = P('bc_ref_other-mir', 'I0500', '季bc_ref�
 // bc_ref_other：再加一条镜像指向 cv_ref 的真实段节点 —— 汇宗红线（§10-1-15）的夹具：
 // 红线要求「迁移集合任一 handle 被其他树引用 → 409」，本文件原先没为 cv_ref 造任何外树引用，
 // 导致该用例「Missing expected rejection」（夹具缺口，不是实现放行）。
-refOther.people['bc_ref_other-mir-cv'] = P('bc_ref_other-mir-cv', 'I0501', '季cv_ref上移二镜像', {
+refOther.people['bc_ref_other-mir-cv'] = P('bc_ref_other-mir-cv', '000000501', '季cv_ref上移二镜像', {
   given: '上移二镜像',
   external_tree: 'cv_ref',
   external_person_handle: 'cv_ref-mid',
@@ -430,7 +430,7 @@ const regFamily = (id, { clan = 'bc_clan', founder = `${id}-m`, title = null, fo
     display_title: title || `季氏测试家族（${id}）`,
     genealogy_name: '季氏家谱',
     founder_handle: founder,
-    founder_gramps_id: 'I0001',
+    founder_gramps_id: '000000001',
     founder_name: founderName || `季${id}始祖`,
   };
   if (clan) entry.clan_tree_id = clan;
@@ -452,7 +452,7 @@ metaFixture.trees.bc_refmeta_upper = {
   surname_char: '季',
   display_title: '季氏测试家族（bc_refmeta 的登记方）',
   founder_handle: 'bc_refmeta-mid',
-  founder_gramps_id: 'I0600',
+  founder_gramps_id: '000000600',
   founder_name: '季bc_refmeta上移二',
 };
 metaFixture.trees.zhonghua = {
@@ -550,7 +550,7 @@ writeDetailDoc({
   _id: 'bc_src:bc_src-mid',
   tree_id: 'bc_src',
   handle: 'bc_src-mid',
-  gramps_id: 'I0012',
+  gramps_id: '000000012',
   name: '季bc_src上移二',
   events: [{ handle: 'ev_mid', type: 'Birth' }],
   attributes: [{ key: '封号', value: '上移大夫', type: '封号' }],
@@ -558,13 +558,13 @@ writeDetailDoc({
   citations: [],
   notes: [{ handle: 'nt_mid', text: '详情随迁标记' }],
 });
-writeDetailDoc({ _id: 'cv_main:cv_main-mid', tree_id: 'cv_main', handle: 'cv_main-mid', gramps_id: 'I0012', name: '季cv_main上移二', events: [], attributes: [{ key: '号', value: '汇宗氏', type: '号' }], notes: [{ handle: 'nt_cv', text: '汇宗详情随迁标记' }] });
-writeDetailDoc({ _id: 'cv_main:cv_main-m', tree_id: 'cv_main', handle: 'cv_main-m', gramps_id: 'I0001', name: '季cv_main始祖镜像', events: [], attributes: [] });
+writeDetailDoc({ _id: 'cv_main:cv_main-mid', tree_id: 'cv_main', handle: 'cv_main-mid', gramps_id: '000000012', name: '季cv_main上移二', events: [], attributes: [{ key: '号', value: '汇宗氏', type: '号' }], notes: [{ handle: 'nt_cv', text: '汇宗详情随迁标记' }] });
+writeDetailDoc({ _id: 'cv_main:cv_main-m', tree_id: 'cv_main', handle: 'cv_main-m', gramps_id: '000000001', name: '季cv_main始祖镜像', events: [], attributes: [] });
 // #25 warnings? 夹具 ①：bc_warn_yes 的上移链 = top（**缺详情**）+ mid（有详情）→ warnings 非空且只含 top
-writeDetailDoc({ _id: 'bc_warn_yes:bc_warn_yes-mid', tree_id: 'bc_warn_yes', handle: 'bc_warn_yes-mid', gramps_id: 'I0012', name: '季bc_warn_yes上移二', events: [{ handle: 'ev_wy', type: 'Birth' }], attributes: [], notes: [] });
+writeDetailDoc({ _id: 'bc_warn_yes:bc_warn_yes-mid', tree_id: 'bc_warn_yes', handle: 'bc_warn_yes-mid', gramps_id: '000000012', name: '季bc_warn_yes上移二', events: [{ handle: 'ev_wy', type: 'Birth' }], attributes: [], notes: [] });
 // #25 夹具 ②：bc_warn_no 的上移链两条详情都齐备 → 出参不得出现 warnings 键
-writeDetailDoc({ _id: 'bc_warn_no:bc_warn_no-mid', tree_id: 'bc_warn_no', handle: 'bc_warn_no-mid', gramps_id: 'I0012', name: '季bc_warn_no上移二', events: [], attributes: [], notes: [] });
-writeDetailDoc({ _id: 'bc_warn_no:bc_warn_no-top', tree_id: 'bc_warn_no', handle: 'bc_warn_no-top', gramps_id: 'I0010', name: '季bc_warn_no上移一', events: [], attributes: [], notes: [] });
+writeDetailDoc({ _id: 'bc_warn_no:bc_warn_no-mid', tree_id: 'bc_warn_no', handle: 'bc_warn_no-mid', gramps_id: '000000012', name: '季bc_warn_no上移二', events: [], attributes: [], notes: [] });
+writeDetailDoc({ _id: 'bc_warn_no:bc_warn_no-top', tree_id: 'bc_warn_no', handle: 'bc_warn_no-top', gramps_id: '000000010', name: '季bc_warn_no上移一', events: [], attributes: [], notes: [] });
 
 // ---- 用户 / 资产 / 灵气 ----
 const STEWARD = '16600000701'; // tree_steward（立支正例，11000 籽）
@@ -764,7 +764,7 @@ test('纯函数：planBranchRegistrations 两条登记镜像字段口径（原�
     person,
     mirrorHandle: 'mir_new',
     handles: ['reg_src', 'reg_new'],
-    grampsIds: ['I000900', 'I000901'],
+    grampsIds: ['000000900', '000000901'],
   });
   assert.equal(rows.length, 2);
   assert.deepEqual(rows.map((r) => r.external_tree), ['bc_src', 'ji_23395_01']);
@@ -826,7 +826,7 @@ test('§10-1-1/2/3/5 立支正例：祖先链上移 + 换树不换号 + 详情�
   assert.notEqual(NEW_TREE_ID, SRC);
   assert.equal(body.moved_ancestors, 2, '上移链 = 上移一 + 上移二（始祖镜像不计入）');
   assert.equal(body.moved_families, 2, '随迁家族 = fmid + fn');
-  assert.deepEqual(body.founder, { handle: 'bc_src-n', gramps_id: 'I0013', name: '季bc_src立支点' }, 'founder = N 的真身标识');
+  assert.deepEqual(body.founder, { handle: 'bc_src-n', gramps_id: '000000013', name: '季bc_src立支点' }, 'founder = N 的真身标识');
   assert.equal(body.fee.unit, 'seed');
   assert.equal(body.fee.amount, 9999);
   assert.equal(body.fee.balance_after, 1001, '11000 - 9999');
@@ -839,7 +839,7 @@ test('§10-1-1/2/3/5 立支正例：祖先链上移 + 换树不换号 + 详情�
   assert.deepEqual(Object.keys(src.families).sort(), ['bc_src-fkid', 'bc_src-ftop'].sort(), '随迁家族已摘除');
   assert.deepEqual(src.families['bc_src-ftop'].child_handles, ['bc_src-side'], '链顶家族只摘掉随迁子女');
   assert.equal(src.people['bc_src-n'].parent_family, '', 'N 成为原树根（父家族已随迁 → 悬空引用已修）');
-  assert.equal(src.founder_gramps_id, 'I0013', '树 JSON 顶层 founder_gramps_id 同步为 N 的编号（读侧兜底一致）');
+  assert.equal(src.founder_gramps_id, '000000013', '树 JSON 顶层 founder_gramps_id 同步为 N 的编号（读侧兜底一致）');
   assert.deepEqual(tw.checkTreeIntegrity(src), [], '原树无悬空引用');
 
   // #1 上移链并入宗谱自有段（挂在宗谱 founder_handle 指向节点之下）
@@ -857,8 +857,8 @@ test('§10-1-1/2/3/5 立支正例：祖先链上移 + 换树不换号 + 详情�
   // #2 换树不换号：handle（键）与 gramps_id 逐字不变
   assert.equal(clan.people['bc_src-mid'].gramps_id, srcBefore.people['bc_src-mid'].gramps_id);
   assert.equal(clan.people['bc_src-top'].gramps_id, srcBefore.people['bc_src-top'].gramps_id);
-  assert.equal(clan.people['bc_src-mid'].gramps_id, 'I0012');
-  assert.equal(clan.people['bc_src-top'].gramps_id, 'I0010');
+  assert.equal(clan.people['bc_src-mid'].gramps_id, '000000012');
+  assert.equal(clan.people['bc_src-top'].gramps_id, '000000010');
 
   // #3 详情随迁改键：旧键不存在、新键有内容（专防「只删未写」）
   assert.equal(detailExists(SRC, 'bc_src-mid'), false, '旧键必须删除');
@@ -889,7 +889,7 @@ test('§10-1-1/2/3/5 立支正例：祖先链上移 + 换树不换号 + 详情�
   const meta = metaNow();
   const srcEntry = meta.trees[SRC];
   assert.equal(srcEntry.founder_handle, 'bc_src-n');
-  assert.equal(srcEntry.founder_gramps_id, 'I0013');
+  assert.equal(srcEntry.founder_gramps_id, '000000013');
   assert.equal(srcEntry.founder_name, '季bc_src立支点');
   assert.equal('founder_state' in srcEntry, false, '回到「有始祖」态');
   assert.equal(srcEntry.clan_tree_id, CLAN, '宗谱归属沿用');
@@ -928,8 +928,8 @@ test('§10-1-4/6 立支：新树仅 1 个始祖镜像节点 + 宗谱两条登记
   const meta = metaNow();
   assert.equal(meta.trees[NEW_TREE_ID].founder_handle, mirror.handle);
   assert.equal(mine.founder_gramps_id, mirror.gramps_id, '新树顶层 founder_gramps_id = 镜像编号');
-  assert.match(mirror.gramps_id, /^I\d{6}$/);
-  assert.notEqual(mirror.gramps_id, 'I0013', '镜像另铸全站新号（N 真身编号不变）');
+  assert.match(mirror.gramps_id, /^\d{9}$/);
+  assert.notEqual(mirror.gramps_id, '000000013', '镜像另铸全站新号（N 真身编号不变）');
 
   // 全站唯一：新铸编号在副本所有树里只出现一次
   const owners = [];
@@ -1155,8 +1155,8 @@ test('§10-1-12/14/17/20/21 汇宗正例：整树迁移 + 始祖镜像丢弃 + �
     assert.equal(dst.people[h].gramps_id, srcBefore.people[h].gramps_id, `${h} 换树不换号`);
     assert.equal(dst.people[h].handle, srcBefore.people[h].handle);
   }
-  assert.equal(dst.people['cv_main-top'].gramps_id, 'I0010', '换树不换号');
-  assert.equal(dst.people['cv_main-mid'].gramps_id, 'I0012');
+  assert.equal(dst.people['cv_main-top'].gramps_id, '000000010', '换树不换号');
+  assert.equal(dst.people['cv_main-mid'].gramps_id, '000000012');
   assert.equal(dst.people['cv_main-top'].parent_family, 'cv_t_main-fx', '源树真实段的根挂到 X 的家族下');
   assert.equal(dst.families['cv_t_main-fx'].child_handles.includes('cv_main-top'), true);
   assert.equal(dst.people['cv_main-mid'].parent_family, 'cv_main-fmid', '随迁家族保持内部挂接');
@@ -1512,8 +1512,8 @@ test('回归 · updateTrees 落库失败后**两侧**进程内缓存都与磁盘
     fs.chmodSync(rbB, 0o444);
     await assert.rejects(() =>
       store.updateTrees(['rb_a', 'rb_b'], (trees) => {
-        trees.rb_a.people['ghost-a'] = { handle: 'ghost-a', gramps_id: 'I9001', name: '幻影A' };
-        trees.rb_b.people['ghost-b'] = { handle: 'ghost-b', gramps_id: 'I9002', name: '幻影B' };
+        trees.rb_a.people['ghost-a'] = { handle: 'ghost-a', gramps_id: '000009001', name: '幻影A' };
+        trees.rb_b.people['ghost-b'] = { handle: 'ghost-b', gramps_id: '000009002', name: '幻影B' };
       }),
     );
   } finally {
@@ -1534,7 +1534,7 @@ test('§10-1-25 立支 · 详情缺失告警出参 warnings?：有缺失 → 非
   assert.ok(Array.isArray(r1.warnings), 'warnings 必须是 string[]');
   assert.equal(r1.warnings.length, 1, '只有缺详情的 top 进告警（mid 有详情 → 不入）');
   assert.match(r1.warnings[0], /详情文档缺失，仅结构真源已迁移/);
-  assert.ok(r1.warnings[0].includes('I0010'), `必须含该节点的全站编号：${r1.warnings[0]}`);
+  assert.ok(r1.warnings[0].includes('000000010'), `必须含该节点的全站编号：${r1.warnings[0]}`);
   assert.ok(r1.warnings[0].includes('bc_warn_yes-top'), `必须含该节点 handle：${r1.warnings[0]}`);
   assert.ok(r1.warnings[0].includes('季bc_warn_yes上移一'), '必须含该节点姓名（按 handle 回查）');
   // 详情是 best-effort：结构写入不受影响、计数不变、不回滚

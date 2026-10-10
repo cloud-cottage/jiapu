@@ -292,8 +292,8 @@ test('C4-2 新建源流链节点（appendChainNode → newChainPerson）：两�
     ...SCHEMA,
     tree_id: 'zhonghua',
     version: 3,
-    founder_gramps_id: 'I0001',
-    people: { ch_root: node('ch_root', 'I0001', '风伏羲', '风', '伏羲') },
+    founder_gramps_id: '000000001',
+    people: { ch_root: node('ch_root', '000000001', '风伏羲', '风', '伏羲') },
     families: {},
   });
   writeDetail({ ...SCHEMA, tree_id: 'zhonghua', handle: 'ch_root', name: '风伏羲', events: [], attributes: [{ key: 'external_chain_gen', value: '0', type: 'external_chain_gen' }] });
@@ -325,7 +325,7 @@ test('C4-4 添加配偶（addSpouseNode）：新建配偶节点两字段初值�
   writeTree({
     ...SCHEMA,
     tree_id: 'mp_spouse',
-    people: { sp_self: node('sp_self', 'I0001', '子某', '子', '某') },
+    people: { sp_self: node('sp_self', '000000001', '子某', '子', '某') },
     families: {},
   });
   const r = await tw.addSpouseNode({ treeId: 'mp_spouse', personHandle: 'sp_self', mode: 'new', name: '王氏', gender: 'F' });
@@ -342,10 +342,10 @@ test('C4-5 添加子女（child-write）：本树新子女 + 跨树真身子女 
     tree_id: 'mp_local',
     version: 2,
     people: {
-      dad: node('dad', 'I0007', '沈克强', '沈', '克强', { spouse_families: ['fam'] }),
-      mom: node('mom', 'I0008', '李氏', '李', '氏', { gender: 'F', spouse_families: ['fam'] }),
+      dad: node('dad', '000000007', '沈克强', '沈', '克强', { spouse_families: ['fam'] }),
+      mom: node('mom', '000000008', '李氏', '李', '氏', { gender: 'F', spouse_families: ['fam'] }),
     },
-    families: { fam: { handle: 'fam', gramps_id: 'F0003', father_handle: 'dad', mother_handle: 'mom', child_handles: [] } },
+    families: { fam: { handle: 'fam', gramps_id: 'F000003', father_handle: 'dad', mother_handle: 'mom', child_handles: [] } },
   });
   const local = await cw.addChildNode({ treeId: 'mp_local', personHandle: 'dad', name: '小二', gender: 'M' });
   const child = readTree('mp_local').people[local.child_handle];
@@ -358,8 +358,8 @@ test('C4-5 添加子女（child-write）：本树新子女 + 跨树真身子女 
     tree_id: 'mp_child',
     version: 4,
     people: {
-      loc_self: node('loc_self', 'I0002', '沈伟', '沈', '伟', { gender: 'F', spouse_families: ['family_loc'] }),
-      loc_mirror: node('loc_mirror', 'I0003', '季志全', '季', '志全', {
+      loc_self: node('loc_self', '000000002', '沈伟', '沈', '伟', { gender: 'F', spouse_families: ['family_loc'] }),
+      loc_mirror: node('loc_mirror', '000000003', '季志全', '季', '志全', {
         spouse_families: ['family_loc'],
         external_tree: 'mp_remote',
         external_person_handle: 'far_self',
@@ -367,15 +367,15 @@ test('C4-5 添加子女（child-write）：本树新子女 + 跨树真身子女 
         external_mirror: 'true',
       }),
     },
-    families: { family_loc: { handle: 'family_loc', gramps_id: 'F0001', father_handle: 'loc_mirror', mother_handle: 'loc_self', child_handles: [] } },
+    families: { family_loc: { handle: 'family_loc', gramps_id: 'F000001', father_handle: 'loc_mirror', mother_handle: 'loc_self', child_handles: [] } },
   });
   writeTree({
     ...SCHEMA,
     tree_id: 'mp_remote',
     version: 7,
     people: {
-      far_self: node('far_self', 'I0001', '季志全', '季', '志全', { spouse_families: ['family_far'] }),
-      far_mirror: node('far_mirror', 'I0004', '沈伟', '沈', '伟', {
+      far_self: node('far_self', '000000001', '季志全', '季', '志全', { spouse_families: ['family_far'] }),
+      far_mirror: node('far_mirror', '000000004', '沈伟', '沈', '伟', {
         gender: 'F',
         spouse_families: ['family_far'],
         external_tree: 'mp_child',
@@ -459,7 +459,7 @@ test('C6 始祖锁例外：只提 birth_place/residence_places 放行；夹带 p
     tree_id: 'mp_founder',
     version: 3,
     people: {
-      fdr: node('fdr', 'I0001', '季始祖公', '季', '始祖公', {
+      fdr: node('fdr', '000000001', '季始祖公', '季', '始祖公', {
         birth_place: '祖地临淄',
         spouse_families: ['ffam'],
         external_tree: 'zhonghua',
@@ -467,9 +467,9 @@ test('C6 始祖锁例外：只提 birth_place/residence_places 放行；夹带 p
         external_link_type: 'founder',
         external_mirror: 'true',
       }),
-      kid: node('kid', 'I0002', '季子', '季', '子', { parent_family: 'ffam' }),
+      kid: node('kid', '000000002', '季子', '季', '子', { parent_family: 'ffam' }),
     },
-    families: { ffam: { handle: 'ffam', gramps_id: 'F0001', father_handle: 'fdr', mother_handle: '', child_handles: ['kid'] } },
+    families: { ffam: { handle: 'ffam', gramps_id: 'F000001', father_handle: 'fdr', mother_handle: '', child_handles: ['kid'] } },
   });
   const tree = readTree('mp_founder');
   const entry = META_TREES.mp_founder;
@@ -523,12 +523,12 @@ test('C7 读响应：profile.birth.{date,place,place_code,place_note}（place=�
     tree_id: 'mp_plain',
     version: 5,
     people: {
-      pp1: node('pp1', 'I0001', '甲一', '甲', '一', {
+      pp1: node('pp1', '000000001', '甲一', '甲', '一', {
         birth_place: { origin_code: '370000', note: '备注A' },
         residence_places: [{ origin_code: '371325', note: '祖居', start_year: '1960' }, { origin_code: '', note: '某地' }],
       }),
-      pp2: node('pp2', 'I0002', '甲二', '甲', '二', { birth_place: { origin_code: '', note: '只有备注' } }),
-      pp3: node('pp3', 'I0003', '甲三', '甲', '三', { birth_date: '1949', birth_place: '' }),
+      pp2: node('pp2', '000000002', '甲二', '甲', '二', { birth_place: { origin_code: '', note: '只有备注' } }),
+      pp3: node('pp3', '000000003', '甲三', '甲', '三', { birth_date: '1949', birth_place: '' }),
     },
     families: {},
   });
@@ -565,15 +565,15 @@ test("C8′ POST /admin/set-tree-origin：成功 + 五类失败（非本树节�
     tree_id: 'mp_setok',
     version: 2,
     people: {
-      sf: node('sf', 'I0001', '丙祖', '丙', '祖', { spouse_families: ['sfam1'], birth_place: { origin_code: '370000', note: '' } }),
-      s2: node('s2', 'I0002', '丙二', '丙', '二', { parent_family: 'sfam1', spouse_families: ['sfam2'], birth_place: { origin_code: '110101', note: '京师' } }),
-      s3: node('s3', 'I0003', '丙三', '丙', '三', { parent_family: 'sfam2', spouse_families: ['sfam3'], birth_place: { origin_code: '371325', note: '' } }),
-      s4: node('s4', 'I0004', '丙四', '丙', '四', { parent_family: 'sfam3', birth_place: { origin_code: '110101', note: '' } }),
+      sf: node('sf', '000000001', '丙祖', '丙', '祖', { spouse_families: ['sfam1'], birth_place: { origin_code: '370000', note: '' } }),
+      s2: node('s2', '000000002', '丙二', '丙', '二', { parent_family: 'sfam1', spouse_families: ['sfam2'], birth_place: { origin_code: '110101', note: '京师' } }),
+      s3: node('s3', '000000003', '丙三', '丙', '三', { parent_family: 'sfam2', spouse_families: ['sfam3'], birth_place: { origin_code: '371325', note: '' } }),
+      s4: node('s4', '000000004', '丙四', '丙', '四', { parent_family: 'sfam3', birth_place: { origin_code: '110101', note: '' } }),
     },
     families: {
-      sfam1: { handle: 'sfam1', gramps_id: 'F0001', father_handle: 'sf', mother_handle: '', child_handles: ['s2'] },
-      sfam2: { handle: 'sfam2', gramps_id: 'F0002', father_handle: 's2', mother_handle: '', child_handles: ['s3'] },
-      sfam3: { handle: 'sfam3', gramps_id: 'F0003', father_handle: 's3', mother_handle: '', child_handles: ['s4'] },
+      sfam1: { handle: 'sfam1', gramps_id: 'F000001', father_handle: 'sf', mother_handle: '', child_handles: ['s2'] },
+      sfam2: { handle: 'sfam2', gramps_id: 'F000002', father_handle: 's2', mother_handle: '', child_handles: ['s3'] },
+      sfam3: { handle: 'sfam3', gramps_id: 'F000003', father_handle: 's3', mother_handle: '', child_handles: ['s4'] },
     },
   });
   // ① 成功：本树始祖三代内节点，出生地有码 → 写 tree-meta
@@ -583,14 +583,14 @@ test("C8′ POST /admin/set-tree-origin：成功 + 五类失败（非本树节�
   assert.equal(okBody.ok, true);
   assert.equal(okBody.origin_code, '110101');
   assert.equal(okBody.origin, '北京市东城区');
-  assert.deepEqual(okBody.source, { handle: 's2', gramps_id: 'I0002', name: '丙二' });
+  assert.deepEqual(okBody.source, { handle: 's2', gramps_id: '000000002', name: '丙二' });
   const metaFile = JSON.parse(fs.readFileSync(process.env.COMPAT_META_FILE, 'utf8'));
   const entry = Object.values(metaFile.trees).find((t) => t.tree_id === 'mp_setok');
   assert.equal(entry.origin_code, '110101', 'tree-meta 已按人工指定改写');
   assert.equal(entry.origin, '北京市东城区');
 
   // ② 非本树节点（handle 属于别的树）→ 400
-  writeTree({ ...SCHEMA, tree_id: 'mp_notmine', people: { nm_f: node('nm_f', 'I0009', '丁祖', '丁', '祖') }, families: {} });
+  writeTree({ ...SCHEMA, tree_id: 'mp_notmine', people: { nm_f: node('nm_f', '000000009', '丁祖', '丁', '祖') }, families: {} });
   const notMine = await setOrigin({ tree_id: 'mp_setok', person_handle: 'nm_f' });
   assert.equal(notMine.statusCode, 400);
   assert.equal(json(notMine).error, '该节点不属于本树');
@@ -600,10 +600,10 @@ test("C8′ POST /admin/set-tree-origin：成功 + 五类失败（非本树节�
     ...SCHEMA,
     tree_id: 'mp_zero',
     people: {
-      z1: node('z1', 'I0010', '戊镜像', '戊', '镜像', { external_mirror: 'true', external_tree: 'mp_remote', external_person_handle: 'far_self', external_link_type: 'marriage' }),
-      z2: node('z2', 'I0011', '戊二', '戊', '二', { parent_family: 'zfam' }),
+      z1: node('z1', '000000010', '戊镜像', '戊', '镜像', { external_mirror: 'true', external_tree: 'mp_remote', external_person_handle: 'far_self', external_link_type: 'marriage' }),
+      z2: node('z2', '000000011', '戊二', '戊', '二', { parent_family: 'zfam' }),
     },
-    families: { zfam: { handle: 'zfam', gramps_id: 'F0009', father_handle: '', mother_handle: '', child_handles: ['z2'] } },
+    families: { zfam: { handle: 'zfam', gramps_id: 'F000009', father_handle: '', mother_handle: '', child_handles: ['z2'] } },
   });
   const zero = await setOrigin({ tree_id: 'mp_zero', person_handle: 'z1' });
   assert.equal(zero.statusCode, 400);
@@ -613,7 +613,7 @@ test("C8′ POST /admin/set-tree-origin：成功 + 五类失败（非本树节�
   writeTree({
     ...SCHEMA,
     tree_id: 'mp_multi',
-    people: { m1: node('m1', 'I0012', '己大', '己', '大'), m2: node('m2', 'I0013', '己小', '己', '小') },
+    people: { m1: node('m1', '000000012', '己大', '己', '大'), m2: node('m2', '000000013', '己小', '己', '小') },
     families: {},
   });
   const multi = await setOrigin({ tree_id: 'mp_multi', person_handle: 'm1' });
@@ -630,10 +630,10 @@ test("C8′ POST /admin/set-tree-origin：成功 + 五类失败（非本树节�
     ...SCHEMA,
     tree_id: 'mp_nocode',
     people: {
-      nc_f: node('nc_f', 'I0014', '庚祖', '庚', '祖', { spouse_families: ['ncfam'], birth_place: '' }),
-      nc_d: node('nc_d', 'I0015', '庚二', '庚', '二', { parent_family: 'ncfam', birth_place: { origin_code: '999998', note: '脏码' } }),
+      nc_f: node('nc_f', '000000014', '庚祖', '庚', '祖', { spouse_families: ['ncfam'], birth_place: '' }),
+      nc_d: node('nc_d', '000000015', '庚二', '庚', '二', { parent_family: 'ncfam', birth_place: { origin_code: '999998', note: '脏码' } }),
     },
-    families: { ncfam: { handle: 'ncfam', gramps_id: 'F0010', father_handle: 'nc_f', mother_handle: '', child_handles: ['nc_d'] } },
+    families: { ncfam: { handle: 'ncfam', gramps_id: 'F000010', father_handle: 'nc_f', mother_handle: '', child_handles: ['nc_d'] } },
   });
   const noCode = await setOrigin({ tree_id: 'mp_nocode', person_handle: 'nc_f' });
   assert.equal(noCode.statusCode, 400);
@@ -711,22 +711,22 @@ test('R2 GET /tree/origin-candidates：全列（含无码节点 place_code==="" 
     tree_id: 'mp_cand',
     version: 3,
     people: {
-      cd_f: node('cd_f', 'I0001', '壬祖', '壬', '祖', { spouse_families: ['cfam1'], birth_place: { origin_code: '370000', note: '鲁地' } }),
+      cd_f: node('cd_f', '000000001', '壬祖', '壬', '祖', { spouse_families: ['cfam1'], birth_place: { origin_code: '370000', note: '鲁地' } }),
       // 无出生地字段（历史形态：字段缺失）→ 归一为空 → 仍须出现在候选里
-      cd_2: node('cd_2', 'I0002', '壬二', '壬', '二', { parent_family: 'cfam1', spouse_families: ['cfam2'] }),
-      cd_3: node('cd_3', 'I0003', '壬三', '壬', '三', { parent_family: 'cfam2', spouse_families: ['cfam3'], birth_place: { origin_code: '110101', note: '京师' } }),
-      cd_4: node('cd_4', 'I0004', '壬四', '壬', '四', { parent_family: 'cfam3', birth_place: { origin_code: '110101', note: '' } }),
+      cd_2: node('cd_2', '000000002', '壬二', '壬', '二', { parent_family: 'cfam1', spouse_families: ['cfam2'] }),
+      cd_3: node('cd_3', '000000003', '壬三', '壬', '三', { parent_family: 'cfam2', spouse_families: ['cfam3'], birth_place: { origin_code: '110101', note: '京师' } }),
+      cd_4: node('cd_4', '000000004', '壬四', '壬', '四', { parent_family: 'cfam3', birth_place: { origin_code: '110101', note: '' } }),
     },
     families: {
-      cfam1: { handle: 'cfam1', gramps_id: 'F0001', father_handle: 'cd_f', mother_handle: '', child_handles: ['cd_2'] },
-      cfam2: { handle: 'cfam2', gramps_id: 'F0002', father_handle: 'cd_2', mother_handle: '', child_handles: ['cd_3'] },
-      cfam3: { handle: 'cfam3', gramps_id: 'F0003', father_handle: 'cd_3', mother_handle: '', child_handles: ['cd_4'] },
+      cfam1: { handle: 'cfam1', gramps_id: 'F000001', father_handle: 'cd_f', mother_handle: '', child_handles: ['cd_2'] },
+      cfam2: { handle: 'cfam2', gramps_id: 'F000002', father_handle: 'cd_2', mother_handle: '', child_handles: ['cd_3'] },
+      cfam3: { handle: 'cfam3', gramps_id: 'F000003', father_handle: 'cd_3', mother_handle: '', child_handles: ['cd_4'] },
     },
   });
   const res = await call('/tree/origin-candidates', 'GET', chiefToken, 'mp_cand');
   assert.equal(res.statusCode, 200, res.body);
   const body = json(res);
-  assert.deepEqual(body.founder, { handle: 'cd_f', gramps_id: 'I0001', name: '壬祖' });
+  assert.deepEqual(body.founder, { handle: 'cd_f', gramps_id: '000000001', name: '壬祖' });
   assert.deepEqual(body.candidates.map((c) => c.handle), ['cd_f', 'cd_2', 'cd_3'], '全列：始祖 + 下 1–2 代（第 4 代不在内）');
   assert.deepEqual(body.candidates.map((c) => c.generation), [1, 2, 3]);
   // 无码节点也在列，且 place_code==='' / place===''
@@ -766,7 +766,7 @@ test('C1′/C2′ 形状闸门：residence_places 非数组 / birth_place 非对
     ...SCHEMA,
     tree_id: 'mp_shape',
     version: 1,
-    people: { sp1: node('sp1', 'I0001', '辛一', '辛', '一') },
+    people: { sp1: node('sp1', '000000001', '辛一', '辛', '一') },
     families: {},
   });
   // ① 先落一组合法值（作为「原值」）
@@ -846,8 +846,8 @@ test('F5 显式 null 一律等同未提供：单独提交 → 400 原值保留�
     tree_id: 'mp_null',
     version: 2,
     people: {
-      nl1: node('nl1', 'I0001', '壬一', '壬', '一', { birth_place: SEED_BIRTH, residence_places: SEED_RES }),
-      nl2: node('nl2', 'I0002', '壬二', '壬', '二', { birth_place: SEED_BIRTH, residence_places: SEED_RES }),
+      nl1: node('nl1', '000000001', '壬一', '壬', '一', { birth_place: SEED_BIRTH, residence_places: SEED_RES }),
+      nl2: node('nl2', '000000002', '壬二', '壬', '二', { birth_place: SEED_BIRTH, residence_places: SEED_RES }),
     },
     families: {},
   });
@@ -929,7 +929,7 @@ test('只读预检先于扣费：祖谱镜像 / 世本镜像 / chain 镜像夹�
     ...SCHEMA,
     tree_id: 'mp_upperclan',
     version: 1,
-    people: { own: node('own', 'I0001', '季花', '季', '花') },
+    people: { own: node('own', '000000001', '季花', '季', '花') },
     families: {},
   });
   writeTree({
@@ -937,19 +937,19 @@ test('只读预检先于扣费：祖谱镜像 / 世本镜像 / chain 镜像夹�
     tree_id: 'mp_lockclan',
     version: 2,
     people: {
-      lc_f: node('lc_f', 'I0001', '季花', '季', '花', {
+      lc_f: node('lc_f', '000000001', '季花', '季', '花', {
         external_tree: 'mp_upperclan',
         external_person_handle: 'own',
         external_link_type: 'founder',
         external_mirror: 'true',
       }),
-      lc_ch: node('lc_ch', 'I0002', '季行父', '季', '行父', {
+      lc_ch: node('lc_ch', '000000002', '季行父', '季', '行父', {
         external_tree: 'mp_upperclan',
         external_person_handle: 'own',
         external_link_type: 'chain',
         external_mirror: 'true',
       }),
-      lc_kid: node('lc_kid', 'I0003', '季子', '季', '子'),
+      lc_kid: node('lc_kid', '000000003', '季子', '季', '子'),
     },
     families: {},
   });
@@ -958,7 +958,7 @@ test('只读预检先于扣费：祖谱镜像 / 世本镜像 / chain 镜像夹�
     tree_id: 'mp_lockmaster',
     version: 2,
     people: {
-      lm_f: node('lm_f', 'I0001', '季始祖公', '季', '始祖公', {
+      lm_f: node('lm_f', '000000001', '季始祖公', '季', '始祖公', {
         external_tree: 'zhonghua',
         external_person_handle: 'ch_root',
         external_link_type: 'founder',
@@ -1093,9 +1093,9 @@ test('v3 F3/F4 写路径：年份格式/范围 400、晚于卒年 400（逐字�
     tree_id: 'mp_sy',
     version: 1,
     people: {
-      sy1: node('sy1', 'I0001', '乙一', '乙', '一', { death_date: '1990' }),
-      sy2: node('sy2', 'I0002', '乙二', '乙', '二', { death_date: '2020-05-01' }),
-      sy3: node('sy3', 'I0003', '乙三', '乙', '三', { death_date: '' }),
+      sy1: node('sy1', '000000001', '乙一', '乙', '一', { death_date: '1990' }),
+      sy2: node('sy2', '000000002', '乙二', '乙', '二', { death_date: '2020-05-01' }),
+      sy3: node('sy3', '000000003', '乙三', '乙', '三', { death_date: '' }),
     },
     families: {},
   });

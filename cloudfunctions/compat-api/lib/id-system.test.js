@@ -101,17 +101,17 @@ const person = (handle, grampsId, extra = {}) => ({
 
 // ================= P1：铸号 =================
 
-test('铸号格式与解析（纯函数）：I000052 / 000052 / F000012', () => {
-  assert.equal(idSeq.formatPersonId(52), 'I000052');
-  assert.equal(idSeq.formatPersonId(138), 'I000138');
+test('铸号格式与解析（纯函数）：000000052 / 000052 / F000012', () => {
+  assert.equal(idSeq.formatPersonId(52), '000000052');
+  assert.equal(idSeq.formatPersonId(138), '000000138');
   assert.equal(idSeq.formatFamilyId(12), 'F000012');
-  assert.deepEqual(idSeq.parseGlobalId('I000052'), { kind: 'person', number: 52 });
+  assert.deepEqual(idSeq.parseGlobalId('000000052'), { kind: 'person', number: 52 });
   assert.deepEqual(idSeq.parseGlobalId('000052'), { kind: 'person', number: 52 });
   assert.deepEqual(idSeq.parseGlobalId('i52'), { kind: 'person', number: 52 });
   assert.deepEqual(idSeq.parseGlobalId('F000012'), { kind: 'family', number: 12 });
   assert.equal(idSeq.parseGlobalId('10400594c54f5203f61bf4fa4b20'), null, 'handle 不是编号');
-  assert.equal(idSeq.parseGlobalId('I1234567'), null, '超过 6 位不是编号写法');
-  assert.equal(idSeq.numberOfId('I000138'), 138);
+  assert.equal(idSeq.parseGlobalId('I1234567890'), null, '超过 9 位不是编号写法');
+  assert.equal(idSeq.numberOfId('000000138'), 138);
 });
 
 test('计数器缺失时播种 = max(既有编号)+1（迁移兜底：绝不与存量撞号）', async () => {
@@ -119,12 +119,12 @@ test('计数器缺失时播种 = max(既有编号)+1（迁移兜底：绝不与�
   writeTree({
     ...TREE_DEFAULTS,
     tree_id: 'seed_tree',
-    people: { sh: person('sh', 'I000137') },
+    people: { sh: person('sh', '000000137') },
     families: { sf: { handle: 'sf', gramps_id: 'F000136', father_handle: 'sh', mother_handle: '', child_handles: [] } },
   });
   const first = await idSeq.nextPersonId();
   const firstFam = await idSeq.nextFamilyId();
-  assert.equal(first, 'I000138', '播种 = 存量最大编号 + 1');
+  assert.equal(first, '000000138', '播种 = 存量最大编号 + 1');
   assert.equal(firstFam, 'F000137');
 
   // 落盘到集合文件（本地模式 = migrate-output/collections/jiapu_id_seq.json 的同构副本）
@@ -137,8 +137,8 @@ test('计数器缺失时播种 = max(既有编号)+1（迁移兜底：绝不与�
 test('并发铸号绝不重号（同一进程写锁串行）', async () => {
   const ids = await Promise.all(Array.from({ length: 50 }, () => store.nextPersonId()));
   assert.equal(new Set(ids).size, 50, '50 次并发铸号必须 50 个不同编号');
-  for (const id of ids) assert.match(id, /^I\d{6}$/);
-  const nums = ids.map((x) => parseInt(x.slice(1), 10)).sort((a, b) => a - b);
+  for (const id of ids) assert.match(id, /^\d{9}$/);
+  const nums = ids.map((x) => parseInt(x, 10)).sort((a, b) => a - b);
   assert.deepEqual(
     nums,
     Array.from({ length: 50 }, (_, i) => 139 + i),
@@ -149,9 +149,9 @@ test('并发铸号绝不重号（同一进程写锁串行）', async () => {
 
 // ================= P1：创建路径铸全局号 =================
 
-test('创建路径一律铸全局号：人/家族跨树不重号，格式为 6 位', async () => {
-  writeTree({ ...TREE_DEFAULTS, tree_id: 'idp_a', people: { a0: person('a0', 'I000009') } });
-  writeTree({ ...TREE_DEFAULTS, tree_id: 'idp_b', people: { b0: person('b0', 'I500059') } });
+test('创建路径一律铸全局号：人/家族跨树不重号，人号 9 位纯数字', async () => {
+  writeTree({ ...TREE_DEFAULTS, tree_id: 'idp_a', people: { a0: person('a0', '000000009') } });
+  writeTree({ ...TREE_DEFAULTS, tree_id: 'idp_b', people: { b0: person('b0', '000500059') } });
 
   const r1 = await tw.createPerson('idp_a', { primary_name: { first_name: '甲', surname_list: [{ surname: '甲', primary: true }] }, gender: 1 });
   const r2 = await tw.createPerson('idp_b', { primary_name: { first_name: '乙', surname_list: [{ surname: '乙', primary: true }] }, gender: 1 });
@@ -159,10 +159,10 @@ test('创建路径一律铸全局号：人/家族跨树不重号，格式为 6 �
   const t2 = await store.getTree('idp_b');
   const id1 = t1.people[r1.handle].gramps_id;
   const id2 = t2.people[r2.handle].gramps_id;
-  assert.match(id1, /^I\d{6}$/);
-  assert.match(id2, /^I\d{6}$/);
+  assert.match(id1, /^\d{9}$/);
+  assert.match(id2, /^\d{9}$/);
   assert.notEqual(id1, id2, '跨树新节点编号必须全站唯一');
-  assert.notEqual(id1, 'I000010', '不再用树内序号自增');
+  assert.notEqual(id1, '000000010', '不再用树内序号自增');
 
   // 详情文档的展示冗余编号与树内一致
   const d1 = JSON.parse(fs.readFileSync(path.join(TMP, 'details', `idp_a:${r1.handle}.json`), 'utf8'));
@@ -179,15 +179,15 @@ test('创建路径一律铸全局号：人/家族跨树不重号，格式为 6 �
 
   // 添加配偶 + 添加子女（含镜像分支的普通分支）也铸全局号
   const sp = await tw.addSpouseNode({ treeId: 'idp_a', personHandle: r1.handle, mode: 'new', name: '配偶', gender: 'F' });
-  assert.match((await store.getTree('idp_a')).people[sp.spouse_handle].gramps_id, /^I\d{6}$/);
+  assert.match((await store.getTree('idp_a')).people[sp.spouse_handle].gramps_id, /^\d{9}$/);
   const ch = await cw.addChildNode({ treeId: 'idp_a', personHandle: r1.handle, name: '子', gender: 'M' });
-  assert.match((await store.getTree('idp_a')).people[ch.child_handle].gramps_id, /^I\d{6}$/);
+  assert.match((await store.getTree('idp_a')).people[ch.child_handle].gramps_id, /^\d{9}$/);
 });
 
-test('新建家族树：始祖节点铸全局号（不再是 I0001）', async () => {
+test('新建家族树：始祖节点铸全局号（不再是树内序号）', async () => {
   const r = await tw.createTree({ surnameChar: '雷', founderName: '震', initiatorPhone: '16600000000' });
-  assert.match(r.founder_gramps_id, /^I\d{6}$/);
-  assert.notEqual(r.founder_gramps_id, 'I0001');
+  assert.match(r.founder_gramps_id, /^\d{9}$/);
+  assert.notEqual(r.founder_gramps_id, '000000001');
   const tree = await store.getTree(r.tree_id);
   assert.equal(tree.founder_gramps_id, r.founder_gramps_id);
   assert.equal(tree.people[r.founder_handle].gramps_id, r.founder_gramps_id, '树 JSON 始祖编号与铸号一致（全站唯一）');
@@ -196,22 +196,22 @@ test('新建家族树：始祖节点铸全局号（不再是 I0001）', async ()
 // ================= P3：统一解析器 =================
 
 test('resolveNode：全局编号（不带树）/ handle / 树内旧号（带 tree_id）都能定位', async () => {
-  writeTree({ ...TREE_DEFAULTS, tree_id: 'idr_a', people: { hA: person('hA', 'I000500', { name: '甲父' }) } });
+  writeTree({ ...TREE_DEFAULTS, tree_id: 'idr_a', people: { hA: person('hA', '000000500', { name: '甲父' }) } });
   writeTree({ ...TREE_DEFAULTS, tree_id: 'idr_b', people: { hB: person('hB', 'I9000', { name: '乙父' }) } });
   // 迁移留痕（详情文档 legacy_gramps_id）
   writeDetail({
     _id: 'idr_c:oldC',
     tree_id: 'idr_c',
     handle: 'oldC',
-    gramps_id: 'I000700',
+    gramps_id: '000000700',
     name: '旧号节点',
     legacy_gramps_id: '0052',
     events: [],
     attributes: [],
   });
-  writeTree({ ...TREE_DEFAULTS, tree_id: 'idr_c', people: { oldC: person('oldC', 'I000700', { name: '旧号节点' }) } });
+  writeTree({ ...TREE_DEFAULTS, tree_id: 'idr_c', people: { oldC: person('oldC', '000000700', { name: '旧号节点' }) } });
 
-  const byGlobal = await resolveNode('I000500');
+  const byGlobal = await resolveNode('000000500');
   assert.deepEqual([byGlobal.tree_id, byGlobal.handle, byGlobal.matched], ['idr_a', 'hA', 'global']);
   const byBareNumber = await resolveNode('000500');
   assert.equal(byBareNumber.handle, 'hA', '省略前缀也可全局定位');
@@ -226,12 +226,12 @@ test('resolveNode：全局编号（不带树）/ handle / 树内旧号（带 tre
   const crossLocal = await resolveNode('I9000');
   assert.equal(crossLocal.handle, 'hB');
 
-  // 详情文档里的 legacy_gramps_id 回退（迁移后的树：0052 → I000700）
+  // 详情文档里的 legacy_gramps_id 回退（迁移后的树：legacy 0052 → 现号 000000700）
   const byLegacy = await resolveNode('0052', 'idr_c');
   assert.deepEqual([byLegacy.tree_id, byLegacy.handle, byLegacy.matched], ['idr_c', 'oldC', 'legacy']);
 
   // 找不到
-  assert.equal(await resolveNode('I999999'), null);
+  assert.equal(await resolveNode('000999999'), null);
   assert.equal(await resolveNode(''), null);
   assert.equal(await resolveNode('nonexistent-handle-x'), null);
   // scope 限定：只在该树找，找不到返回 null（调用方给出「目标树 X 中找不到」文案）
@@ -253,13 +253,13 @@ test('跨树改父（reparentNode）：编号属于别的树 → 迁移后编号
   writeTree({
     ...TREE_DEFAULTS,
     tree_id: 'idm_src',
-    people: { s1: person('s1', 'I000810', { name: '源根' }), s2: person('s2', 'I000811', { name: '源子' }) },
+    people: { s1: person('s1', '000000810', { name: '源根' }), s2: person('s2', '000000811', { name: '源子' }) },
     families: { sf: { handle: 'sf', gramps_id: 'F000810', father_handle: 's1', mother_handle: '', child_handles: ['s2'] } },
   });
   writeTree({
     ...TREE_DEFAULTS,
     tree_id: 'idm_dst',
-    people: { t1: person('t1', 'I000820', { name: '目标父' }) },
+    people: { t1: person('t1', '000000820', { name: '目标父' }) },
     families: {},
   });
   // 用**全局编号**指定新父（无需指定目标树：解析器自动识别所属树）
@@ -268,10 +268,10 @@ test('跨树改父（reparentNode）：编号属于别的树 → 迁移后编号
   assert.equal(r.target_tree_id, 'idm_dst');
   const dst = await store.getTree('idm_dst');
   const src = await store.getTree('idm_src');
-  assert.equal(dst.people.s2.gramps_id, 'I000811', '编号终身不变（不按目标树重编）');
+  assert.equal(dst.people.s2.gramps_id, '000000811', '编号终身不变（不按目标树重编）');
   assert.equal(dst.people.s2.parent_family, r.family_handle);
   assert.equal(src.people.s2, undefined);
-  assert.deepEqual(r.gramps_id_map, { s2: 'I000811' }, '映射表为恒等映射');
+  assert.deepEqual(r.gramps_id_map, { s2: '000000811' }, '映射表为恒等映射');
 });
 
 // ================= P2：迁移脚本（/tmp 副本） =================
@@ -305,22 +305,22 @@ test('迁移脚本：副本上跑通 → zhonghua 保留原号 / 其余树重编
   assert.equal(md5(path.join(copy, 'trees', 'zhonghua.json')), zhBefore, 'zhonghua 树 JSON 一字未改');
   const zh = JSON.parse(fs.readFileSync(path.join(copy, 'trees', 'zhonghua.json'), 'utf8'));
   const zhIds = Object.values(zh.people).map((p) => p.gramps_id);
-  // 原号保留：**形状断言，覆盖 zhonghua 全部编号**，与具体节点无关（节点增删不会假红；
-  // 比只抽查 I0000/I0052 两个编号更强）。迁移前的老号是 4 位形态，迁移后新建节点铸 6 位全局号 ——
-  // 两者之外的任何形态都说明编号被改坏/被重编号；且老 4 位号必须仍然存在。
-  const ZH_OLD = /^I\d{4}$/;
-  const ZH_NEW = /^I\d{6}$/;
+  // 原号保留：**形状断言，覆盖 zhonghua 全部编号**，与具体节点无关（节点增删不会假红；比只抽查两个编号更强）。
+  // 新口径下 zhonghua 原号 = 9 位纯数字（补零后形态）；本脚本（migrate-global-ids）对未迁移节点补铸的才是
+  // 6 位全局号 —— 两者之外的任何形态都说明编号被改坏/被重编号；且 9 位原号必须仍然存在。
+  const ZH_OLD = /^\d{9}$/;
+  const ZH_NEW = /^\d{9}$/;
   assert.ok(
     zhIds.length > 0 && zhIds.every((x) => ZH_OLD.test(String(x)) || ZH_NEW.test(String(x))),
-    'zhonghua 编号形态只允许老 4 位原号或迁移后 6 位全局号',
+    'zhonghua 编号形态只允许新口径人号（9 位纯数字）或迁移后 6 位全局号',
   );
-  assert.ok(zhIds.some((x) => ZH_OLD.test(String(x))), 'zhonghua 老 4 位原号仍在（未被重编号）');
+  assert.ok(zhIds.some((x) => ZH_OLD.test(String(x))), 'zhonghua 原号（9 位纯数字）仍在（未被重编号）');
   const zhFamIds = Object.values(zh.families).map((f) => f.gramps_id);
   assert.ok(
-    zhFamIds.length > 0 && zhFamIds.every((x) => /^F\d{4}$/.test(String(x)) || /^F\d{6}$/.test(String(x))),
-    'zhonghua 家族编号形态只允许老 4 位原号或迁移后 6 位全局号',
+    zhFamIds.length > 0 && zhFamIds.every((x) => /^F\d{6}$/.test(String(x))),
+    'zhonghua 家族编号形态 = F + 6 位',
   );
-  assert.ok(zhFamIds.some((x) => /^F\d{4}$/.test(String(x))), 'zhonghua 老 4 位家族原号仍在（未被重编号）');
+  assert.ok(zhFamIds.some((x) => /^F\d{6}$/.test(String(x))), 'zhonghua 家族原号（F+6）仍在（未被重编号）');
   assert.ok(!Object.values(zh.people).some((p) => p.legacy_gramps_id), 'zhonghua 节点不写 legacy（原号未变）');
 
   // 计数器初值 = max(zhonghua)+1

@@ -83,13 +83,13 @@ const H = {
   extra: (i) => `mc_t_e${i}`,
 };
 const ID = {
-  g: (i) => `I0007${String(i).padStart(2, '0')}`,
-  f1: 'I000712',
-  m1: 'I000713',
-  u1: 'I000714',
-  z0: 'I000715',
-  mir: 'I000716',
-  extra: (i) => `I0008${String(i).padStart(2, '0')}`,
+  g: (i) => `${String(700 + i).padStart(9, '0')}`,
+  f1: '000000712',
+  m1: '000000713',
+  u1: '000000714',
+  z0: '000000715',
+  mir: '000000716',
+  extra: (i) => `${String(800 + i).padStart(9, '0')}`,
 };
 /** 树内旧号（legacy_gramps_id）夹具：第 5 世 */
 const LEGACY_G5 = '0050';
@@ -179,7 +179,7 @@ writeTree({
   tree_id: OTHER_TREE,
   version: 1,
   people: {
-    mc_o_1: { handle: 'mc_o_1', gramps_id: 'I000901', name: '季某', surname: '季', given: '某', gender: 'M', is_living: false },
+    mc_o_1: { handle: 'mc_o_1', gramps_id: '000000901', name: '季某', surname: '季', given: '某', gender: 'M', is_living: false },
   },
   families: {},
 });

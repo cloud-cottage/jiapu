@@ -57,7 +57,7 @@ function crossTreePair(tag) {
   const h = { locSelf: 'p_shen', locMirror: 'p_ji_mirror', farSelf: 'p_ji', farMirror: 'p_shen_mirror' };
   const mirrorOf = (handle, otherTree, otherHandle) => ({
     handle,
-    gramps_id: 'I500005',
+    gramps_id: '000500005',
     name: handle === h.locMirror ? '季志全' : '沈伟',
     surname: handle === h.locMirror ? '季' : '沈',
     given: handle === h.locMirror ? '志全' : '伟',
@@ -81,7 +81,7 @@ function crossTreePair(tag) {
     people: {
       [h.locSelf]: {
         handle: h.locSelf,
-        gramps_id: 'I0002',
+        gramps_id: '000000002',
         name: '沈伟',
         surname: '沈',
         given: '伟',
@@ -102,7 +102,7 @@ function crossTreePair(tag) {
     families: {
       family_loc: {
         handle: 'family_loc',
-        gramps_id: 'F0001',
+        gramps_id: 'F000001',
         father_handle: h.locMirror,
         mother_handle: h.locSelf,
         child_handles: [],
@@ -115,7 +115,7 @@ function crossTreePair(tag) {
     people: {
       [h.farSelf]: {
         handle: h.farSelf,
-        gramps_id: 'I0001',
+        gramps_id: '000000001',
         name: '季志全',
         surname: '季',
         given: '志全',
@@ -157,7 +157,7 @@ function plainTree(tag, { withFamily = true } = {}) {
     people: {
       dad: {
         handle: 'dad',
-        gramps_id: 'I0007',
+        gramps_id: '000000007',
         name: '沈克强',
         surname: '沈',
         given: '克强',
@@ -171,7 +171,7 @@ function plainTree(tag, { withFamily = true } = {}) {
       },
       mom: {
         handle: 'mom',
-        gramps_id: 'I0008',
+        gramps_id: '000000008',
         name: '李氏',
         surname: '李',
         given: '氏',
@@ -188,7 +188,7 @@ function plainTree(tag, { withFamily = true } = {}) {
       ? {
           fam_plain: {
             handle: 'fam_plain',
-            gramps_id: 'F0003',
+            gramps_id: 'F000003',
             father_handle: 'dad',
             mother_handle: 'mom',
             child_handles: [],
@@ -306,7 +306,7 @@ test('跨树家庭下挂接已有节点：节点整体搬到真身树（换 hand
   const locBefore = readTree(loc);
   locBefore.people.orphan = {
     handle: 'orphan',
-    gramps_id: 'I0010',
+    gramps_id: '000000010',
     name: '沈清昆',
     surname: '沈',
     given: '清昆',
@@ -332,7 +332,7 @@ test('跨树家庭下挂接已有节点：节点整体搬到真身树（换 hand
   assert.equal(locAfter.people.orphan, undefined, '节点本体不得留在本树');
   assert.equal(farAfter.people[r.child_handle].name, '沈清昆');
   // 编号终身不变（docs/id-system.spec.md §2）：只换 handle 与树归属，原编号随迁
-  assert.equal(farAfter.people[r.child_handle].gramps_id, 'I0010');
+  assert.equal(farAfter.people[r.child_handle].gramps_id, '000000010');
   assert.equal(farAfter.people[r.child_handle].parent_family, 'family_far');
   assert.deepEqual(farAfter.families.family_far.child_handles, [r.child_handle]);
   // 详情随迁到真身树，本树旧详情删除
@@ -346,7 +346,7 @@ test('跨树家庭的拒绝分支：已入谱节点 / 双镜像父母 / 对方�
   const g1 = crossTreePair('guard_a');
   const withAttached = readTree(g1.loc);
   withAttached.people.attached = {
-    handle: 'attached', gramps_id: 'I0011', name: '沈某', surname: '沈', given: '某', gender: 'M',
+    handle: 'attached', gramps_id: '000000011', name: '沈某', surname: '沈', given: '某', gender: 'M',
     birth_date: '', death_date: '', birth_place: '', death_place: '',
     parent_family: 'family_loc', spouse_families: [],
   };
@@ -552,11 +552,11 @@ function mirrorPair(tag) {
     version: 1,
     updated_at: new Date().toISOString(),
     people: {
-      [mh]: { handle: mh, gramps_id: 'I0001', name: '季志全', surname: '季', given: '志全', gender: 'M', parent_family: '', spouse_families: [`${tag}_F1`], external_tree: b, external_person_handle: rh, external_link_type: 'marriage', external_mirror: 'true', is_living: true },
-      [wh]: { handle: wh, gramps_id: 'I0002', name: '沈伟', surname: '沈', given: '伟', gender: 'F', parent_family: '', spouse_families: [`${tag}_F1`], external_tree: '', external_person_handle: '', external_link_type: '', is_living: true },
+      [mh]: { handle: mh, gramps_id: '000000001', name: '季志全', surname: '季', given: '志全', gender: 'M', parent_family: '', spouse_families: [`${tag}_F1`], external_tree: b, external_person_handle: rh, external_link_type: 'marriage', external_mirror: 'true', is_living: true },
+      [wh]: { handle: wh, gramps_id: '000000002', name: '沈伟', surname: '沈', given: '伟', gender: 'F', parent_family: '', spouse_families: [`${tag}_F1`], external_tree: '', external_person_handle: '', external_link_type: '', is_living: true },
     },
     families: {
-      [`${tag}_F1`]: { handle: `${tag}_F1`, gramps_id: 'F0001', father_handle: mh, mother_handle: wh, child_handles: [] },
+      [`${tag}_F1`]: { handle: `${tag}_F1`, gramps_id: 'F000001', father_handle: mh, mother_handle: wh, child_handles: [] },
     },
   });
   writeTree({
@@ -564,8 +564,8 @@ function mirrorPair(tag) {
     version: 1,
     updated_at: new Date().toISOString(),
     people: {
-      [rh]: { handle: rh, gramps_id: 'I0001', name: '季志全', surname: '季', given: '志全', gender: 'M', parent_family: '', spouse_families: [`${tag}_G1`], external_tree: a, external_person_handle: mh, external_link_type: 'marriage', is_living: true },
-      [mw]: { handle: mw, gramps_id: 'I500059', name: '沈伟', surname: '沈', given: '伟', gender: 'F', parent_family: '', spouse_families: [`${tag}_G1`], external_tree: a, external_person_handle: wh, external_link_type: 'marriage', external_mirror: 'true', is_living: true },
+      [rh]: { handle: rh, gramps_id: '000000001', name: '季志全', surname: '季', given: '志全', gender: 'M', parent_family: '', spouse_families: [`${tag}_G1`], external_tree: a, external_person_handle: mh, external_link_type: 'marriage', is_living: true },
+      [mw]: { handle: mw, gramps_id: '000500059', name: '沈伟', surname: '沈', given: '伟', gender: 'F', parent_family: '', spouse_families: [`${tag}_G1`], external_tree: a, external_person_handle: wh, external_link_type: 'marriage', external_mirror: 'true', is_living: true },
     },
     families: {
       [`${tag}_G1`]: { handle: `${tag}_G1`, gramps_id: 'F500020', father_handle: rh, mother_handle: mw, child_handles: [] },
@@ -580,8 +580,8 @@ test('新建子节点不传 gender → 默认「男」（本树普通家庭）',
   const ph = `${tag}_p`;
   writeTree({
     tree_id: treeId, version: 1, updated_at: new Date().toISOString(),
-    people: { [ph]: { handle: ph, gramps_id: 'I0001', name: '季甲', surname: '季', given: '甲', gender: 'M', parent_family: '', spouse_families: [`${tag}_F1`], is_living: true } },
-    families: { [`${tag}_F1`]: { handle: `${tag}_F1`, gramps_id: 'F0001', father_handle: ph, mother_handle: '', child_handles: [] } },
+    people: { [ph]: { handle: ph, gramps_id: '000000001', name: '季甲', surname: '季', given: '甲', gender: 'M', parent_family: '', spouse_families: [`${tag}_F1`], is_living: true } },
+    families: { [`${tag}_F1`]: { handle: `${tag}_F1`, gramps_id: 'F000001', father_handle: ph, mother_handle: '', child_handles: [] } },
   });
   const r = await addChildNode({ treeId, personHandle: ph, name: '乙' });
   const t = readTree(treeId);
