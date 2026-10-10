@@ -36895,7 +36895,73 @@ function profileFamily(tree, fam) {
   out.children = (fam.child_handles || []).map((c) => profilePerson(tree, c)).filter(Boolean);
   return out;
 }
-function toRawPerson(tree, person, detail) {
+var MIRROR_TITLE_ATTR_KEYS = ["\u5C01\u53F7", "\u8C25\u53F7", "\u53F7", "\u79F0\u53F7", "\u79F0\u53F7\u8272"];
+function mergeMirrorTitleAttributes(mirrorDetail, realDetail) {
+  const keys = new Set(MIRROR_TITLE_ATTR_KEYS);
+  const base = Array.isArray(mirrorDetail?.attributes) ? mirrorDetail.attributes : [];
+  const kept = base.filter((a) => a && !keys.has(a.key));
+  const realTitles = (Array.isArray(realDetail?.attributes) ? realDetail.attributes : []).filter(
+    (a) => a && keys.has(a.key)
+  );
+  return { ...mirrorDetail || {}, attributes: [...kept, ...realTitles] };
+}
+async function buildMirrorRealBodies(tree, onlyHandles) {
+  const out = /* @__PURE__ */ new Map();
+  const people = tree?.people || {};
+  const mirrors = Object.values(people).filter(
+    (p) => p && String(p.external_mirror) === "true" && p.external_person_handle && (!onlyHandles || onlyHandles.has(p.handle))
+  );
+  if (!mirrors.length)
+    return out;
+  const byRealTree = /* @__PURE__ */ new Map();
+  for (const m of mirrors) {
+    const tid = String(m.external_tree || "").trim();
+    if (!tid)
+      continue;
+    if (!byRealTree.has(tid))
+      byRealTree.set(tid, []);
+    byRealTree.get(tid).push(m);
+  }
+  for (const [tid, list2] of byRealTree) {
+    let realTree = null;
+    try {
+      realTree = await getTree(tid);
+    } catch {
+      realTree = null;
+    }
+    if (!realTree || !realTree.people)
+      continue;
+    let realDetailMap = /* @__PURE__ */ new Map();
+    try {
+      const ds = await getAllDetails(tid);
+      realDetailMap = new Map(ds.map((d) => [d.handle, d]));
+    } catch {
+      realDetailMap = /* @__PURE__ */ new Map();
+    }
+    for (const m of list2) {
+      const real = realTree.people[m.external_person_handle];
+      if (!real)
+        continue;
+      out.set(m.handle, { person: real, detail: realDetailMap.get(real.handle) || null });
+    }
+  }
+  return out;
+}
+function toRawPerson(tree, person, detail, realBody) {
+  if (realBody && realBody.person) {
+    const rp = realBody.person;
+    person = {
+      ...person,
+      name: rp.name,
+      surname: rp.surname,
+      given: rp.given,
+      gender: rp.gender,
+      birth_date: rp.birth_date,
+      death_date: rp.death_date,
+      is_living: rp.is_living
+    };
+    detail = mergeMirrorTitleAttributes(detail, realBody.detail);
+  }
   const attributes = [];
   for (const a of detail?.attributes || [])
     attributes.push(attrEntry(a.key, a.value));
@@ -39739,13 +39805,15 @@ async function handleRequest(event) {
       if (readAccess.isHiddenPerson(person.handle))
         return send(404, { error: "\u8BE5\u8282\u70B9\u6682\u4E0D\u53EF\u89C1\uFF08\u8FD1\u4EE3\u4E16\u8C31\u7CFB\u4EC5\u5BB6\u65CF\u6210\u5458\u53EF\u89C1\uFF09" });
       const detail = await getDetail(treeId, person.handle);
-      return send(200, toRawPerson(tree, person, detail));
+      const mirrorReals = await buildMirrorRealBodies(tree, /* @__PURE__ */ new Set([person.handle]));
+      return send(200, toRawPerson(tree, person, detail, mirrorReals.get(person.handle)));
     }
     if (pathname === "/people" && method === "GET") {
       const access = await resolveInviteCodeAccess(header("x-invite-code"), treeId, tree) || readAccess;
       const details = await getAllDetails(treeId);
       const detailMap = new Map(details.map((d) => [d.handle, d]));
-      const out = Object.values(tree.people).filter((p) => !access.isHiddenPerson(p.handle)).map((p) => toRawPerson(tree, p, detailMap.get(p.handle)));
+      const mirrorReals = await buildMirrorRealBodies(tree);
+      const out = Object.values(tree.people).filter((p) => !access.isHiddenPerson(p.handle)).map((p) => toRawPerson(tree, p, detailMap.get(p.handle), mirrorReals.get(p.handle)));
       return send(200, out);
     }
     if (pathname === "/families" && method === "GET") {
@@ -39766,11 +39834,12 @@ async function handleRequest(event) {
       const limit = parseInt(query.pagesize || "20", 10) || 20;
       const details = await getAllDetails(treeId);
       const detailMap = new Map(details.map((d) => [d.handle, d]));
+      const mirrorReals = await buildMirrorRealBodies(tree);
       const matched = [];
       const refHit = await resolveNode(String(query.query || "").trim(), treeId);
       if (refHit && refHit.tree_id === treeId && tree.people[refHit.handle] && !readAccess.isHiddenPerson(refHit.handle)) {
         const p = tree.people[refHit.handle];
-        matched.push({ handle: p.handle, object: toRawPerson(tree, p, detailMap.get(p.handle)) });
+        matched.push({ handle: p.handle, object: toRawPerson(tree, p, detailMap.get(p.handle), mirrorReals.get(p.handle)) });
       }
       for (const p of Object.values(tree.people)) {
         if (readAccess.isHiddenPerson(p.handle))
@@ -39779,7 +39848,7 @@ async function handleRequest(event) {
           continue;
         const hay = `${p.name}${p.surname}${p.given}`.toLowerCase();
         if (hay.includes(q)) {
-          matched.push({ handle: p.handle, object: toRawPerson(tree, p, detailMap.get(p.handle)) });
+          matched.push({ handle: p.handle, object: toRawPerson(tree, p, detailMap.get(p.handle), mirrorReals.get(p.handle)) });
           if (matched.length >= limit)
             break;
         }
