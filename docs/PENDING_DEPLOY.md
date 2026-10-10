@@ -6264,3 +6264,73 @@ cd frontend && VITE_API_BASE=https://liwu-d8gek6jjdab1d087c.service.tcloudbase.c
 - **状态 = 「已执行（云端 env `liwu-d8gek6jjdab1d087c` 数据面已更新）+ 两轮独立质检通过」**。
 - **本节只追加、不改 §0–§58 任何历史行**（承 `AGENTS.md` §0-4）；**未碰 `docs/*.qa.md`**（§0-5）。
 - **遗留 = 见 §59-6 四条**（**`jiapu_invite_codes` 2 码待 Kevin 定** / **沈伟 `号` 不一致待 Kevin** / **集合总数 70 口径** / **STS 登录态**）。
+
+## §60 数据面增量同步批（邀请码上云 + 沈伟真身回流/号统一 · 均已执行 · 已质检 · 2026-10-10 · **只追加 · 不改 §0–§59 任何行**）（Jing 制度员）
+
+> **性质（只追加）**：本节为**两小批（批 1 邀请码上云 / 批 2 沈伟真身回流 + 「号」统一）** 的**已执行登记**（**§0–§59 既有行原文一律保留、一字不改、一行不删**；承 `AGENTS.md` §0-4）。两小批**均于 2026-10-10 执行完毕**，并**均已独立质检**（**批 2** 由 Neng 只读复检 **六项全 PASS**）。
+> **纪律（硬）**：本节读数**一律取自已实测 / 已登记的派单读数**，**不推算、不预填**；**判据一律以命令实际输出为准**（**不得编数字**）。**行号一律现证**（`grep -n` / `awk 'NR==n'`）；**本地真源 md5 / 备份目录结构 = Jing 只读现证（2026-10-10）**；**云端集合 / 云存储读数**取自执行台账与质检产物（`scratch`，逐项列于 §60-3 / §60-6）。
+> **触发方 / 归属**：**上云动作 = Zang 统一收口执行**；**真源写入 = Zang 代 Kevin 执行的派单内写入**（**依据 = Kevin 指示「按最合理的执行」+ 三条约束**），真源写入登记的落点 = `AGENTS.md` **§7 本批追加行**。
+
+### §60-0 批次定性（两小批）
+
+| # | 批 | 对象 | 动作 | 结果（实测） |
+|---|---|---|---|---|
+| ① | **批 1 邀请码上云** | 云端集合 `jiapu_invite_codes` | 本地 **2** 档 → 云端 | **`0 → 2`** 档（`73EMZ5` / `R5UMHH`）；**回读逐字段 == 本地** |
+| ② | **批 2 沈伟真身回流 + 「号」统一** | `shen_27784_01` / `ji_23395_01` 两树与两详情 | 云端 → 本地回流 + 本地 → 云端四件 upsert + 镜像 `号` 统一 | **逐件回读 `field_diffs=0`**（shen 树 `byte_equal=true`）；**全程未删任何节点 / 关系** |
+
+- **云端 env = `liwu-d8gek6jjdab1d087c`**。**无新建集合 / 无删集合 / 无删文档**（批 1 为本地已有 2 档补齐上云；批 2 只改树 / 详情内容）。
+
+### §60-1 批 1：邀请码上云（云端集合 `jiapu_invite_codes`）
+
+- **动作 = 本地 2 档 → 云端**：云端集合 `0 → 2` 档。**来源 = `migrate-output/collections/jiapu_invite_codes.json`（md5 `204f14d8e54d9dbe0f09480c6126a74d`，推送前后不变）**。
+- **`73EMZ5`**：`kind=plain`（**多次可用**）· `inviter_phone=16601061656` · `tree_id=null` / `person_handle=null` · `max_uses=null` · `used_count=0` · `created_at=2026-10-03T11:04:24.326Z` · **有效期至 `2026-11-02T11:04:24.326Z`**。
+- **`R5UMHH`**：`kind=node`（**一次性** · `max_uses=1`）· `tree_id=zhonghua` · `person_handle=212113f2b5f94ad65fb213de`（**= 姬少康 `I0114`**，`is_living=false`）· `used_count=0` · `created_at=2026-10-09T07:18:30.987Z` · **有效期至 `2026-11-08T07:18:30.987Z`**。
+- **回读**：云端两档**逐字段 == 本地**；`GET /api/invite/code/resolve?c=…` **两码均 `200 valid:true`**（**已 3 轮复测**）。
+- **备份 = `~/jiazu-backups/2026-10-10-invite-codes/`**（含 `MD5-LEDGER.txt` + **写前空导 `jiapu_invite_codes.pre-20261010092809..json`**）。
+- **待裁备注（登记为待办 · 不当作已解决）**：`R5UMHH` 指向的姬少康 `is_living=false`（**已故**）—— **resolve / bind 不校验在生故、`can_bind:true`（可绑定）**；但**签发路径 `POST /invite/code` 现会 `400`「已故节点不可发起入族邀请」**（**文案逐字现证 = `cloudfunctions/compat-api/lib/invite-codes.test.js:267`**）⇒ **此码可解析可绑定、不可重新签发**（**是否保留待 Kevin 定**）。
+- **运行时现象（登记）**：云端云函数 `compat-api` 的**集合读走进程内 `colCache`（无 TTL；现证 `cloudfunctions/compat-api/lib/store.js:96`）** ⇒ **直连 SDK 写入后，旧温热实例仍返旧值**（**探针初期读数 `53 valid / 7 not_found`**），**实例轮换后全 valid**。**含义**：**后台写入后可能「看着没生效」，重试 / 等实例轮换即可**。
+
+### §60-2 批 2：沈伟真身回流 + 「号」统一（**全程未删任何节点 / 关系**）
+
+- **背景**：Kevin 在**线上**编辑了沈氏真身 `shen_27784_01` 的 `I000276`（`handle = 103f95b86f98dd5f705a545ce84`）；本批把它**反向回流本地**，并把季氏树镜像 `I000253`（`handle = 4fb0172be158d263afc1319d`，`marriage` 型镜像）的**「号」统一**。**仲裁结论 = 不删节点**（`I000253` 是季志全的妻子 + **季清昆（Kevin 锚点）的母亲**；Kevin 明确「**不接受季清昆失去母亲**」且「**保留『出嫁至季氏』记录**」）。
+- **云端 → 本地**：`shen_27784_01` 树 `people.I000276.residence_places` = **`[{origin_code:"130302",note:"",start_year:"1991"}]`**（原 **`[]`**）、`version` **26 → 27**、`updated_at` → **`2026-10-10T09:31:34.480Z`**；详情档 `attributes` **5 项**（**新增 `{key:"谥号",value:"小炜",type:"谥号"}`**；原有 `号=和平` / `RIN` / `_UID` / `external_relation_note`「**沈伟 出嫁至 季氏 · 季氏费县白露家族 的 季志全**」**保留**）。
+- **本地 → 云端**：**四件**（shen 树 / shen 详情 / ji 树 / ji 详情）**upsert** 并**逐件回读 `field_diffs=0`**（shen 树 **`byte_equal=true`**；云存储 `fileID` **未变**）。
+- **「号」统一**：镜像详情 `号` **`小炜 → 和平`**（**保留该 attribute、不新增**）。
+- **QA 复读（云端）**：shen 树 `version=27` / `updated_at=2026-10-10T09:31:34.480Z` / `people=15` / `families=7`；ji 树 `version=86` / `people=58` / `families=33`（**不变**）。
+
+### §60-3 真源写入（**本地实际变更** · 前后 md5）
+
+- **本地真源实际变更 = 3 个文件**（**`migrate-output/trees/ji_23395_01.json` 不变**）；**其余真源零写入**。
+  - **① 树档 `migrate-output/trees/shen_27784_01.json`**：md5 **`6a2df5b6f37879ae28292f19a8c050ee` → `38a8a1132cb5f05e2b50468c6b1e7b22`**（`version` **26 → 27**、`updated_at` → **`2026-10-10T09:31:34.480Z`**）；**改动面 = `people.103f95b86f98dd5f705a545ce84.residence_places` `[] → [{origin_code:"130302",note:"",start_year:"1991"}]`（恰 1 处）**。
+  - **② 详情档 `migrate-output/details/shen_27784_01:103f95b86f98dd5f705a545ce84.json`**：md5 **`40285c7fb592558aca7af468b1164b0b` → `7f1734a09c53c173d2e514ed1549520b`**（**新增 `谥号=小炜`**；`attributes` 成 5 项）。
+  - **③ 详情档 `migrate-output/details/ji_23395_01:4fb0172be158d263afc1319d.json`**：md5 **`be8a938003482c576be879421416261b` → `bb5d2bc08572ccd39fc2d7547768dba2`**（**镜像 `号` `小炜 → 和平`**）。
+  - **④ 树档 `migrate-output/trees/ji_23395_01.json`**：**不变**（md5 **`17ba96952be76b7de48e002048218da7`**）。
+- **执行台账（落点 = scratch）**：`shen-refull-write-20261010095556.json`（**3 变更 + 1 不变**，逐项 `semantic_changed`）· `shen-refull-push-20261010095621.json`（**四件 upsert**）。**如实登记（一坑）**：`shen-refull-push` **自报 `result = readback-mismatch` / `field_diffs=1`**，**成因 = 云端回读带 `_id` 键**（非内容差异）；随后 **`shen-refull-readback-1791626201416.json` 复读 `field_diffs=0`、`byte_equal=true`**，**与 QA 一致**。
+- **归属 = Zang 代 Kevin 执行的派单内写入**（**依据 = Kevin 指示「按最合理的执行」+ 三条约束**）。
+
+### §60-4 3100 停 / 起
+
+- **面板 API 一条命令串写**（**stop → 写 → start**）；**PID `49941 → 12188`**；**5199 未动**（QA 复检 **3100 pid=12188 running** / **5199 pid=67560 running**）。
+
+### §60-5 备份与回滚基线
+
+- **批 1** = **`~/jiazu-backups/2026-10-10-invite-codes/`**（`MD5-LEDGER.txt` + **写前空导 `jiapu_invite_codes.pre-20261010092809..json`**）。
+- **批 2** = **`~/jiazu-backups/2026-10-10-shen-refull/`**：**`local-before/`**（**本地写前 4 件**：`migrate-output__trees__shen_27784_01.json` / `migrate-output__details__shen_27784_01:103f95b86f98dd5f705a545ce84.json` / `migrate-output__trees__ji_23395_01.json` / `migrate-output__details__ji_23395_01:4fb0172be158d263afc1319d.json` + `MD5-LEDGER.txt`）+ **`cloud-before/`**（**云侧写前 4 件** + `MD5-LEDGER.txt`）+ **`cloud-after/`**（**云侧写后 4 件**）。
+- **现盘 md5 == 上列 after 值**（**Jing 只读现证 2026-10-10**）⇒ **备份可作回滚基线**。
+
+### §60-6 独立复检（Neng · 只读）
+
+- **产物 = `scratch/qa-shen-refull-20261010T095900Z.json`**，**`verdict = ALL_PASS`**、**`discrepancies_vs_selfreport = []`**（**六项全 PASS**：云端 shen 树 / shen 详情 / ji 镜像详情 / 未删节点关系红队 / 本地 md5 与服务 / 可达项）。
+- **重点红队 = 未删任何节点 / 关系**：`I000253`（`4fb0172be158d263afc1319d`）**仍在** · family **`1305f76328532de23346f02b`** **槽位未变**（`father = 季志全 103f95b86f7c41b9ec482ae0799c` / `mother = I000253` / `children = ["7146eadb86a0af696614b36d"]`（= **季清昆**））· ji 树 `people=58` / `families=33`（**不变**）· 真身 `external_tree` / `external_person_handle` / `external_marriage_id` **与「出嫁至季氏」note 保留**。
+- **Jing 现盘只读复核同值**（`I000253` 在、family 槽位同上、`姬少康 I0114 is_living=false`、四文件 md5 见 §60-3）。
+
+### §60-7 待裁 / 未决（**登记为待办 · 不当作已解决**）
+
+1. **镜像一致性架构问题（待 Kevin 定 C / A / D）**：判据函数 **`isReadonlyMirror`**（**现证 `cloudfunctions/compat-api/lib/founder-attach.js:136`**（**函数体首行；其 JSDoc 块止于 `:135`**，派单口径 `:135` = 该 JSDoc 末行））**只把 `founder` / `chain` 两类镜像纳入只读锁** ⇒ **`marriage`（跨树婚姻）/ `child`（跨树子女）型镜像两侧仍可编辑**（**沈伟本次即此类**）；且**不存在「真身 → 镜像」的任何自动同步**。**存量盘点（只读）**：**全站 32 个镜像**（`founder` **7** / `marriage` **22** / `child` **3**）、**29 个与真身有内容出入**（**绝大多数为「镜像缺档 / 字段旧」**，**几乎无两侧都有值且冲突的情况**；**唯一「镜像领先」= 李梅 style `death_date` 2006 vs 真身空**）。**候选方案**：**C 补锁（立即）/ A 读侧派生（根治）/ D 存量清理**。**未立项、未实现**。
+2. **带色称号数据化需求（待 Kevin 定 6 个决策点）**：现「**★人文始祖 / 五帝 / 周文王 / 元圣 / 鲁国始君 / 季氏得姓始祖 / 季孙氏宗主**」为 **`frontend/src/components/shiben-timeline/shiben-timeline.vue` 的硬编码 `KEY_NODES`（8 条；现证 `:122`）** + **`KEY_THEME_COLORS`（现证 `:134`）**，**只作用于世本视图**；**需求 = 改为数据属性 + 编辑页可填 + 有管理权限者填**。**未立项、未实现**。
+
+### §60-8 状态词与边界
+
+- **状态 = 「两小批均已执行（云端 env `liwu-d8gek6jjdab1d087c` 数据面已更新）+ 已独立质检（批 2 六项全 PASS）」**。
+- **本节只追加、不改 §0–§59 任何历史行**（承 `AGENTS.md` §0-4）；**未碰 `docs/*.qa.md`**（§0-5）。
+- **遗留 = 见 §60-7 两条**（**镜像一致性架构 C / A / D** / **带色称号数据化 6 决策点**）；**另 §60-1 待裁备注**（**`R5UMHH` 保留与否待 Kevin 定**）。
