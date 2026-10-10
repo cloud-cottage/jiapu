@@ -466,6 +466,12 @@ cd frontend && npm run type-check      # vue-tsc --noEmit
 - **真源零写入自证（追加 · 2026-10-10 · 只追加，不改上列各行）**：本批**未触碰** `migrate-output/**` 与 `config/tree-meta.json`（全程只读）。**Jing 只读实测**（制度台账法 = shell 管道 `find … -type f | sort | xargs md5 -q | md5 -q`）：`config/tree-meta.json` md5 = **`15299248d1b1fbbb066a741bb37e034f`**（开工 = 收工同值）；`migrate-output/**` 聚合 md5 = **`920a26af8e5fbed193fa3c63be5596ff`**（**342** 文件，开工 = 收工同值）；`migrate-output/** + config/**` 全量聚合 = **`b2090144b1791d0efadaf59a56785df4`**（**406** 文件，开工 = 收工同值）。**本单仅动 `AGENTS.md` / `docs/PENDING_DEPLOY.md` / `docs/uri-aliases.spec.md` 三个文档（纯追加）**。
 - **制度口径（承 §2.1）· 本批重申**：**后续本机验证优先用 `/tmp` 副本栈**（`COMPAT_OUT_DIR` / `COMPAT_META_FILE` 钩子），**避免无谓 touch 真源**；确需对真源跑时**先备份、后登记前后 md5**。
 
+- **真源写入登记 · 数据面上云批（追加 · 2026-10-10 · **归 Zang 代 Kevin 执行的派单内写入** · 依据 = Kevin 授权「数据面上云」 · 只追加，不改上列各行）**：按 `AGENTS.md` §2.1 / §7，**写前先备份、写后登记前后 md5**。本批 = **「数据面上云」（本地真源 `migrate-output/**` → 云端 CloudBase 环境 `liwu-d8gek6jjdab1d087c`）**，**已执行完毕 + 两轮独立质检通过**。**本批对真源写入仅 2 个文件**（**其余真源零写入**）：
+  - **① 树档 `migrate-output/trees/ji_23395_01.json`**：md5 **`778e48aeba40f9729997de55eea5e3f9` → `17ba96952be76b7de48e002048218da7`**（`version` **85→86**、`updated_at` 置 now）；**改动面 = 镜像节点「沈伟」`4fb0172be158d263afc1319d` 补入云端独有字段**（**逐字照录、只补空 / 缺**：`birth_date:"1958-03-13"` / `death_date:"2010-02-02"` / `birth_place:{"origin_code":"230305","note":""}` / `is_living:false` / `residence_places:[{230305},{130302}]`）。
+  - **② 详情档 `migrate-output/details/ji_23395_01:4fb0172be158d263afc1319d.json`**：md5 **`67feabbe3b09ec9280a8ef7e597ce6e8` → `be8a938003482c576be879421416261b`**（`attributes:[{key:"号",value:"小炜",type:"号"}]` + `updated_at:"2026-10-04T12:49:48.714Z"`）。
+  - **备份 = `~/jiazu-backups/2026-10-10-data-sync/local-pre-merge/`**（含上列两文件的 pre-merge 副本；**快照内两文件 md5 = 上列前值** ⇒ **可作回滚基线**）；**本批云端回滚基线** = 同目录上层 `~/jiazu-backups/2026-10-10-data-sync/`（**云端全量 20 集合 + 19 树 + `MD5-LEDGER.txt`**）。
+  - **归属 = 归 Zang 代 Kevin 执行的派单内写入**（**依据 = Kevin 授权「数据面上云」**）；**其它真源（`migrate-output/**` 其余 + `config/tree-meta.json`）零写入**（`config/tree-meta.json` `mtime` 停在 **10-07**、`git status --porcelain` **空**）。**同步登记 = `docs/PENDING_DEPLOY.md` §59（§59-2 真源写入 / §59-3 回滚基线）**。
+
 ---
 
 ## 8. 部署口径（只做本地阶段）

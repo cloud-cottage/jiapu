@@ -6189,3 +6189,78 @@ cd frontend && VITE_API_BASE=https://liwu-d8gek6jjdab1d087c.service.tcloudbase.c
 - **状态** = **「实现已落盘 + 三轮真机质检通过（自建 SPA fallback 服务器）；上云动作未执行」**。**不得写「已上云 / 已在 Vercel 验证」**（**本节未跑任何 `vercel` / `tcb` / 打包写命令，未动真源 / 云端**）。
 - **本节只追加、不改 §0–§57 任何历史行**（承 `AGENTS.md` §0-4）。
 - **遗留给上云**：**P0 必改 = 先改 Vercel env 的 `VITE_API_BASE`（补 `/api`）→ 再重打产物**；**`rewrites` 在 Vercel 上生效属上云后冒烟项**（§58-5）。
+
+---
+
+## §59 数据面上云批（本地真源 → 云端；19 树 + 303 详情 + 树元 + id_seq + 锚点 + assets 逐笔合并 · **已执行** · 两轮质检 · 2026-10-10 · **只追加 · 不改 §0–§58 任何行**）（Jing 制度员）
+
+> **性质（只追加）**：本节为 **「数据面上云」（本地真源 `migrate-output/**` → 云端 CloudBase 环境 `liwu-d8gek6jjdab1d087c`）批** 的**已执行登记**（**§0–§58 既有行原文一律保留、一字不改、一行不删**；承 `AGENTS.md` §0-4）。**Kevin 已授权「数据面上云」**；本批**已执行完毕**，并经**两轮独立质检**（**轮 1** 由 Neng 出 **1 FAIL** → **Kong 补正** → **轮 2** Neng 定向复检 **全 PASS**）。
+> **纪律（硬）**：本节读数**一律取自已实测 / 已登记的派单读数**，**不推算、不预填**；**判据一律以命令实际输出为准**（**不得编数字**）。
+> **触发方 / 归属**：**上云动作 = Zang 统一收口执行**；**真源写入 = Zang 代 Kevin 执行的派单内写入**（依据 = Kevin 授权「数据面上云」），真源写入登记的落点 = `AGENTS.md` **§7 本批追加行**。
+
+### §59-0 批次定性与动作面
+
+| # | 面 | 对象 | 动作 | 结果（实测） |
+|---|---|---|---|---|
+| ① | 云存储（树 JSON） | **19 棵树** | 覆盖上传（`fileID` 未变） | **回读 `downloadFile` 19/19 字节级 md5 == 本地**；`_meta.storage_files` **仍 19 条可下载** |
+| ② | 集合 `jiapu_person_details` | 详情档 | 覆盖写入 | **303** 档（含 **6** 个本地独有档） |
+| ③ | 集合 `jiapu_tree_meta` | 树元 | 覆盖写入（`_meta` 合并） | **20** 档（`_meta` 保留 **19** 条 `storage_files` + **19** 树档；`li_26446_02.description` 本地更新、`version 1→2`） |
+| ④ | 集合 `jiapu_id_seq` | 序号 | **只抬不降** | `person.next` **409→414**、`family.next` **247→250** |
+| ⑤ | 集合 `jiapu_anchors` | 锚点 | 覆盖 `16601061656` | handle → **`7146eadb86a0af696614b36d`**（`tree_id` `ji_23395_01`；原云端旧 handle **指向不存在节点**） |
+| ⑥ | 集合 `jiapu_assets` | 账本 | **逐笔合并**（**未去重**） | `txs` **231**（common **195** + 云端独有 **6** + 本地独有 **30**）→ 补 **1** 条 `fragment_synth` 后 **`txs` = 232**（`version` **21→22**） |
+| ⑦ | 其余 **12** 集合 | — | — | 内容级对比 **0 差异 ⇒ 未写** |
+
+- **明确跳过（未推）**：`jiapu_users`（**不推本地 QA 账号 `13800000077`**；云端仍 **2** 档）· `jiapu_sms_codes`（云仍 **0**）· `jiapu_invite_codes`（云仍 **0**，本地 **2** 码 `73EMZ5` / `R5UMHH` 待 Kevin 定）。
+- **未建集合 / 未删集合 / 未删文档**。
+
+### §59-1 上云动作面（云端 env `liwu-d8gek6jjdab1d087c`）
+
+- **① 19 棵树 JSON → 云存储覆盖上传**：**回读 `downloadFile` 19/19 字节级 md5 == 本地**；**`fileID` 未变**、`_meta.storage_files` **仍 19 条可下载**。
+- **② `jiapu_person_details` → 303 档**：含 **6 个本地独有档** —— zhonghua **5** 个新 handle `5cc029efa93279f4996426db` / `8ecbd8db1c83a9503b443d86` / `c4aa56690099fb31a8817f0b` / `92d03c30e92509b93348a113` / `0343d8762d57a726698f24a4` + `li_26446_02:b1cb60b34e7cec2e6e9fe581`。
+- **③ `jiapu_tree_meta` → 20 档**：`_meta` 保留 **19** 条 `storage_files` + **19** 树档；`li_26446_02.description` **本地更新**、`version` **1→2**。
+- **④ `jiapu_id_seq` → 只抬不降**：`person.next` **409→414**、`family.next` **247→250**。
+- **⑤ `jiapu_anchors` `16601061656` → handle `7146eadb86a0af696614b36d`**（`tree_id` = `ji_23395_01`；原云端旧 handle **指向不存在节点**）。
+- **⑥ `jiapu_assets/16601061656` → 逐笔合并**：`txs` **231**（= common **195** + 云端独有 **6** + 本地独有 **30**，**未去重**；**10-05 双签到两笔均保留**）→ 补写 **1** 条 `fragment_synth` 流水后 **`txs` = 232**（`version` **21→22**）；**六币种账实恒等**：fragments **3** / seeds **932** / bamboos **726** / jades **16** / scrolls **100** / scroll_fragments **21**（公共批 `bl_mu67o50m30bxt` **691→690**，补扣云端沈伟 `edit_fee` **−1**）。
+- **⑦ 其余 12 集合**：内容级对比 **0 差异 ⇒ 未写**；**未建 / 删集合、未删文档**。
+- **⑧ 明确跳过（未推）**：`jiapu_users`（**不推本地 QA 账号 `13800000077`**；云仍 **2** 档）· `jiapu_sms_codes`（云仍 **0**）· `jiapu_invite_codes`（云仍 **0**，本地 **2** 码待 Kevin 定）。
+
+### §59-2 真源写入（**唯一** · 已先备份）
+
+- **写入对象 = 2 个真源文件**；**其余真源零写入**。
+- **① 树档 `migrate-output/trees/ji_23395_01.json`**：md5 **`778e48aeba40f9729997de55eea5e3f9` → `17ba96952be76b7de48e002048218da7`**（`version` **85→86**、`updated_at` 置 now）。**改动面 = 镜像节点「沈伟」`4fb0172be158d263afc1319d` 补入云端独有字段（逐字照录，只补空 / 缺）**：`birth_date:"1958-03-13"` / `death_date:"2010-02-02"` / `birth_place:{"origin_code":"230305","note":""}` / `is_living:false` / `residence_places:[{230305},{130302}]`。
+- **② 详情档 `migrate-output/details/ji_23395_01:4fb0172be158d263afc1319d.json`**：md5 **`67feabbe3b09ec9280a8ef7e597ce6e8` → `be8a938003482c576be879421416261b`**：`attributes:[{key:"号",value:"小炜",type:"号"}]` + `updated_at:"2026-10-04T12:49:48.714Z"`。
+- **备份 = `~/jiazu-backups/2026-10-10-data-sync/local-pre-merge/`**（含两文件 pre-merge 副本）；**快照内两文件 md5 = 上列前值**（`778e48ae…` / `67feabbe…`）⇒ **可作回滚基线**。
+- **归属 = Zang 代 Kevin 执行的派单内写入**；**依据 = Kevin 授权「数据面上云」**。
+- **其它真源（`migrate-output/**` 其余 + `config/tree-meta.json`）零写入**：`config/tree-meta.json` `mtime` 停在 **10-07**；`git status --porcelain` **空**。
+- **制度口径（承 `AGENTS.md` §2.1）**：**后续本机验证优先用 `/tmp` 副本栈**，**避免无谓 touch 真源**；确需对真源跑时**先备份、后登记前后 md5**。
+
+### §59-3 回滚基线与中间产物
+
+- **回滚基线 = `~/jiazu-backups/2026-10-10-data-sync/`**：**云端全量（20 集合 + 19 树）** · `MD5-LEDGER.txt`（**41 行** = 2 行表头 + **39 数据文件条目**；**自校验通过**）· `COUNTS.txt`（集合档数 + 树 `people` / `families` / `version`；末行 `[MISMATCH] none`）。
+  - **子目录**：`local-pre-merge/`（本地真源 pre-merge：`trees/ji_23395_01.json` + `details/ji_23395_01:4fb0172be158d263afc1319d.json`）· `merge-pre-write-20261010065353./`（`jiapu_assets_16601061656.json`，md5 **`b12bfbfe13f107d024ca6a08b9a75c1c`**）· `synth-tx-pre-write-20261010070042./`（`jiapu_assets_16601061656.json`，md5 **`9b0940b2ead0a6d119824ca4fd9db906`**）。
+- **中间产物 / 报告（落点 = scratch）**：`cloud-inventory-20261010-1438.json`（云端盘点）· `cloud-deepdiff-20261010064515.json`（内容级深 diff）· `exec-20261010/data-sync-exec-20261010065511.json`（执行台账）· `qa-data-sync-20261010065917.json`（轮 1 质检）· `fix-synth-tx-20261010070042..json`（补正）· `qa-synth-tx-20261010150257..json`（轮 2 质检）。
+
+### §59-4 质检（两轮，均只读）
+
+- **轮 1（Neng）**：**8 项** —— **7 PASS**（线上 **118** 人 / **5** 新节点可见 / **19** 树字节级一致 / 集合面 / 未越界 / 真源面 / 本地未污染）+ **1 FAIL（assets 账实不符）**：**碎片净额 13 vs 实存 3、籽 931 vs 932**；**物证 = 籽批 `sl_mv21g9i618ufc` 无对应流水**；**合并前云端档自洽**。
+- **补正（Kong）**：补写 `fragment_synth` 流水 —— `id` = **`tx_mv21g9i62u8xe`** · `ts` = **`2026-10-10T06:53:53.310Z`** · `delta` = **`{fragments:-10, seeds:1}`** · `desc` = **「碎片满 10 自动合成 1 颗石榴籽」**；**形态真源 = `lib/economy-ledger.js:352/465/466`**。
+- **轮 2（Neng · 定向复检）**：**全 PASS** —— 六币种 **`Σdelta == 实存`**、**`txs=232`**、**新流水形态与代码逐字一致**、以 **synth-pre 为基线**「**除 `txs` / `version` 外无非允许变化**」、**幂等零写**；且**用户视角验收 PASS**（`https://www.jiapu100.com/z/` 页面标题「中华世本 · 全球华人家谱总谱」、正文「共 118 人」、**无报错无空态**）。
+
+### §59-5 冒烟读数（上云后）
+
+- 线上 `tree/rank?tree_id=zhonghua` = **118**（原 **113**）；
+- `ji_23395_01` = **58**（**不变**）；
+- **19 树云端 == 本地**。
+
+### §59-6 遗留项与如实登记项
+
+1. **`jiapu_invite_codes` 本地 2 码**本次**未推**（待 Kevin 定）；**`jiapu_users` QA 账号**与 **`jiapu_sms_codes`** **不推**（**开发产物不进生产**）。
+2. **沈伟镜像 `号` = 「小炜」 vs 其真身（`shen_27784_01:103f95b86f98dd5f705a545ce84`）`号` = 「和平」—— 不一致**；本轮**照录云端原值、未擅自统一**（**待 Kevin**）。
+3. **环境集合总数实测 70**（**非 65**）：`liwu` 为**共用环境**（含 `med_*` / `xiai_*` / `partner_*` / `shop_*` / `user_*` 等他项目集合）；**无执行前全环境台账** ⇒「**未新建其它集合**」只能以「**无 `jiazu_*` + 20 个 `jiapu_*` 档数不减**」**佐证**（**非直接证死**）。
+4. 本轮以**执行时点 STS 登录态**驱动（**凭据仅经 env / 进程内，不落盘不打印**）；**若日后重跑需 `tcb` 登录态有效**。
+
+### §59-7 状态词与边界
+
+- **状态 = 「已执行（云端 env `liwu-d8gek6jjdab1d087c` 数据面已更新）+ 两轮独立质检通过」**。
+- **本节只追加、不改 §0–§58 任何历史行**（承 `AGENTS.md` §0-4）；**未碰 `docs/*.qa.md`**（§0-5）。
+- **遗留 = 见 §59-6 四条**（**`jiapu_invite_codes` 2 码待 Kevin 定** / **沈伟 `号` 不一致待 Kevin** / **集合总数 70 口径** / **STS 登录态**）。
