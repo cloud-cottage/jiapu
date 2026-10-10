@@ -6072,3 +6072,40 @@ wc -c < cloudfunctions/deploy/compat-api/index.js; md5 -q cloudfunctions/deploy/
 
 - **旧集合（`jiazu_*` 20 个）已删除 ⇒ 已不可回滚；唯一回滚基线 ＝ 上述备份目录 `~/jiazu-backups/2026-10-09-jiazu-collections-pre-delete/`**。
 - **本节只追加、不改 §57-0 ～ §57-7 任何历史行**（承 §0-4）；**登记 ≠ 重跑**（本节未跑任何 `tcb` / 迁移 / 删除写命令，未动真源 / 云端）。
+
+---
+
+### §57-9 回写 · Vercel 面（R4）已部署（**`jiapu100.com` 已上线**）（2026-10-09 CST · Jing · **只追加 · 不改 §57-0 ～ §57-8 任何行**）
+
+> **性质（只追加）**：本节为 §57-3（**Vercel 面 R4**）「**回写位**」（判据形态 `:5946` / 阻塞点 `:5947`；回写位 `:5955`）的**收口回写**（**§57-0 ～ §57-8 既有行原文一字未改、一行未删**；承 `AGENTS.md` §0-4）。**登记时点 ＝ 2026-10-09（CST）**。**读数来源逐项标注**：**① 现盘 / 主代理现场实测** ＝ Jing 落笔时本机只读实测（本地判据）；**② 执行方实测** ＝ Vercel / 云侧执行方现网 / 现盘读数。**行号 / md5 / 字节 / 数值一律以对应来源实际读数为准，不推算**（承 §57 尾注纪律）。**授权依据 ＝ Kevin 2026-10-09 执行 Vercel 面（R4）登录 ＋ `jiapu100.com` DNS 解析生效**。
+
+**一、项目定位与登录态（证据来源 ＝ 执行方实测）**
+
+- **①** **Vercel 项目定位** ＝ **`kevins-projects-f98df261/jiapu`**（项目 ID **`prj_0uH16ij1L5sgfp0pL5OJZ8JtMXxh`**）；**本机默登录账号 `alwaysfit` 下无此项目**（仅见 `seafood`）⇒ **先 `vercel login` 换至拥有该项目的账号 `cloud-cottage`（团队 `kevins-projects-f98df261`）**方可操作；项目为 **Git-connected**（**`main` push 即触发生产构建**）。
+
+**二、失败根因与修复（证据来源 ＝ 执行方实测；本地修复面 ＝ 现盘 / 主代理现场实测）**
+
+- **②** **失败根因（修复前 · 执行方实测）**：项目 **Root Directory ＝ `frontend`**，而 `vercel.json` 曾置**仓根**且命令带 `frontend/` 前缀 ⇒ 叠加成 **`frontend/frontend`**，构建失败（实测 `npm error path /vercel/path0/frontend/frontend/package.json`；**最近 4 次生产部署均 ● Error**）。
+- **③** **修复（commit `65a317a`）**：`vercel.json` **移入 `frontend/`**、三命令改按 frontend 相对（**现盘 `frontend/vercel.json` 实测** ＝ `installCommand: npm install` / `buildCommand: npm run build:h5` / `outputDirectory: dist/build/h5` / `framework: null`）；**删仓根 `vercel.json`**（**现盘** ＝ 仓根无 `vercel.json`）；**`.gitignore` 加 `.vercel`**（**现盘 `.gitignore:64`** ＝ `.vercel`）。**commit 现盘实测** ＝ `65a317a fix(deploy): Vercel 配置移入 frontend/（项目 RootDir=frontend，三命令按根相对写）+ 删仓根 vercel.json；.gitignore 忽略 .vercel`；numstat ＝ `.gitignore +1 / frontend/vercel.json +7 / vercel.json −7`。
+
+**三、env 配置与跨域（证据来源 ＝ 执行方实测）**
+
+- **④** **env 配置**：**`VITE_API_BASE=https://liwu-d8gek6jjdab1d087c.service.tcloudbase.com`** 已配（**Production** · **`Encrypted`**）；云函数 HTTP 服务 **CORS ＝ `access-control-allow-origin: *` ＋ `OPTIONS → 204`** ⇒ **跨域直连可行、无需同源代理**。
+
+**四、部署与域名（证据来源 ＝ 执行方实测）**
+
+- **⑤** **部署与域名**：push 后新生产部署 **`jiapu-jinu0z45v` ＝ ● Ready**（**Duration 1m**；构建日志 **`Running "install" command: npm install`** → **`DONE Build complete.`**）；**`jiapu100.com` 与 `devjiapu.vercel.app` 均已自动跟随该新部署**（**项目域名，无需手动 alias**）。
+
+**五、线上取证（证据来源 ＝ 执行方实测 · 真实 IP 抓取）**
+
+- **⑥** **线上取证**（**本机 DNS 被劫持返 `198.18.x.x` ⇒ 一律 `curl --resolve <host>:443:76.76.21.21`**）：`GET https://jiapu100.com/` ＝ **200**；入口 chunk **`/assets/index-Bk_gHPUm.js`（309,895 B）含 `liwu-d8gek6jjdab1d087c` × 1** ⇒ **API 基址已 baked**；**`jiapu_auth` × 1**（**`jiazu_auth` 0**）；**`assets/person-archive.hfa1PoPL.js`（100,961 B）含 `新建祖谱` / `消耗 99 颗石榴籽` / `已故` 各 1**；`GET https://liwu-d8gek6jjdab1d087c.service.tcloudbase.com/api/tree-meta`（带 **`Origin: https://jiapu100.com`**）＝ **200**。
+
+**六、待办（证据来源 ＝ 执行方实测 · 如实登记 · 均待 Kevin）**
+
+- **⑦** **待办（如实登记，均待 Kevin）**：**小程序上传（微信开发者工具）**；**`frontend/src/static/tree-api.json`**（栈客账号口令 · **现盘 `git check-ignore` 实测 ＝ 已忽略，`.gitignore:37`**）**线上不随仓发布** ⇒ 线上「访客树列表」行为与本地有差异（**裁定 ＝ 不向公开静态包注入凭据**；若要该功能上线需**另铸只读受限凭据**）；**旧集合 `jiazu_*` 已删**（见 §57-8）。
+
+**七、边界（硬）**
+
+- **状态** ＝ **「R4（Vercel 面）已部署 · `jiapu100.com` 已上线」**；本节**只追加、不改 §57-0 ～ §57-8 任何历史行**（承 §0-4）。
+- **不得写「小程序已上传」**（**未做**）；**不得写「全部完成」**（**小程序上传仍待 Kevin**）。
+- **登记 ≠ 重跑**：本节未跑任何 `vercel` / `tcb` / 打包写命令，未动真源 / 云端。
