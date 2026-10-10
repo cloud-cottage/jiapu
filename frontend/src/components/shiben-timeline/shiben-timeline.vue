@@ -116,50 +116,10 @@ const chainGenMap = computed(() => {
 
 const archiveModal = ref<InstanceType<typeof PersonDetailModal> | null>(null);
 
-// ---- 关键节点标注（原「📜 时间轴」模式的 KEY_NODES：人文始祖 / 五帝 / 周文王 / 元圣 / 得姓始祖 / 宗主）----
-// 时间轴视图下线后这份锚点改由纵向树图承载：命中节点在卡片内加一行「★标签」+ 卡面文字主题色。
-/** 关键节点（key = Gramps 存储的「名+姓」拼接写法，如 伏羲风 / 文子季；gen = 源流链世数） */
-const KEY_NODES: Record<string, { tag: string; theme: string; gen: number }> = {
-  伏羲风: { tag: '人文始祖', theme: 'warning', gen: 1 },
-  黄帝姬: { tag: '五帝', theme: 'warning', gen: 56 },
-  帝喾姬: { tag: '五帝', theme: 'warning', gen: 59 },
-  昌姬: { tag: '周文王', theme: 'danger', gen: 74 },
-  旦姬: { tag: '周公·元圣', theme: 'danger', gen: 75 },
-  伯禽姬: { tag: '鲁国始君', theme: 'primary', gen: 76 },
-  友季: { tag: '季氏得姓始祖', theme: 'primary', gen: 88 },
-  文子季: { tag: '季孙氏宗主', theme: 'success', gen: 90 },
-};
-
-/** 主题 → 标注文字色（沿用原时间轴 t-tag 的 warning/danger/primary/success 语义，暖棕主旋律里的点缀色） */
-const KEY_THEME_COLORS: Record<string, string> = {
-  warning: '#B26A00',
-  danger: '#C62828',
-  primary: '#1565C0',
-  success: '#2E7D32',
-};
-
-/**
- * 关键节点匹配索引：原键之外补「去掉末尾姓字」的写法（KEY_NODES 常量本身不改），
- * 以便节点改名（如 帝喾姬 → 帝喾 / 文子季 → 号「文子」）后仍能命中。
- */
-const KEY_INDEX: Record<string, { tag: string; theme: string; gen: number }> = (() => {
-  const idx: Record<string, { tag: string; theme: string; gen: number }> = {};
-  for (const [key, info] of Object.entries(KEY_NODES)) {
-    idx[key] = info;
-    if (key.length > 1 && !idx[key.slice(0, -1)]) idx[key.slice(0, -1)] = info;
-  }
-  return idx;
-})();
-
-/** 命中关键节点：候选串 = 名+姓 / 姓+名 / 名 / 称号（谥号 · 封号 · 号） */
-function matchKeyNode(fn: string, sn: string, attrs: Record<string, string>) {
-  const cands = [`${fn}${sn}`.trim(), `${sn}${fn}`.trim(), fn.trim()];
-  for (const k of ['谥号', '封号', '号']) if (attrs[k]) cands.push(attrs[k].trim());
-  for (const c of cands) if (c && KEY_INDEX[c]) return KEY_INDEX[c];
-  return null;
-}
-
-/** handle → 关键节点标注（传给纵向树图 tree-pedigree 的 keyMarkers：★标签 + 主题色） */
+// ---- 关键节点标注（批 1b-2 起：完全数据驱动）----
+// 硬编码 KEY_NODES / KEY_THEME_COLORS / KEY_INDEX / matchKeyNode 已随批 1b-2 退场；
+// ★ 标注一律由节点自身的 `称号` / `称号色` attributes 现算（契约 docs/person-badge.spec.md §2 / §4 / §6）。
+/** handle → 关键节点标注（传给纵向树图 tree-pedigree 的 keyMarkers：★标签 + 色值） */
 const keyMarkers = ref<Record<string, { label: string; color?: string }>>({});
 
 const shibenLoading = ref(false);
@@ -202,10 +162,10 @@ async function fetchChainData(): Promise<any[]> {
   const raw = await res.json();
   const chain: any[] = [];
   /**
-   * 数据优先：本树 people 的 `称号` / `称号色` 现算标注（**所有节点，不限链上**）。
-   * 契约 docs/person-badge.spec.md §2；旧硬编码 KEY_NODES 仅作兜底（见下）。
+   * 本树 people 的 `称号` / `称号色` 现算标注（**所有节点，不限链上**）。
+   * 契约 docs/person-badge.spec.md §2 / §4：命中即标（以 handle 命中），**无**候选串匹配。
    */
-  const dataMarkers: Record<string, { label: string; color?: string }> = {};
+  const markers: Record<string, { label: string; color?: string }> = {};
   for (const p of raw) {
     if (!p.handle) continue;
     const attrs: Record<string, string> = {};
@@ -213,10 +173,8 @@ async function fetchChainData(): Promise<any[]> {
       if (typeof a.type === 'string') attrs[a.type] = a.value;
     }
     const badge = badgeOf(Object.keys(attrs).map((k) => ({ key: k, value: attrs[k] })));
-    if (badge) dataMarkers[p.handle] = { label: badge.label, color: badge.color };
+    if (badge) markers[p.handle] = { label: badge.label, color: badge.color };
   }
-  /** 本次命中的关键节点标注（handle → 标签/主题色）：数据优先，KEY_NODES 常量兜底 */
-  const markers: Record<string, { label: string; color?: string }> = { ...dataMarkers };
   for (const p of raw) {
     const attrs: Record<string, string> = {};
     for (const a of p.attribute_list || []) {
@@ -229,13 +187,6 @@ async function fetchChainData(): Promise<any[]> {
       const fn = pn.first_name || '';
       // 显示名：姓在前（文子季 → 季文子）
       const displayName = sn && fn ? `${sn}${fn}` : `${fn}${sn}`.trim();
-      // 关键节点（KEY_NODES）：数据无 badge 时命中常量则记入 keyMarkers（★标签 + 主题色）——兜底
-      if (!markers[p.handle]) {
-        const keyInfo = matchKeyNode(fn, sn, attrs);
-        if (keyInfo) {
-          markers[p.handle] = { label: keyInfo.tag, color: KEY_THEME_COLORS[keyInfo.theme] };
-        }
-      }
       chain.push({
         handle: p.handle,
         gramps_id: p.gramps_id,
