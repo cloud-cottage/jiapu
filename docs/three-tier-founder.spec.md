@@ -182,6 +182,7 @@
 
 - **原因**：`AGENTS.md` 为受保护文件，本单禁写（派单纪律 ②）；本单**未尝试写入**。
 - **拟稿（交主代理 / 后续批准后落盘，一行，体例同 §0 文档索引）**：
+- **追记确认（2026-10-12）**：Kevin 当面批复「**可以**」⇒ 主代理（Zang）已按上拟稿**逐字落盘**：`AGENTS.md` §0 文档索引表末 +1 行、§9 常见任务速查表末 +1 行、勘误追加区 **勘误 19**（含行号位移登记）；本节「未落盘」状态自本行起**已关账**（上文字面保留不回改）。
 
 ```
 | 三层节点关联与始祖登记防呆（自建根节点合法 + 始祖登记必写）（追加 · 2026-10-12 · Zang 裁定 v1 · Kevin 已当面拍定） | docs/three-tier-founder.spec.md | R0 自建根节点合法（无需认祖即自建根 = 合法稳态；认祖 = 额外挂上层镜像指针 external_link_type='founder'，与始祖登记正交）· R1 单一真源（tree_meta 三件套唯一权威，树 JSON legacy founder_gramps_id 仅读侧回退）· R2 建树必写（新建家族树/立支/认祖建谱/汇宗等一切建树路径同批写 founder_handle+founder_gramps_id+founder_name，缺一整单失败；取代 clan-tree §9 祖谱 founder_handle 暂空默认口径对新建路径的适用）· R3 一次性修复已执行（9 棵 legacy-only 补齐 · PENDING_DEPLOY §67-5 追记）+ 常驻巡检（scripts/tree-integrity-audit.py · 实现批）· R4 迁移类操作前置检查覆盖 founder 引用（实现核对 = 待实现批）· R5 迁徙地图无根明示「本树未登记始祖」不静默 + 文谱 W-17 保持 |
