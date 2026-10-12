@@ -23,6 +23,8 @@
  *   · 相邻重复点 / 首尾闭合重复点去重；几何统一归一为 `MultiPolygon`。
  *     阈值标定（前后实测对比）见 `--analyze`（只抓不算写），README / 派单报告另附。
  *
+ * 容错口径：上游 404（DataV 无该节点分片）⇒ 警告跳过不阻断；其它网络错误照常 throw。
+ *
  * 用法：
  *   node scripts/build-geo-bounds.mjs                 # 联网抓取 → 写 config/geo-bounds/
  *   node scripts/build-geo-bounds.mjs --analyze       # 只抓取 + 打印瘦身阈值对比表（不写盘）
@@ -400,7 +402,10 @@ export function collectAdcodes({ metaFile = TREE_META, treesDir = TREES_DIR } = 
   return [...set].sort();
 }
 
-/** 抓单个 adcode：优先 `_full.json`（全子级），叶级 404 ⇒ 回退 `<adcode>.json`（自身边界） */
+/**
+ * 抓单个 adcode：优先 `_full.json`（全子级），叶级 404 ⇒ 回退 `<adcode>.json`（自身边界）；
+ * 双 404 ⇒ 返回 `{ skipped: true }`（上游确实无该节点分片 ⇒ 调用方警告跳过，**不 throw**）。
+ */
 async function fetchBoundary(adcode) {
   const localDir = process.env.GEO_BOUNDS_SRC_DIR;
   if (localDir) {
@@ -415,7 +420,8 @@ async function fetchBoundary(adcode) {
     if (res.ok) return { json: await res.json(), source: name };
     if (res.status !== 404) throw new Error(`抓取上游失败：${DATAV}/${name} → HTTP ${res.status}`);
   }
-  throw new Error(`上游无该码的分片：${adcode}（_full.json 与 .json 均 404）`);
+  // DataV 无该节点分片（_full.json 与 .json 均 404）＝ 上游缺口，不是故障 ⇒ 跳过不阻断
+  return { json: null, source: null, skipped: true };
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -442,16 +448,22 @@ if (isMain) {
   const adcodes = collectAdcodes();
   const STATS = [0, 1e-6, 1e-5, 3e-5, 1e-4];
   const fetched = [];
+  const skipped = []; // 上游无分片（DataV 双 404）⇒ 警告跳过，不阻断整批
   let rawTotal = 0;
   for (const adcode of adcodes) {
-    const { json, source } = await fetchBoundary(adcode);
+    const { json, source, skipped: noShard } = await fetchBoundary(adcode);
+    if (noShard) {
+      skipped.push(adcode);
+      console.warn(`⚠️  跳过 ${adcode}：上游无分片（DataV 404 · _full.json 与 .json 均 404）· 已跳过`);
+      continue;
+    }
     const raw = Buffer.byteLength(JSON.stringify(json));
     rawTotal += raw;
     fetched.push({ adcode, json, source, raw });
   }
 
   if (analyze) {
-    console.log(`抓取 ${adcodes.length} 个 adcode（raw 合计 ${rawTotal} 字节）；瘦身阈值标定（shoelace 面积，平方度）：`);
+    console.log(`抓取 ${fetched.length} / 跳过 ${skipped.length} 个 adcode（共收集 ${adcodes.length}；raw 合计 ${rawTotal} 字节）；瘦身阈值标定（shoelace 面积，平方度）：`);
     console.log('  areaThr        瘦身后合计字节   剔除环/岛屿数');
     for (const thr of STATS) {
       let bytes = 0;
@@ -463,6 +475,7 @@ if (isMain) {
       }
       console.log(`  ${String(thr).padEnd(12)}  ${String(bytes).padStart(14)}   ${String(dropped).padStart(6)}`);
     }
+    if (skipped.length) console.log(`\n— skipped（上游无分片 · DataV 404，未纳入标定）${skipped.length} 个：${skipped.join(', ')}`);
     console.log(`\n选定 SLIM_AREA_THRESHOLD=${SLIM_AREA_THRESHOLD}（COORD_DECIMALS=${COORD_DECIMALS}）；未选阈值不写盘。`);
     process.exit(0);
   }
@@ -483,16 +496,18 @@ if (isMain) {
     wrote += 1;
     console.log(`✅ 已写 ${file}（${collection.features.length} 要素 / 来源 ${source} / 剔小环 ${dropped}${pruned ? ` / 剔非 6 位码要素 ${pruned}` : ''}）`);
   }
-  console.log(`— 真源 ${adcodes.length} 个分片 → ${outDir}（本次改写 ${wrote} 份）`);
+  console.log(`— 真源 ${fetched.length}/${adcodes.length} 个分片 → ${outDir}（本次改写 ${wrote} 份；跳过 ${skipped.length}）`);
+  if (skipped.length) console.log(`— skipped（上游无分片 · DataV 404）${skipped.length} 个：${skipped.join(', ')}`);
   if (prunedTotal) console.log(`— 剔除 adcode 非 6 位要素合计 ${prunedTotal}（DataV 的 100000_JD 九段线，不编造 6 位码）`);
-  console.log(`— 瘦身前后：raw 合计 ${rawTotal} 字节 → 真源合计 ${slimTotal} 字节（−${(100 * (1 - slimTotal / rawTotal)).toFixed(1)}%）`);
+  console.log(`— 瘦身前后：raw 合计 ${rawTotal} 字节 → 真源合计 ${slimTotal} 字节（−${rawTotal ? (100 * (1 - slimTotal / rawTotal)).toFixed(1) : '0.0'}%）`);
 
   // ---- 粗档：由刚落盘的细档真源派生（逐 feature 一一对应；零额外网络请求） ----
   const coarse = buildCoarseTruth({ truthDir: outDir, write: true });
   const staleCoarse = coarse.adcodes.filter((c) => !adcodes.includes(c));
   console.log(`— 粗档：由 ${coarse.adcodes.length} 份细档真源生成 → ${coarse.outDir}（本次改写 ${coarse.wrote} 份，合计 ${coarse.bytes} 字节）`);
   if (coarse.emptyFeatures) console.error(`⚠️  环被全部丢弃的 feature 数：${coarse.emptyFeatures}`);
-  const missingCoarse = adcodes.filter((c) => !coarse.adcodes.includes(c));
+  // 被跳过的码本就不落盘，粗档缺它属预期 ⇒ 不计入 missingCoarse
+  const missingCoarse = adcodes.filter((c) => !skipped.includes(c) && !coarse.adcodes.includes(c));
   if (missingCoarse.length || staleCoarse.length) {
     console.error(`❌ 粗档 adcode 集合与细档不一致：缺 ${missingCoarse.join(', ') || '无'}；多余 ${staleCoarse.join(', ') || '无'}`);
     process.exit(1);
