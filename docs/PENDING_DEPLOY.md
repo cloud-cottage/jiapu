@@ -331,3 +331,40 @@
 - **状态**：**本阶段不上云 · 只登记**。
 
 
+
+
+## §67 迁徙地图台湾可见性 + 边界分片容错（**2026-10-12 · 只追加**）
+
+> **性质**：本批 = **纯前端 + 前端资产 + 一处云端数据修正**。**§0–§66-8 既有行原文一律保留、一字不改、一行不删**。
+> **状态词**：**已实现（Kong）· 已由 Zang 本机真机复核（H5 dev 链路）· 生产域名浏览器渲染未实测**（见 §67-4）。
+
+### §67-1 上云动作清单（**已执行**）
+
+- **① 云函数 `compat-api`：无需重打**（本批零 `cloudfunctions/**` 改动）。
+- **② H5：已推送 → Vercel 自动构建**（`main`：`13cbac2` 边界真源+构建脚本容错、`a0ff523` 前端回退+loader、`62bb144` tree-meta 数据）。
+- **③ 小程序产物：无需重打**（本批受影响面 100% 落在 `MigrationMapH5.vue` 的 `#ifdef H5` 内；loader 仅被该 H5 组件引用）。
+- **④ 云端数据面（本批唯一数据写入 · 已直写生产）**：集合 `jiapu_tree_meta` 文档 `pan_28504_01` 补三字段 —— `founder_handle=e51052014f4b9e6fe7b0ef39` / `founder_gramps_id=000000389` / `founder_name=潘始祖`。备份 = `~/jiazu-backups/2026-10-12-pan-founder/`（云档 before JSON + 本地 tree-meta before 全文）；本地 `config/tree-meta.json` 已同批对齐（防未来 `upload-migrated-to-cloudbase.mjs` 同步回滚）。
+
+### §67-2 本批口径（三条）
+
+1. **边界真源容错**：`scripts/build-geo-bounds.mjs` 遇 DataV 双 404（上游确无该节点分片）⇒ **警告跳过 + skipped 清单**，不整批 throw；其它网络错误照常 throw。已知上游缺口码 = `120100` / `711600` / `711601`（与仓内 `config/geo-bounds/_unsourceable.json` 预登记一致）。
+2. **站点分片三级回退**：`MigrationMapH5.vue` 站点码解析 = **自身 → 所属市 → 所属省**（单一 `shardOf` 口径，与 `need` 硬校验共用）；命中回退 ⇒ 站点用回退级分片承载绘制、标签仍用原码地点名。**三级皆无 ⇒ 仍整图 error 并列出缺失码**（不静默）。
+3. **产地数据上新**：真源 + 产物新增 `710000`（台湾省自身面）与 `120116`（天津滨海新区）细/粗两档；`bounds-loader.ts` 是**手维护 import 表**（生成脚本不管它）⇒ 补分片必须同步补 import，否则运行时静默返 `null`。
+
+### §67-3 本机证据（Zang 实测）
+
+- `node scripts/build-geo-bounds.mjs`（`COMPAT_REAL_OUT=/tmp/geo-trees`，数据源 = 当前云上 19 棵树）⇒ exit 0；skipped = `120100, 711600, 711601`；真源 32/35 分片。
+- `node scripts/gen-geo-bounds.mjs` → `--check` ⇒ 全绿（细/粗集合一致 32 ≡ 32）；`cd frontend && npm run type-check` ⇒ exit 0。
+- **H5 dev 真机（总编辑视角 · `16601061656`）**：`pan_28504_01` 迁徙地图 **3/3 步**显示 `起点·丰润区 7 人 → 主居地·滨海新区 1 人 → 第 5 世·再分迁 3 处`；SVG 标签含 `台湾省` 与 `屏东市`；无错误态。对照 `ji_23395_01` 行为不变。
+- `curl https://liwu-d8gek6jjdab1d087c.service.tcloudbase.com/api/tree-meta` ⇒ `pan_28504_01` 返上述 founder 三字段（生产数据链路直证）。
+- 生产产物：`assets/pages-special-migration-map-index.*.js` 含字面 `边界分片缺失`（= 新回退代码已上线）。
+
+### §67-4 未实测 / 阻塞（**如实登记，不得写成已验证**）
+
+- **生产域名（`jiapu100.com`）上的浏览器端到端渲染未实测**：本机 DNS 被劫持（既有登记项），浏览器打开生产首页停在「加载中…」⇒ 以「生产产物含新代码 + 云函数端点返新数据 + 同源 dev 链路真机渲染」三条替代取证。
+- **`711600` / `711601` 几何永久缺失**（DataV 上游无该两级分片）⇒ 屏东站点恒以 `710000` 省级面承载；若日后要县级精度，需另寻几何源。
+- **`config/geo-bounds/_unsourceable.json` 豁免清单**需与上游缺口保持一致（新增缺口码时应登记）。
+
+### §67-5 同病待批（**未执行 · 等 Kevin 拍板**）
+
+- 全库盘点实测：**另有 8 棵 family 树的 `tree_meta` 档缺 `founder_handle`**（仅树 JSON 内存 legacy `founder_gramps_id`）= `heng_24658_01` / `ji_23395_02` / `ji_32426_01` / `li_26446_01` / `li_26446_02` / `li_26446_03` / `long_40857_01` / `rong_23481_01` ⇒ 这些树的迁徙地图同样退化为「起点 0 人」。**同一手术可一次修完**（待批）。
