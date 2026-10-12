@@ -69,6 +69,24 @@
  *    ③ 缺失 / 空串 **且 `is_living === false`（严格等值）** ⇒ `卒年不详`；④ 缺失 / 空串 **且 `is_living !== false`**
  *    （`true` / `null` / 缺字段）⇒ **既有 `在世` 不动**（非真值时维持原有「无输出」）。
  *    出口 = **简体**串（`详` 由 `traditional.ts` 产 `詳`）；**栏序 / 行第 / 世系序 / E 剔除集 / 页数 / 书口 / 姓名口径一律不动**。
+ * 12) **第一部分修谱页排版 = 整页整体分列（Kevin 2026-10-12 拍定）**：族務紀文 / 譜司襄事 / 樂捐名錄
+ *    **不再整页四行** —— 去 4 行结构与行分隔线，各条文本以空格相接成**整页连续文流**，按每栏
+ *    `WENPU_FLOW_CHARS_PER_COL`（26）字 × 每页 `WENPU_FLOW_COLS_PER_PAGE`（30）栏重分栏分页，
+ *    纵向列从右向左连续排满整页（**一句话可改**）；视图层对 `kind ∈ article|roster|donation|postscript`
+ *    走 `.book-flow` 分支（26px / name-col 30px）。**人物名录页（缺省 `genealogy`）一字不动**
+ *    （17px / 每页 4 行 / 每行 ≤30 栏 / 每栏恰 10 字 / name-col 20px / 行间 1px #111 上边框全保留）；
+ *    昭範正圖（`cover`）仍独立整页大图、**不入列**。
+ * 13) **后记页（新增 · `kind = 'postscript'` · 平台自动生成、读者不可编辑）**：**独立整页置于全书最末**
+ *    （仅当全书已有页面时追加；书口沿用 `finishBook()` 同一套连号）。文案（繁体 · **逐字定死**）：
+ *      有修订：`本譜於{Y1}年由{creator}創建，歷 {N} 次修訂（{Y2}、{Y3}…），今為 {Ylast} 年訂本。`
+ *      无修订：`本譜於{Y1}年由{creator}創建，尚未修訂，今為創建本。`
+ *    数据源 = tree-meta（`created_at` / `created_by`）+ 既有 `fetchRevisions()` 的 `revisions[]`
+ *    （`seq` 升序；各次年 = 各轮 `effective_at` 优先、缺则 `started_at` 的**农历干支年**，复用 `lunar.ts`）；
+ *    `{N}` = 总轮数（上屏汉字序，同书口 / 行第体例）；创建者 = `created_by` 手机号打码（前 3 后 4，
+ *    如 `166****1656`）。**兜底链（真源缺字段时 · 一句话可改）**：创建年 = `created_at` ISO（含带时刻
+ *    形态）→ 空（句中省「於X年」）；创建者 = `created_by` 11 位手机号 → 「本平台」（GEDCOM 迁移树两者
+ *    皆缺 ⇒ 走兜底态）。**后记文案已按繁体逐字给出 ⇒ 不经 `toTraditional`**（同「修谱内容存储即繁体」
+ *    先例，避 s2t 非幂等 quirk）。revisions 读取失败或空 ⇒ 按「无修订」态渲染、不报错。
  *
  * 取数（既有 API，零新增后端调用）：`fetchPersonList(treeId, 0, 0)` 全量人物 +
  * `fetchFamilyList(treeId)` 家族（含 `father_handle` / `mother_handle` / `child_handles[]`）+
@@ -78,9 +96,9 @@
 import { fetchFamilyList, fetchPersonList, fetchTreeMetaRemote } from './api';
 import type { FamilySummary } from './api';
 import type { PersonSummary, TreeMeta, TreeEntry } from './types';
-import { solarToLunarText } from './lunar';
+import { ganZhiOf, LUNAR_FIRST_YEAR, LUNAR_LAST_YEAR, solarToLunarFields, solarToLunarText } from './lunar';
 import { toTraditional } from './traditional';
-import type { RevisionView } from './revision';
+import type { RevisionRecord, RevisionView } from './revision';
 
 /** 每行栏数（= 每行 30 条数据栏） */
 export const WENPU_COLS_PER_ROW = 30;
@@ -88,6 +106,11 @@ export const WENPU_COLS_PER_ROW = 30;
 export const WENPU_ROWS_PER_PAGE = 4;
 /** 每栏字数上限（一条数据超此长度 → 在**该条内部**续栏） */
 export const WENPU_CHARS_PER_COL = 10;
+
+/** 第一部分修谱页 / 后记页（**整页整体分列**）：每栏字数（内容高 684px ÷ 26px 字号 ≈ 26.3 ⇒ 26；**一句话可改**） */
+export const WENPU_FLOW_CHARS_PER_COL = 26;
+/** 第一部分修谱页 / 后记页（**整页整体分列**）：每页栏数（内容宽 878px ÷ 29px（26px 栏宽 + 左右 1px padding + 1px 栏线）≈ 30.3 ⇒ 30；**一句话可改**） */
+export const WENPU_FLOW_COLS_PER_PAGE = 30;
 
 export interface WenpuCol {
   text: string;
@@ -107,11 +130,18 @@ export interface WenpuPage {
   rightLabel: string;
   /**
    * 页类别 —— **缺省语义 = `'genealogy'`**（既有谱文页；⇒ 既有行为零变化）。
-   * 修谱卷的四类内容取 `cover` / `article` / `roster` / `donation`（视图层只对 `cover` 走大图分支）。
+   * 修谱卷的四类内容取 `cover` / `article` / `roster` / `donation`（视图层只对 `cover` 走大图分支）；
+   * **后记页 = `'postscript'`**（平台自动生成、读者不可编辑、独立整页置于全书最末）。
    */
-  kind?: 'genealogy' | 'cover' | 'article' | 'roster' | 'donation';
+  kind?: 'genealogy' | 'cover' | 'article' | 'roster' | 'donation' | 'postscript';
   /** 卷首大图（**仅 `kind === 'cover'`**）：整幅图占满纸页、**保留左右书口** */
   cover?: { url: string; width?: number; height?: number };
+  /**
+   * **整页整体分列页**（`kind ∈ article|roster|donation|postscript`）的栏序列：
+   * 各条文本以空格相接成整页连续文流后按每栏 `WENPU_FLOW_CHARS_PER_COL` 字重分栏（视图层走
+   * `.book-flow` 分支、26px）；此时 `rows` 恒为空数组 ⇒ 该页 `.book-row` 结构 **0 个**。
+   */
+  flowCols?: WenpuCol[];
 }
 export interface WenpuBook {
   pages: WenpuPage[];
@@ -306,54 +336,131 @@ function errorBook(title: string, hall: string): WenpuBook {
   return { pages: [], title, hall, rowCount: 0, empty: false, error: true };
 }
 
-// ---- 修谱卷（卷首 + 由内容派生的三类页）→ 页 ------------------------------------------------------
+// ---- 修谱卷（卷首 + 三类内容页 · **整页整体分列**）→ 页 + 后记页 ----------------------------------
 //
-// 口径（本批冻结契约；字段名逐字对齐 `cloudfunctions/compat-api/lib/revision.js` 的 `getRevisionView()`）：
+// 口径（Kevin 2026-10-12 拍定「整页是个整体、整体上分列」；字段名逐字对齐
+// `cloudfunctions/compat-api/lib/revision.js` 的 `getRevisionView()`）：
 // - **内容 kind → 页面 kind**：`cover` ⇒ `'cover'` 页、`article` ⇒ `'article'` 页、
-//   `helpers`（内容）⇒ `'roster'` 页、`donations`（内容）⇒ `'donation'` 页。
+//   `helpers`（内容）⇒ `'roster'` 页、`donations`（内容）⇒ `'donation'` 页；**后记页 = `'postscript'`**。
+// - **排版（第一部分 / 后记）**：**不再整页四行** —— 去 4 行结构与行分隔线，各条文本以空格相接成
+//   **整页连续文流**，按每栏 `WENPU_FLOW_CHARS_PER_COL`（26）字 × 每页 `WENPU_FLOW_COLS_PER_PAGE`（30）
+//   栏重分栏分页，纵向列从右向左连续排满整页；视图层对 `article|roster|donation|postscript` 走
+//   `.book-flow` 分支（26px / name-col 30px）。
+// - **昭範正圖（`cover`）**：仍**独立整页大图、不入列**（整体分列重构不改变它）。
+// - **人物名录页（缺省 `genealogy`）一字不动**：17px / 每页 4 行 / 每行 ≤30 栏 / 每栏恰 10 字 /
+//   name-col 20px / 行间 1px #111 上边框全保留（本节不产 genealogy 页）。
 // - **繁体例外**：修谱卷内容**存储即繁体** ⇒ 此处**不经 `toTraditional`**（避免 s2t 表非幂等 quirk
-//   造成字形漂移）；书口文案仍按既有口径走 `toTraditional`（见 `titleOf` / `hallOf`）。
-// - **卷首 + 同一套连号**：修谱页插在谱文页**之前**，页码由 `finishBook()` 按**全书页序**统一分配
-//   （第 k 页左 `2k+1` / 右 `2k+2`，汉字序）⇒ 修谱页占前几葉、谱文顺延、**不重起编号**。
-// - **历次全部并列**：`revision.revisions` 按 `seq` 升序累加（第 1 次在前），不分组、不折叠。
-// - 每个（次 × 类）**另起一页**；一类内**一条 = 一行**（与谱文页「每人一行」同构；一条超 30 栏
-//   挤占下一行、不丢内容）；一条超 10 字**只在该条内部**续栏；**缺项整条跳过**。
+//   造成字形漂移）；后记文案亦按繁体逐字给出、同此先例；书口文案仍走 `toTraditional`（`titleOf` / `hallOf`）。
+// - **同一套连号**：修谱页插在谱文页**之前**、后记页**置于全书最末**，页码由 `finishBook()` 按
+//   **全书页序**统一分配（第 k 页左 `2k+1` / 右 `2k+2`，汉字序）⇒ 全书连号、**不重起编号**。
+// - **历次全部并列**：`revision.revisions` 按 `seq` 升序累加（第 1 次在前），不分组、不折叠；
+//   每个（次 × 类）**仍另起一页**（页级结构不变，变的只是页内排版）。
+// - **缺项整条跳过**：空条不进文流（该类全部为空 ⇒ 不产页）。
 
-/** 一条修谱数据 → 栏（超 10 字只在该条内部续栏；**不做简繁转换** —— 内容存储即繁体） */
-function revisionCols(text: string): WenpuCol[] {
+/** 文本 → 栏（每栏 ≤ `per` 字；**不做简繁转换** —— 调用方决定是否已繁） */
+function chunkCols(text: string, per: number): WenpuCol[] {
   const cols: WenpuCol[] = [];
   const chars = Array.from(text || '');
-  if (!chars.length) return cols;
-  for (let i = 0; i < chars.length; i += WENPU_CHARS_PER_COL) {
-    cols.push({ text: chars.slice(i, i + WENPU_CHARS_PER_COL).join(''), isName: false });
+  for (let i = 0; i < chars.length; i += per) {
+    cols.push({ text: chars.slice(i, i + per).join(''), isName: false });
   }
   return cols;
 }
 
-/** 栏 → 修谱行（一行 ≤ 30 栏；超出挤占下一行；行内无人物身份 ⇒ 身份三字段留空串） */
-function revisionRowsOf(cols: WenpuCol[]): WenpuRow[] {
-  const rows: WenpuRow[] = [];
-  for (let i = 0; i < cols.length; i += WENPU_COLS_PER_ROW) {
-    rows.push({
-      handle: '',
-      grampsId: '',
-      name: '',
-      isSpouse: false,
-      cols: cols.slice(i, i + WENPU_COLS_PER_ROW),
-    });
-  }
-  return rows;
+/** 各条文本 → **整页连续文流**（条间以一个空格相接；空条跳过） */
+function flowTextOf(texts: string[]): string {
+  return texts.map((t) => (t || '').trim()).filter(Boolean).join(' ');
 }
 
-/** 修谱行 → 页（每页固定 4 行、不足补 `null`；书口文案由 `finishBook()` 统一分配 ⇒ 此处留空串） */
-function revisionPagesOf(rows: WenpuRow[], kind: 'article' | 'roster' | 'donation'): WenpuPage[] {
+/** 整页连续文流 → 分列栏（每栏 ≤ `WENPU_FLOW_CHARS_PER_COL` 字） */
+function flowColsOf(texts: string[]): WenpuCol[] {
+  return chunkCols(flowTextOf(texts), WENPU_FLOW_CHARS_PER_COL);
+}
+
+/** 分列栏 → 页（每页 `WENPU_FLOW_COLS_PER_PAGE` 栏；`rows` 恒空数组 ⇒ 该页 `.book-row` 结构 0 个） */
+function flowPagesOf(
+  cols: WenpuCol[],
+  kind: 'article' | 'roster' | 'donation' | 'postscript',
+): WenpuPage[] {
   const pages: WenpuPage[] = [];
-  for (let i = 0; i < rows.length; i += WENPU_ROWS_PER_PAGE) {
-    const slice: (WenpuRow | null)[] = rows.slice(i, i + WENPU_ROWS_PER_PAGE);
-    while (slice.length < WENPU_ROWS_PER_PAGE) slice.push(null);
-    pages.push({ rows: slice, leftLabel: '', rightLabel: '', kind });
+  for (let i = 0; i < cols.length; i += WENPU_FLOW_COLS_PER_PAGE) {
+    pages.push({
+      rows: [],
+      flowCols: cols.slice(i, i + WENPU_FLOW_COLS_PER_PAGE),
+      leftLabel: '',
+      rightLabel: '',
+      kind,
+    });
   }
   return pages;
+}
+
+/**
+ * 后记：日期（公历 ISO，含 `YYYY-MM-DDTHH:mm:ss…Z` 带时刻形态）→ **农历干支**（如「丙午」，**不带「年」**
+ * —— 文案模板自带年位：「本譜於{Y}年由」「今為 {Y} 年訂本」；复用 `lunar.ts`，跨春节前属上一年）。
+ * 只有年月 ⇒ 取该月 15 日所在农历月（沿 W-7 既有口径）；
+ * 非 ISO / 超 1900–2100 / 表外 ⇒ **空串**（走兜底链 —— 后记年位必须是一个干支年或整段省略，不印原字面）。
+ */
+function lunarYearTextOf(iso: string | undefined): string {
+  const s = (iso || '').trim();
+  const m = /^(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?(?:[T\s].*)?$/.exec(s);
+  if (!m) return '';
+  const y = Number(m[1]);
+  if (y < LUNAR_FIRST_YEAR || y > LUNAR_LAST_YEAR) return '';
+  const mo = m[2] ? Number(m[2]) : 0;
+  const d = m[3] ? Number(m[3]) : 0;
+  if (mo && (mo < 1 || mo > 12)) return '';
+  if (!mo) return ganZhiOf(y);
+  const f = solarToLunarFields(y + '-' + mo + '-' + (d >= 1 && d <= 31 ? d : 15));
+  return f ? ganZhiOf(f.year) : '';
+}
+
+/** 后记：创建者展示 —— `created_by` 手机号打码（保留前 3 后 4，如 `166****1656`；**一句话可改**）；
+ *  非 11 位数字（GEDCOM 迁移树缺字段）⇒ 空串（调用方兜底「本平台」） */
+function maskCreatedBy(phone: string | undefined): string {
+  const s = (phone || '').trim();
+  return /^\d{11}$/.test(s) ? s.slice(0, 3) + '****' + s.slice(7) : '';
+}
+
+/**
+ * 后记页（`kind = 'postscript'`；**纯函数** · 平台自动生成、读者不可编辑 · **独立整页置于全书最末**，
+ * 由 `buildWenpuBook()` 在全书页序末尾追加、仅当全书已有页面时）。
+ *
+ * 文案（繁体 · 纸内 · **逐字定死**；一句话可改）：
+ *   有修订：`本譜於{Y1}年由{creator}創建，歷 {N} 次修訂（{Y2}、{Y3}…），今為 {Ylast} 年訂本。`
+ *   无修订：`本譜於{Y1}年由{creator}創建，尚未修訂，今為創建本。`
+ *
+ * - `{N}` = 修谱总轮数（`revisions[]` 长度；上屏取**汉字序**，与书口 / 行第同一体例）；
+ *   各次年 = 各轮 `effective_at` 优先、缺则 `started_at` 的农历干支年；`{Ylast}` = 最后一轮的农历年。
+ * - **兜底链（真源缺字段时 · 一句话可改）**：创建年 = tree-meta `created_at`（ISO）→ 空
+ *   （句中省「於X年」）；创建者 = tree-meta `created_by` 11 位手机号打码 → 「本平台」。
+ *   （GEDCOM 迁移树两者皆缺 ⇒ 走兜底态。）
+ * - revisions 读取失败或空 ⇒ 按「无修订」态渲染，不报错、不影响前两部分。
+ */
+export function buildPostscriptPages(
+  entry: TreeEntry | undefined,
+  revision: RevisionView | null | undefined,
+): WenpuPage[] {
+  /** 后端 `createTree` / 立支等路径在 tree-meta 条目上另写 `created_by`（`TreeEntry` 未登该键 ⇒ 就地窄化，不碰 types.ts） */
+  const metaEntry = entry as (TreeEntry & { created_by?: string }) | undefined;
+  const rounds = [...(revision?.revisions || [])].filter(Boolean);
+  rounds.sort((a, b) => (a.seq || 0) - (b.seq || 0));
+  const roundYears = rounds.map((r) => {
+    const rec = r as RevisionRecord & { started_at?: string };
+    return lunarYearTextOf(rec.effective_at) || lunarYearTextOf(rec.started_at);
+  });
+  const y1 = lunarYearTextOf(metaEntry?.created_at);
+  const creator = maskCreatedBy(metaEntry?.created_by) || '本平台';
+  const head = y1 ? '本譜於' + y1 + '年由' + creator + '創建' : '本譜由' + creator + '創建';
+  const n = rounds.length;
+  const text =
+    n > 0 && roundYears.length
+      ? head + '，歷 ' + chineseNum(n) + ' 次修訂（' + roundYears.join('、') + '），今為 ' + roundYears[roundYears.length - 1] + ' 年訂本。'
+      : n > 0
+        ? // 理论不可达（冻结出参恒带 ISO `effective_at`）：各轮皆解析不出农历年时只报次数、不冒充版本年
+          head + '，歷 ' + chineseNum(n) + ' 次修訂，今為創建本。'
+        : head + '，尚未修訂，今為創建本。';
+  return flowPagesOf(chunkCols(text, WENPU_FLOW_CHARS_PER_COL), 'postscript');
 }
 
 /**
@@ -371,48 +478,51 @@ export function buildRevisionPages(revision: RevisionView | null | undefined): W
   const records = [...(revision?.revisions || [])].filter(Boolean);
   records.sort((a, b) => (a.seq || 0) - (b.seq || 0));
   for (const rec of records) {
-    // ① 卷首（昭範正圖 = `cover` 内容）：整幅大图占满纸页、保留左右书口
+    // ① 卷首（昭範正圖 = `cover` 内容）：**独立整页大图、不入列**（整体分列重构不改变它；保留左右书口）
     const coverUrl = (rec.cover?.url || '').trim();
     if (coverUrl) {
-      const coverRows: (WenpuRow | null)[] = [];
-      while (coverRows.length < WENPU_ROWS_PER_PAGE) coverRows.push(null);
       out.push({
-        rows: coverRows,
+        rows: [],
         leftLabel: '',
         rightLabel: '',
         kind: 'cover',
         cover: { url: coverUrl, width: rec.cover?.width ?? undefined, height: rec.cover?.height ?? undefined },
       });
     }
-    // ② 族務紀文（`article` 内容）：标题 / 正文 / 落款**各成栏**（缺项整条跳过）
-    const articleCols: WenpuCol[] = [];
-    for (const text of [
-      rec.article?.title || '',
-      rec.article?.body || '',
-      rec.article?.signature || '',
-    ]) {
-      articleCols.push(...revisionCols(text));
-    }
-    out.push(...revisionPagesOf(revisionRowsOf(articleCols), 'article'));
+    // ② 族務紀文（`article` 内容）：标题 / 正文 / 落款以空格相接成**整页连续文流**（缺项整条跳过）
+    out.push(
+      ...flowPagesOf(
+        flowColsOf([rec.article?.title || '', rec.article?.body || '', rec.article?.signature || '']),
+        'article',
+      ),
+    );
     // ③ 譜司襄事页（由 `helpers` 内容派生）：一人一条「姓名 + 空格 + 職務」（缺项整条跳过）
-    const rosterCols: WenpuCol[] = [];
-    for (const entry of rec.helpers || []) {
-      const name = (entry?.name || '').trim();
-      const duty = (entry?.duty || '').trim();
-      if (!name || !duty) continue;
-      rosterCols.push(...revisionCols(name + ' ' + duty));
-    }
-    out.push(...revisionPagesOf(revisionRowsOf(rosterCols), 'roster'));
+    out.push(
+      ...flowPagesOf(
+        flowColsOf(
+          (rec.helpers || []).map((item) => {
+            const name = (item?.name || '').trim();
+            const duty = (item?.duty || '').trim();
+            return name && duty ? name + ' ' + duty : '';
+          }),
+        ),
+        'roster',
+      ),
+    );
     // ④ 樂捐名錄页（由 `donations` 内容派生）：一人一条「姓名 + 空格 + 金額漢字大寫」
     //    （`amount_text` = 后端出参，前端零转换；缺项整条跳过）
-    const donationCols: WenpuCol[] = [];
-    for (const entry of rec.donations || []) {
-      const name = (entry?.name || '').trim();
-      const amountText = (entry?.amount_text || '').trim();
-      if (!name || !amountText) continue;
-      donationCols.push(...revisionCols(name + ' ' + amountText));
-    }
-    out.push(...revisionPagesOf(revisionRowsOf(donationCols), 'donation'));
+    out.push(
+      ...flowPagesOf(
+        flowColsOf(
+          (rec.donations || []).map((item) => {
+            const name = (item?.name || '').trim();
+            const amountText = (item?.amount_text || '').trim();
+            return name && amountText ? name + ' ' + amountText : '';
+          }),
+        ),
+        'donation',
+      ),
+    );
   }
   return out;
 }
@@ -450,10 +560,14 @@ export async function buildWenpuBook(
     hall = hallOf(entry);
     /** 修谱页（卷首 + 三类内容）：插在谱文页**之前**；无修谱记录 ⇒ 空数组（零变化） */
     const revisionPages = buildRevisionPages(revision);
+    /** 后记页（`postscript` · 平台自动生成）：置于**全书最末**；仅当全书已有页面时追加（空谱保持「暫無譜文」空态） */
+    const appendPostscript = (pages: WenpuPage[]): WenpuPage[] =>
+      pages.length ? [...pages, ...buildPostscriptPages(entry, revision)] : pages;
 
     const people: PersonSummary[] = (list?.data || []).filter(Boolean);
     if (!people.length) {
-      return revisionPages.length ? finishBook(revisionPages, title, hall, 0) : emptyBook(title, hall);
+      const pages = appendPostscript(revisionPages);
+      return pages.length ? finishBook(pages, title, hall, 0) : emptyBook(title, hall);
     }
 
     /** **起点（始祖）handle** —— W-17 回退链（tree-meta 缺 founder 时按本姓 + 无父家族逐级回退） */
@@ -665,7 +779,8 @@ export async function buildWenpuBook(
       }
     }
     if (!rows.length) {
-      return revisionPages.length ? finishBook(revisionPages, title, hall, 0) : emptyBook(title, hall);
+      const pages = appendPostscript(revisionPages);
+      return pages.length ? finishBook(pages, title, hall, 0) : emptyBook(title, hall);
     }
 
     // ---- 分页（每页 4 行、不足补 null）----
@@ -675,9 +790,9 @@ export async function buildWenpuBook(
       while (slice.length < WENPU_ROWS_PER_PAGE) slice.push(null);
       genealogyPages.push({ rows: slice, leftLabel: '', rightLabel: '' });
     }
-    // 修谱页**插在谱文页之前**；书口与页码由 `finishBook()` 按**全书页序**统一分配
-    // （修谱页占前几葉、谱文顺延、不重起编号）
-    return finishBook([...revisionPages, ...genealogyPages], title, hall, rows.length);
+    // 修谱页**插在谱文页之前**、后记页**置于全书最末**；书口与页码由 `finishBook()` 按**全书页序**统一分配
+    // （修谱页占前几葉、谱文顺延、后记收尾、不重起编号）
+    return finishBook(appendPostscript([...revisionPages, ...genealogyPages]), title, hall, rows.length);
   } catch {
     // 读失败（网络错误 / 非 2xx / **树不存在 404**）⇒ **不得**静默当作 `empty:true`：
     // 以 `error:true` + `empty:false` 交视图层走**纸外**失败提示（与「真·无人物」可分辨）

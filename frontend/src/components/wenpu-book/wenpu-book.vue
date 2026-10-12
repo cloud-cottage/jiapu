@@ -32,10 +32,23 @@
             <text class="side-label-text">{{ rightLabel }}</text>
           </view>
 
-          <!-- 修谱卷首（`kind === 'cover'`）：整幅大图占满纸页、**保留左右书口**（不走栏格） -->
+          <!-- 修谱卷首（`kind === 'cover'`）：整幅大图占满纸页、**保留左右书口**（不走栏格；整体分列重构后仍独立整页、不入列） -->
           <image v-if="isCoverPage" class="book-cover" :src="coverUrl" mode="aspectFit" />
 
-          <!-- 4 行（1 行 = 1 人）：行内最多 30 栏、从右往左排、未满右起留空 -->
+          <!-- 第一部分修谱页 + 末尾后记页（`kind ∈ article|roster|donation|postscript`）：
+               **整页是个整体、整体上分列** —— 无 4 行结构与行分隔线，栏从右向左连续排满整页 -->
+          <view v-else-if="isFlowPage" class="book-flow">
+            <view
+              v-for="(col, ci) in flowCols"
+              :key="ci"
+              class="book-col"
+              :class="{ 'name-col': col.isName }"
+            >
+              <text class="col-text">{{ col.text }}</text>
+            </view>
+          </view>
+
+          <!-- 人物名录页（缺省 `genealogy`，**排版与字号一字不动**）：4 行（1 行 = 1 人）、行内最多 30 栏、从右往左排、未满右起留空 -->
           <view v-else class="book-rows">
             <view
               v-for="(row, ri) in rows"
@@ -91,7 +104,7 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { getCurrentInstance, onUnmounted } from 'vue';
 // #endif
 import { buildWenpuBook } from '@/business/wenpu';
-import type { WenpuBook, WenpuPage, WenpuRow } from '@/business/wenpu';
+import type { WenpuBook, WenpuCol, WenpuPage, WenpuRow } from '@/business/wenpu';
 import { fetchRevisions } from '@/business/api';
 import { canManageRevision as canManageRevisionOf } from '@/business/revision';
 import type { RevisionView } from '@/business/revision';
@@ -142,8 +155,14 @@ function playFlip(dir: 'flip-next' | 'flip-prev') {
 const pages = computed<WenpuPage[]>(() => book.value?.pages || []);
 const totalPages = computed(() => pages.value.length);
 const currentPage = computed<WenpuPage | null>(() => pages.value[pageIndex.value] || null);
-/** 当前页的 4 行（数据层保证长度恒 4，不足为 null） */
+/** 当前页的 4 行（数据层保证长度恒 4，不足为 null）—— 仅人物名录页（缺省 `genealogy`）使用 */
 const rows = computed<(WenpuRow | null)[]>(() => currentPage.value?.rows || []);
+/** 第一部分（修谱三类内容页）与后记页 ⇒ **整页整体分列**（无 4 行结构与行分隔线；26px / name-col 30px） */
+const isFlowPage = computed(() =>
+  ['article', 'roster', 'donation', 'postscript'].includes(currentPage.value?.kind || ''),
+);
+/** 整体分列页的栏序列（数据层已按每栏 26 字重分栏、每页 30 栏；空数组 ⇒ 纸面留白） */
+const flowCols = computed<WenpuCol[]>(() => currentPage.value?.flowCols || []);
 /** 书口文案已是繁体，视图层零字形转换 */
 const leftLabel = computed(() => currentPage.value?.leftLabel || '');
 const rightLabel = computed(() => currentPage.value?.rightLabel || '');
@@ -440,6 +459,20 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown));
 }
 /* 名称栏：稍大 + 粗体，仍为一栏 */
 .name-col { font-size: 20px; font-weight: bold; }
+
+/* 整页整体分列（第一部分修谱页 + 后记页）：去 4 行结构与行分隔线 —— 整页一个容器，
+   栏从右向左连续排满（栏间 1px #111 左边框保留）；字号 26px / name-col 30px（**一句话可改**）；
+   人物名录页（缺省 `genealogy`）不受影响（仍走上方 17px / 20px 基础值） */
+.book-flow {
+  height: 100%;
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+  align-items: stretch;
+  overflow: hidden;
+}
+.book-flow .book-col { font-size: 26px; }
+.book-flow .name-col { font-size: 30px; }
 
 /* 纸面内空态（繁体） */
 .book-empty {
