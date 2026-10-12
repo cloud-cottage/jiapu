@@ -40,6 +40,7 @@ import type {
   InviteResolveResult,
   InviteBindResult,
 } from './types';
+import type { RevisionSaveItem, RevisionView } from './revision';
 
 // API 基础路径
 // 默认 '/api'（开发经 Vite proxy → auth-server / 兼容层）
@@ -3127,4 +3128,112 @@ export async function bindInvite(
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw inviteErrorOf(body, res.status, '处理邀请失败');
   return body as InviteBindResult;
+}
+
+// ---- 修谱（纯新增封装；不改任何既有函数行为） ----
+//
+// 与后端（并行单）的接口契约（本批前端只消费、不改后端；`docs/revision.spec.md` §7-7）：
+// - `GET  /revisions?tree_id=`      读修谱视图（历次全部并列；无记录 ⇒ `revisions: []`）；
+//                                   **旧键 `fee_bamboos` 已删除**；新增 `fee_start_bamboos` / `fee_locked_edit_bamboos` /
+//                                   `fee_locked_long_bamboos` 与逐轮 `days` / `fee_tier` / `fee_next_bamboos`。
+// - `POST /admin/revision/start`    开始新一轮修谱（体 `{ tree_id }`；**恒价 999 片**）；
+// - `POST /admin/revision/save`     **唯一内容写入口**（体 `{ tree_id, seq, items:[{kind, payload}, …] }`；
+//                                   `items` 为**裸数组**、**非空**；`kind ∈ 'article'|'helpers'|'donations'|'cover'`；
+//                                   **一次调用 = 一次计费**）。
+//
+// **已删除**（后端整体移除、未发布无兼容负担）：`POST /admin/revision/abort` /
+// `/admin/revision/content` / `/admin/revision/image` ⇒ 前端对应封装（`abortRevision` /
+// `saveRevisionContent` / `uploadRevisionImage`）**一并删除**，图像写入并入 `save` 的 `cover` kind。
+//
+// 错误体两种形态都能读（后端可能 `{ error: '文案', code }` 或 `{ error: { message, code, position } }`）：
+// 一律**原样展示后端文案**（如 400「族務紀文須以繁體字錄入」+ 首个简体字位置），业务码 =
+// `REVISION_COOLDOWN` / `REVISION_ACTIVE` / `ASSET_INSUFFICIENT`。
+
+/** 修谱域错误体归一（`code` 同时兼容顶层与 `error` 内层）；**文案一律取后端原文** */
+function revisionErrorOf(body: any, status: number, fallback: string): ApiStatusError {
+  const inner = body && typeof body.error === 'object' && body.error !== null ? body.error : {};
+  const message =
+    (typeof body?.error === 'string' ? body.error : '') || inner.message || `${fallback} (${status})`;
+  return new ApiStatusError(message, status, { ...inner, code: body?.code || inner.code });
+}
+
+/** 修谱管理请求头（登录态必需；未登录 / 过期 ⇒ 401，**不静默降级**） */
+function revisionAuthHeaders(): Record<string, string> {
+  const token = getAuthToken();
+  if (!token) throw new ApiStatusError('登录已过期，请重新登录', 401);
+  return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token };
+}
+
+/** 读修谱视图（`GET /revisions?tree_id=`）。出参缺 `revisions` ⇒ 视作**无修谱记录**（视图层零变化） */
+export async function fetchRevisions(treeId: string): Promise<RevisionView> {
+  const raw = await request<RevisionView>(
+    `/revisions?tree_id=${encodeURIComponent(treeId)}`,
+    { treeId },
+  );
+  return {
+    ...(raw || ({} as RevisionView)),
+    can_start: raw?.can_start ?? { ok: true, reason: 'first', next_start_at: '' },
+    active: raw?.active ?? null,
+    revisions: Array.isArray(raw?.revisions) ? raw.revisions : [],
+  };
+}
+
+/**
+ * 开始本次修谱的出参（`POST /admin/revision/start` ⇒ `{ok, seq, effective_at, lock_at, fee:{pieces, tx_id}}`）。
+ * 费用真值在 `fee.pieces`（**恒 999 片**）；`fee.tx_id` = 预扣流水号。
+ */
+export interface RevisionStartResult {
+  ok: boolean;
+  seq: number;
+  effective_at: string;
+  lock_at: string;
+  fee: { pieces: number; tx_id: string };
+}
+
+/** 开始本次修谱（`POST /admin/revision/start`）；扣费不足 ⇒ `ASSET_INSUFFICIENT`、冷却中 ⇒ `REVISION_COOLDOWN`、已有在途 ⇒ `REVISION_ACTIVE` */
+export async function startRevision(treeId: string): Promise<RevisionStartResult> {
+  const res = await fetch(`${API_BASE}/admin/revision/start`, {
+    method: 'POST',
+    headers: revisionAuthHeaders(),
+    body: JSON.stringify({ tree_id: treeId }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw revisionErrorOf(body, res.status, '开始修谱失败');
+  return body as RevisionStartResult;
+}
+
+/**
+ * 保存修谱内容的出参（`POST /admin/revision/save` ⇒ `{ok, seq, locked, fee:{pieces, tx_id}, items:[{kind}]}`）。
+ * `fee.pieces` = 本次实际扣费（编辑期内 0、锁定后 9999 / 99999）；`items` = 本次受理的 kind 清单。
+ */
+export interface RevisionSaveResult {
+  ok: boolean;
+  seq: number;
+  locked: boolean;
+  fee: { pieces: number; tx_id: string };
+  items: { kind: string }[];
+}
+
+/**
+ * **唯一内容写入口**（`POST /admin/revision/save`）—— 取代旧的 `/content` + `/image` 两条路由。
+ *
+ * `items` 为**裸数组** `[{kind, payload}, …]`（**非** `{items: {…}}` 之类包装），
+ * `kind ∈ 'article' | 'helpers' | 'donations' | 'cover'`；
+ * **一次调用 = 一次计费**（不论 `items` 长度；编辑期内 0 片、锁定后按档位扣）。
+ *
+ * 面板侧**一次点击保存 = 一次调用**：本次变更的项由 `buildRevisionSaveItems()` 归集后整体提交。
+ */
+export async function saveRevision(
+  treeId: string,
+  seq: number,
+  items: RevisionSaveItem[],
+): Promise<RevisionSaveResult> {
+  const res = await fetch(`${API_BASE}/admin/revision/save`, {
+    method: 'POST',
+    headers: revisionAuthHeaders(),
+    body: JSON.stringify({ tree_id: treeId, seq, items }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw revisionErrorOf(body, res.status, '保存修谱失败');
+  return body as RevisionSaveResult;
 }

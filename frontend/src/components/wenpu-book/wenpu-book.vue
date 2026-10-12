@@ -2,6 +2,10 @@
   <view class="wenpu-book">
     <!-- 工具条（书页上方一行）：PDF 导出弱化收进右侧「⋯ 更多」菜单 -->
     <view class="book-toolbar">
+      <!-- 修谱入口（**仅家族管理员 / 总编辑可见**；修谱四类内容只落在【在线文谱】视图内） -->
+      <view v-if="canManageRevision" class="toolbar-revision" @click="openRevisionPanel">
+        <text class="toolbar-revision-text">✎ 修谱</text>
+      </view>
       <view class="toolbar-more" @click="menuOpen = !menuOpen">
         <text class="toolbar-more-text">⋯ 更多</text>
       </view>
@@ -28,8 +32,11 @@
             <text class="side-label-text">{{ rightLabel }}</text>
           </view>
 
+          <!-- 修谱卷首（`kind === 'cover'`）：整幅大图占满纸页、**保留左右书口**（不走栏格） -->
+          <image v-if="isCoverPage" class="book-cover" :src="coverUrl" mode="aspectFit" />
+
           <!-- 4 行（1 行 = 1 人）：行内最多 30 栏、从右往左排、未满右起留空 -->
-          <view class="book-rows">
+          <view v-else class="book-rows">
             <view
               v-for="(row, ri) in rows"
               :key="ri"
@@ -67,6 +74,14 @@
         <text class="pager-btn-text">前叶 ▶</text>
       </view>
     </view>
+
+    <!-- 修谱管理弹窗（编辑态 = 弹窗；**不新增页面 / 路由**） -->
+    <RevisionPanel
+      v-if="showRevisionPanel"
+      :tree-id="treeId"
+      @changed="onRevisionChanged"
+      @close="showRevisionPanel = false"
+    />
   </view>
 </template>
 
@@ -77,6 +92,11 @@ import { getCurrentInstance, onUnmounted } from 'vue';
 // #endif
 import { buildWenpuBook } from '@/business/wenpu';
 import type { WenpuBook, WenpuPage, WenpuRow } from '@/business/wenpu';
+import { fetchRevisions } from '@/business/api';
+import { canManageRevision as canManageRevisionOf } from '@/business/revision';
+import type { RevisionView } from '@/business/revision';
+import { authState } from '@/business/auth';
+import RevisionPanel from '@/components/revision-panel/revision-panel.vue';
 
 const props = withDefaults(defineProps<{ treeId?: string }>(), { treeId: '' });
 
@@ -87,6 +107,10 @@ const loadError = ref('');
 const pageIndex = ref(0);
 /** 工具条「⋯ 更多」菜单开合 */
 const menuOpen = ref(false);
+/** 修谱管理弹窗开合（编辑态 = 弹窗；入口仅家族管理员 / 总编辑可见） */
+const showRevisionPanel = ref(false);
+/** 修谱入口可见性（纯前端单点判据 `canManageRevision(role, treeId)`） */
+const canManageRevision = computed(() => canManageRevisionOf(authState.role, props.treeId));
 /** 翻页动效 class：''（静止）/ 'flip-next'（后叶 · 向左翻）/ 'flip-prev'（前叶 · 向右翻） */
 const flipClass = ref<'' | 'flip-next' | 'flip-prev'>('');
 /** 动效时长（ms）：与 style 内 keyframes 的 300ms 对齐，略留余量后清 class */
@@ -123,6 +147,10 @@ const rows = computed<(WenpuRow | null)[]>(() => currentPage.value?.rows || []);
 /** 书口文案已是繁体，视图层零字形转换 */
 const leftLabel = computed(() => currentPage.value?.leftLabel || '');
 const rightLabel = computed(() => currentPage.value?.rightLabel || '');
+/** 修谱卷首页（`kind === 'cover'` ⇒ 整幅大图分支；缺省语义 = 谱文页 ⇒ 与改动前完全一致） */
+const isCoverPage = computed(() => currentPage.value?.kind === 'cover');
+/** 卷首图地址（数据层产出，视图层零转换） */
+const coverUrl = computed(() => currentPage.value?.cover?.url || '');
 /** 空谱：纸面内显示繁体空态 */
 const isEmpty = computed(() => !loading.value && !loadError.value && book.value?.empty === true);
 /** 翻页控件仅在读成功、有页可翻时出现 */
@@ -139,7 +167,9 @@ async function load() {
   loadError.value = '';
   book.value = null;
   try {
-    const result = await buildWenpuBook(props.treeId);
+    // 修谱视图（**读失败 ⇒ null**：修谱读不到不得改变文谱 —— 无修谱记录 ⇒ 与现状完全一致）
+    const rev = await fetchRevisions(props.treeId).catch(() => null);
+    const result = await buildWenpuBook(props.treeId, rev);
     // 数据层已区分「读失败」与「真·无人物」：读失败 ⇒ 走**纸外**失败提示、纸内不渲染空态
     if (result?.error) {
       loadError.value = '谱文读取失败';
@@ -180,12 +210,24 @@ function onPdfExport() {
   // #endif
 }
 
+/** 打开修谱管理弹窗（入口仅管理员可见；顺带收起「⋯ 更多」菜单） */
+function openRevisionPanel() {
+  menuOpen.value = false;
+  showRevisionPanel.value = true;
+}
+
+/** 修谱内容变更（弹窗 `@changed`）⇒ 宿主重新拉取文谱（修谱页与谱文页共用同一套连号） */
+function onRevisionChanged() {
+  void load();
+}
+
 onMounted(load);
 // 组件内不得使用页面生命周期（onLoad / onShow 仅页面可用）：换树由 prop 驱动
 watch(
   () => props.treeId,
   () => {
     menuOpen.value = false;
+    showRevisionPanel.value = false;
     load();
   },
 );
@@ -265,6 +307,15 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown));
   border-radius: 14px;
 }
 .toolbar-more-text { font-size: 12px; color: #8B4513; }
+/* 修谱入口（与「⋯ 更多」同一行、其左侧；仅家族管理员 / 总编辑渲染） */
+.toolbar-revision {
+  margin-right: 8px;
+  padding: 6px 12px;
+  background: #fff;
+  border: 1px solid #E0D5C8;
+  border-radius: 14px;
+}
+.toolbar-revision-text { font-size: 12px; color: #8B4513; }
 /* 展开的小菜单：PDF 导出为次级 / 弱化样式 */
 .more-menu {
   position: absolute;
@@ -338,6 +389,21 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown));
 }
 .side-label-left { left: 6px; }
 .side-label-right { right: 6px; }
+/* 书口抬到纸面内容之上（修谱卷首大图占满纸页时仍须「保留左右书口」；普通谱文页无视觉变化） */
+.book-page .side-label { z-index: 2; }
+
+/* 修谱卷首（`kind === 'cover'`）：整幅图占满纸页（绝对定位铺满版心外的可绘区），
+   书口在左右页边距内、由上面的 z-index 压在图之上 */
+.book-cover {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #F7F3E8;
+}
 
 /* 4 行：纵向 4 等分；行间 1px #111 上边框（首行无） */
 .book-rows { height: 100%; display: flex; flex-direction: column; }

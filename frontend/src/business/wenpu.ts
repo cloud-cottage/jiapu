@@ -80,6 +80,7 @@ import type { FamilySummary } from './api';
 import type { PersonSummary, TreeMeta, TreeEntry } from './types';
 import { solarToLunarText } from './lunar';
 import { toTraditional } from './traditional';
+import type { RevisionView } from './revision';
 
 /** 每行栏数（= 每行 30 条数据栏） */
 export const WENPU_COLS_PER_ROW = 30;
@@ -104,6 +105,13 @@ export interface WenpuPage {
   rows: (WenpuRow | null)[];
   leftLabel: string;
   rightLabel: string;
+  /**
+   * 页类别 —— **缺省语义 = `'genealogy'`**（既有谱文页；⇒ 既有行为零变化）。
+   * 修谱卷的四类内容取 `cover` / `article` / `roster` / `donation`（视图层只对 `cover` 走大图分支）。
+   */
+  kind?: 'genealogy' | 'cover' | 'article' | 'roster' | 'donation';
+  /** 卷首大图（**仅 `kind === 'cover'`**）：整幅图占满纸页、**保留左右书口** */
+  cover?: { url: string; width?: number; height?: number };
 }
 export interface WenpuBook {
   pages: WenpuPage[];
@@ -298,13 +306,137 @@ function errorBook(title: string, hall: string): WenpuBook {
   return { pages: [], title, hall, rowCount: 0, empty: false, error: true };
 }
 
+// ---- 修谱卷（卷首 + 由内容派生的三类页）→ 页 ------------------------------------------------------
+//
+// 口径（本批冻结契约；字段名逐字对齐 `cloudfunctions/compat-api/lib/revision.js` 的 `getRevisionView()`）：
+// - **内容 kind → 页面 kind**：`cover` ⇒ `'cover'` 页、`article` ⇒ `'article'` 页、
+//   `helpers`（内容）⇒ `'roster'` 页、`donations`（内容）⇒ `'donation'` 页。
+// - **繁体例外**：修谱卷内容**存储即繁体** ⇒ 此处**不经 `toTraditional`**（避免 s2t 表非幂等 quirk
+//   造成字形漂移）；书口文案仍按既有口径走 `toTraditional`（见 `titleOf` / `hallOf`）。
+// - **卷首 + 同一套连号**：修谱页插在谱文页**之前**，页码由 `finishBook()` 按**全书页序**统一分配
+//   （第 k 页左 `2k+1` / 右 `2k+2`，汉字序）⇒ 修谱页占前几葉、谱文顺延、**不重起编号**。
+// - **历次全部并列**：`revision.revisions` 按 `seq` 升序累加（第 1 次在前），不分组、不折叠。
+// - 每个（次 × 类）**另起一页**；一类内**一条 = 一行**（与谱文页「每人一行」同构；一条超 30 栏
+//   挤占下一行、不丢内容）；一条超 10 字**只在该条内部**续栏；**缺项整条跳过**。
+
+/** 一条修谱数据 → 栏（超 10 字只在该条内部续栏；**不做简繁转换** —— 内容存储即繁体） */
+function revisionCols(text: string): WenpuCol[] {
+  const cols: WenpuCol[] = [];
+  const chars = Array.from(text || '');
+  if (!chars.length) return cols;
+  for (let i = 0; i < chars.length; i += WENPU_CHARS_PER_COL) {
+    cols.push({ text: chars.slice(i, i + WENPU_CHARS_PER_COL).join(''), isName: false });
+  }
+  return cols;
+}
+
+/** 栏 → 修谱行（一行 ≤ 30 栏；超出挤占下一行；行内无人物身份 ⇒ 身份三字段留空串） */
+function revisionRowsOf(cols: WenpuCol[]): WenpuRow[] {
+  const rows: WenpuRow[] = [];
+  for (let i = 0; i < cols.length; i += WENPU_COLS_PER_ROW) {
+    rows.push({
+      handle: '',
+      grampsId: '',
+      name: '',
+      isSpouse: false,
+      cols: cols.slice(i, i + WENPU_COLS_PER_ROW),
+    });
+  }
+  return rows;
+}
+
+/** 修谱行 → 页（每页固定 4 行、不足补 `null`；书口文案由 `finishBook()` 统一分配 ⇒ 此处留空串） */
+function revisionPagesOf(rows: WenpuRow[], kind: 'article' | 'roster' | 'donation'): WenpuPage[] {
+  const pages: WenpuPage[] = [];
+  for (let i = 0; i < rows.length; i += WENPU_ROWS_PER_PAGE) {
+    const slice: (WenpuRow | null)[] = rows.slice(i, i + WENPU_ROWS_PER_PAGE);
+    while (slice.length < WENPU_ROWS_PER_PAGE) slice.push(null);
+    pages.push({ rows: slice, leftLabel: '', rightLabel: '', kind });
+  }
+  return pages;
+}
+
+/**
+ * 修谱视图 → 页（**纯函数**；卷首 + 由内容派生的三类页，按 `seq` 升序**历次全部并列**）。
+ *
+ * 字段口径（逐字对齐后端 `getRevisionView()` 出参）：历次列表 = `revision.revisions`（**非** `rounds`）；
+ * 每轮 `helpers`（内容 kind）⇒ 派生 **`roster` 页**、`donations`（内容 kind）⇒ 派生 **`donation` 页**；
+ * `cover` ⇒ `cover` 页、`article` ⇒ `article` 页。
+ *
+ * 出参页的 `leftLabel` / `rightLabel` **一律空串** —— 书口文案与连号一律由 `buildWenpuBook()` 的
+ * 统一分页循环（`finishBook()`）按**全书页序**分配 ⇒ 修谱页与谱文页**共用同一套连号**。
+ */
+export function buildRevisionPages(revision: RevisionView | null | undefined): WenpuPage[] {
+  const out: WenpuPage[] = [];
+  const records = [...(revision?.revisions || [])].filter(Boolean);
+  records.sort((a, b) => (a.seq || 0) - (b.seq || 0));
+  for (const rec of records) {
+    // ① 卷首（昭範正圖 = `cover` 内容）：整幅大图占满纸页、保留左右书口
+    const coverUrl = (rec.cover?.url || '').trim();
+    if (coverUrl) {
+      const coverRows: (WenpuRow | null)[] = [];
+      while (coverRows.length < WENPU_ROWS_PER_PAGE) coverRows.push(null);
+      out.push({
+        rows: coverRows,
+        leftLabel: '',
+        rightLabel: '',
+        kind: 'cover',
+        cover: { url: coverUrl, width: rec.cover?.width ?? undefined, height: rec.cover?.height ?? undefined },
+      });
+    }
+    // ② 族務紀文（`article` 内容）：标题 / 正文 / 落款**各成栏**（缺项整条跳过）
+    const articleCols: WenpuCol[] = [];
+    for (const text of [
+      rec.article?.title || '',
+      rec.article?.body || '',
+      rec.article?.signature || '',
+    ]) {
+      articleCols.push(...revisionCols(text));
+    }
+    out.push(...revisionPagesOf(revisionRowsOf(articleCols), 'article'));
+    // ③ 譜司襄事页（由 `helpers` 内容派生）：一人一条「姓名 + 空格 + 職務」（缺项整条跳过）
+    const rosterCols: WenpuCol[] = [];
+    for (const entry of rec.helpers || []) {
+      const name = (entry?.name || '').trim();
+      const duty = (entry?.duty || '').trim();
+      if (!name || !duty) continue;
+      rosterCols.push(...revisionCols(name + ' ' + duty));
+    }
+    out.push(...revisionPagesOf(revisionRowsOf(rosterCols), 'roster'));
+    // ④ 樂捐名錄页（由 `donations` 内容派生）：一人一条「姓名 + 空格 + 金額漢字大寫」
+    //    （`amount_text` = 后端出参，前端零转换；缺项整条跳过）
+    const donationCols: WenpuCol[] = [];
+    for (const entry of rec.donations || []) {
+      const name = (entry?.name || '').trim();
+      const amountText = (entry?.amount_text || '').trim();
+      if (!name || !amountText) continue;
+      donationCols.push(...revisionCols(name + ' ' + amountText));
+    }
+    out.push(...revisionPagesOf(revisionRowsOf(donationCols), 'donation'));
+  }
+  return out;
+}
+
+/** 统一分页收口：按**全书页序** k（0 起）写书口 —— 左 `▲ <谱名> 葉<2k+1>` / 右 `▲ <堂号> 葉<2k+2>`（汉字序） */
+function finishBook(allPages: WenpuPage[], title: string, hall: string, rowCount: number): WenpuBook {
+  allPages.forEach((page, k) => {
+    page.leftLabel = '▲ ' + title + ' 葉' + chineseNum(2 * k + 1);
+    page.rightLabel = hall ? '▲ ' + hall + ' 葉' + chineseNum(2 * k + 2) : '';
+  });
+  return { pages: allPages, title, hall, rowCount, empty: allPages.length === 0 };
+}
+
 /**
  * 生成整本「在线文谱」。
  *
  * @param treeId 家族树 id（读 `/people/` 与 `/families/` 的 `X-Tree-Id`）
+ * @param revision 修谱视图（`可选`；缺省 / `null` / 无修谱记录 ⇒ 与**非修谱批完全一致**：谱文页零变化）
  * @returns 纯数据书稿（已繁体化；视图层零转换）
  */
-export async function buildWenpuBook(treeId: string): Promise<WenpuBook> {
+export async function buildWenpuBook(
+  treeId: string,
+  revision?: RevisionView | null,
+): Promise<WenpuBook> {
   let title = '';
   let hall = '';
   try {
@@ -316,9 +448,13 @@ export async function buildWenpuBook(treeId: string): Promise<WenpuBook> {
     const entry: TreeEntry | undefined = (meta as TreeMeta)?.trees?.[treeId];
     title = titleOf(entry);
     hall = hallOf(entry);
+    /** 修谱页（卷首 + 三类内容）：插在谱文页**之前**；无修谱记录 ⇒ 空数组（零变化） */
+    const revisionPages = buildRevisionPages(revision);
 
     const people: PersonSummary[] = (list?.data || []).filter(Boolean);
-    if (!people.length) return emptyBook(title, hall);
+    if (!people.length) {
+      return revisionPages.length ? finishBook(revisionPages, title, hall, 0) : emptyBook(title, hall);
+    }
 
     /** **起点（始祖）handle** —— W-17 回退链（tree-meta 缺 founder 时按本姓 + 无父家族逐级回退） */
     const founderHandle = founderHandleOf(entry, people, families);
@@ -528,22 +664,20 @@ export async function buildWenpuBook(treeId: string): Promise<WenpuBook> {
         rows.push({ ...rowBase, cols: cols.slice(i, i + WENPU_COLS_PER_ROW) });
       }
     }
-    if (!rows.length) return emptyBook(title, hall);
+    if (!rows.length) {
+      return revisionPages.length ? finishBook(revisionPages, title, hall, 0) : emptyBook(title, hall);
+    }
 
-    // ---- 分页（每页 4 行、不足补 null；书口 = 谱名 / 堂号 + 汉字页码）----
-    const pages: WenpuPage[] = [];
+    // ---- 分页（每页 4 行、不足补 null）----
+    const genealogyPages: WenpuPage[] = [];
     for (let i = 0; i < rows.length; i += WENPU_ROWS_PER_PAGE) {
       const slice: (WenpuRow | null)[] = rows.slice(i, i + WENPU_ROWS_PER_PAGE);
       while (slice.length < WENPU_ROWS_PER_PAGE) slice.push(null);
-      const leftNo = 2 * pages.length + 1;
-      const rightNo = leftNo + 1;
-      pages.push({
-        rows: slice,
-        leftLabel: '▲ ' + title + ' 葉' + chineseNum(leftNo),
-        rightLabel: hall ? '▲ ' + hall + ' 葉' + chineseNum(rightNo) : '',
-      });
+      genealogyPages.push({ rows: slice, leftLabel: '', rightLabel: '' });
     }
-    return { pages, title, hall, rowCount: rows.length, empty: false };
+    // 修谱页**插在谱文页之前**；书口与页码由 `finishBook()` 按**全书页序**统一分配
+    // （修谱页占前几葉、谱文顺延、不重起编号）
+    return finishBook([...revisionPages, ...genealogyPages], title, hall, rows.length);
   } catch {
     // 读失败（网络错误 / 非 2xx / **树不存在 404**）⇒ **不得**静默当作 `empty:true`：
     // 以 `error:true` + `empty:false` 交视图层走**纸外**失败提示（与「真·无人物」可分辨）
