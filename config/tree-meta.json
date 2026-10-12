@@ -206,6 +206,9 @@
       "created_at": "2026-09-19T02:01:00.248Z",
       "created_by": "16601061656",
       "origin_code": "230303",
+      "founder_handle": "0904fea0e152aa12d89d9a63",
+      "founder_gramps_id": "000000356",
+      "founder_name": "李宝华",
       "version": 1
     },
     "ji_32426_01": {
@@ -223,6 +226,9 @@
       "created_at": "2026-09-19T02:04:04.985Z",
       "created_by": "16601061656",
       "origin_code": "230303",
+      "founder_handle": "c17946e4be81696e94c5cc14",
+      "founder_gramps_id": "000000359",
+      "founder_name": "纪恒山",
       "version": 1
     },
     "rong_23481_01": {
@@ -239,7 +245,10 @@
       "enable_custom_domain": false,
       "created_at": "2026-09-19T02:05:12.286Z",
       "created_by": "16601061656",
-      "version": 1
+      "version": 1,
+      "founder_handle": "2bec9e7b13185ae7ab22f54e",
+      "founder_gramps_id": "000000360",
+      "founder_name": "容未知"
     },
     "long_40857_01": {
       "tree_id": "long_40857_01",
@@ -254,7 +263,10 @@
       "enable_custom_domain": false,
       "created_at": "2026-09-19T02:06:59.317Z",
       "created_by": "16601061656",
-      "version": 1
+      "version": 1,
+      "founder_handle": "e215f3562191f11e9df538e6",
+      "founder_gramps_id": "000000362",
+      "founder_name": "龙未知"
     },
     "heng_24658_01": {
       "tree_id": "heng_24658_01",
@@ -271,6 +283,9 @@
       "created_at": "2026-09-19T03:08:57.453Z",
       "created_by": "16601061656",
       "origin_code": "210900",
+      "founder_handle": "e2396c4ff3fc6c9e0658323f",
+      "founder_gramps_id": "000000363",
+      "founder_name": "恒未知",
       "version": 1
     },
     "li_26446_02": {
@@ -288,6 +303,9 @@
       "created_at": "2026-09-19T06:44:10.764Z",
       "created_by": "16601061656",
       "origin_code": "231085",
+      "founder_handle": "4c38c767c83444318684afda",
+      "founder_gramps_id": "000000373",
+      "founder_name": "李未知",
       "version": 2
     },
     "li_26446_03": {
@@ -304,7 +322,10 @@
       "enable_custom_domain": false,
       "created_at": "2026-09-19T12:37:02.678Z",
       "created_by": "16601061656",
-      "version": 1
+      "version": 1,
+      "founder_handle": "6dfb9f1c957b7b148b651a21",
+      "founder_gramps_id": "000000378",
+      "founder_name": "李未知"
     },
     "ji_23395_02": {
       "tree_id": "ji_23395_02",
@@ -317,6 +338,9 @@
       "hall_name": "季氏宗祠",
       "origin": "黑龙江省哈尔滨市",
       "origin_code": "230100",
+      "founder_handle": "8d2e6d882e7a6adda971a489",
+      "founder_gramps_id": "000000384",
+      "founder_name": "季未知",
       "description": "新建家族树，始祖：季未知",
       "enable_custom_domain": false,
       "created_at": "2026-09-22T02:45:17.015Z",
