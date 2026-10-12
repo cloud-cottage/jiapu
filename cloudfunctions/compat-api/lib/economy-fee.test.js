@@ -363,8 +363,11 @@ test('409 错误回显：ASSET_INSUFFICIENT 全字段（need / current / unit / 
 });
 
 test('errorPayload 系统错误码白名单：EACCES 不透传 code / 路径；资产不足四字段与 how_to_get 逐字段保留', () => {
-  // 白名单 = 照实际使用枚举（ASSET_INSUFFICIENT / DELETE_SCOPE_CHANGED），清单外一律不透传
-  assert.deepEqual(eco.DOMAIN_ERROR_CODES, ['ASSET_INSUFFICIENT', 'DELETE_SCOPE_CHANGED']);
+  // 白名单 = 照实际使用枚举（ASSET_INSUFFICIENT / DELETE_SCOPE_CHANGED / REVISION_ACTIVE / REVISION_COOLDOWN），
+  // 清单外一律不透传。**本批新增修谱域两码**（`lib/revision.js` 的 ERR_REVISION_ACTIVE / ERR_REVISION_COOLDOWN）；
+  // 依据：lib/revision.js 头部「域名错误码走 `err.code` + 白名单、附加字段走 `err.extra`」口径 +
+  //   lib/economy-fee.js §6 白名单注释（「新增域名错误码一律登记在这一处」）—— 旁路 `err.expose` 已删除。
+  assert.deepEqual(eco.DOMAIN_ERROR_CODES, ['ASSET_INSUFFICIENT', 'DELETE_SCOPE_CHANGED', 'REVISION_ACTIVE', 'REVISION_COOLDOWN']);
   assert.equal(eco.INTERNAL_ERROR_TEXT, '服务内部错误');
 
   // ① 文件系统错误（含本机路径）→ 无 code、无 EACCES、无路径片段、无 errno 原文
@@ -1187,12 +1190,15 @@ test('0 片穷举：矩阵里 29 条 0 片路由均未接闸门（源码级）+ 
 
 // ================= ⑥-2 冲正回显统一（fee_refunded） =================
 
-test('冲正回显统一：7 条计费路由落库失败一律带 fee_refunded:true（/admin/reparent、/admin/delete-node 实测）', async () => {
-  // 源码口径：七条 catch 一律 `…refunded ? { fee_refunded: true } : {}`（PUT /people、/admin/create-tree、
+test('冲正回显统一：8 条计费路由落库失败一律带 fee_refunded:true（/admin/reparent、/admin/delete-node 实测）', async () => {
+  // 源码口径：八条 catch 一律 `…refunded ? { fee_refunded: true } : {}`（PUT /people、/admin/create-tree、
   // /admin/reparent、/admin/delete-node、/admin/sibling-reorder、/admin/create-clan、/admin/clan-request 各一处；
   // Kevin 2026-10-09 起新增后两条：直建祖谱落库失败冲正 + 建谱申请预扣后落申请失败冲正）
+  // 修谱域批次新增第 8 处：计费模型改造后 = POST /admin/revision/save（唯一内容写入口；扣费成功但落库
+  //   失败 ⇒ 原路返还 ⇒ 回显 `fee_refunded`）。旧第 8 处 `/admin/revision/abort` 已随「作废概念整体取消」删除
+  //   ⇒ 定额仍为实测真值 8（**新 save 路由补上第 8 处，保留精确等值断言与逐路由匹配，不放宽、不删除任何断言**）。
   const hits = (INDEX_LINES.join('\n').match(/refunded \? \{ fee_refunded: true \} : \{\}/g) || []).length;
-  assert.equal(hits, 7, '七条冲正分支口径必须统一');
+  assert.equal(hits, 8, '八条冲正分支口径必须统一');
   for (const p of ['/admin/reparent', '/admin/delete-node', '/admin/sibling-reorder']) {
     assert.match(branchesOf(p).join('\n'), /refunded \? \{ fee_refunded: true \}/, `${p} 冲正分支应回显 fee_refunded`);
   }

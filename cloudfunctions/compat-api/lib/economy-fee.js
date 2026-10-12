@@ -643,8 +643,10 @@ export function insufficientBody(err) {
  * 域名错误码白名单（§6）：**只有这些 code 允许出现在响应体里**。
  * 白名单外的 `code` 一律不透传 —— 底层文件系统 / 运行时抛出的 `EACCES` / `ENOENT` 这类系统错误码
  * 一旦回显，就会把本机路径与内部实现细节（`EACCES: permission denied, open '/tmp/...'`）泄露给前端。
+ * **新增域名错误码一律登记在这一处**（错误工厂写 `err.code` + 本白名单，不得另开 `err.expose` 旁路）。
+ * 修谱域两码（`REVISION_ACTIVE` / `REVISION_COOLDOWN`）于 2026-10 纳入。
  */
-export const DOMAIN_ERROR_CODES = [ASSET_INSUFFICIENT, 'DELETE_SCOPE_CHANGED'];
+export const DOMAIN_ERROR_CODES = [ASSET_INSUFFICIENT, 'DELETE_SCOPE_CHANGED', 'REVISION_ACTIVE', 'REVISION_COOLDOWN'];
 
 /** 白名单外（系统 / 意外错误）的统一文案：**不截取底层异常文本** */
 export const INTERNAL_ERROR_TEXT = '服务内部错误';

@@ -37,6 +37,10 @@ const DEFAULT_FEE_CENTS = 990;
 export const DEFAULT_BRANCH_FEE_SEEDS = 9999;
 /** 汇宗灵气折损比例默认值（0–1；docs/branch-clan-ops.spec.md §5-4） */
 export const DEFAULT_CONVERGE_SPIRIT_RATIO = 0.5;
+/** 修谱间隔表默认值（年；`config.revision_interval_years`，M=1→1、2→2、3→3、4→5、M≥5→表末值；全站统一）
+ *  ⚠️ 修谱费（`revision_fee_bamboos`）**已整体删除**（Kevin 2026-10-12 拍定 · 计费模型改造）：
+ *  开轮恒 999、锁定档 9999/99999 一律在 `lib/revision.js` **常量写死**，无任何后台入口。 */
+export const DEFAULT_REVISION_INTERVAL_YEARS = [1, 2, 3, 5, 10];
 
 // ---- 签到域后台可配键（同一设置载体 `jiapu_wallets.config`；Zang 裁定 v1 · Kevin 2026-09-28 拍定）----
 // 写入口沿用既有治理路由 `PUT /admin/wallet-fee`（**不新增设置路由**）；读侧一律「缺省 / 非法值 → 默认值」。
@@ -341,6 +345,24 @@ export async function setSigninDay7Fragments(n0) {
     return rec;
   });
   return n;
+}
+
+// ---- 修谱域配置键（同一设置载体 `jiapu_wallets.config`；修谱域 · 冻结契约）----
+
+/**
+ * 修谱间隔表（年；正整数数组，**全站统一**）：`config.revision_interval_years`，
+ * 缺省 / 非法（非数组 / 空数组 / 含非正整数项）→ `[1,2,3,5,10]`。返回**新拷贝**（调用方改它不污染后续读取）。
+ * 只读；写入口同上（`PUT /admin/wallet-fee`）。
+ *
+ * ⚠️ `revision_fee_bamboos`（键 + 默认常量 + 本模块读函数）**已整体删除**（Kevin 2026-10-12 拍定）：
+ * 修谱费一律常量写死（开轮 999 / 锁定 9999 / 长锁 99999），无后台入口。
+ */
+export async function getRevisionIntervalYears() {
+  const cfg = await loadConfig();
+  const raw = cfg?.revision_interval_years;
+  if (!Array.isArray(raw) || !raw.length) return [...DEFAULT_REVISION_INTERVAL_YEARS];
+  const ok = raw.every((v) => Number.isFinite(Number(v)) && Number(v) > 0 && Math.floor(Number(v)) === Number(v));
+  return ok ? raw.map((v) => Number(v)) : [...DEFAULT_REVISION_INTERVAL_YEARS];
 }
 
 // ---- 出参组装（`GET /wallet/balance`）----

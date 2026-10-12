@@ -853,15 +853,17 @@ test('F-A 只做编排：资产只经 ledger 的 withAssets/导出读写（无�
 //    带色称号批 1b-1 新增第 41 个（badge-permission.test.js，称号字段级写权限）
 //    镜像内容读侧派生（方案 A）新增第 42 个（mirror-derive.test.js，镜像 7 字段 + 称号 5 属性读侧派生）
 //    ⇒ 定额同步为实得真值 42。口径 = 「注册数 = 磁盘数 = 定额」，仍为精确等值 + 双向零缺口 + 去重。
-test('package.json 注册数 = 磁盘 *.test.js 数 = 42，且双向零缺口', async () => {
+//    修谱域批次新增第 43 个（revision.test.js，修谱记录 / 冷却 / 惰性固化 / 繁体校验 / 金额大写）
+//    ⇒ 定额同步为实得真值 43（依据 `npm test` 实测 # tests 与磁盘 readdir；本质断言一字未放宽）。
+test('package.json 注册数 = 磁盘 *.test.js 数 = 43，且双向零缺口', async () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));
   const registered = pkg.scripts.test
     .split(/\s+/)
     .filter((x) => x.endsWith('.test.js'))
     .map((x) => path.basename(x));
   const onDisk = fs.readdirSync(HERE).filter((f) => f.endsWith('.test.js')).sort();
-  assert.equal(registered.length, 42, `注册数应为 42，实得 ${registered.length}`);
-  assert.equal(onDisk.length, 42, `磁盘 *.test.js 应为 42，实得 ${onDisk.length}`);
+  assert.equal(registered.length, 43, `注册数应为 43，实得 ${registered.length}`);
+  assert.equal(onDisk.length, 43, `磁盘 *.test.js 应为 43，实得 ${onDisk.length}`);
   assert.equal(new Set(registered).size, registered.length, '注册项不得重复');
   const missingOnDisk = registered.filter((f) => !onDisk.includes(f));
   const unregistered = onDisk.filter((f) => !registered.includes(f));

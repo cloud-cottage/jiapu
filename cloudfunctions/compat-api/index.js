@@ -74,6 +74,13 @@ import * as cw from './lib/child-write.js';
 import * as fa from './lib/founder-attach.js';
 import * as clan from './lib/clan.js';
 import * as bco from './lib/branch-clan-ops.js';
+// 修谱域（新集合 jiapu_revisions；3 条路由 · 冻结契约）：GET /revisions（公开只读）、
+//   POST /admin/revision/start | /save（旧 /abort | /content | /image 三条**已整体删除**，未发布无兼容负担）。
+// 权限单一入口 = lib/revision.js 的 assertRevisionWritable（本文件不另写一套权限判断）；
+// 计费复用 economy-fee 的 FIFO 批扣 / 冲正；开关量仅剩「修谱间隔表」（revision_interval_years）
+//   一键可配（读函数在 lib/wallet.js、写函数在 lib/revision.js），写入口沿用既有 PUT /admin/wallet-fee。
+//   修谱费一律常量写死（开轮 999 / 锁定 9999 / 长锁 99999）——`revision_fee_bamboos` 键与分支已删除。
+import * as rev from './lib/revision.js';
 import { resolveNode } from './lib/id-resolve.js';
 import { idAllocator, reserveFamilyIds, reservePersonIds, numberOfId } from './lib/id-seq.js';
 import { treeActivity } from './lib/tree-activity.js';
@@ -950,6 +957,17 @@ async function handleRequest(event) {
           return send(400, { error: '请输入正确的第 7 天奖励（非负整数，个石榴籽碎片）' });
         }
         out.signin_day7_fragments = await wallet.setSigninDay7Fragments(day7);
+      }
+      // 修谱域配置键（冻结契约 · 改造后**只剩一键**）：`revision_interval_years`
+      //   （非空正整数数组，默认 [1,2,3,5,10]，全站统一）。写函数在 lib/revision.js，写入口沿用本路由。
+      //   ⚠️ 修谱费 `revision_fee_bamboos` 键与分支**已整体删除**（Kevin 2026-10-12 拍定 · 计费模型改造）：
+      //   开轮恒 999、锁定档 9999/99999 一律常量写死，**无任何后台入口**。
+      if (has('revision_interval_years') || Array.isArray(body.revision_interval_years)) {
+        try {
+          out.revision_interval_years = await rev.setRevisionIntervalYears(body.revision_interval_years);
+        } catch (e) {
+          return send(400, { error: e?.message || '请输入正确的修谱间隔表（非空正整数数组，年）' });
+        }
       }
       if (Object.keys(out).length === 1) return send(400, { error: '请输入正确的费用' });
       return send(200, out);
@@ -2653,6 +2671,62 @@ async function handleRequest(event) {
         return send(200, { ok: true, status: 'approved', result });
       } catch (e) {
         return safeError(e);
+      }
+    }
+
+    // ================= 修谱域（新集合 jiapu_revisions · 冻结契约） =================
+    // 注册位置：**树编辑闸门（`if (!treeId) return send(400, …)`）之前** —— 树上下文走 body / query，
+    // 不依赖 X-Tree-Id（先例 = /invite/* /assets/*）。权限单一入口 = rev.assertRevisionWritable。
+    // 计费：FIFO 竹片预扣 / 作废原路返还（复用 economy-fee）；错误体统一 `eco.errorPayload(e, e.extra)` ——
+    // 域名错误码（`REVISION_ACTIVE` / `REVISION_COOLDOWN`）走 `err.code` + `eco.DOMAIN_ERROR_CODES` 白名单，
+    // 附加字段（`next_start_at` / `seq`）走 `err.extra`（不再有 `err.expose` 旁路）。
+
+    // GET /revisions?tree_id=<id> —— 公开只读（**无需 X-Tree-Id**）
+    if (pathname === '/revisions' && method === 'GET') {
+      try {
+        const want = String(query.tree_id || treeId || '').trim();
+        if (!want) return send(400, { error: '缺少 tree_id' });
+        return send(200, await rev.getRevisionView(want, new Date()));
+      } catch (e) {
+        // 读路径容错已在 lib 层（集合缺失 ⇒ 空档）；此处兜底：非业务错误按 500（与 errorPayload 的 status 一致，
+        // **不得**再出现「HTTP 400 + body status:500」的错配）。
+        return send(e.status || 500, eco.errorPayload(e, e.extra || {}));
+      }
+    }
+
+    // POST /admin/revision/start {tree_id} —— 仅家族管理员；校验顺序 = 权限 → 进行中 → 冷却 → 预扣 → 落记录
+    if (pathname === '/admin/revision/start' && method === 'POST') {
+      try {
+        const u = await authUser(headers);
+        if (!u) return send(401, { error: '未登录或登录已过期' });
+        const body = parseBody(event);
+        const want = String(body.tree_id || query.tree_id || treeId || '').trim();
+        if (!want) return send(400, { error: '缺少 tree_id' });
+        const r = await rev.startRevision({ treeId: want, phone: u.phone, role: u.role, now: new Date() });
+        return send(200, { ok: true, seq: r.seq, effective_at: r.effective_at, lock_at: r.lock_at, fee: r.fee });
+      } catch (e) {
+        return send(e.status || 400, eco.errorPayload(e, e.extra || {}));
+      }
+    }
+
+    // POST /admin/revision/save {tree_id, seq, items:[{kind, payload}, …]} —— **唯一内容写入口**
+    //   （取代旧 /content + /image）。kind ∈ article | helpers | donations | cover。
+    // 计费：**一次调用 = 一次**（不论 items 长度）：编辑期内（days<=30）0 片；锁定后扣 fee_next_bamboos
+    //   （9999 / 99999）；不足 ⇒ 409 ASSET_INSUFFICIENT 且**整单不写**；扣费成功但写入失败 ⇒ **原路返还**
+    //   （系统原因唯一例外）→ 回显 `fee_refunded:true`。
+    if (pathname === '/admin/revision/save' && method === 'POST') {
+      try {
+        const u = await authUser(headers);
+        if (!u) return send(401, { error: '未登录或登录已过期' });
+        const body = parseBody(event);
+        const want = String(body.tree_id || query.tree_id || treeId || '').trim();
+        if (!want) return send(400, { error: '缺少 tree_id' });
+        const r = await rev.saveRevision({ treeId: want, seq: body.seq, items: body.items, role: u.role, phone: u.phone, now: new Date() });
+        // 透传 lib 出参（契约必须在 HTTP 面成立）：`revision` 一并回显；
+        // `log_warning` 对齐仓内 `detail_warning` 体例 —— **成功路径不出该键，留痕失败才出**（值恒 true）。
+        return send(200, { ok: true, seq: r.seq, locked: r.locked, fee: r.fee, items: r.items, revision: r.revision, ...(r.log_warning ? { log_warning: true } : {}) });
+      } catch (e) {
+        return send(e.status || 400, { ...eco.errorPayload(e, e.extra || {}), ...(e.fee_refunded ? { fee_refunded: true } : {}) });
       }
     }
 

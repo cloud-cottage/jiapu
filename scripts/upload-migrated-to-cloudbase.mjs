@@ -69,6 +69,8 @@ const COLLECTIONS = [
   'jiapu_id_seq',
   'jiapu_join_requests',
   'jiapu_marriage_requests',
+  // 修谱域（冻结契约）：每树一档（_id = tree_id）—— 漏登记则云端首写直接报错（AGENTS.md §8，启动自检拦下）
+  'jiapu_revisions',
 ];
 
 // ---- 启动自检：代码引用的 jiapu_* 集合必须全部列入 COLLECTIONS ----
