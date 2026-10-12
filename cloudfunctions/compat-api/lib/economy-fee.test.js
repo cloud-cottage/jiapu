@@ -18,8 +18,9 @@
  *   ⑩ 建树扣 9 籽 / 不足 409 / 落库失败原路返还 / 删除路径不触籽（删树不退）
  *   ⑪ 0 片行：源码级穷举「29 条 0 片路由不接闸门，清单与 index.js 逐条对齐（无幽灵路由，missing 必须为 0）」
  *      + 实跑 `POST /people` 资产逐字节不变（Kevin 2026-10-09：/admin/clan-request 预扣 99 籽移出 0 片清单）
- *   ⑫ 冲正回显统一：7 条计费路由的 catch 一律带 `fee_refunded:true`（reparent / delete-node 实测落库失败；
- *      Kevin 2026-10-09 起新增 /admin/create-clan 直建祖谱 + /admin/clan-request 预扣后落申请失败两条）
+ *   ⑫ 冲正回显统一：9 条计费路由的 catch 一律带 `fee_refunded:true`（reparent / delete-node 实测落库失败；
+ *      Kevin 2026-10-09 起新增 /admin/create-clan 直建祖谱 + /admin/clan-request 预扣后落申请失败两条；
+ *      Kevin 2026-10-12 谱名域新增第 9 条 = /admin/tree-rename 谱名落库失败原路返还）
  *   ⑬ 资产总览：`getAssetSummary` = 账本内核 `summarize` 同形状（从未有资产的手机号也不报错）
  *   ⑭ 错误回显白名单：`EACCES` / `ENOENT` 等系统错误码与路径绝不透传；409 资产不足四字段与 `how_to_get` 原样保留
  *   ⑮ 真源未变：`config/tree-meta.json` 与 `migrate-output/`（trees + details + collections）逐字节 md5 一致
@@ -1190,16 +1191,28 @@ test('0 片穷举：矩阵里 29 条 0 片路由均未接闸门（源码级）+ 
 
 // ================= ⑥-2 冲正回显统一（fee_refunded） =================
 
-test('冲正回显统一：8 条计费路由落库失败一律带 fee_refunded:true（/admin/reparent、/admin/delete-node 实测）', async () => {
-  // 源码口径：八条 catch 一律 `…refunded ? { fee_refunded: true } : {}`（PUT /people、/admin/create-tree、
+test('冲正回显统一：9 条计费路由落库失败一律带 fee_refunded:true（/admin/reparent、/admin/delete-node 实测）', async () => {
+  // 源码口径：九条 catch 一律 `…refunded ? { fee_refunded: true } : {}`（PUT /people、/admin/create-tree、
   // /admin/reparent、/admin/delete-node、/admin/sibling-reorder、/admin/create-clan、/admin/clan-request 各一处；
   // Kevin 2026-10-09 起新增后两条：直建祖谱落库失败冲正 + 建谱申请预扣后落申请失败冲正）
   // 修谱域批次新增第 8 处：计费模型改造后 = POST /admin/revision/save（唯一内容写入口；扣费成功但落库
-  //   失败 ⇒ 原路返还 ⇒ 回显 `fee_refunded`）。旧第 8 处 `/admin/revision/abort` 已随「作废概念整体取消」删除
-  //   ⇒ 定额仍为实测真值 8（**新 save 路由补上第 8 处，保留精确等值断言与逐路由匹配，不放宽、不删除任何断言**）。
+  //   失败 ⇒ 原路返还 ⇒ 回显 `fee_refunded`）。旧第 8 处 `/admin/revision/abort` 已随「作废概念整体取消」删除。
+  // 谱名域批次第 9 处（Kevin 2026-10-12 拍定）：POST /admin/tree-rename —— 谱名落库失败时由
+  //   lib/tree-rename.js 的 catch 打标 `e.fee_refunded = true`，路由 catch 统一回显。
+  //   ⇒ 定额取**实测真值**：`grep -c 'refunded ? { fee_refunded: true } : {}' index.js` = 9。
+  //   **保留精确等值断言 + 逐路由匹配（每条路由 catch 各命中一次），不放宽为 >=、不删除任何断言**。
   const hits = (INDEX_LINES.join('\n').match(/refunded \? \{ fee_refunded: true \} : \{\}/g) || []).length;
-  assert.equal(hits, 8, '八条冲正分支口径必须统一');
-  for (const p of ['/admin/reparent', '/admin/delete-node', '/admin/sibling-reorder']) {
+  assert.equal(hits, 9, '九条冲正分支口径必须统一（实测真值，逐条与 index.js 对齐）');
+  for (const p of [
+    '/admin/tree-rename',
+    '/admin/reparent',
+    '/admin/delete-node',
+    '/admin/sibling-reorder',
+    '/admin/create-tree',
+    '/admin/create-clan',
+    '/admin/clan-request',
+    '/admin/revision/save',
+  ]) {
     assert.match(branchesOf(p).join('\n'), /refunded \? \{ fee_refunded: true \}/, `${p} 冲正分支应回显 fee_refunded`);
   }
   // /admin/sibling-reorder 的落库失败实跑（0444 → 500 + fee_refunded:true + 原路返还）见

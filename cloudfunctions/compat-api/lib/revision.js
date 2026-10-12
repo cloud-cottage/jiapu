@@ -44,6 +44,21 @@
  * 配置键（I）：**保留** `revision_interval_years`（默认 `[1,2,3,5,10]`）；**删除** `revision_fee_bamboos`
  * （键、`wallet.js` 的默认常量与读函数、`index.js` 里 `PUT /admin/wallet-fee` 的对应分支全部删掉）。
  *
+ * 譜司襄事（`helpers`）口径（Kevin 2026-10-12 当面拍定 · 逐字实现，常量见下方「helpers 职务与人数口径」区）：
+ *   · 职务 `duty` **只有 `主司` / `副司` 两个合法值**（逐字；其它值一律 400「職務只能是主司或副司」）；
+ *   · **总人数 ≤ 3**：`主司` 恰 1 人（必填）、`副司` ≤ 2 人；**同一族人不得重复**（`person_handle` 去重）；
+ *   · **强读法**：每一轮保存**必须含恰 1 位主司**（`helpers` 为空 ⇒ 400「請填寫主司」，注释内标「一句话可改」）。
+ *   · 后记「主司」取值口径随之内收：**本轮主司优先**（见 `lib/revision-postscript.js`），无则回退操作者手机号。
+ *
+ * 族務紀文（`article`）字符集口径（A 口径 · Kevin 2026-10-12 拍定 · 逐字实现，常量/文案见下方「族務紀文（article）字符集口径」区）：
+ *   · **只允许「汉字 + 中文逗号 `，` + 中文句号 `。`」**，其它一切字符（顿号 / 分号 / 引号 / 感叹号 /
+ *     问号 / 英文标点 / 空格 / 阿拉伯数字 / 拉丁字母 / 换行 …）**逐字符全拒** ⇒ 400 `僅允許漢字與中文逗號、句號`；
+ *   · **禁止连续标点**（`，。` / `。。` / `，，` 相邻即拒）⇒ 400 `標點不可連續`；三字段（标题 / 正文 / 落款）**同规则**；
+ *   · **存储保留原文**（含 `，` / `。`）——**不剔除标点、不折成空格**；标点只在【乌丝栏渲染】时剔除 + 转译（渲染单另派）；
+ *   · **旧口径「`[,，。.]` ⇒ 空格 + 折叠」（`cleanArticleText`）已被取代**、函数已删除；渲染侧对**存量旧数据**
+ *     （标点已被折成空格）的兼容口径 = **空格在渲染时一并剔除（不占字位）** ⇒ **无需数据迁移**；
+ *   · 繁体严拒（逐码点）**不变**。
+ *
  * 错误体：**域名错误码走 `err.code` + `eco.DOMAIN_ERROR_CODES` 白名单**；附加字段（`next_start_at` / `seq`）
  * 走 `err.extra`，由路由 `eco.errorPayload(e, e.extra || {})` 合并回显。**不得另开 `err.expose` 旁路**。
  *
@@ -63,6 +78,7 @@ import { chargeBamboo, refund } from './economy-fee.js';
 import { OPS_LOGS_COL, opsLogId } from './economy-ops.js';
 import { S2T_SOURCE, S2T_TARGET } from './s2t-data.js';
 import { amountToChineseUpper } from './revision-amount.js';
+import { buildPostscript } from './revision-postscript.js';
 
 // ---- 集合 / 常量（冻结口径；路由内禁止写魔法数字） ----
 
@@ -94,6 +110,23 @@ export const ERR_REVISION_COOLDOWN = 'REVISION_COOLDOWN';
 /** 内容写入 kind 合法集（`POST /admin/revision/save` 的 `items[].kind`） */
 export const REVISION_ITEM_KINDS = ['article', 'helpers', 'donations', 'cover'];
 
+// ---- 譜司襄事（helpers）职务与人数口径（**逐字写死**；Kevin 2026-10-12 当面拍定） ----
+//   · 职务 `duty` **只有两个合法值**：`主司` / `副司`（逐字比较，其它值一律拒）；
+//   · **总人数 ≤ 3**，其中 **`主司` 恰 1 人（必填）**、`副司` **≤ 2 人**；
+//   · **同一族人不得重复出现**（主司↔副司、副司↔副司，判据 = `person_handle` 去重）。
+//   ⚠️ `HELPER_DUTY_MASTER` 与 `lib/revision-postscript.js` 的 `MASTER_DUTY` **逐字一致**
+//      （后记「主司优先」取值依赖它；两处常量同源，改一处必改另一处）。
+/** 襄事职务合法集（**只有两个**，逐字；其它值 ⇒ 400「職務只能是主司或副司」） */
+export const HELPER_DUTIES = ['主司', '副司'];
+/** 主司职务名（恰 1 人、必填） */
+export const HELPER_DUTY_MASTER = '主司';
+/** 副司职务名（≤ 2 人） */
+export const HELPER_DUTY_VICE = '副司';
+/** 襄事总人数上限（主司 1 + 副司 ≤ 2） */
+export const HELPER_MAX_TOTAL = 3;
+/** 副司人数上限 */
+export const HELPER_MAX_VICE = 2;
+
 /** 留痕 `op` 值（`jiapu_ops_logs` · 锁定后付费保存；**逐字写死，勿改**） */
 export const REVISION_LOCKED_EDIT_OP = 'revision_locked_edit';
 
@@ -101,7 +134,28 @@ const ARTICLE_FIELDS = ['title', 'body', 'signature'];
 const ARTICLE_LABEL = { title: '標題', body: '正文', signature: '落款' };
 const MAX_COVER_BYTES = 2 * 1024 * 1024; // 2 MiB（按**解码后字节数**）
 const COVER_EXTS = ['jpg', 'png', 'webp'];
-const PUNCT_RE = /[,，。.]/g;
+
+// ---- 族務紀文（article）字符集口径（A 口径 · Kevin 2026-10-12 拍定）----
+//
+// ① **只允许「汉字 + 中文逗号 `，` + 中文句号 `。`」**；其它一切字符（顿号 `、` / 分号 / 引号 /
+//    感叹号 / 问号 / 英文标点 `,` `.` / 空格 / 阿拉伯数字 / 拉丁字母 / 换行 …）**逐字符全拒**；
+// ② **禁止连续标点**（`，。` / `。。` / `，，` … 相邻即拒）；
+// ③ **存储保留原文**（含 `，` / `。`）：写入时**不得**剔除标点、**不得**把标点折成空格；
+//    标点只在【乌丝栏渲染】时剔除 + 转译（渲染单另派）⇒ 本层不新增存储字段、不改存储形状。
+// ④ **取代登记**：旧口径「`[,，。.]` ⇒ 换空格 + 连续空格折叠」（旧函数 `cleanArticleText`）
+//    **自本拍定起被取代**，函数已删除。**渲染侧对存量旧数据**（标点已被折成空格）的兼容口径 =
+//    **空格在渲染时一并剔除（不占字位）** ⇒ 无需数据迁移（属渲染单，本层只记一笔）。
+// ⑤ 繁体严拒（逐码点 `assertTraditional`）**不变**。
+//
+// ⚠️ 两条拒绍文案**必须与前端 `frontend/src/components/revision-panel/article-rules.ts` 逐字一致**
+//    （同 `roster-rules.ts` 体例：改一端必须同改另一端）。
+/** 合法标点（**只有这两个**；中文逗号 / 中文句号，逐字） */
+export const ARTICLE_PUNCT = ['，', '。'];
+/** 非法字符拒绍文案（繁体 · 逐字；前端同源） */
+export const ARTICLE_MSG_CHARSET = '僅允許漢字與中文逗號、句號';
+/** 连续标点拒绍文案（繁体 · 逐字；前端同源） */
+export const ARTICLE_MSG_PUNCT_REPEAT = '標點不可連續';
+
 
 // ---- 繁体表（运行时按**码点**对齐建表；表源 = lib/s2t-data.js） ----
 
@@ -255,7 +309,7 @@ export function canStartRevision({ revisions = [], now = new Date(), intervalYea
   return { ok: false, reason: 'cooldown', next_start_at: next };
 }
 
-// ---- 纯函数：繁体校验 / 标点清洗 ----
+// ---- 纯函数：繁体校验 / 族務紀文字符集校验（A 口径）----
 
 /** 第一个简体字（无 ⇒ ''）：逐码点，`char` 在表中且 `s2t[char] !== char` ⇒ 简体 */
 export function firstSimplifiedChar(text) {
@@ -272,15 +326,72 @@ export function assertTraditional(text) {
   if (ch) throw revisionError(400, `族務紀文須以繁體字錄入（首個簡體字：${ch}）`);
 }
 
-/** 标点清洗：`[:,，。.]` → 空格 + 连续空格折叠为一（其余标点保留）+ 去首尾空白 */
-export function cleanArticleText(s) {
-  return String(s == null ? '' : s)
-    .replace(PUNCT_RE, ' ')
-    .replace(/ +/g, ' ')
-    .trim();
+/**
+ * 单个**码点**是否汉字（允许集的第一半）：
+ *   基本区 `U+4E00–U+9FFF` · 扩展 A `U+3400–U+4DBF` · 兼容汉字 `U+F900–U+FAFF` ·
+ *   扩展 B–F / 兼容补充 `U+20000–U+2FA1F` · 扩展 G `U+30000–U+3134F`。
+ * 逐码点判定 ⇒ **代理对（增补平面汉字）不会被拆成两个非法字符**。
+ */
+export function isHanziCodePoint(cp) {
+  const n = Number(cp);
+  if (!Number.isFinite(n)) return false;
+  return (
+    (n >= 0x3400 && n <= 0x4dbf) ||
+    (n >= 0x4e00 && n <= 0x9fff) ||
+    (n >= 0xf900 && n <= 0xfaff) ||
+    (n >= 0x20000 && n <= 0x2fa1f) ||
+    (n >= 0x30000 && n <= 0x3134f)
+  );
 }
 
-/** 族務紀文三字段归一并校验（全须繁体 + 均不得为空） */
+/** 是否**合法标点**（中文逗号 `，` / 中文句号 `。`；逐字） */
+export function isArticlePunct(ch) {
+  return ARTICLE_PUNCT.includes(ch);
+}
+
+/**
+ * **首个非法字符**（无 ⇒ `''`）：允许集 = 汉字 ∪ {`，`, `。`}，**其它一切字符全拒**
+ * （顿号 / 分号 / 引号 / 感叹号 / 问号 / 英文标点 / 空格 / 阿拉伯数字 / 拉丁字母 / 换行 …）。
+ * 逐**码点**遍历（`for…of`）⇒ 增补平面字符按整字判定。
+ */
+export function firstIllegalArticleChar(text) {
+  for (const ch of String(text == null ? '' : text)) {
+    if (isArticlePunct(ch)) continue;
+    if (isHanziCodePoint(ch.codePointAt(0))) continue;
+    return ch;
+  }
+  return '';
+}
+
+/** 是否含**连续标点**（相邻两码点皆为 `，` 或 `。` ⇒ 拒；`，。` / `。。` / `，，` 一律命中） */
+export function hasConsecutiveArticlePunct(text) {
+  let prevPunct = false;
+  for (const ch of String(text == null ? '' : text)) {
+    const isP = isArticlePunct(ch);
+    if (isP && prevPunct) return true;
+    prevPunct = isP;
+  }
+  return false;
+}
+
+/**
+ * 族務紀文单字段断言（**字符集 → 连续标点**，判序固定）：
+ *   ① 含非法字符 ⇒ 400 `僅允許漢字與中文逗號、句號`；
+ *   ② 含连续标点 ⇒ 400 `標點不可連續`。
+ * 文案**逐字**（与前端 `article-rules.ts` 同源），**不加字段前后缀**。
+ */
+export function assertArticleText(text) {
+  if (firstIllegalArticleChar(text)) throw revisionError(400, ARTICLE_MSG_CHARSET);
+  if (hasConsecutiveArticlePunct(text)) throw revisionError(400, ARTICLE_MSG_PUNCT_REPEAT);
+}
+
+/**
+ * 族務紀文三字段归一并校验（**只允许汉字 + ，。 · 禁连续标点 · 原文原样落库**）：
+ *   ① 每字段必须为字符串且非空（`trim()` 后为空 ⇒ 400 `${label}不得為空`）；
+ *   ② 繁体严拒（逐码点，**不变**）；
+ *   ③ 字符集 + 连续标点（`assertArticleText`，见上）；
+ *   ④ **落库值 = 原文**（含 `，` / `。`）——**不剔除标点、不折成空格**（A 口径，取代旧清洗）。
+ */
 export function normalizeArticle(payload) {
   const p = payload || {};
   const out = {};
@@ -288,25 +399,63 @@ export function normalizeArticle(payload) {
     const raw = p[k];
     if (typeof raw !== 'string' || !raw.trim()) throw revisionError(400, `${ARTICLE_LABEL[k]}不得為空`);
     assertTraditional(raw); // 逐字：命中简体 ⇒ 400 + 首个简体字
-    out[k] = cleanArticleText(raw);
-    if (!out[k]) throw revisionError(400, `${ARTICLE_LABEL[k]}不得為空`); // 清洗后为空（如仅标点）同样 400
+    assertArticleText(raw); // 字符集 → 连续标点
+    out[k] = raw; // 原文原样落库（含 ，。；合法输入必无空白字符，故与 trim 后同值）
   }
   return out;
 }
 
 const nodeExists = (tree, handle) => !!(tree && tree.people && tree.people[handle]);
 
-/** helpers 归一（全量替换语义；person_handle 必填且必须存在于本树，duty 必填非空） */
+/**
+ * helpers（譜司襄事）归一 + 校验（全量替换语义）。**职务与人数口径写死**（见文件头常量区）：
+ *
+ *   ① `payload` 必须是数组（否则 400）；`person_handle` 必填且必须存在于本树；
+ *   ② 职务 `duty` **只能是 `主司` / `副司`**（逐字；其它任何值 ⇒ 400「職務只能是主司或副司」）；
+ *   ③ **同一族人不得重复**（`person_handle` 去重：主司↔副司 / 副司↔副司均不得重复）
+ *      ⇒ 400「同一位族人不可重複錄入」；
+ *   ④ **强读法（本版口径）：每一轮保存必须含恰 1 位主司** —— `helpers` 为空 ⇒ 400「請填寫主司」；
+ *   ⑤ 人数上限：`副司` ≤ 2（⇒「副司最多兩位」）、总数 ≤ 3（⇒「襄事最多三位」）、`主司` 恰 1（⇒「主司只能有一位」）。
+ *
+ * ⚠️ **判序说明（为什么不是「主司 → 副司 → 总数」）**：三条人数断言彼此重叠
+ *   （主司恰 1 + 副司 ≤ 2 ⇒ 总数自动 ≤ 3），必须按固定次序判定才能让每条文案各有一条**可达**路径：
+ *   · `副司 > 2` 的样本（1 主司 + 3 副司）必然也超总数 ⇒ 副司必须先于总数判定；
+ *   · `总数 > 3` 的样本只能是「主司不恰 1」（2 主司 + 2 副司）⇒ 总数必须先于主司计数判定。
+ *   ⇒ 次序固定为 **副司 → 总数 → 主司**（主司缺失在最前，语义最直白）。改序会让某条文案变成死代码。
+ *
+ * ⚠️ ④ 的「强读法」= **一句话可改**：删掉下面那行 `if (!list.length)` 判空（或改为 `payload.length &&`）
+ *    即可放宽为「**填了襄事才需主司**」（空数组放行；只要给了襄事，仍须恰 1 位主司）。
+ */
 export function normalizeHelpers(payload, tree) {
   if (!Array.isArray(payload)) throw revisionError(400, '族務協助者須為陣列');
-  return payload.map((it, i) => {
+  // ④ 强读法（一句话可改：删掉本行即放宽为「填了襄事才需主司」）
+  if (!payload.length) throw revisionError(400, '請填寫主司');
+
+  // ① 逐项结构：handle 必填 + 节点必须在本树；② 职务枚举（逐字，其它值一律拒）
+  const list = payload.map((it, i) => {
     const h = String(it?.person_handle || '').trim();
     const duty = String(it?.duty || '').trim();
     if (!h) throw revisionError(400, `第 ${i + 1} 位協助者缺少 person_handle`);
     if (!nodeExists(tree, h)) throw revisionError(400, `第 ${i + 1} 位協助者的節點不存在於本樹：${h}`);
-    if (!duty) throw revisionError(400, `第 ${i + 1} 位協助者職責不得為空`);
+    if (!HELPER_DUTIES.includes(duty)) throw revisionError(400, '職務只能是主司或副司');
     return { person_handle: h, duty };
   });
+
+  // ③ 同一族人不得重复（主司↔副司、副司↔副司；判据 = person_handle）
+  const seen = new Set();
+  for (const it of list) {
+    if (seen.has(it.person_handle)) throw revisionError(400, '同一位族人不可重複錄入');
+    seen.add(it.person_handle);
+  }
+
+  // ⑤ 人数上限（判序见上方说明：副司 → 总数 → 主司）
+  const masters = list.filter((it) => it.duty === HELPER_DUTY_MASTER);
+  const vices = list.filter((it) => it.duty === HELPER_DUTY_VICE);
+  if (!masters.length) throw revisionError(400, '請填寫主司');
+  if (vices.length > HELPER_MAX_VICE) throw revisionError(400, '副司最多兩位');
+  if (list.length > HELPER_MAX_TOTAL) throw revisionError(400, '襄事最多三位');
+  if (masters.length > 1) throw revisionError(400, '主司只能有一位');
+  return list;
 }
 
 /** donations 归一（全量替换语义；person_handle 同上，amount 必填正整数·单位元） */
@@ -728,6 +877,10 @@ export async function saveRevision({ treeId, seq, items, role, phone, now = new 
  * 公开只读视图（**无需 X-Tree-Id**）。无记录 ⇒ 全部空数组 / `active:null` / `can_start.ok=true`。
  * 出参逐字对齐冻结契约（改造后：**删除旧键 `fee_bamboos`**；新增 `days` / `fee_tier` / `fee_next_bamboos`；
  * `editable` **恒 true**）。
+ *
+ * **顶层新增键 `postscript`（只增不改）**：`{ created_by, created_by_name, masters:[{seq,name}] }` —— 后记页
+ * 「始纂人 / 主司」人名解析（四级降级，见 `lib/revision-postscript.js`）。`masters` 与 `revisions[]`
+ * **同序同长**（同一 `base.revisions` 派生）；tree-meta 读失败 / 集合缺失一律降级为空串，**读路径绝不抛**。
  */
 export async function getRevisionView(treeId, now = new Date()) {
   const id = String(treeId || '').trim();
@@ -753,6 +906,11 @@ export async function getRevisionView(treeId, now = new Date()) {
 
   const revisions = [];
   for (const r of base.revisions) revisions.push(await decorate(r));
+
+  // 后记名册（**顶层新增键 · 只增不改**）：`masters` 与上面 `revisions[]` 同序同长
+  // （同一 `base.revisions` 数组按同一顺序派生 ⇒ 长度恒等，不跳条）。
+  // 四级降级解析 + 读容错全在 `lib/revision-postscript.js`（读失败 / 集合缺失一律降级，绝不抛）。
+  const postscript = await buildPostscript(id, base.revisions);
 
   // active = 当前轮次（**锁后仍为可写** ⇒ 非 null，且带 days / fee_tier / fee_next_bamboos）；
   // 无记录 ⇒ null。`editable` 恒 true（本树管理员付费即可写、chief 亦可）。
@@ -788,5 +946,6 @@ export async function getRevisionView(treeId, now = new Date()) {
     can_start: canStartRevision({ revisions: base.revisions, now, intervalYears: interval }),
     active,
     revisions,
+    postscript,
   };
 }

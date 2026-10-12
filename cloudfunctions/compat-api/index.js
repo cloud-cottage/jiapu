@@ -81,6 +81,10 @@ import * as bco from './lib/branch-clan-ops.js';
 //   一键可配（读函数在 lib/wallet.js、写函数在 lib/revision.js），写入口沿用既有 PUT /admin/wallet-fee。
 //   修谱费一律常量写死（开轮 999 / 锁定 9999 / 长锁 99999）——`revision_fee_bamboos` 键与分支已删除。
 import * as rev from './lib/revision.js';
+// 谱名改名域（Kevin 2026-10-12 拍定）：`genealogy_name` 从通用更新路由拆出 ⇒ 专用计费路由
+//   `POST /admin/tree-rename`（999 / 9999 / 99999 三档 + 首次或 >=360 天 999 + no-op 0 片）。
+// 权限**不另写**：lib/tree-rename.js 整份复用 lib/revision.js 的 assertRevisionWritable（本树主理人锚点判据）。
+import * as trn from './lib/tree-rename.js';
 import { resolveNode } from './lib/id-resolve.js';
 import { idAllocator, reserveFamilyIds, reservePersonIds, numberOfId } from './lib/id-seq.js';
 import { treeActivity } from './lib/tree-activity.js';
@@ -733,7 +737,11 @@ async function handleRequest(event) {
     if (pathname === '/tree-meta' && method === 'GET') {
       const meta = await getMeta();
       if (!meta) return send(500, { error: 'tree-meta 缺失' });
-      return send(200, meta);
+      // 读面**只增不改**（Kevin 2026-10-12 拍定）：每树 entry 新增
+      //   · `genealogy_name_updated_at`（ISO 或 null）
+      //   · `rename_fee_pieces`（**服务端按同一矩阵算出的纯函数结果**；无历史 ⇒ 999）
+      // 供前端直接显示改谱名价格 —— **前端不得自行重算档位**（判据 = lib/tree-rename.js）。
+      return send(200, trn.decorateTreeMetaForRead(meta, new Date()));
     }
 
     if (pathname === '/tree-meta' && method === 'PUT') {
@@ -751,10 +759,18 @@ async function handleRequest(event) {
       const meta = await getMeta();
       const found = Object.values(meta.trees).find((t) => t.tree_id === tree_id);
       if (!found) return send(404, { error: `未找到 tree: ${tree_id}` });
+      // 「谱名」已从本路由**拆出**（Kevin 2026-10-12 拍定）：本路由不再可写 `genealogy_name`，
+      //   · 携带且**与现值不同** ⇒ 400（文案逐字）—— 校验**先于任何写入**（不得写一半再拒）；
+      //   · 与其值**相同** ⇒ **忽略**（不报错、不写、不算净变化）；
+      //   · 其余字段行为**一字不改**。
+      // 改谱名走专用计费路由 `POST /admin/tree-rename`（价目见 lib/tree-rename.js）。
+      if (genealogy_name !== undefined && !trn.sameGenealogyName(genealogy_name, found.genealogy_name)) {
+        return send(400, { error: trn.TREE_RENAME_HINT });
+      }
       // 定向写：只写该树档（校验全部先于写入；不再整份 saveMeta）
       const entry = await mutateTreeMeta(tree_id, (e) => {
         if (display_title !== undefined) e.display_title = display_title;
-        if (genealogy_name !== undefined) e.genealogy_name = genealogy_name;
+        // （`genealogy_name` 的写入分支已删除：见上方 400 拦截）
         if (archive_url !== undefined) e.archive_url = archive_url;
         if (hall_name !== undefined) e.hall_name = hall_name;
         // legacy 直写分支（未结构化调用方 / 存量前端）：保留原样
@@ -770,6 +786,44 @@ async function handleRequest(event) {
         return e;
       });
       return send(200, { ok: true, entry });
+    }
+
+    // ================= 修改谱名（专用计费路由 · Kevin 2026-10-12 拍定）=================
+    // POST /admin/tree-rename `{ tree_id, genealogy_name }`
+    //   计费阶梯（Δ = now - genealogy_name_updated_at；days = ceil(Δ/86400000)，同修谱体例）：
+    //     首次（无历史）或 days >= 360 ⇒ 999（first_or_expired）；30 <= days < 360 ⇒ 9999（within_360d）；
+    //     days < 30 ⇒ 99999（within_30d）。价目**常量单点**在 lib/tree-rename.js（每行「一句话可改」）。
+    //   权限：本树 `tree_steward` 及以上 + `chief_editor` —— 判据**唯一入口** =
+    //     lib/tree-rename.js 的 assertTreeRenameWritable（整份复用 lib/revision.js 的
+    //     assertRevisionWritable：「本树主理人」锚点归属）；本路由**不另写第二套权限**。
+    //   语义：no-op（与现值相同）⇒ 200 + `fee.pieces = 0`（不扣 / 不写 / 不记流水 / 不推进时间戳）；
+    //     不足 ⇒ 409 `ASSET_INSUFFICIENT`（need/current/unit/how_to_get）整单拒绝、元数据一字不写；
+    //     校验全过**且扣费成功后**才经 mutateTreeMeta 写 `genealogy_name` + `genealogy_name_updated_at`；
+    //     实扣 ⇒ best-effort 写一条 `jiapu_ops_logs`（失败不阻断，仅出参 `log_warning:true`）。
+    //   **必须注册在树编辑闸门之前**（树上下文走 body 的 `tree_id`，不依赖 `X-Tree-Id`；同段先例 = /revisions）。
+    if (pathname === '/admin/tree-rename' && method === 'POST') {
+      try {
+        const u = await authUser(headers);
+        if (!u) return send(401, { error: '未登录或登录已过期' });
+        const body = parseBody(event);
+        const r = await trn.renameTreeGenealogy({
+          treeId: body.tree_id,
+          genealogyName: body.genealogy_name,
+          role: u.role,
+          phone: u.phone,
+          now: new Date(),
+        });
+        // 出参逐字（只增）：`{ ok, tree_id, genealogy_name, fee:{pieces,tier} }`；`log_warning` 仅留痕失败时出现
+        return send(200, {
+          ok: true,
+          tree_id: r.tree_id,
+          genealogy_name: r.genealogy_name,
+          fee: r.fee,
+          ...(r.log_warning ? { log_warning: true } : {}),
+        });
+      } catch (e) {
+        return send(e.status || 400, { ...eco.errorPayload(e, e.extra || {}), ...(e.fee_refunded ? { fee_refunded: true } : {}) });
+      }
     }
 
     // 家族树「发源地」人工指定（契约 v2 C8′；权限档与 PUT /tree-meta 完全一致：仅 chief_editor）
@@ -2682,6 +2736,9 @@ async function handleRequest(event) {
     // 附加字段（`next_start_at` / `seq`）走 `err.extra`（不再有 `err.expose` 旁路）。
 
     // GET /revisions?tree_id=<id> —— 公开只读（**无需 X-Tree-Id**）
+    // 出参**只增不改**：顶层新增 `postscript = { created_by, created_by_name, masters:[{seq,name}] }`
+    // （后记页「始纂人 / 主司」人名解析 · 四级降级，实现单点 = `lib/revision-postscript.js`）；
+    // `masters` 与既有 `revisions[]` 同序同长。本路由只透传 lib 出参 ⇒ 不在此手拼字段清单。
     if (pathname === '/revisions' && method === 'GET') {
       try {
         const want = String(query.tree_id || treeId || '').trim();

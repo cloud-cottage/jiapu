@@ -19,7 +19,7 @@
  *   ⑯ 豁免清单（`config/geo-bounds/_unsourceable.json`）：存在；逐条 `code`/`level`/`reason` 非空；
  *      含 `120100`/`711600`/`711601`；无重复
  *   ⑰ 新增天津 `120000`：细 / 粗两档逐 feature 一一对应（数量/顺序/adcode/properties）且含 `120116`
- *   ⑱ 既有 29 份细 / 粗档 md5 未变（冻结基线；本批只 +1 新增 `120000`，既有不得重生成）
+ *   ⑱ 既有 29 份细 / 粗档 md5 未变（冻结基线；120000 / 120116 / 710000 三份为增补，既有 29 份不得重生成）
  *
  * 运行：node --test cloudfunctions/compat-api/lib/geo-bounds.test.js
  */
@@ -181,7 +181,7 @@ test('⑧ 粗档真源：adcode 集合与细档一致；逐 feature 一一对应
   const fine = truthAdcodes(TRUTH_DIR);
   const coarse = truthAdcodes(COARSE_TRUTH_DIR);
   assert.equal(fine.length > 0, true, '细档真源必须有分片');
-  assert.deepEqual(coarse, fine, '粗档 adcode 集合必须与细档完全一致（既有 29 + 本批 120000 = 30 个）');
+  assert.deepEqual(coarse, fine, '粗档 adcode 集合必须与细档完全一致（既有 29 + 120000 + 120116 + 710000 = 32 个）');
   assert.equal(LOD_COARSE_RATIO, 0.06, '粗档顶点预算比例 = 0.06');
   assert.equal(LOD_COARSE_MIN, 12, '粗档顶点预算下限 = 12');
   assert.equal(LOD_COARSE_MAX, 80, '粗档顶点预算上限 = 80');
@@ -394,29 +394,37 @@ test('⑭ px² 复算表（stage 390×520 · 三镜头）：梨树区 ≤1.0、�
 // 派单冻结口径：把「应有而无」判据从**码级**改为**面级**（一个码满足 ⇔ 本档有该码分片，
 // 或本档任一分片含 `properties.adcode == 该码` 的 feature），并为上游确实无几何的码建
 // **显式豁免清单**；新增天津 `120000` 细 / 粗档；既有 29 份分片**不得改动**。
+// 2026-10-12 台湾省几何批（commit 13cbac2）续：新增 `120116`（天津滨海新区）与 `710000`（台湾省自身面）
+// 细 / 粗档 ⇒ 710000 由「无自身分片」改「有自身分片」，⑮ 面级判据对 710000 的旧前提失效，同步为实情。
 
 // ================= ⑮ 面级判据 =================
 
-test('⑮ 面级判据：无自身分片亦可由父分片的面满足（120000/710000 ← 100000.json；120116 ← 120000.json）；豁免项不判负', () => {
+test('⑮ 面级判据：面可由父 / 底图分片提供（120000 / 710000 的面在 100000.json；120116 的面在 120000.json）；豁免项不判负', () => {
   const expected = collectAdcodes();
   const fine = truthAdcodes(TRUTH_DIR);
   const faces = faceAdcodes(fine, TRUTH_DIR);
   // 省级底图 100000.json 承载 34 个省级面（含 120000 / 710000）
   assert.equal(fine.includes('100000'), true, '100000 有自身分片');
-  assert.equal(fine.includes('120000'), true, '120000 本批已补自身分片');
+  assert.equal(fine.includes('120000'), true, '120000 已有自身分片（前批补）');
   assert.equal(faces.has('120000'), true, '120000 的面亦在 100000.json 里');
-  assert.equal(fine.includes('710000'), false, '710000（台湾省）无自身分片');
-  assert.equal(faces.has('710000'), true, '710000 的面必须由 100000.json 提供');
-  assert.equal(faces.has('120116'), true, '120116（滨海新区）的面必须由 120000.json 提供');
+  // 2026-10-12 台湾省几何批（13cbac2）：710000 / 120116 均已补自身分片 ⇒ 旧「无自身分片」前提不成立，同步为实情
+  assert.equal(fine.includes('710000'), true, '710000（台湾省）已有自身分片');
+  assert.equal(faces.has('710000'), true, '710000 的面亦在 100000.json 省级底图里');
+  assert.equal(fine.includes('120116'), true, '120116（滨海新区）已有自身分片');
+  assert.equal(faces.has('120116'), true, '120116 的面亦在 120000.json 里');
   const { codes: exempt } = loadUnsourceable();
   assert.deepEqual(unsatisfiedCodes(expected, fine, faces, exempt), [], '面级判据 + 豁免下，「应有而无」必须为空');
-  // 反证：若不看面、不看豁免（旧码级判据）⇒ 这五个码会被误报：710000 无自身分片但面在 100000.json；
-  // 120116 无自身分片但面在 120000.json；120100/711600/711601 上游无几何（豁免）。
+  // 面级通路本质（非恒真）：扣掉 710000 / 120116 的自身分片后，其面仍由父 / 底图分片满足 ⇒ 不误报
+  assert.deepEqual(unsatisfiedCodes(['710000'], ['100000'], faceAdcodes(['100000'], TRUTH_DIR), new Set()), [], '710000 无自身分片时，面由 100000.json 底图提供即满足');
+  assert.deepEqual(unsatisfiedCodes(['120116'], ['120000'], faceAdcodes(['120000'], TRUTH_DIR), new Set()), [], '120116 无自身分片时，面由 120000.json 提供即满足');
+  // 反证：若不看面、不看豁免（旧码级判据）⇒ 上游无几何的豁免码会被误报（120100/711600/711601 无自身分片且无面）
   const naive = unsatisfiedCodes(expected, fine, new Set(), new Set());
-  for (const c of ['120100', '120116', '710000', '711600', '711601']) {
-    assert.equal(naive.includes(c), true, `面级判据未生效时 ${c} 应被误报`);
+  for (const c of ['120100', '711600', '711601']) {
+    assert.equal(naive.includes(c), true, `旧码级判据（不看面 / 不看豁免）下 ${c} 应被误报`);
   }
-  assert.equal(naive.includes('120000'), false, '120000 已有自身分片（本批补），码级亦满足');
+  for (const c of ['710000', '120116', '120000']) {
+    assert.equal(naive.includes(c), false, `${c} 已有自身分片，码级亦满足`);
+  }
 });
 
 // ================= ⑯ 豁免清单结构 =================
@@ -475,7 +483,7 @@ test('⑰ 新增天津 120000：细 / 粗两档逐 feature 一一对应（数量
 
 // ================= ⑱ 既有 29 份 md5 冻结基线 =================
 
-/** 既有 29 份（本批之前 · git 追踪集合）；本批只 +1 新增天津 120000 */
+/** 既有 29 份（本批之前 · git 追踪集合）；其后增补 120000 / 120116 / 710000 三份 */
 const LEGACY_CODES = [
   '100000', '130000', '130200', '130208', '130229', '130300', '130302', '210000', '210900',
   '230000', '230100', '230300', '230302', '230303', '230305', '231000', '231025', '231081',
@@ -519,13 +527,13 @@ const LEGACY_COARSE_MD5 = {
   '610122': 'faba9c53661431c9c9560cc8f9542ed9',
 };
 
-test('⑱ 既有 29 份细 / 粗档 md5 未变（冻结基线）；两档增量恰为 +1（天津 120000）', () => {
+test('⑱ 既有 29 份细 / 粗档 md5 未变（冻结基线）；两档增量恰为 +3（120000 / 120116 / 710000）', () => {
   const fine = truthAdcodes(TRUTH_DIR);
   const coarse = truthAdcodes(COARSE_TRUTH_DIR);
-  assert.equal(fine.length, LEGACY_CODES.length + 1, '细档 = 既有 29 + 新增 120000');
-  assert.equal(coarse.length, LEGACY_CODES.length + 1, '粗档 = 既有 29 + 新增 120000');
-  assert.deepEqual(fine.filter((c) => !LEGACY_CODES.includes(c)), ['120000'], '细档增量恰为 120000');
-  assert.deepEqual(coarse.filter((c) => !LEGACY_CODES.includes(c)), ['120000'], '粗档增量恰为 120000');
+  assert.equal(fine.length, LEGACY_CODES.length + 3, '细档 = 既有 29 + 新增 120000 / 120116 / 710000');
+  assert.equal(coarse.length, LEGACY_CODES.length + 3, '粗档 = 既有 29 + 新增 120000 / 120116 / 710000');
+  assert.deepEqual(fine.filter((c) => !LEGACY_CODES.includes(c)), ['120000', '120116', '710000'], '细档增量恰为 120000 / 120116 / 710000');
+  assert.deepEqual(coarse.filter((c) => !LEGACY_CODES.includes(c)), ['120000', '120116', '710000'], '粗档增量恰为 120000 / 120116 / 710000');
   for (const c of LEGACY_CODES) {
     assert.equal(md5(path.join(TRUTH_DIR, `${c}.json`)), LEGACY_FINE_MD5[c], `既有细档 ${c}.json 被改动（md5 变）`);
     assert.equal(md5(path.join(COARSE_TRUTH_DIR, `${c}.json`)), LEGACY_COARSE_MD5[c], `既有粗档 coarse/${c}.json 被改动（md5 变）`);

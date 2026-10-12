@@ -6,13 +6,16 @@
  *
  * 覆盖（计费模型改造 · Kevin 2026-10-12 拍定 · 冻结契约硬清单）：
  *   ① 间隔查表（M 按 seq 计数）② 首轮无门槛 ③ 惰性固化边界（30 天前后）
- *   ④ 繁体逐字拒绝 + 标点清洗 ⑤ `amountToChineseUpper` 六样例
+ *   ④ 繁体逐字拒绝（不变）+ **族務紀文 A 口径**（只允许汉字与 `，` `。` · 禁连续标点 · 原文原样落库；
+ *      取代旧「标点折空格」口径 —— 纯函数矩阵 + save 路径「非法 ⇒ 400 整单不写」） ⑤ `amountToChineseUpper` 六样例
  *   ⑥ **开轮恒 999** + 不足 409 整单不落（恒价：首轮与后续同价）
  *   ⑦ **锁定后一次保存扣 9999**（days=31）· **t≥360 扣 99999** · **编辑期内 0 费**
  *   ⑧ **一次 items 含多 kind 只扣一次**（验扣费只发生 1 笔）
  *   ⑨ **锁定后本树 tree_steward 付费即可写（200 且扣费）**（取代旧「固后 403」）· `chief_editor` 同理
  *   ⑩ 越树 403（保留 D-1 树归属判据；start / save 两条写入口）· 角色档位矩阵
  *   ⑪ helpers / donations 全量替换（经 save 唯一写入口）
+ *   ⑫-補 **襄事（helpers）职务收紧**：职务枚举 {主司, 副司} + 总 ≤ 3 + 主司恰 1 必填 + 副司 ≤ 2 + 禁同一人重复
+ *      （六类拒绍逐条 400 繁体文案；强读法：helpers 空 ⇒ 「請填寫主司」）
  *   ⑫ 配置键：只剩 `revision_interval_years` 可配、`revision_fee_bamboos` 已不存在（写它不改任何行为）
  *   ⑬ 天数 `ceil` 边界（29.5→30 编辑期；30.5→31→9999；359.5→360→99999）
  *   ⑭ D-2 读容错（空态不抛）+ 写不容错（503 可读文案，不得 200）
@@ -58,9 +61,10 @@ const OTHER_TREE = 'rev_other_tree'; // D-1：他树
 const CFG_TREE = 'rev_cfg_tree'; // 配置键（写旧键不改行为）
 const D2_TREE = 'rev_d2_tree'; // D-2 写不容错（**从未有过修谱记录**，否则进程内缓存会先拦成 409）
 const OPS_TREE = 'rev_ops_tree'; // 留痕（锁定后付费保存 ⇒ jiapu_ops_logs）
+const ART_TREE = 'rev_article_tree'; // 族務紀文 A 口径（原文落库 / 非法整单不写）
 fs.mkdirSync(path.join(TMP, 'trees'), { recursive: true });
 const people = { h1: { handle: 'h1', name: '甲' }, h2: { handle: 'h2', name: '乙' } };
-for (const t of [FLOW_TREE, BROKE_TREE, LOCK_TREE, LONG_TREE, FULL_TREE, OWN_TREE, OTHER_TREE, CFG_TREE, D2_TREE, OPS_TREE]) {
+for (const t of [FLOW_TREE, BROKE_TREE, LOCK_TREE, LONG_TREE, FULL_TREE, OWN_TREE, OTHER_TREE, CFG_TREE, D2_TREE, OPS_TREE, ART_TREE]) {
   fs.writeFileSync(path.join(TMP, 'trees', `${t}.json`), JSON.stringify({ tree_id: t, people: { ...people } }));
 }
 
@@ -75,6 +79,7 @@ const OWN_STEWARD = '13733334444';
 const CFG_STEWARD = '13766667777';
 const D2_STEWARD = '13788889999';
 const OPS_STEWARD = '13755556666'; // 留痕本树 tree_steward（锚点 → OPS_TREE）
+const ART_STEWARD = '13712120000'; // 族務紀文本树 tree_steward（锚点 → ART_TREE）
 const CHEF = '13700000000'; // chief_editor（无锚点亦可）
 const mkAnchor = (phone, treeId) =>
   store.colSet('jiapu_anchors', phone, { tree_id: treeId, person_handle: 'h1', updated_at: new Date().toISOString() });
@@ -87,8 +92,9 @@ await mkAnchor(OWN_STEWARD, OWN_TREE);
 await mkAnchor(CFG_STEWARD, CFG_TREE);
 await mkAnchor(D2_STEWARD, D2_TREE);
 await mkAnchor(OPS_STEWARD, OPS_TREE);
+await mkAnchor(ART_STEWARD, ART_TREE);
 // 各账号预置竹片（只给需要扣费的）
-for (const [p, n] of [[PHONE, 5000], [LOCK_STEWARD, 200000], [LONG_STEWARD, 200000], [FULL_STEWARD, 200000], [OWN_STEWARD, 200000], [CFG_STEWARD, 200000], [D2_STEWARD, 200000], [OPS_STEWARD, 200000], [CHEF, 200000]]) {
+for (const [p, n] of [[PHONE, 5000], [LOCK_STEWARD, 200000], [LONG_STEWARD, 200000], [FULL_STEWARD, 200000], [OWN_STEWARD, 200000], [CFG_STEWARD, 200000], [D2_STEWARD, 200000], [OPS_STEWARD, 200000], [ART_STEWARD, 200000], [CHEF, 200000]]) {
   await ledger.withAssets(p, (u) => ledger.addLot(u, 'bamboo', n, { source: 'test' }));
 }
 
@@ -178,21 +184,176 @@ test('④ 惰性固化边界：now > effective_at + 30d 才算锁', () => {
   assert.equal(REV.isLocked(rev, new Date('2026-01-31T00:00:00.001Z')), true);
 });
 
-// ══ ⑤ 繁体拒绝（逐字 400）与标点清洗 ═══════════════════════════════════════════
-test('⑤ 繁体逐字校验 + 标点清洗', () => {
+// ══ ⑤ 繁体逐字拒绝（不变）· 旧「标点折空格」口径已被取代 ══════════════════════════
+test('⑤ 繁体逐字校验（照旧）· 旧「标点折空格」清洗口径已被取代（函数已删）', () => {
   assert.equal(REV.firstSimplifiedChar('譜'), '', '繁体无命中');
   assert.equal(REV.firstSimplifiedChar('家谱'), '谱', '指出首个简体字');
   assert.throws(
     () => REV.normalizeArticle({ title: '家谱', body: '繁', signature: '繁' }),
     (e) => e.status === 400 && /族務紀文須以繁體字錄入/.test(e.message) && /谱/.test(e.message),
   );
-  assert.equal(REV.cleanArticleText('甲，乙。丙,丁.戊'), '甲 乙 丙 丁 戊', '四类标点→空格 + 连续空格折叠');
+  // 取代登记（Kevin 2026-10-12）：旧「`[,，。.]` ⇒ 空格 + 折叠」清洗函数**已删除**
+  assert.equal(REV.cleanArticleText, undefined, '旧标点清洗函数已删除（A 口径取代）');
+});
+
+// ══ ⑤-補 族務紀文 A 口径：只允许汉字与 ，。· 禁连续标点 · 三字段同规则 ═══════════════
+test('⑤-補 A 口径纯函数：合法字符集 / 非法字符逐类拒 / 连续标点拒 / 三字段同规则', () => {
+  /** 断言：400 + 文案**逐字**相等 */
+  const bad = (payload, msg, why) =>
+    assert.throws(
+      () => REV.normalizeArticle(payload),
+      (e) => e.status === 400 && e.message === msg,
+      `${why} —— 载荷 ${JSON.stringify(payload)}`,
+    );
+  const CHARSET = '僅允許漢字與中文逗號、句號';
+  const REPEAT = '標點不可連續';
+  assert.equal(CHARSET, REV.ARTICLE_MSG_CHARSET, '拒绍文案常量与落盘字面同源');
+  assert.equal(REPEAT, REV.ARTICLE_MSG_PUNCT_REPEAT, '拒绍文案常量与落盘字面同源');
+  assert.deepEqual(REV.ARTICLE_PUNCT, ['，', '。'], '合法标点恰两个（中文逗号 / 中文句号）');
+
+  const ART = { title: '譜序', body: '山有木，木有枝。', signature: '主事者' };
+  // ① 合法（汉字 + ，。 混排）⇒ **原文逐字原样**（标点保留、不折空格）
+  assert.deepEqual(REV.normalizeArticle(ART), ART, '合法输入原文逐字保留（含 ，。）');
   assert.deepEqual(
-    REV.normalizeArticle({ title: '甲，乙', body: '丙。丁', signature: '戊' }),
-    { title: '甲 乙', body: '丙 丁', signature: '戊' },
+    REV.normalizeArticle({ title: '，', body: '。', signature: '甲乙，丙丁。戊己' }),
+    { title: '，', body: '。', signature: '甲乙，丙丁。戊己' },
+    '单标点亦在允许集内（本单未新增「须含汉字」规则）',
   );
-  assert.throws(() => REV.normalizeArticle({ title: '', body: '丙', signature: '戊' }), (e) => e.status === 400);
-  assert.throws(() => REV.normalizeArticle({ title: '，。', body: '丙', signature: '戊' }), (e) => e.status === 400, '清洗后为空同样 400');
+
+  // ② 非法字符逐类 ⇒ 400 + `僅允許漢字與中文逗號、句號`（逐类各一条可达路径）
+  const illegal = [
+    ['a', '拉丁字母（小写）'],
+    ['Z', '拉丁字母（大写）'],
+    ['0', '阿拉伯数字'],
+    ['9', '阿拉伯数字'],
+    ['１', '全角阿拉伯数字'],
+    [' ', '半角空格'],
+    ['　', '全角空格'],
+    ['\t', '制表符'],
+    ['\n', '换行'],
+    ['、', '顿号'],
+    ['；', '中文分号'],
+    ['：', '中文冒号'],
+    ['「', '左书名号/引号'],
+    ['」', '右书名号/引号'],
+    ['“', '左双引号'],
+    ['”', '右双引号'],
+    ['！', '中文感叹号'],
+    ['!', '英文感叹号'],
+    ['？', '中文问号'],
+    ['?', '英文问号'],
+    [',', '英文逗号（旧口径曾被折成空格）'],
+    ['.', '英文句号（旧口径曾被折成空格）'],
+    [';', '英文分号'],
+    ['-', '连字符'],
+    ['(', '英文括号'],
+    ['《', '书名号'],
+    ['％', '百分号'],
+    ['★', '符号'],
+    ['😀', '增补平面 emoji（代理对）'],
+  ];
+  for (const [ch, why] of illegal) {
+    const payload = { title: '甲' + ch + '乙', body: '丙丁', signature: '戊己' };
+    bad(payload, CHARSET, why);
+    // 三字段同规则：同一非法字符落在正文 / 落款 ⇒ 同一文案
+    bad({ title: '甲乙', body: '丙' + ch + '丁', signature: '戊己' }, CHARSET, `${why}（正文）`);
+    bad({ title: '甲乙', body: '丙丁', signature: '戊' + ch + '己' }, CHARSET, `${why}（落款）`);
+  }
+
+  // ③ 连续标点（`，。` / `。。` / `，，` …）⇒ 400 + `標點不可連續`（逐类 + 三字段）
+  const repeats = ['，。', '。。', '，，', '。，', '，。，', '甲，。乙', '甲，，乙'];
+  for (const s of repeats) {
+    bad({ title: s, body: '丙丁', signature: '戊己' }, REPEAT, `连续标点（标题：${s}）`);
+    bad({ title: '甲乙', body: s, signature: '戊己' }, REPEAT, `连续标点（正文：${s}）`);
+    bad({ title: '甲乙', body: '丙丁', signature: s }, REPEAT, `连续标点（落款：${s}）`);
+  }
+  // 判序：非法字符**先于**连续标点（`，,` 里 `,` 是非法字符）
+  bad({ title: '甲，,乙', body: '丙丁', signature: '戊己' }, CHARSET, '非法字符优先于连续标点判定');
+
+  // ④ 简体仍 400（繁体严拒**不变**；即便标点合法）
+  bad({ title: '家谱，序。', body: '丙丁', signature: '戊己' }, '族務紀文須以繁體字錄入（首個簡體字：谱）', '简体（标题）');
+  bad({ title: '甲乙', body: '丙家谱丁，戊。', signature: '戊己' }, '族務紀文須以繁體字錄入（首個簡體字：谱）', '简体（正文）');
+  bad({ title: '甲乙', body: '丙丁', signature: '戊己谱。' }, '族務紀文須以繁體字錄入（首個簡體字：谱）', '简体（落款）');
+
+  // ⑤ 空字段（与改动前同文案，判在字符集之前）
+  assert.throws(() => REV.normalizeArticle({ title: '', body: '丙丁', signature: '戊己' }), (e) => e.status === 400 && e.message === '標題不得為空');
+  assert.throws(() => REV.normalizeArticle({ title: '甲乙', body: '   ', signature: '戊己' }), (e) => e.status === 400 && e.message === '正文不得為空');
+  assert.throws(() => REV.normalizeArticle({ title: '甲乙', body: '丙丁', signature: '' }), (e) => e.status === 400 && e.message === '落款不得為空');
+
+  // 纯函数自证：字符集判据 / 连续标点判据（逐码点）
+  assert.equal(REV.firstIllegalArticleChar('甲乙，丙丁。戊'), '', '合法串无非法字符');
+  assert.equal(REV.firstIllegalArticleChar('甲 乙'), ' ', '空格是首个非法字符');
+  assert.equal(REV.isHanziCodePoint('龘'.codePointAt(0)), true, '基本区汉字');
+  assert.equal(REV.isHanziCodePoint('𠀋'.codePointAt(0)), true, '扩展 B（增补平面）汉字按整码点判定');
+  assert.equal(REV.isHanziCodePoint('a'.codePointAt(0)), false);
+  assert.equal(REV.hasConsecutiveArticlePunct('甲乙，丙丁。戊'), false);
+  assert.equal(REV.hasConsecutiveArticlePunct('甲乙，。丙丁'), true);
+});
+
+// ══ ⑤-補2 经 save 唯一写入口：合法原文（含 ，。）逐字落库；非法 ⇒ 400 且整单不写 ══════
+test('⑤-補2 save 路径：合法（汉字+，。混排）⇒ 200 且落库原文逐字保留标点；非法 ⇒ 400 整单不写', async () => {
+  await seedRev(ART_TREE, 1, '2026-06-01T00:00:00.000Z');
+  const now = new Date('2026-06-02T00:00:00Z'); // days=1 ⇒ 编辑期内（0 费）
+  const call = (payload) =>
+    REV.saveRevision({ treeId: ART_TREE, seq: 1, items: [{ kind: 'article', payload }], role: 'tree_steward', phone: ART_STEWARD, now });
+
+  // ① 合法 ⇒ 200 且**落库原文逐字保留** `，` / `。`（不得折成空格、不得剔除）
+  const ART = { title: '譜序', body: '山有木，木有枝。', signature: '主事者謹識。' };
+  const r = await call(ART);
+  assert.equal(r.ok, true);
+  assert.equal(r.fee.pieces, 0, '编辑期内 0 费');
+  const saved = (await REV.loadRevisions(ART_TREE)).revisions.find((x) => x.seq === 1).article;
+  assert.deepEqual(
+    { title: saved.title, body: saved.body, signature: saved.signature },
+    ART,
+    '落库原文逐字保留标点（A 口径：存储保留原文）',
+  );
+  assert.equal(saved.body.includes('，'), true, '中文逗号落库');
+  assert.equal(saved.body.includes('。'), true, '中文句号落库');
+  assert.equal(saved.body.includes(' '), false, '**不得**把标点折成空格');
+  assert.equal(saved.signature.includes(' '), false, '落款同样不折空格');
+
+  // ② 非法字符 ⇒ 400 + 逐字文案，且**整单不写**（既有内容一字不变）
+  await assert.rejects(
+    () => call({ title: '譜序', body: '山有木 木有枝', signature: '主事者' }),
+    (e) => e.status === 400 && e.message === '僅允許漢字與中文逗號、句號',
+    '空格 ⇒ 400 字符集文案',
+  );
+  await assert.rejects(
+    () => call({ title: '譜序', body: '山有木、木有枝', signature: '主事者' }),
+    (e) => e.status === 400 && e.message === '僅允許漢字與中文逗號、句號',
+    '顿号 ⇒ 400 字符集文案',
+  );
+  // ③ 连续标点 ⇒ 400 + `標點不可連續`
+  await assert.rejects(
+    () => call({ title: '譜序', body: '山有木，。木有枝', signature: '主事者' }),
+    (e) => e.status === 400 && e.message === '標點不可連續',
+    '连续标点 ⇒ 400 连续标点文案',
+  );
+  // ④ 简体仍 400（繁体严拒不变）
+  await assert.rejects(
+    () => call({ title: '家谱', body: '山有木，木有枝。', signature: '主事者' }),
+    (e) => e.status === 400 && /族務紀文須以繁體字錄入/.test(e.message),
+    '简体 ⇒ 400（不变）',
+  );
+  const after = (await REV.loadRevisions(ART_TREE)).revisions.find((x) => x.seq === 1).article;
+  assert.deepEqual(
+    { title: after.title, body: after.body, signature: after.signature },
+    ART,
+    '四类非法 ⇒ 整单不写（既有内容一字不变）',
+  );
+});
+
+// ══ ⑤-補3 前后端「逐字一致」源码级同源检查（读前端单点文件 · 体例同 geo-bounds.test.js） ══
+test('⑤-補3 前端 `article-rules.ts` 两条拒绍文案与后端逐字一致（合法标点集同源）', () => {
+  const FE = path.join(HERE, '..', '..', '..', 'frontend', 'src', 'components', 'revision-panel', 'article-rules.ts');
+  const src = fs.readFileSync(FE, 'utf8');
+  for (const msg of [REV.ARTICLE_MSG_CHARSET, REV.ARTICLE_MSG_PUNCT_REPEAT]) {
+    assert.ok(src.includes(`'${msg}'`), `前端必须**逐字**包含拒绍文案「${msg}」`);
+  }
+  assert.ok(src.includes("['，', '。']"), '前端合法标点集与后端 `ARTICLE_PUNCT` 同源');
+  // 前端不得再出现旧口径（标点折空格）
+  assert.ok(!/replace\(\/\[,，。\.\]\/g, ' '\)/.test(src), '前端不得残留旧「标点折空格」清洗');
 });
 
 // ══ ⑥ amountToChineseUpper 六个样例 ═══════════════════════════════════════════
@@ -287,7 +448,7 @@ test('⑨ 一次 items 含多 kind（article/helpers/donations）只扣一次（
     seq: 2,
     items: [
       { kind: 'article', payload: ARTICLE },
-      { kind: 'helpers', payload: [{ person_handle: 'h1', duty: '校對' }] },
+      { kind: 'helpers', payload: [{ person_handle: 'h1', duty: '主司' }] },
       { kind: 'donations', payload: [{ person_handle: 'h2', amount: 10000 }] },
     ],
     role: 'tree_steward',
@@ -301,7 +462,7 @@ test('⑨ 一次 items 含多 kind（article/helpers/donations）只扣一次（
   const doc = await REV.loadRevisions(LOCK_TREE);
   const rev = doc.revisions.find((x) => x.seq === 2);
   assert.equal(rev.article.title, '譜序');
-  assert.deepEqual(rev.helpers, [{ person_handle: 'h1', duty: '校對' }]);
+  assert.deepEqual(rev.helpers, [{ person_handle: 'h1', duty: '主司' }]);
   assert.deepEqual(rev.donations, [{ person_handle: 'h2', amount: 10000 }]);
 });
 
@@ -318,7 +479,7 @@ test('⑩ 锁定后本树 tree_steward 付费即可写（200 且扣费）；chie
 
   // chief_editor：任意树放行、同样按次扣费（单一计费路径，不做特例）
   const beforeChief = await sumOf(CHEF);
-  const rc = await REV.saveRevision({ treeId: LOCK_TREE, seq: 3, items: [{ kind: 'helpers', payload: [{ person_handle: 'h1', duty: '主纂' }] }], role: 'chief_editor', phone: CHEF, now });
+  const rc = await REV.saveRevision({ treeId: LOCK_TREE, seq: 3, items: [{ kind: 'helpers', payload: [{ person_handle: 'h1', duty: '主司' }] }], role: 'chief_editor', phone: CHEF, now });
   assert.equal(rc.ok, true);
   assert.equal(rc.fee.pieces, 9999, 'chief_editor 同样扣 9999');
   assert.equal(await sumOf(CHEF), beforeChief - 9999);
@@ -396,13 +557,16 @@ test('⑫ helpers / donations 全量替换（经 save 唯一写入口）+ 存在
   const now = new Date('2026-04-02T00:00:00Z'); // 编辑期内（0 费）
   const call = (items) => REV.saveRevision({ treeId: FULL_TREE, seq: 2, items, role: 'tree_steward', phone: FULL_STEWARD, now });
 
-  await call([{ kind: 'helpers', payload: [{ person_handle: 'h1', duty: '校對' }] }]);
+  await call([{ kind: 'helpers', payload: [{ person_handle: 'h1', duty: '主司' }, { person_handle: 'h2', duty: '副司' }] }]);
   let doc = await REV.loadRevisions(FULL_TREE);
-  assert.deepEqual(doc.revisions.find((r) => r.seq === 2).helpers, [{ person_handle: 'h1', duty: '校對' }]);
+  assert.deepEqual(doc.revisions.find((r) => r.seq === 2).helpers, [
+    { person_handle: 'h1', duty: '主司' },
+    { person_handle: 'h2', duty: '副司' },
+  ]);
 
-  await call([{ kind: 'helpers', payload: [{ person_handle: 'h2', duty: '繕寫' }] }]);
+  await call([{ kind: 'helpers', payload: [{ person_handle: 'h2', duty: '主司' }] }]);
   doc = await REV.loadRevisions(FULL_TREE);
-  assert.deepEqual(doc.revisions.find((r) => r.seq === 2).helpers, [{ person_handle: 'h2', duty: '繕寫' }], '全量替换（旧项消失）');
+  assert.deepEqual(doc.revisions.find((r) => r.seq === 2).helpers, [{ person_handle: 'h2', duty: '主司' }], '全量替换（旧项消失）');
 
   await call([{ kind: 'donations', payload: [{ person_handle: 'h1', amount: 100 }, { person_handle: 'h2', amount: 10000 }] }]);
   doc = await REV.loadRevisions(FULL_TREE);
@@ -411,7 +575,7 @@ test('⑫ helpers / donations 全量替换（经 save 唯一写入口）+ 存在
     { person_handle: 'h2', amount: 10000 },
   ]);
 
-  await assert.rejects(() => call([{ kind: 'helpers', payload: [{ person_handle: '不存在', duty: 'x' }] }]), (e) => e.status === 400, '节点不存在 ⇒ 400');
+  await assert.rejects(() => call([{ kind: 'helpers', payload: [{ person_handle: '不存在', duty: '主司' }] }]), (e) => e.status === 400, '节点不存在 ⇒ 400');
   await assert.rejects(() => call([{ kind: 'donations', payload: [{ person_handle: 'h1', amount: 0 }] }]), (e) => e.status === 400, '金额非正整数 ⇒ 400');
   await assert.rejects(() => call([{ kind: 'donations', payload: [{ person_handle: 'h1', amount: 1.5 }] }]), (e) => e.status === 400);
   // items 空 / 非数组 / kind 不合法 ⇒ 400
@@ -420,14 +584,101 @@ test('⑫ helpers / donations 全量替换（经 save 唯一写入口）+ 存在
   await assert.rejects(() => call([{ kind: 'roster', payload: {} }]), (e) => e.status === 400 && /修譜內容類型不合法/.test(e.message));
 
   // 出参解析：name 反查 + amount_text 繁体汉字大写 + 解析不到 ⇒ 占位
-  const dhelp = REV.decorateHelpers([{ person_handle: 'h1', duty: '校對' }], { people });
-  assert.deepEqual(dhelp, [{ person_handle: 'h1', duty: '校對', name: '甲' }]);
+  const dhelp = REV.decorateHelpers([{ person_handle: 'h1', duty: '主司' }], { people });
+  assert.deepEqual(dhelp, [{ person_handle: 'h1', duty: '主司', name: '甲' }]);
   const ddon = REV.decorateDonations([{ person_handle: 'h2', amount: 10000 }], { people });
   assert.deepEqual(ddon, [{ person_handle: 'h2', amount: 10000, name: '乙', amount_text: '壹萬元' }]);
   assert.equal(REV.resolveName({ people }, 'zzz'), '（節點已刪除）');
 });
 
-// ══ ⑬ 天数 ceil 边界（29.5→30；30.5→31；359.5→360） ═════════════════════════════
+// ══ ⑫-補 譜司襄事（helpers）职务收紧：六类拒绍 + 合法载荷（Kevin 2026-10-12 拍定） ══
+test('⑫-補 襄事口径：枚举非法 / 主司缺 / 主司>1 / 副司>2 / 总>3 / 重复 六类逐条 400（文案逐字）', () => {
+  const tree = { people: { h1: { name: '甲' }, h2: { name: '乙' }, h3: { name: '丙' }, h4: { name: '丁' } } };
+  const H = (h, duty) => ({ person_handle: h, duty });
+  /** 断言：400 + 文案逐字相等 */
+  const bad = (payload, msg) =>
+    assert.throws(
+      () => REV.normalizeHelpers(payload, tree),
+      (e) => e.status === 400 && e.message === msg,
+      `${msg} —— 载荷 ${JSON.stringify(payload)}`,
+    );
+
+  // 口径常量逐字冻结（只有两个合法职务；上限 3 / 副司 2）
+  assert.deepEqual(REV.HELPER_DUTIES, ['主司', '副司']);
+  assert.equal(REV.HELPER_DUTY_MASTER, '主司');
+  assert.equal(REV.HELPER_DUTY_VICE, '副司');
+  assert.equal(REV.HELPER_MAX_TOTAL, 3);
+  assert.equal(REV.HELPER_MAX_VICE, 2);
+
+  // 非数组（既有文案，保持一字不改）
+  assert.throws(() => REV.normalizeHelpers('x', tree), (e) => e.status === 400 && e.message === '族務協助者須為陣列');
+
+  // ⓪ 强读法：helpers 为空 ⇒ 「請填寫主司」（一句话可改：删掉判定即放宽）
+  bad([], '請填寫主司');
+
+  // ① 枚举非法（逐字：旧职务名 / 空串 / 相似值一律拒）
+  bad([H('h1', '主司'), H('h2', '校對')], '職務只能是主司或副司');
+  bad([H('h1', '主司'), H('h2', '')], '職務只能是主司或副司');
+  bad([H('h1', '主司'), H('h2', '主司長')], '職務只能是主司或副司');
+  bad([H('h1', '主司'), H('h2', '副司一')], '職務只能是主司或副司');
+
+  // ② 主司缺（0 位主司）
+  bad([H('h1', '副司')], '請填寫主司');
+  bad([H('h1', '副司'), H('h2', '副司')], '請填寫主司');
+
+  // ③ 主司 > 1
+  bad([H('h1', '主司'), H('h2', '主司')], '主司只能有一位');
+
+  // ④ 副司 > 2（1 主司 + 3 副司 ⇒ 先报副司超限，先于总数）
+  bad([H('h1', '主司'), H('h2', '副司'), H('h3', '副司'), H('h4', '副司')], '副司最多兩位');
+
+  // ⑤ 总人数 > 3（主司不恰 1 时 ⇒ 先报总数）
+  bad([H('h1', '主司'), H('h2', '主司'), H('h3', '副司'), H('h4', '副司')], '襄事最多三位');
+
+  // ⑥ 同一族人重复（主司↔副司 / 副司↔副司，判据 = person_handle）
+  bad([H('h1', '主司'), H('h1', '副司')], '同一位族人不可重複錄入');
+  bad([H('h1', '主司'), H('h2', '副司'), H('h2', '主司')], '同一位族人不可重複錄入');
+  bad([H('h1', '主司'), H('h2', '副司'), H('h2', '副司')], '同一位族人不可重複錄入');
+
+  // 既有逐项校验仍在：缺 handle / 节点不存在
+  assert.throws(() => REV.normalizeHelpers([{ duty: '主司' }], tree), (e) => e.status === 400 && /缺少 person_handle/.test(e.message));
+  assert.throws(() => REV.normalizeHelpers([H('zzz', '主司')], tree), (e) => e.status === 400 && /節點不存在於本樹/.test(e.message));
+
+  // 合法：恰 1 主司（单独 / + 1 副司 / + 2 副司 = 上限）
+  assert.deepEqual(REV.normalizeHelpers([H('h1', '主司')], tree), [{ person_handle: 'h1', duty: '主司' }]);
+  assert.deepEqual(REV.normalizeHelpers([H('h1', '主司'), H('h2', '副司')], tree), [
+    { person_handle: 'h1', duty: '主司' },
+    { person_handle: 'h2', duty: '副司' },
+  ]);
+  assert.deepEqual(REV.normalizeHelpers([H('h1', '主司'), H('h2', '副司'), H('h3', '副司')], tree), [
+    { person_handle: 'h1', duty: '主司' },
+    { person_handle: 'h2', duty: '副司' },
+    { person_handle: 'h3', duty: '副司' },
+  ]);
+  // 空白 handle / 职务前后空白 ⇒ 去空白后照常判定（逐字口径）
+  assert.deepEqual(REV.normalizeHelpers([{ person_handle: ' h1 ', duty: ' 主司 ' }], tree), [{ person_handle: 'h1', duty: '主司' }]);
+});
+
+test('⑫-補 save 路径：襄事非法 ⇒ 400 且整单不写；合法（1 主司 + 1 副司）⇒ 落盘', async () => {
+  await seedRev(FULL_TREE, 3, '2026-04-01T00:00:00.000Z');
+  const now = new Date('2026-04-02T00:00:00Z'); // 编辑期内（0 费）
+  const call = (payload) => REV.saveRevision({ treeId: FULL_TREE, seq: 3, items: [{ kind: 'helpers', payload }], role: 'tree_steward', phone: FULL_STEWARD, now });
+
+  await assert.rejects(() => call([]), (e) => e.status === 400 && e.message === '請填寫主司', '缺主司（空数组）⇒ 400');
+  await assert.rejects(() => call([{ person_handle: 'h1', duty: '校對' }]), (e) => e.status === 400 && e.message === '職務只能是主司或副司');
+  await assert.rejects(() => call([{ person_handle: 'h1', duty: '主司' }, { person_handle: 'h1', duty: '副司' }]), (e) => e.status === 400 && e.message === '同一位族人不可重複錄入');
+  assert.deepEqual((await REV.loadRevisions(FULL_TREE)).revisions.find((r) => r.seq === 3).helpers, [], '三类拒绝 ⇒ 整单不写（既有内容一字不变）');
+
+  const ok = await call([{ person_handle: 'h1', duty: '主司' }, { person_handle: 'h2', duty: '副司' }]);
+  assert.equal(ok.ok, true, '合法载荷（1 主司 + 1 副司）⇒ 200');
+  assert.equal(ok.fee.pieces, 0, '编辑期内 0 费');
+  assert.deepEqual((await REV.loadRevisions(FULL_TREE)).revisions.find((r) => r.seq === 3).helpers, [
+    { person_handle: 'h1', duty: '主司' },
+    { person_handle: 'h2', duty: '副司' },
+  ], '合法载荷如实落盘');
+});
+
+
 test('⑬ 天数 ceil 边界：29.5⇒30（编辑期 0）· 30.5⇒31（9999）· 359.5⇒360（99999）', () => {
   const eff = Date.parse('2026-01-01T00:00:00.000Z');
   const rev = { seq: 1, effective_at: '2026-01-01T00:00:00.000Z' };
@@ -498,7 +749,7 @@ test('⑯ 留痕：锁定轮 save（days≈31）⇒ jiapu_ops_logs 恰新增 1 �
     seq: 1,
     items: [
       { kind: 'article', payload: ARTICLE },
-      { kind: 'helpers', payload: [{ person_handle: 'h1', duty: '校對' }] },
+      { kind: 'helpers', payload: [{ person_handle: 'h1', duty: '主司' }] },
     ],
     role: 'tree_steward',
     phone: OPS_STEWARD,
@@ -569,7 +820,7 @@ test('⑱ 留痕：chief_editor 锁定轮 save ⇒ 同样写 1 条（不做特�
   const r = await REV.saveRevision({
     treeId: OPS_TREE,
     seq: 3,
-    items: [{ kind: 'helpers', payload: [{ person_handle: 'h1', duty: '主纂' }] }],
+    items: [{ kind: 'helpers', payload: [{ person_handle: 'h1', duty: '主司' }] }],
     role: 'chief_editor',
     phone: CHEF,
     now,

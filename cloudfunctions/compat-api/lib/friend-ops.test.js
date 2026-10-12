@@ -855,15 +855,20 @@ test('F-A 只做编排：资产只经 ledger 的 withAssets/导出读写（无�
 //    ⇒ 定额同步为实得真值 42。口径 = 「注册数 = 磁盘数 = 定额」，仍为精确等值 + 双向零缺口 + 去重。
 //    修谱域批次新增第 43 个（revision.test.js，修谱记录 / 冷却 / 惰性固化 / 繁体校验 / 金额大写）
 //    ⇒ 定额同步为实得真值 43（依据 `npm test` 实测 # tests 与磁盘 readdir；本质断言一字未放宽）。
-test('package.json 注册数 = 磁盘 *.test.js 数 = 43，且双向零缺口', async () => {
+//    后记 name 解析批次新增第 44 个（revision-postscript.test.js，`postscript` 四级降级 + 同序同长）
+//    ⇒ 定额同步为实得真值 44（依据 `npm test` 实测 # tests 与磁盘 readdir；本质断言一字未放宽）。
+//    谱名改名域批次新增第 45 个（tree-rename.test.js，专用计费路由 POST /admin/tree-rename：
+//      999 / 9999 / 99999 三档 + 首次或 >=360 天 999 + no-op 0 片 + 本树主理人权限 + 留痕）
+//    ⇒ 定额同步为实得真值 45（依据 `npm test` 实测 # tests 与磁盘 readdir；本质断言一字未放宽）。
+test('package.json 注册数 = 磁盘 *.test.js 数 = 45，且双向零缺口', async () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));
   const registered = pkg.scripts.test
     .split(/\s+/)
     .filter((x) => x.endsWith('.test.js'))
     .map((x) => path.basename(x));
   const onDisk = fs.readdirSync(HERE).filter((f) => f.endsWith('.test.js')).sort();
-  assert.equal(registered.length, 43, `注册数应为 43，实得 ${registered.length}`);
-  assert.equal(onDisk.length, 43, `磁盘 *.test.js 应为 43，实得 ${onDisk.length}`);
+  assert.equal(registered.length, 45, `注册数应为 45，实得 ${registered.length}`);
+  assert.equal(onDisk.length, 45, `磁盘 *.test.js 应为 45，实得 ${onDisk.length}`);
   assert.equal(new Set(registered).size, registered.length, '注册项不得重复');
   const missingOnDisk = registered.filter((f) => !onDisk.includes(f));
   const unregistered = onDisk.filter((f) => !registered.includes(f));
@@ -875,6 +880,8 @@ test('package.json 注册数 = 磁盘 *.test.js 数 = 43，且双向零缺口', 
   assert.ok(registered.includes('invite-codes.test.js'), 'invite-codes.test.js 必须已注册（批 C-1 · 未注册 = 假绿）');
   assert.ok(registered.includes('badge-permission.test.js'), 'badge-permission.test.js 必须已注册（批 1b-1 · 未注册 = 假绿）');
   assert.ok(registered.includes('mirror-derive.test.js'), 'mirror-derive.test.js 必须已注册（方案 A · 未注册 = 假绿）');
+  assert.ok(registered.includes('revision-postscript.test.js'), 'revision-postscript.test.js 必须已注册（未注册 = 假绿）');
+  assert.ok(registered.includes('tree-rename.test.js'), 'tree-rename.test.js 必须已注册（谱名改名域 · 未注册 = 假绿）');
 });
 
 // ══ ⑰ 真源零写入 ════════════════════════════════════════════════════════════════
@@ -910,6 +917,12 @@ test('package.json 注册数 = 磁盘 *.test.js 数 = 43，且双向零缺口', 
 //    期望 400 + 6 = 406 = 实测（`find migrate-output config -type f | wc -l` = 406，差值恰等于
 //    本次真源文件新增数，未混入别处漂移）⇒ 定额同步为实得真值 406；基线口径不变
 //    （`REAL_FP.digest` vs `fp.digest` 跑测前后逐字节一致仍是**真不变量**），**不放宽、不删除任何断言**。
+//    2026-10-12（台湾省几何批 · commit 13cbac2）续登记：真源新增 4 个文件 —— 细档
+//    `config/geo-bounds/710000.json`（台湾省自身面）/ `config/geo-bounds/120116.json`（天津滨海新区）
+//    + 粗档 `config/geo-bounds/coarse/710000.json` / `coarse/120116.json`（4 个同属 `walk(REPO/config)`
+//    集合 ⇒ 文件集 +4）；期望 406 + 4 = 410 = 实测（`find migrate-output config -type f | wc -l` = 410，
+//    差值恰等于本次真源文件新增数，未混入别处漂移）⇒ 定额同步为实得真值 410；基线口径不变
+//    （`REAL_FP.digest` vs `fp.digest` 跑测前后逐字节一致仍是**真不变量**），**不放宽、不删除任何断言**。
 test('真源零写入：config/tree-meta.json 与 migrate-output/ 全量 md5 与开工基线逐字节一致', async () => {
   assert.equal(md5(REAL_META), realMetaMd5, 'config/tree-meta.json 被改动');
   const nowTrees = dirBaseline(REAL_TREES);
@@ -922,9 +935,9 @@ test('真源零写入：config/tree-meta.json 与 migrate-output/ 全量 md5 与
   assert.deepEqual([...nowCols.keys()].sort(), [...realColBaseline.keys()].sort(), 'collections 文件集变化');
   for (const [f, h] of realColBaseline) assert.equal(nowCols.get(f), h, `collections/${f} 内容变化`);
   const fp = realSourceFingerprint();
-  assert.equal(fp.count, 406, `真源文件数应为 406，实得 ${fp.count}`);
+  assert.equal(fp.count, 410, `真源文件数应为 410，实得 ${fp.count}`);
   assert.equal(fp.digest, REAL_FP.digest, '真源全量指纹变化');
-  assert.equal(REAL_FP.count, 406);
+  assert.equal(REAL_FP.count, 410);
   // 沙箱自证：本测试全程只写 /tmp 副本
   assert.ok(TMP.startsWith(os.tmpdir()), '测试根必须是 /tmp 副本');
   assert.equal(store.PATHS.out, TMP);
