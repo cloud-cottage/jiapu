@@ -2,6 +2,11 @@
   <view class="wenpu-book">
     <!-- 工具条（书页上方一行）：PDF 导出弱化收进右侧「⋯ 更多」菜单 -->
     <view class="book-toolbar">
+      <!-- 修改谱名入口（**与修谱入口同可见性**：既有 `canManageRevision`；视觉上排在「✎ 修谱」左侧）：
+           谱名已从【编辑家族信息】表单移出 ⇒ 改名统一在本按钮的弹窗内完成（含本次消耗明示） -->
+      <view v-if="canManageRevision" class="toolbar-rename" @click="openRenameDialog">
+        <text class="toolbar-rename-text">修改谱名</text>
+      </view>
       <!-- 修谱入口（**仅家族管理员 / 总编辑可见**；修谱四类内容只落在【在线文谱】视图内） -->
       <view v-if="canManageRevision" class="toolbar-revision" @click="openRevisionPanel">
         <text class="toolbar-revision-text">✎ 修谱</text>
@@ -35,16 +40,32 @@
           <!-- 修谱卷首（`kind === 'cover'`）：整幅大图占满纸页、**保留左右书口**（不走栏格；整体分列重构后仍独立整页、不入列） -->
           <image v-if="isCoverPage" class="book-cover" :src="coverUrl" mode="aspectFit" />
 
+          <!-- 封面页（`kind === 'frontcover'` · 全书第一页）：整页**只有谱名**、竖排居中
+               （36px / 字距 6px）；**不写任何书口**（数据层 leftLabel / rightLabel 均空）、不占叶序 -->
+          <view v-else-if="isFrontCoverPage" class="book-front-cover">
+            <text class="front-cover-title">{{ frontTitle }}</text>
+          </view>
+
           <!-- 第一部分修谱页 + 末尾后记页（`kind ∈ article|roster|donation|postscript`）：
-               **整页是个整体、整体上分列** —— 无 4 行结构与行分隔线，栏从右向左连续排满整页 -->
+               **整页是个整体、整体上分列** —— 无 4 行结构与行分隔线，栏从右向左连续排满整页。
+               **族務紀文（`article`）与后记（`postscript`）= 乌丝栏双轨竖排**：栏格分
+               「字列轨（左 · 26px）」+「标点列轨（右 · 14px，真占版宽）」两轨 —— 仅当该栏带
+               `puncts`（数据层已把 `，`⇒`·` / `。`⇒`○` 挂到其前面紧邻那个汉字、空格不占位）时渲染；
+               名录（`roster`）/ 樂捐（`donation`）栏不带 `puncts` ⇒ 单轨渲染，与改动前**逐字一致**。 -->
           <view v-else-if="isFlowPage" class="book-flow">
             <view
               v-for="(col, ci) in flowCols"
               :key="ci"
               class="book-col"
-              :class="{ 'name-col': col.isName }"
+              :class="{ 'name-col': col.isName, 'dual-col': !!col.puncts }"
             >
               <text class="col-text">{{ col.text }}</text>
+              <!-- 标点列轨：与字列轨同格的标点（`puncts` 与 `text` 码点数组同长逐位对齐；`''` ⇒ 留白） -->
+              <view v-if="col.puncts" class="col-punct">
+                <view v-for="(p, pi) in col.puncts" :key="pi" class="punct-slot">
+                  <text class="punct-text">{{ p }}</text>
+                </view>
+              </view>
             </view>
           </view>
 
@@ -95,6 +116,18 @@
       @changed="onRevisionChanged"
       @close="showRevisionPanel = false"
     />
+
+    <!-- 修改谱名弹窗（**共享组件** `rename-genealogy-modal`，与祖谱页复用同一套 UI + 提交逻辑；
+         **不新增页面 / 路由**）。入参 = 树 id + 当前谱名 + `rename_fee_pieces`（缺失 ⇒ 不显价格行）；
+         成功 ⇒ 通知宿主刷页眉谱名 + 本组件重拉文谱（书口 `▲ <谱名> 葉<N>` 立即更新）。 -->
+    <RenameGenealogyModal
+      v-if="showRenameDialog"
+      :tree-id="treeId"
+      :current-name="renameCurrent"
+      :fee-pieces="renameFeePieces"
+      @close="showRenameDialog = false"
+      @renamed="onGenealogyRenamed"
+    />
   </view>
 </template>
 
@@ -105,13 +138,17 @@ import { getCurrentInstance, onUnmounted } from 'vue';
 // #endif
 import { buildWenpuBook } from '@/business/wenpu';
 import type { WenpuBook, WenpuCol, WenpuPage, WenpuRow } from '@/business/wenpu';
-import { fetchRevisions } from '@/business/api';
+import { fetchRevisions, fetchTreeMetaRemote } from '@/business/api';
 import { canManageRevision as canManageRevisionOf } from '@/business/revision';
 import type { RevisionView } from '@/business/revision';
 import { authState } from '@/business/auth';
 import RevisionPanel from '@/components/revision-panel/revision-panel.vue';
+import RenameGenealogyModal from '@/components/rename-genealogy-modal/rename-genealogy-modal.vue';
 
 const props = withDefaults(defineProps<{ treeId?: string }>(), { treeId: '' });
+
+/** 改名成功 ⇒ 通知宿主（`tree-hall`）重取 tree-meta 刷新页眉谱名（书口由本组件自行重拉） */
+const emit = defineEmits<{ (e: 'renamed'): void }>();
 
 const book = ref<WenpuBook | null>(null);
 const loading = ref(false);
@@ -124,6 +161,60 @@ const menuOpen = ref(false);
 const showRevisionPanel = ref(false);
 /** 修谱入口可见性（纯前端单点判据 `canManageRevision(role, treeId)`） */
 const canManageRevision = computed(() => canManageRevisionOf(authState.role, props.treeId));
+
+// ---------------- 修改谱名（`POST /admin/tree-rename`） ----------------
+//
+// 口径（Kevin 2026-10-12 拍定）：谱名已从【编辑家族信息】表单移出 ⇒ 改名统一在本组件工具条的
+// 【修改谱名】按钮（与「✎ 修谱」同可见性、排其左侧）内完成。
+// **弹窗 + 提交逻辑 = 共享组件 `rename-genealogy-modal`**（与祖谱页 `clan-hall.vue` 复用同一套，
+// 避免第二份实现）：本组件只负责 ① 打开时读本树 tree-meta 的谱名与 `rename_fee_pieces`、
+// ② 成功后通知宿主刷页眉谱名 + **重拉文谱**（书口 `▲ <谱名> 葉<N>` 取 `genealogy_name`，故必须重拉）。
+
+/** 弹窗开合（弹窗本体 = 共享组件，见模板） */
+const showRenameDialog = ref(false);
+/** 当前谱名（tree-meta entry 的 `genealogy_name`；未设置 ⇒ 空串）—— 共享组件的入参 */
+const renameCurrent = ref('');
+/** 本次消耗（`rename_fee_pieces`；缺失 / 未加载 / 非法 ⇒ `null` ⇒ 价格行整条不渲染）—— 共享组件的入参 */
+const renameFeePieces = ref<number | null>(null);
+
+/**
+ * 读本树 tree-meta 的谱名与改名费（`GET /tree-meta`，与文谱数据层同源）—— 作为共享弹窗的入参。
+ * 读失败一律静默：不显示价格行（**不臆造数字**）、当前谱名留空，弹窗仍可提交（后端为准）。
+ */
+async function readRenameMeta() {
+  try {
+    const meta = await fetchTreeMetaRemote();
+    for (const entry of Object.values(meta.trees)) {
+      if (entry?.tree_id !== props.treeId) continue;
+      renameCurrent.value = (entry.genealogy_name || '').trim();
+      const fee = entry.rename_fee_pieces;
+      renameFeePieces.value =
+        typeof fee === 'number' && Number.isFinite(fee) && fee >= 0 ? fee : null;
+      break;
+    }
+  } catch {
+    // 读失败：无价格行、当前谱名留空（仍可提交，后端为准）
+  }
+}
+
+/** 打开弹窗（先清上次残留的谱名 / 价格），顺带收起「⋯ 更多」菜单；弹窗由共享组件渲染 */
+async function openRenameDialog() {
+  menuOpen.value = false;
+  renameCurrent.value = '';
+  renameFeePieces.value = null;
+  showRenameDialog.value = true;
+  await readRenameMeta();
+}
+
+/**
+ * 共享弹窗改名成功（`@renamed`）⇒ ① 通知宿主（`tree-hall`）重取 tree-meta 刷页眉谱名；
+ * ② 本组件重拉文谱（书口 `▲ <谱名> 葉<N>` 取 `genealogy_name`，故必须重拉）。
+ */
+function onGenealogyRenamed() {
+  emit('renamed');
+  void load();
+}
+
 /** 翻页动效 class：''（静止）/ 'flip-next'（后叶 · 向左翻）/ 'flip-prev'（前叶 · 向右翻） */
 const flipClass = ref<'' | 'flip-next' | 'flip-prev'>('');
 /** 动效时长（ms）：与 style 内 keyframes 的 300ms 对齐，略留余量后清 class */
@@ -170,6 +261,10 @@ const rightLabel = computed(() => currentPage.value?.rightLabel || '');
 const isCoverPage = computed(() => currentPage.value?.kind === 'cover');
 /** 卷首图地址（数据层产出，视图层零转换） */
 const coverUrl = computed(() => currentPage.value?.cover?.url || '');
+/** 封面页（`kind === 'frontcover'` · 全书第一页 · 整页只有谱名；**不写书口 / 不占叶序**） */
+const isFrontCoverPage = computed(() => currentPage.value?.kind === 'frontcover');
+/** 封面谱名（数据层产出 —— 已 `toTraditional`；视图层零字形转换） */
+const frontTitle = computed(() => currentPage.value?.frontTitle || '');
 /** 空谱：纸面内显示繁体空态 */
 const isEmpty = computed(() => !loading.value && !loadError.value && book.value?.empty === true);
 /** 翻页控件仅在读成功、有页可翻时出现 */
@@ -335,6 +430,15 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown));
   border-radius: 14px;
 }
 .toolbar-revision-text { font-size: 12px; color: #8B4513; }
+/* 【修改谱名】入口（**与修谱入口同体例**、仍排在其左侧；可见性同 `canManageRevision`） */
+.toolbar-rename {
+  margin-right: 8px;
+  padding: 6px 12px;
+  background: #fff;
+  border: 1px solid #E0D5C8;
+  border-radius: 14px;
+}
+.toolbar-rename-text { font-size: 12px; color: #8B4513; }
 /* 展开的小菜单：PDF 导出为次级 / 弱化样式 */
 .more-menu {
   position: absolute;
@@ -424,6 +528,25 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown));
   background: #F7F3E8;
 }
 
+/* 封面页（`kind === 'frontcover'` · 全书第一页）：整页只有谱名 —— 竖排居中（writing-mode: vertical-rl）
+   · 字号 36px · 字距 6px（**一句话可改**）；纸页仍 960×720 / padding 17px 40px / 底色与边框与其它页一致 */
+.book-front-cover {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.front-cover-title {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 36px;
+  letter-spacing: 6px;
+  line-height: 1.0;
+  color: #222;
+  white-space: nowrap;
+  font-family: "Noto Serif TC", SimSun, serif;
+}
+
 /* 4 行：纵向 4 等分；行间 1px #111 上边框（首行无） */
 .book-rows { height: 100%; display: flex; flex-direction: column; }
 .book-row {
@@ -473,6 +596,48 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown));
 }
 .book-flow .book-col { font-size: 26px; }
 .book-flow .name-col { font-size: 30px; }
+
+/* ---- 乌丝栏双轨竖排（**仅 `article` 族務紀文 / `postscript` 后记**；名录与樂捐页零变化）----
+   栏格 = 字列轨（左 · 26px，字号 26px 不变）+ 标点列轨（右 · 14px，标点字号 14px，**真占版宽**）
+   ⇒ 栏格宽 = 26 + 14 + 2×1px padding + 1px 栏线 = 43px（与 `wenpu.ts` 的 `WENPU_DUAL_COL_WIDTH`
+   同口径 ⇒ 每页 20 栏，**一句话可改**）。父容器改横排（非 `row-reverse`，写作默认模式）：
+   DOM 顺序 = 字列在左、标点在右 ⇒ 竖排「字在左、标点在右」。 */
+.book-flow .dual-col {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  writing-mode: horizontal-tb;
+}
+/* 字列轨：宽恒 = 字号 26px（各栏格宽一律 43px ⇒ 标点轨起点一致；满 26 字 = 676px ≤ 内容高 684px） */
+.book-flow .dual-col .col-text {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  flex: 0 0 26px;
+  width: 26px;
+}
+/* 标点列轨：宽恒 14px（真占版宽）；每格高度 = 字列一字的纵向步进 26px ⇒ 标点与所画之字同格同 y 带 */
+.book-flow .dual-col .col-punct {
+  flex: 0 0 14px;
+  width: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  font-size: 14px;
+  line-height: 1;
+  overflow: hidden;
+}
+/* 标点格：与字列轨同一格的标点（格内水平 + 垂直居中 ⇒ 与所属字同 y 对齐）；无标点 ⇒ 空格留白 */
+.punct-slot {
+  flex: 0 0 26px;
+  width: 14px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.punct-text { font-size: 14px; line-height: 1; white-space: nowrap; }
 
 /* 纸面内空态（繁体） */
 .book-empty {

@@ -20,6 +20,16 @@ export interface TreeEntry {
   display_title: string;
   /** 谱名：家谱/族谱/祖谱的名称（如「季氏家谱」） */
   genealogy_name?: string;
+  /**
+   * 谱名「上次修改时刻」（`GET /tree-meta` 只增此键；ISO 串或 null=无历史）。
+   * 后端未重启（旧响应缺少此键）时前端必须兜底为 undefined/null，不得直接展示。
+   */
+  genealogy_name_updated_at?: string | null;
+  /**
+   * 改谱名价目（片；`GET /tree-meta` 只增此键，服务端按同一矩阵算出的纯函数结果，无历史 ⇒ 999）。
+   * **前端不得自行重算档位**；后端未重启（旧响应缺少此键）时前端必须兜底，禁止直接渲染成 NaN。
+   */
+  rename_fee_pieces?: number;
   /** 文献地址：线上网盘等史料归档 uri（管理员维护） */
   archive_url?: string;
   /** 堂号（如「三让堂」），可选 */

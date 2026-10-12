@@ -64,52 +64,73 @@
             <text class="rp-hint">jpg / png / webp，上限 2 MB（超限自动压缩；仍超限则不上传）</text>
           </view>
 
-          <!-- ② 族務紀文（标题 / 正文 / 落款；内容 kind = 'article'） -->
+          <!-- ② 族務紀文（标题 / 正文 / 落款；内容 kind = 'article'）
+               字符集口径 = **只允许汉字与中文逗号、句号**，且**标点不可连续**（三字段同规则）；
+               存储**保留原文**（标点原样落库，不再折成空格）；拒绍文案**与后端逐字一致**（`article-rules.ts`）。 -->
           <view class="rp-block">
             <text class="rp-block-title">族務紀文</text>
             <input
               class="rp-input"
               :value="article.title"
               :disabled="!canEdit"
-              placeholder="标题（须繁体；标点自动转空格）"
+              placeholder="标题（须繁体；只可汉字与，。；标点不可连续）"
               @input="onArticleInput('title', $event)"
             />
             <textarea
               class="rp-textarea"
               :value="article.body"
               :disabled="!canEdit"
-              placeholder="正文（须繁体；标点自动转空格）"
+              placeholder="正文（须繁体；只可汉字与，。；标点不可连续）"
               @input="onArticleInput('body', $event)"
             />
             <input
               class="rp-input"
               :value="article.signature"
               :disabled="!canEdit"
-              placeholder="落款（须繁体；标点自动转空格）"
+              placeholder="落款（须繁体；只可汉字与，。；标点不可连续）"
               @input="onArticleInput('signature', $event)"
             />
-            <text v-if="articleDirty" class="rp-hint">族務紀文有改动，将随本次保存一并提交</text>
+            <!-- 输入口径提示（常显；措辞刻意**不与两条拒绍文案字面重合**，便于真机取证区分） -->
+            <text class="rp-hint">只可輸入漢字，標點限中文逗號與句號，且不可相鄰連用。</text>
+            <!-- 实时校验提示（**与后端拒绍文案逐字一致**；只针对**用户编辑过**的字段，
+                 故打开面板时存量旧数据（标点已折空格）不误报；提交拦截时强制显示） -->
+            <text v-if="articleError" class="rp-error">{{ articleError }}</text>
+            <text v-else-if="articleDirty" class="rp-hint">族務紀文有改动，将随本次保存一并提交</text>
           </view>
 
-          <!-- ③ 譜司襄事（一人一条：姓名 + 空格 + 職務；内容 kind = 'helpers'） -->
+          <!-- ③ 譜司襄事（一人一条：姓名 + 職務；**職務二选一** 主司 / 副司 · 主司恰 1 必填 · 副司 ≤2 · 共 ≤3 · 同一族人不可重复；内容 kind = 'helpers'） -->
           <view class="rp-block">
             <text class="rp-block-title">譜司襄事</text>
-            <view v-for="(row, i) in rosterRows" :key="i" class="rp-row">
+            <view
+              v-for="(row, i) in rosterRows"
+              :key="i"
+              :id="'rp-roster-' + i"
+              class="rp-row"
+              :class="{ 'rp-row-focus': rosterFocusIndex === i }"
+            >
               <view class="rp-pick" @click="openPicker('roster', i)">
                 <text class="rp-pick-name">{{ row.name || '点选族人' }}</text>
                 <text class="rp-pick-id">{{ row.gramps_id }}</text>
               </view>
-              <input
-                class="rp-input rp-input-sub"
-                :value="row.duty"
-                :disabled="!canEdit"
-                placeholder="職務（须繁体）"
-                @input="onRosterDutyInput(i, $event)"
-              />
+              <view class="rp-duty">
+                <text
+                  v-for="d in ROSTER_DUTIES"
+                  :key="d"
+                  class="rp-duty-chip"
+                  :class="{ 'rp-duty-on': row.duty === d, disabled: !canEdit }"
+                  @click="chooseRosterDuty(i, d)"
+                >{{ d }}</text>
+              </view>
               <text v-if="canEdit" class="rp-del" @click="removeRosterRow(i)">删行</text>
             </view>
+            <text v-if="rowLegacyDuty" class="rp-hint">
+              已有職務「{{ rowLegacyDuty }}」不在「主司 / 副司」之内，请改选后再保存。
+            </text>
+            <text v-if="canEdit" class="rp-hint">
+              主司 1 位（必填）、副司最多 2 位、襄事最多 3 位；同一族人不可重复录入。
+            </text>
             <view v-if="canEdit" class="rp-actions">
-              <view class="rp-btn" @click="addRosterRow">新增行</view>
+              <view class="rp-btn" :class="{ disabled: rosterFull }" @click="addRosterRow">新增行</view>
             </view>
 
             <!-- 族人点选（**唯一入口** = `searchPeople`，不得手输族人姓名） -->
@@ -242,6 +263,19 @@ import {
 } from '@/business/revision';
 import type { RevisionArticle, RevisionRecord, RevisionView } from '@/business/revision';
 import { authState } from '@/business/auth';
+import {
+  ROSTER_DUTIES,
+  ROSTER_DUTY_MASTER,
+  ROSTER_DUTY_DEPUTY,
+  ROSTER_MAX_ROWS,
+  ROSTER_MAX_DEPUTIES,
+  ROSTER_MSG,
+  checkRoster,
+  isRosterDuty,
+  rosterDutyCount,
+  rosterHandleUsedByOther,
+} from './roster-rules';
+import { ARTICLE_FIELDS, checkArticle, checkArticleText } from './article-rules';
 
 const props = defineProps<{ treeId: string }>();
 const emit = defineEmits<{ (e: 'changed'): void; (e: 'close'): void }>();
@@ -290,6 +324,8 @@ interface DonationRow {
 }
 const rosterRows = ref<RosterRow[]>([]);
 const donationRows = ref<DonationRow[]>([]);
+/** 校验失败时聚焦（高亮 + 滚动）的襄事行下标；`null` = 无聚焦 */
+const rosterFocusIndex = ref<number | null>(null);
 
 // ---- 本次变更的项（脏标记；保存时归集为 `items` 一次提交） ----
 const articleDirty = ref(false);
@@ -369,6 +405,15 @@ const tierBannerText = computed(() => {
 /** 卷首图预览源：新选中（本地 data URL）优先，否则后端临时链 */
 const coverPreview = computed(() => coverNew.value?.preview || coverUrl.value);
 
+/** 襄事是否已达总人数上限（⇒「新增行」置灰 / 不可点） */
+const rosterFull = computed(() => rosterRows.value.length >= ROSTER_MAX_ROWS);
+
+/** 存量自由文本職務（非「主司 / 副司」）的第一条值；`''` = 无（仅作提示，不参与判定） */
+const rowLegacyDuty = computed(() => {
+  const hit = rosterRows.value.find((r) => !!r.duty.trim() && !isRosterDuty(r.duty));
+  return hit ? hit.duty : '';
+});
+
 /** 本次将提交的项摘要（保存按钮旁提示） */
 const pendingText = computed(() => {
   const parts: string[] = [];
@@ -392,12 +437,28 @@ function recordStatusLabel(r: RevisionRecord): string {
 }
 
 /**
- * 标点清洗（**体验层**）：`,` `，` `。` `.` ⇒ 空格 + 连续空格折叠。
- * **唯一权威仍在后端清洗**（前端只做输入期体验）。
+ * 族務紀文**实时校验**（纯函数单点 = `./article-rules` 的 `checkArticleText`，与后端 `normalizeArticle` 同口径）：
+ *   · 只校验**用户实际编辑过**的字段（`articleTouched`）⇒ 打开面板时存量旧数据
+ *     （旧口径把标点折成了空格）不误报，用户改到哪个字段才要求该字段合规；
+ *   · 提交前拦截（`doSave` 内的 `checkArticle`）覆盖**三字段全体**，命中时把同一文案
+ *     强制显示出来（`articleSubmitError`）——提示与拦截**同一套逐字文案**。
  */
-function sanitizePunct(text: string): string {
-  return (text || '').replace(/[,，。.]/g, ' ').replace(/ {2,}/g, ' ');
-}
+const articleTouched = ref<{ title: boolean; body: boolean; signature: boolean }>({
+  title: false,
+  body: false,
+  signature: false,
+});
+/** 提交前拦截时强制显示的拒绍文案（任一输入即清空） */
+const articleSubmitError = ref('');
+const articleError = computed(() => {
+  if (articleSubmitError.value) return articleSubmitError.value;
+  for (const f of ARTICLE_FIELDS) {
+    if (!articleTouched.value[f]) continue;
+    const r = checkArticleText(article.value[f]);
+    if (!r.ok) return r.message;
+  }
+  return '';
+});
 
 function inputValue(e: any): string {
   const v = e && e.detail ? e.detail.value : '';
@@ -413,6 +474,7 @@ function resetContent() {
   helpersDirty.value = false;
   donationsDirty.value = false;
   coverNew.value = null;
+  rosterFocusIndex.value = null;
   closePicker();
 }
 
@@ -442,9 +504,12 @@ function loadSelected() {
     amount: d?.amount ? String(d.amount) : '',
   }));
   articleDirty.value = false;
+  articleTouched.value = { title: false, body: false, signature: false };
+  articleSubmitError.value = '';
   helpersDirty.value = false;
   donationsDirty.value = false;
   coverNew.value = null;
+  rosterFocusIndex.value = null;
   closePicker();
 }
 
@@ -528,25 +593,82 @@ async function doStart() {
 }
 
 // ---- ② 族務紀文（内容 kind = 'article'）----
+//
+// 口径（A 口径 · Kevin 2026-10-12 拍定 · 纯函数落 `./article-rules.ts`）：
+//   · 只允许「汉字 + 中文逗号 `，` + 中文句号 `。`」；其它字符逐字符拒（文案 = `ARTICLE_MSG_CHARSET`）；
+//   · 禁止连续标点（`，。` / `。。` / `，，` ⇒ `ARTICLE_MSG_PUNCT_REPEAT`）；
+//   · **存储保留原文** ⇒ 输入**原样入编辑态**（旧 `sanitizePunct`「标点折成空格」已随本口径删除）；
+//   · 三字段同规则；提交前在 `doSave` 再拦一遍（实时提示 = `articleError`）。
 function onArticleInput(key: 'title' | 'body' | 'signature', e: any) {
-  article.value = { ...article.value, [key]: sanitizePunct(inputValue(e)) };
+  article.value = { ...article.value, [key]: inputValue(e) };
   articleDirty.value = true;
+  articleTouched.value = { ...articleTouched.value, [key]: true };
+  articleSubmitError.value = ''; // 任一输入即清掉提交拦截提示（改后由实时校验重新判定）
 }
 
 // ---- ③ 譜司襄事（内容 kind = 'helpers'）----
+//
+// 口径（Kevin 2026-10-12 拍定 · 纯函数落 `./roster-rules.ts`）：
+//   · **職務二选一**（`主司` / `副司` chip；默认空、必选；不再是自由文本）；
+//   · 总人数 **≤ 3**（达上限「新增行」置灰且不可点）；
+//   · `主司` **恰 1**（选第二位主司即时拦下）、`副司` **≤ 2**；
+//   · **同一族人不得重复录入**（选人时拦、提交前再拦一遍）。
+// 六条拦截文案 = `ROSTER_MSG`（**与后端逐字一致 · 繁体**）。
+
+/** 聚焦（高亮 + 滚动到可视区）某襄事行；`i < 0` ⇒ 只清高亮 */
+function focusRosterRow(i: number) {
+  rosterFocusIndex.value = i >= 0 ? i : null;
+  if (i < 0) return;
+  // #ifdef H5
+  // 面板自身可滚（`.rp-panel{overflow-y:auto}`）⇒ 用 `scrollIntoView` 把出错行带进视野
+  setTimeout(() => {
+    const el = document.getElementById('rp-roster-' + i);
+    if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center' });
+  }, 0);
+  // #endif
+}
+
+/** 拦截：写文案 + 聚焦对应行（**不改数据**） */
+function blockRoster(message: string, index: number) {
+  actionError.value = message;
+  focusRosterRow(index);
+}
+
 function addRosterRow() {
+  if (!canEdit.value) return;
+  // 上限 3 位：达上限即不可点（按钮同时置灰）
+  if (rosterRows.value.length >= ROSTER_MAX_ROWS) {
+    blockRoster(ROSTER_MSG.maxThree, -1);
+    return;
+  }
   rosterRows.value = [...rosterRows.value, { handle: '', name: '', gramps_id: '', duty: '' }];
   helpersDirty.value = true;
+  actionError.value = '';
 }
 function removeRosterRow(i: number) {
   rosterRows.value = rosterRows.value.filter((_, idx) => idx !== i);
   helpersDirty.value = true;
+  rosterFocusIndex.value = null;
   closePicker();
 }
-function onRosterDutyInput(i: number, e: any) {
-  const value = sanitizePunct(inputValue(e));
-  rosterRows.value = rosterRows.value.map((row, idx) => (idx === i ? { ...row, duty: value } : row));
+
+/** 选職務（二选一 chip）：主司占位已满 / 副司满 2 位 ⇒ 即时拦下并聚焦该行 */
+function chooseRosterDuty(i: number, duty: string) {
+  if (!canEdit.value) return;
+  const row = rosterRows.value[i];
+  if (!row || row.duty === duty) return;
+  if (duty === ROSTER_DUTY_MASTER && rosterDutyCount(rosterRows.value, ROSTER_DUTY_MASTER) >= 1) {
+    blockRoster(ROSTER_MSG.masterOneOnly, i);
+    return;
+  }
+  if (duty === ROSTER_DUTY_DEPUTY && rosterDutyCount(rosterRows.value, ROSTER_DUTY_DEPUTY) >= ROSTER_MAX_DEPUTIES) {
+    blockRoster(ROSTER_MSG.deputyMax, i);
+    return;
+  }
+  rosterRows.value = rosterRows.value.map((r, idx) => (idx === i ? { ...r, duty } : r));
   helpersDirty.value = true;
+  actionError.value = '';
+  rosterFocusIndex.value = null;
 }
 
 // ---- ④ 樂捐名錄（内容 kind = 'donations'）----
@@ -602,10 +724,17 @@ async function doPickerSearch() {
 function choosePickerPerson(p: PersonSummary) {
   const idx = pickerIndex.value;
   if (pickerKind.value === 'roster') {
+    // **同一族人不得重复录入**（主司与副司之间、副司之间）：命中 ⇒ 拦下并保留选择层
+    if (rosterHandleUsedByOther(rosterRows.value, p.handle, idx)) {
+      actionError.value = ROSTER_MSG.duplicatePerson;
+      focusRosterRow(idx);
+      return;
+    }
     rosterRows.value = rosterRows.value.map((row, i) =>
       i === idx ? { ...row, handle: p.handle, name: p.name, gramps_id: p.gramps_id || '' } : row,
     );
     helpersDirty.value = true;
+    actionError.value = '';
   } else if (pickerKind.value === 'donation') {
     donationRows.value = donationRows.value.map((row, i) =>
       i === idx ? { ...row, handle: p.handle, name: p.name, gramps_id: p.gramps_id || '' } : row,
@@ -893,11 +1022,29 @@ async function doSave() {
   actionError.value = '';
   const seq = selectedSeq.value;
 
-  // 逐类校验（**先于提交**：点选是否齐全 / 金额是否正整数）
+  // 逐类校验（**先于提交**：点选是否齐全 / 金额是否正整数 / 族務紀文字符集）
+  if (articleDirty.value) {
+    // ② 族務紀文口径（**与后端逐字一致**）：只允许汉字 + ，。· 禁连续标点。
+    // 提交前覆盖**三字段全体**（含未编辑过的存量字段）⇒ 命中即拦下、**不发任何请求**；
+    // 同一文案强制显示（`articleSubmitError`），与实时提示**同一套逐字文案**。
+    const art = checkArticle(article.value);
+    if (!art.ok) {
+      actionError.value = art.message;
+      articleSubmitError.value = art.message;
+      return;
+    }
+  }
   if (helpersDirty.value) {
     const missing = rosterRows.value.find((r) => (r.name.trim() || r.duty.trim()) && !r.handle);
     if (missing) {
       actionError.value = '请为每一行点选族人';
+      return;
+    }
+    // ③ 譜司襄事口径（**六条文案与后端逐字一致**）：总 ≤3 · 主司恰 1（必填）· 副司 ≤2 ·
+    // 職務只能是主司或副司 · 同一族人不得重复（**提交前再拦一遍**，不只是选人时拦）
+    const roster = checkRoster(rosterRows.value);
+    if (!roster.ok) {
+      blockRoster(roster.message, roster.index);
       return;
     }
   }
@@ -1053,6 +1200,20 @@ onMounted(load);
 .rp-input-sub { flex: 1; min-width: 80px; }
 
 .rp-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+/* 校验失败聚焦（高亮 + 滚动到该行） */
+.rp-row-focus { outline: 2px solid #C62828; outline-offset: 1px; }
+/* ③ 譜司襄事：職務二选一 chip（主司 / 副司） */
+.rp-duty { display: flex; align-items: center; gap: 4px; }
+.rp-duty-chip {
+  padding: 3px 8px;
+  font-size: 12px;
+  color: #8B4513;
+  background: #fff;
+  border: 1px solid #E0D5C8;
+  border-radius: 12px;
+}
+.rp-duty-on { color: #fff; background: #8B4513; border-color: #8B4513; }
+.rp-duty-chip.disabled { opacity: 0.45; }
 .rp-pick {
   flex: 1;
   min-width: 96px;

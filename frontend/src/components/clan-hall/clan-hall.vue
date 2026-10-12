@@ -7,7 +7,13 @@
         <text v-if="info?.surname" class="clan-surname">{{ info.surname }}氏</text>
         <text v-if="info?.genealogy_name" class="clan-genealogy">谱名：{{ info.genealogy_name }}</text>
       </view>
-      <text v-if="info?.notice" class="clan-notice">⚠️ {{ info.notice }}</text>
+      <text v-if="info?.notice" class="clan-notice">⚠️ {{ info?.notice }}</text>
+      <!-- 【修改谱名】入口（**与家族树页 / 在线文谱工具条同规则同价**：既有 `canManageRevision` 判据、
+           `rename_fee_pieces` 价目、共享弹窗 `rename-genealogy-modal`）—— 谱名已从【编辑祖谱信息】
+           表单移出（同家族树页口径），改名统一在本弹窗内完成（含本次消耗明示） -->
+      <view v-if="canRenameGenealogy" class="clan-edit-entry clan-rename-entry" @click="openRename">
+        <text class="clan-edit-text">修改谱名</text>
+      </view>
       <!-- 编辑祖谱信息（复用普通树的编辑表单 + PUT /tree-meta；该接口限总编辑） -->
       <view v-if="isAdmin" class="clan-edit-entry" @click="openEdit">
         <text class="clan-edit-text">✏️ 编辑祖谱信息</text>
@@ -172,10 +178,9 @@
           <text class="label">祖谱名称</text>
           <input v-model="editForm.display_title" class="input" placeholder="如：季氏祖谱" />
         </view>
-        <view class="form-item">
-          <text class="label">谱名（祖谱/族谱名称）</text>
-          <input v-model="editForm.genealogy_name" class="input" placeholder="如：季氏祖谱" />
-        </view>
+        <!-- 谱名**已从本表单移出**（Kevin 2026-10-12 拍定，与家族树页同口径）：改名统一走本页
+             【修改谱名】按钮 + 共享弹窗（含本次消耗明示），本表单不再有该字段、提交载荷亦不带
+             `genealogy_name`（后端通用路由收到异值会 400，防绕过计费） -->
         <view class="form-item">
           <text class="label">文献地址（线上网盘 uri）</text>
           <input v-model="editForm.archive_url" class="input" placeholder="如：https://pan.baidu.com/s/xxxx" />
@@ -201,6 +206,16 @@
       </view>
     </view>
 
+    <!-- 修改谱名弹窗（**共享组件**：与家族树页在线文谱工具条复用同一套 UI + 提交逻辑） -->
+    <RenameGenealogyModal
+      v-if="showRename"
+      :tree-id="treeId"
+      :current-name="renameCurrentName"
+      :fee-pieces="renameFeePieces"
+      @close="showRename = false"
+      @renamed="onGenealogyRenamed"
+    />
+
     <!-- 人物档案（镜像节点 → 打开真身档案；自有节点 → 常规档案） -->
     <PersonDetailModal ref="archiveModal" />
   </view>
@@ -222,11 +237,13 @@ import type { ClanInfo, ClanMirrorNode } from '@/business/api';
 import type { TreeEntry, SetTreeOriginResult } from '@/business/types';
 import { authState, isAuthenticated, getAuthToken } from '@/business/auth';
 import { personIdDisplay } from '@/business/format';
+import { canManageRevision as canManageRevisionOf } from '@/business/revision';
 import { setDynamicTitle } from '@/business/seo';
 import TreePedigree from '@/components/tree-pedigree/tree-pedigree.vue';
 import PersonDetailModal from '@/components/person-detail-modal/person-detail-modal.vue';
 import FamilyMessages from '@/components/family-messages/family-messages.vue';
 import OriginPicker from '@/components/origin-picker/origin-picker.vue';
+import RenameGenealogyModal from '@/components/rename-genealogy-modal/rename-genealogy-modal.vue';
 
 const props = defineProps<{ treeId: string }>();
 
@@ -253,11 +270,44 @@ const treeMetaByTree = ref<Record<string, TreeEntry>>({});
 const showEdit = ref(false);
 const saving = ref(false);
 const editError = ref('');
-const editForm = ref({ display_title: '', genealogy_name: '', archive_url: '', hall_name: '', description: '' });
+/** 谱名**不在本表单内**（Kevin 2026-10-12 拍定，与家族树页同口径）：改名走本页【修改谱名】按钮 +
+ *  共享弹窗；提交载荷亦不带 `genealogy_name`（后端通用路由收到异值会 400，防绕过计费） */
+const editForm = ref({ display_title: '', archive_url: '', hall_name: '', description: '' });
+
+// ---- 修改谱名（共享弹窗 `rename-genealogy-modal`；口径与家族树页【在线文谱】工具条同规则同价） ----
+/** 弹窗开合 */
+const showRename = ref(false);
+/** 入口可见性 = **家族树页同规则**（纯前端单点判据 `canManageRevision(role, treeId)`） */
+const canRenameGenealogy = computed(() => canManageRevisionOf(authState.role, props.treeId));
+/** 当前谱名（tree-meta entry 的 `genealogy_name`；缺失回退 clan-info 的展示值）—— 共享弹窗入参 */
+const renameCurrentName = computed(() =>
+  (clanEntry.value?.genealogy_name || info.value?.genealogy_name || '').trim(),
+);
+/** 本次消耗（tree-meta entry 的 `rename_fee_pieces`；**缺失 / 未加载 / 非法 ⇒ `null` ⇒ 不显价格行**） */
+const renameFeePieces = computed<number | null>(() => {
+  const fee = clanEntry.value?.rename_fee_pieces;
+  return typeof fee === 'number' && Number.isFinite(fee) && fee >= 0 ? fee : null;
+});
+
+/** 打开修改谱名弹窗（弹窗本体 = 共享组件；价格与当前谱名取自本页已读的 tree-meta 条目） */
+function openRename() {
+  showRename.value = true;
+}
 
 /**
- * 打开编辑弹窗（字段：祖谱名称/谱名/文献地址/祠堂名/简介；**发源地不在本表单内** —— 由弹窗内的
+ * 改名成功（共享弹窗 `@renamed`）⇒ **重取 tree-meta / clan-info**（`load()`）刷新头部「谱名：…」
+ * 展示行；读失败按 `load()` 既有失败面处理（不静默吞）。
+ */
+async function onGenealogyRenamed() {
+  showRename.value = false;
+  await load();
+}
+
+/**
+ * 打开编辑弹窗（字段：祖谱名称/文献地址/祠堂名/简介；**发源地不在本表单内** —— 由弹窗内的
  * `OriginPicker` 走 `POST /admin/set-tree-origin` 单独指定并即时落库，契约 v2 C8′）。
+ * **谱名亦不在本表单内**（Kevin 2026-10-12 拍定，与家族树页同口径）：改名走本页【修改谱名】按钮 +
+ * 共享弹窗 ⇒ 本表单与提交载荷都不带 `genealogy_name`。
  * 表单**不含 `origin` / `origin_code`**：回传旧显示串会被 `PUT /tree-meta` 的 legacy 直写分支
  * 覆盖掉刚指定的发源地。
  */
@@ -265,7 +315,6 @@ function openEdit() {
   const e: any = clanEntry.value || {};
   editForm.value = {
     display_title: e.display_title || info.value?.title || '',
-    genealogy_name: e.genealogy_name || info.value?.genealogy_name || '',
     archive_url: e.archive_url || '',
     hall_name: e.hall_name || '',
     description: e.description || '',
@@ -480,6 +529,8 @@ watch(
   background: #FFF3E0; border: 1px solid #E8C9A0; border-radius: 18px;
 }
 .clan-edit-text { font-size: 13px; color: #8B4513; }
+/* 【修改谱名】入口：与「✏️ 编辑祖谱信息」同体例、同一行（同规则同价，共享弹窗） */
+.clan-rename-entry { margin-left: 8px; }
 
 /* 左侧功能按钮（与普通家族树首页同款：固定悬浮正方按钮） */
 .view-toggle {

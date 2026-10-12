@@ -2131,6 +2131,63 @@ export async function setTreeOrigin(
   return res.json();
 }
 
+// ---- 修改谱名（`POST /admin/tree-rename`；**纯新增封装**，不改任何既有函数行为） ----
+//
+// 契约（与后端并行单）：
+// - 体 `{ tree_id, genealogy_name }`（**键名逐字**；谱名已从【编辑家族信息】表单移出，改名统一走本路由）；
+// - 权限档与 `PUT /tree-meta` / `POST /admin/set-tree-origin` 同（chief_editor / 本树家族管理员）；
+// - 成功 ⇒ 逐新值重取视图（书口 `▲ <谱名> 葉<N>` 取 `genealogy_name`）；
+// - 失败面：400 谱名校验 / 401 未登录 / 403 权限 / 404 树不存在 / 409 `ASSET_INSUFFICIENT`
+//   （`need` / `current` / `unit` / `how_to_get` **随错误体带到 UI**，§6 错误体约束）。
+// - **价格不在本封装内**：本次消耗的真值 = tree-meta entry 的 `rename_fee_pieces`（由调用方预读展示）。
+
+/** `POST /admin/tree-rename` 出参（成功壳；字段**逐字**对应后端 `index.js` 该路由） */
+export interface TreeRenameResult {
+  ok?: boolean;
+  tree_id?: string;
+  genealogy_name?: string;
+  /** 扣费回执（后端逐字 `{ pieces, tier }`：`tier ∈ first_or_expired|within_360d|within_30d`；no-op ⇒ `pieces: 0`） */
+  fee?: { pieces?: number; tier?: string } | null;
+  /** 留痕（`jiapu_ops_logs`）写入失败时为 `true`（best-effort，不阻断主流程） */
+  log_warning?: boolean;
+}
+
+/**
+ * 修改谱名错误体归一（**顶层与 `error` 内层两形态都读**）：文案一律取后端原文；
+ * `need` / `current` / `unit` / `how_to_get` 无论落在顶层还是 `error` 内层都带进 `ApiStatusError`
+ * —— 资产的 409 明细行不得在 UI 丢字段（与 `revisionErrorOf` 同口径，故不另开一套键名）。
+ */
+function treeRenameErrorOf(body: any, status: number): ApiStatusError {
+  const inner = body && typeof body.error === 'object' && body.error !== null ? body.error : {};
+  const message =
+    (typeof body?.error === 'string' ? body.error : '') || inner.message || `修改谱名失败 (${status})`;
+  return new ApiStatusError(message, status, { ...body, ...inner, code: body?.code || inner.code });
+}
+
+/**
+ * 修改谱名（`POST /admin/tree-rename`）。
+ *
+ * 前端**只提交** `{ tree_id, genealogy_name }`（**键名逐字**；谱名 trim / 长度校验在调用方预校验，
+ * 后端同口径复核）；成功后就地 `clearMetaCache()`（静态 tree-meta 缓存作废）。
+ */
+export async function renameTreeGenealogy(
+  token: string,
+  payload: { tree_id: string; genealogy_name: string },
+): Promise<TreeRenameResult> {
+  const res = await fetch(`${API_BASE}/admin/tree-rename`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + token,
+    },
+    body: JSON.stringify({ tree_id: payload.tree_id, genealogy_name: payload.genealogy_name }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw treeRenameErrorOf(body, res.status);
+  clearMetaCache();
+  return body as TreeRenameResult;
+}
+
 // ---- 行政区划热度（只读、无需鉴权、无需 X-Tree-Id；docs/geo-origin.spec.md「热度排序」） ----
 
 /** `GET /geo/hot` 响应：`counts` = 前缀级联票（码 → 票数），`direct` = 恰在该级的票；两表只含票数 > 0 的码 */

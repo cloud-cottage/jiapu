@@ -123,7 +123,8 @@
 
       <view v-else class="view-body">
         <!-- 在线文谱（仿真古籍书页；分页与繁体文案由 business/wenpu.ts 承担） -->
-        <WenpuBook :tree-id="treeId" />
+        <!-- `@renamed`：文谱工具条【修改谱名】成功后 ⇒ 宿主重取 tree-meta，页眉「谱名：…」立即更新 -->
+        <WenpuBook :tree-id="treeId" @renamed="onGenealogyRenamed" />
 
         <!-- 文献地址入口（在线文谱视图底部） -->
         <view class="archive-section">
@@ -291,10 +292,9 @@
           <text class="label">家族名称</text>
           <input v-model="editForm.display_title" class="input" placeholder="如：季氏费县白露村家族" />
         </view>
-        <view class="form-item">
-          <text class="label">谱名（家谱/族谱/祖谱名称）</text>
-          <input v-model="editForm.genealogy_name" class="input" placeholder="如：季氏家谱" />
-        </view>
+        <!-- 谱名**已从本表单移出**（Kevin 2026-10-12 拍定）：改名统一在【在线文谱】工具条的
+             【修改谱名】按钮 + 弹窗内完成（含本次消耗明示），本表单不再有该字段、提交载荷亦不带
+             `genealogy_name`（后端通用路由不受影响） -->
         <view class="form-item">
           <text class="label">文献地址（线上网盘 uri）</text>
           <input v-model="editForm.archive_url" class="input" placeholder="如：https://pan.baidu.com/s/xxxx" />
@@ -381,7 +381,7 @@ const archiveModal = ref<InstanceType<typeof PersonDetailModal> | null>(null);
 const showEdit = ref(false);
 const saving = ref(false);
 const editError = ref('');
-const editForm = ref({ display_title: '', genealogy_name: '', archive_url: '', hall_name: '', description: '' });
+const editForm = ref({ display_title: '', archive_url: '', hall_name: '', description: '' });
 
 // 视图切换：血脉图示（默认） / 在线文谱 / 家族消息（审批入口，仅管理权限）
 const view = ref<'pedigree' | 'doc' | 'msg'>('pedigree');
@@ -851,8 +851,10 @@ function goSpirit() {
 }
 
 /**
- * 打开编辑弹窗（字段：名称/谱名/文献地址/堂号/简介；**发源地不在本表单内** —— 由弹窗内的
+ * 打开编辑弹窗（字段：家族名称/文献地址/堂号/简介；**发源地不在本表单内** —— 由弹窗内的
  * `OriginPicker` 走 `POST /admin/set-tree-origin` 单独指定并即时落库，契约 v2 C8′）。
+ * **谱名亦不在本表单内**（Kevin 2026-10-12 拍定，已移出）：改名走【在线文谱】工具条的【修改谱名】
+ * 按钮（`POST /admin/tree-rename`，弹窗内明示本次消耗）⇒ 本表单与提交载荷都不带 `genealogy_name`。
  * 表单**不含 `origin` / `origin_code`**：若把弹窗打开时的旧显示串回传给 `PUT /tree-meta`，
  * 其 legacy 直写分支会覆盖刚指定好的 `origin`（显示串被盖回旧文本）。
  */
@@ -860,7 +862,6 @@ function openEdit() {
   if (!hallInfo.value) return;
   editForm.value = {
     display_title: hallInfo.value.display_title || '',
-    genealogy_name: hallInfo.value.genealogy_name || '',
     archive_url: hallInfo.value.archive_url || '',
     hall_name: hallInfo.value.hall_name || '',
     description: hallInfo.value.description || '',
@@ -881,6 +882,25 @@ function onOriginUpdated(r: SetTreeOriginResult) {
 
 function closeEdit() {
   showEdit.value = false;
+}
+
+/**
+ * 文谱工具条【修改谱名】成功（`WenpuBook` 的 `@renamed`）⇒ 重取 tree-meta 就地换 `hallInfo`
+ * ⇒ 页眉「谱名：…」立即更新（书口由文谱组件自行重拉，见 `wenpu-book.vue`）。
+ * 读失败不清空既有展示（沿用旧值，不闪空）。
+ */
+async function onGenealogyRenamed() {
+  try {
+    const meta = await fetchTreeMetaRemote();
+    for (const [, entry] of Object.entries(meta.trees)) {
+      if (entry.tree_id === treeId.value) {
+        hallInfo.value = entry;
+        break;
+      }
+    }
+  } catch (e) {
+    console.error('刷新谱名失败:', e);
+  }
 }
 
 async function saveEdit() {
