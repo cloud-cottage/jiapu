@@ -15,6 +15,8 @@
 import { inflateBase64ToUtf8 } from './inflate';
 
 import b100000 from './bounds/100000.json';
+import b120000 from './bounds/120000.json';
+import b120116 from './bounds/120116.json';
 import b130000 from './bounds/130000.json';
 import b130200 from './bounds/130200.json';
 import b130208 from './bounds/130208.json';
@@ -43,7 +45,10 @@ import b371325 from './bounds/371325.json';
 import b610000 from './bounds/610000.json';
 import b610100 from './bounds/610100.json';
 import b610122 from './bounds/610122.json';
+import b710000 from './bounds/710000.json';
 import c100000 from './bounds/coarse/100000.json';
+import c120000 from './bounds/coarse/120000.json';
+import c120116 from './bounds/coarse/120116.json';
 import c130000 from './bounds/coarse/130000.json';
 import c130200 from './bounds/coarse/130200.json';
 import c130208 from './bounds/coarse/130208.json';
@@ -72,6 +77,7 @@ import c371325 from './bounds/coarse/371325.json';
 import c610000 from './bounds/coarse/610000.json';
 import c610100 from './bounds/coarse/610100.json';
 import c610122 from './bounds/coarse/610122.json';
+import c710000 from './bounds/coarse/710000.json';
 
 /** 单个要素（`properties` 已被瘦身到 `adcode/name/centroid/center`；几何统一 `MultiPolygon`） */
 export interface BoundFeature {
@@ -94,6 +100,8 @@ export interface BoundFeatureCollection {
 /** adcode → 压缩载荷（base64）· **细档** */
 const RAW: Record<string, string> = {
   '100000': b100000,
+  '120000': b120000,
+  '120116': b120116,
   '130000': b130000,
   '130200': b130200,
   '130208': b130208,
@@ -122,11 +130,14 @@ const RAW: Record<string, string> = {
   '610000': b610000,
   '610100': b610100,
   '610122': b610122,
+  '710000': b710000,
 };
 
 /** adcode → 压缩载荷（base64）· **粗档**（LOD 第二档；与细档逐 feature 一一对应） */
 const RAW_COARSE: Record<string, string> = {
   '100000': c100000,
+  '120000': c120000,
+  '120116': c120116,
   '130000': c130000,
   '130200': c130200,
   '130208': c130208,
@@ -155,6 +166,7 @@ const RAW_COARSE: Record<string, string> = {
   '610000': c610000,
   '610100': c610100,
   '610122': c610122,
+  '710000': c710000,
 };
 
 /** 随包内可用的 adcode（升序；**两档集合一致**） */

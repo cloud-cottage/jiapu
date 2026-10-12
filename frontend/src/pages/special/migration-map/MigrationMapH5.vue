@@ -71,12 +71,13 @@ import { buildMigrationSites, MIG_YEAR_BASIS, siteYearLabel, yearBasisOf, yearWa
 import {
   buildMigrationMapPlan,
   collectBoundAdcodes,
+  cityOf,
   planSiteCodes,
   provinceOf,
   type MigrationMapPlan,
   type MigrationSiteRef,
 } from '@/business/migration-map-view';
-import { loadBound, loadBoundCoarse, type BoundFeatureCollection } from '@/business/geo/bounds-loader';
+import { loadBound, loadBoundCoarse, type BoundFeature, type BoundFeatureCollection } from '@/business/geo/bounds-loader';
 import { mountMigrationMap, type MigrationMapController } from './map-engine';
 
 const props = defineProps<{ treeId: string }>();
@@ -231,7 +232,8 @@ async function reload(): Promise<void> {
       status.value = 'empty';
       return;
     }
-    const codes = collectBoundAdcodes(planSiteCodes(p));
+    const siteCodes = planSiteCodes(p);
+    const codes = collectBoundAdcodes(siteCodes);
     const bounds: Record<string, BoundFeatureCollection> = {};
     const coarse: Record<string, BoundFeatureCollection> = {};
     for (const code of codes) {
@@ -240,9 +242,48 @@ async function reload(): Promise<void> {
       const cb = loadBoundCoarse(code);
       if (cb) coarse[code] = cb;
     }
-    // 必需边界：全国省级底图 + 每个站点自身 + 每个站点的省
-    const need = ['100000', ...planSiteCodes(p), ...planSiteCodes(p).map(provinceOf)];
-    if (need.some((c) => !bounds[c])) {
+    // 站点分片三级回退（与下方 need 硬校验**共用同一解析 `shardOf`**，勿另立口径）：
+    // 自身 → 所属市 → 所属省，任一级有分片即命中。上游 DataV 无分片的码（台湾自建码
+    // 711600 / 711601 等，见 `config/geo-bounds/_unsourceable.json`）命中回退 ⇒ 该站点
+    // **用回退级分片的面承载绘制**（细 + 粗同取），但站点标签 / 文案仍用原码地点名。
+    const shardOf = (code: string): string | null => {
+      for (const c of [code, cityOf(code), provinceOf(code)]) {
+        if (c && bounds[c]) return c;
+      }
+      return null;
+    };
+    /** 回退级**自身**的面：先查回退分片，再全量兜底（省级面亦在 `100000` 全国底图分片内） */
+    const carrierOf = (anc: string, map: Record<string, BoundFeatureCollection>): BoundFeature | null => {
+      for (const fc of [map[anc], ...Object.values(map)]) {
+        if (!fc) continue;
+        const hit = fc.features.find((f) => String(f.properties.adcode) === anc);
+        if (hit) return hit;
+      }
+      return null;
+    };
+    for (const code of siteCodes) {
+      if (bounds[code]) continue;
+      const anc = shardOf(code);
+      if (!anc) continue; // 三级皆无分片 ⇒ 交下方 need 硬校验按现行 error 口径整图报错
+      const fine = carrierOf(anc, bounds);
+      if (!fine) continue;
+      // 注入「站点码 → 回退面」单要素分片：引擎按 feature.adcode 索引（`byCode` / `byCodeCoarse`）
+      // ⇒ 该站点的高亮面 / 扩散环 / 圆点 / 标签锚点全用回退面几何绘制（adcode 重写为站点码）。
+      const asFeature = (f: BoundFeature): BoundFeature => ({
+        type: 'Feature',
+        properties: { ...f.properties, adcode: Number(code) },
+        geometry: f.geometry,
+      });
+      bounds[code] = { type: 'FeatureCollection', features: [asFeature(fine)] };
+      const coarseFeat = carrierOf(anc, coarse);
+      if (coarseFeat) coarse[code] = { type: 'FeatureCollection', features: [asFeature(coarseFeat)] };
+    }
+    // 必需边界：全国省级底图 + 每个站点码（自身 / 所属市 / 所属省 任一级有分片 ⇒ 回退注入后必有）。
+    // 任一级都无分片 ⇒ 现行 error 口径整图报错，并列出缺失码。
+    const need = ['100000', ...siteCodes];
+    const missing = need.filter((c) => !bounds[c]);
+    if (missing.length) {
+      console.warn('[migration-map] 边界分片缺失（自身/所属市/所属省三级皆无）:', missing.join(', '));
       status.value = 'error';
       return;
     }
