@@ -4010,7 +4010,7 @@ function sweepRelation(doc, now = /* @__PURE__ */ new Date()) {
   if (!doc || typeof doc !== "object")
     return { relation: null, events, changed: false };
   const relation = JSON.parse(JSON.stringify(doc));
-  const at = toIso3(now);
+  const at = toIso4(now);
   const nowMs = toMs6(now);
   const status = relation.status;
   if (status === RELATION_STATUS.PENDING) {
@@ -4103,7 +4103,7 @@ async function createInvite(fromPhone, toPhone, opts = {}) {
   const id = relationIdOf(from, to);
   return withRelationLock(id, async () => {
     const now = resolveNow(opts);
-    const at = toIso3(now);
+    const at = toIso4(now);
     const base = await colGet(FRIENDS_COL, id);
     if (base) {
       const { relation: swept } = sweepRelation(base, now);
@@ -4164,7 +4164,7 @@ async function acceptInvite(relationId, byPhone, opts = {}) {
     throw friendError("FRIEND_INVALID_PHONE");
   return withRelationLock(id, async () => {
     const now = resolveNow(opts);
-    const at = toIso3(now);
+    const at = toIso4(now);
     const base = await loadRelation(id);
     const { relation, events } = sweepRelation(base, now);
     if (relation.status === RELATION_STATUS.DISSOLVED)
@@ -4200,7 +4200,7 @@ async function rejectInvite(relationId, byPhone, opts = {}) {
     throw friendError("FRIEND_INVALID_PHONE");
   return withRelationLock(id, async () => {
     const now = resolveNow(opts);
-    const at = toIso3(now);
+    const at = toIso4(now);
     const base = await loadRelation(id);
     const { relation, events } = sweepRelation(base, now);
     if (relation.status !== RELATION_STATUS.PENDING)
@@ -4232,7 +4232,7 @@ async function cancelInvite(relationId, byPhone, opts = {}) {
     throw friendError("FRIEND_INVALID_PHONE");
   return withRelationLock(id, async () => {
     const now = resolveNow(opts);
-    const at = toIso3(now);
+    const at = toIso4(now);
     const base = await loadRelation(id);
     const { relation, events } = sweepRelation(base, now);
     if (relation.status !== RELATION_STATUS.PENDING)
@@ -4264,7 +4264,7 @@ async function renewRequest(relationId, byPhone, opts = {}) {
     throw friendError("FRIEND_INVALID_PHONE");
   return withRelationLock(id, async () => {
     const now = resolveNow(opts);
-    const at = toIso3(now);
+    const at = toIso4(now);
     const base = await loadRelation(id);
     const { relation, events } = sweepRelation(base, now);
     if (relation.status === RELATION_STATUS.DISSOLVED)
@@ -4330,7 +4330,7 @@ async function renewConfirm(relationId, byPhone, opts = {}) {
     throw friendError("FRIEND_INVALID_PHONE");
   return withRelationLock(id, async () => {
     const now = resolveNow(opts);
-    const at = toIso3(now);
+    const at = toIso4(now);
     const base = await loadRelation(id);
     const { relation, events } = sweepRelation(base, now);
     if (relation.status === RELATION_STATUS.DISSOLVED)
@@ -4377,7 +4377,7 @@ async function renewCancel(relationId, byPhone, opts = {}) {
     throw friendError("FRIEND_INVALID_PHONE");
   return withRelationLock(id, async () => {
     const now = resolveNow(opts);
-    const at = toIso3(now);
+    const at = toIso4(now);
     const base = await loadRelation(id);
     const { relation, events } = sweepRelation(base, now);
     if (relation.status === RELATION_STATUS.DISSOLVED)
@@ -4415,7 +4415,7 @@ async function dissolve(relationId, byPhone, opts = {}) {
     throw friendError("FRIEND_INVALID_PHONE");
   return withRelationLock(id, async () => {
     const now = resolveNow(opts);
-    const at = toIso3(now);
+    const at = toIso4(now);
     const base = await loadRelation(id);
     const { relation, events } = sweepRelation(base, now);
     if (relation.status === RELATION_STATUS.DISSOLVED)
@@ -4455,7 +4455,7 @@ async function listRelations(phone, opts = {}) {
   }
   return out.sort((x, y) => toMs6(x.created_at) - toMs6(y.created_at));
 }
-var FRIENDS_COL, RELATION_STATUS, INVITE_TTL_DAYS, RENEW_TTL_DAYS, RENEW_WINDOW_DAYS, GRACE_DAYS, BASE_DAYS, RENEWAL_REWARD_DAYS, LOCKED_PIECES, FRIEND_ERRORS, FRIEND_ERROR_CODES, DAY_MS7, toIso3, toMs6, isoPlusDays4, relationLocks, resolveNow, requireId, STATE_TEXT, stateReject, terminalReject;
+var FRIENDS_COL, RELATION_STATUS, INVITE_TTL_DAYS, RENEW_TTL_DAYS, RENEW_WINDOW_DAYS, GRACE_DAYS, BASE_DAYS, RENEWAL_REWARD_DAYS, LOCKED_PIECES, FRIEND_ERRORS, FRIEND_ERROR_CODES, DAY_MS7, toIso4, toMs6, isoPlusDays4, relationLocks, resolveNow, requireId, STATE_TEXT, stateReject, terminalReject;
 var init_friends = __esm({
   "cloudfunctions/compat-api/lib/friends.js"() {
     init_store();
@@ -4494,7 +4494,7 @@ var init_friends = __esm({
     };
     FRIEND_ERROR_CODES = Object.keys(FRIEND_ERRORS);
     DAY_MS7 = 864e5;
-    toIso3 = (d) => new Date(d).toISOString();
+    toIso4 = (d) => new Date(d).toISOString();
     toMs6 = (d) => d instanceof Date ? d.getTime() : new Date(d).getTime();
     isoPlusDays4 = (from, days) => new Date(toMs6(from) + days * DAY_MS7).toISOString();
     relationLocks = /* @__PURE__ */ new Map();
@@ -4620,7 +4620,7 @@ async function notify(phone, kind, otherPhone, now) {
     type: FRIEND_NOTICE_TYPE,
     title: tpl.title,
     text: tpl.text(name),
-    created_at: toIso4(now),
+    created_at: toIso5(now),
     read: false
   };
   return withMessages(to, (rec) => {
@@ -4875,7 +4875,7 @@ async function rollbackCharged(entry, ctx) {
             qty: toNonNegInt(t.qty),
             expires_at: t.expires_at ?? null,
             source: SOURCE_FRIEND_RENEW_ROLLBACK,
-            created_at: toIso4(now)
+            created_at: toIso5(now)
           });
           restored.push({ lot_id: norm3(t.id), qty: toNonNegInt(t.qty), recreated: true });
         }
@@ -5000,7 +5000,7 @@ async function confirmRenewal(relationToken, by, now = /* @__PURE__ */ new Date(
         const audit = await appendRelationAudit(
           relationId,
           {
-            at: toIso4(now),
+            at: toIso5(now),
             type: RELATION_AUDIT_ROLLBACK,
             from_status: plan.status,
             to_status: plan.status,
@@ -5315,7 +5315,7 @@ async function sweepFriends(now = /* @__PURE__ */ new Date()) {
     return { total: docs.length, changed_count: changed.length, changed };
   }, "\u597D\u53CB\u5173\u7CFB\u60F0\u6027\u7ED3\u7B97\u5B8C\u6210");
 }
-var import_node_crypto9, DAY_MS8, norm3, toIso4, toMs7, TX_TYPE_SCROLL_CONSUME, SOURCE_FRIEND_RENEW, SOURCE_FRIEND_RENEW_ROLLBACK, TX_TYPE_ROLLBACK, RELATION_AUDIT_ROLLBACK, TEST_ONLY_HOOK, FRIEND_OPS_ERRORS, SYS_ERRNO_RE, LOCAL_PATH_RE, FRIEND_NOTICE_TYPE, FRIEND_NOTICE, RELATION_TOKEN_PREFIX, RELATION_TOKEN_RE, GRANT, GRANT_KEYS, REWARD_GRANT_KEY;
+var import_node_crypto9, DAY_MS8, norm3, toIso5, toMs7, TX_TYPE_SCROLL_CONSUME, SOURCE_FRIEND_RENEW, SOURCE_FRIEND_RENEW_ROLLBACK, TX_TYPE_ROLLBACK, RELATION_AUDIT_ROLLBACK, TEST_ONLY_HOOK, FRIEND_OPS_ERRORS, SYS_ERRNO_RE, LOCAL_PATH_RE, FRIEND_NOTICE_TYPE, FRIEND_NOTICE, RELATION_TOKEN_PREFIX, RELATION_TOKEN_RE, GRANT, GRANT_KEYS, REWARD_GRANT_KEY;
 var init_friend_ops = __esm({
   "cloudfunctions/compat-api/lib/friend-ops.js"() {
     import_node_crypto9 = __toESM(require("node:crypto"), 1);
@@ -5325,7 +5325,7 @@ var init_friend_ops = __esm({
     init_economy_ops();
     DAY_MS8 = 864e5;
     norm3 = (v) => String(v ?? "").trim();
-    toIso4 = (d) => new Date(d).toISOString();
+    toIso5 = (d) => new Date(d).toISOString();
     toMs7 = (d) => d instanceof Date ? d.getTime() : new Date(d).getTime();
     TX_TYPE_SCROLL_CONSUME = "scroll_consume";
     SOURCE_FRIEND_RENEW = "friend_renew";
@@ -36494,6 +36494,105 @@ function amountToChineseUpper(value) {
   return `${core(n)}\u5143`;
 }
 
+// cloudfunctions/compat-api/lib/revision-postscript.js
+init_store();
+var ANCHORS_COL2 = "jiapu_anchors";
+var USERS_COL4 = "jiapu_users";
+var MASTER_DUTY = "\u4E3B\u53F8";
+function maskPhoneDigits(phone) {
+  const s = String(phone == null ? "" : phone);
+  return /^\d{11}$/.test(s) ? `${s.slice(0, 3)}****${s.slice(-4)}` : "";
+}
+async function resolveDisplayName(phone, treeId) {
+  const p = String(phone == null ? "" : phone).trim();
+  if (!p)
+    return "";
+  const id = String(treeId == null ? "" : treeId).trim();
+  try {
+    if (id) {
+      const anchor = await colGet(ANCHORS_COL2, p);
+      const handle = String(anchor?.person_handle || "").trim();
+      if (anchor && handle && String(anchor.tree_id || "").trim() === id) {
+        const tree = await getTree(id);
+        const name = String(tree?.people?.[handle]?.name || "").trim();
+        if (name)
+          return name;
+      }
+    }
+  } catch {
+  }
+  try {
+    const u = await colGet(USERS_COL4, p);
+    const nickname = String(u?.nickname || "").trim();
+    if (nickname)
+      return nickname;
+  } catch {
+  }
+  const masked = maskPhoneDigits(p);
+  if (masked)
+    return masked;
+  return "";
+}
+function masterPhoneOf(round) {
+  const candidates = [round?.operator, round?.fee_ref?.paid_by, round?.paid_by];
+  for (const c of candidates) {
+    if (c === void 0 || c === null)
+      continue;
+    const s = String(c).trim();
+    if (s)
+      return s;
+  }
+  return "";
+}
+async function treeCreatedBy(treeId) {
+  try {
+    const meta = await getMeta();
+    const v = meta?.trees?.[String(treeId || "").trim()]?.created_by;
+    return v === void 0 || v === null ? "" : String(v);
+  } catch {
+    return "";
+  }
+}
+async function masterNameOfRound(round, treeId) {
+  const id = String(treeId == null ? "" : treeId).trim();
+  try {
+    const helpers = Array.isArray(round?.helpers) ? round.helpers : [];
+    const master = helpers.find((h) => String(h?.duty || "").trim() === MASTER_DUTY);
+    const handle = String(master?.person_handle || "").trim();
+    if (handle) {
+      const tree = await getTree(id);
+      const name = String(tree?.people?.[handle]?.name || "").trim();
+      if (name)
+        return name;
+    }
+  } catch {
+  }
+  const phone = masterPhoneOf(round);
+  return phone ? resolveDisplayName(phone, id) : "";
+}
+async function buildPostscript(treeId, revisions) {
+  const id = String(treeId == null ? "" : treeId).trim();
+  const rounds = Array.isArray(revisions) ? revisions : [];
+  const created_by = await treeCreatedBy(id);
+  let created_by_name = "";
+  try {
+    created_by_name = await resolveDisplayName(created_by, id);
+  } catch {
+    created_by_name = "";
+  }
+  const masters = [];
+  for (const r of rounds) {
+    let name = "";
+    try {
+      name = await masterNameOfRound(r, id);
+    } catch {
+      name = "";
+    }
+    masters.push({ seq: Number(r?.seq) || 0, name });
+  }
+  return { created_by, created_by_name, masters };
+}
+
 // cloudfunctions/compat-api/lib/revision.js
 var REVISION_COL = "jiapu_revisions";
 var REVISION_EDIT_DAYS = 30;
@@ -36508,12 +36607,19 @@ var DEFAULT_REVISION_INTERVAL_YEARS2 = DEFAULT_REVISION_INTERVAL_YEARS;
 var ERR_REVISION_ACTIVE = "REVISION_ACTIVE";
 var ERR_REVISION_COOLDOWN = "REVISION_COOLDOWN";
 var REVISION_ITEM_KINDS = ["article", "helpers", "donations", "cover"];
+var HELPER_DUTIES = ["\u4E3B\u53F8", "\u526F\u53F8"];
+var HELPER_DUTY_MASTER = "\u4E3B\u53F8";
+var HELPER_DUTY_VICE = "\u526F\u53F8";
+var HELPER_MAX_TOTAL = 3;
+var HELPER_MAX_VICE = 2;
 var REVISION_LOCKED_EDIT_OP = "revision_locked_edit";
 var ARTICLE_FIELDS = ["title", "body", "signature"];
 var ARTICLE_LABEL = { title: "\u6A19\u984C", body: "\u6B63\u6587", signature: "\u843D\u6B3E" };
 var MAX_COVER_BYTES = 2 * 1024 * 1024;
 var COVER_EXTS = ["jpg", "png", "webp"];
-var PUNCT_RE = /[,，。.]/g;
+var ARTICLE_PUNCT = ["\uFF0C", "\u3002"];
+var ARTICLE_MSG_CHARSET = "\u50C5\u5141\u8A31\u6F22\u5B57\u8207\u4E2D\u6587\u9017\u865F\u3001\u53E5\u865F";
+var ARTICLE_MSG_PUNCT_REPEAT = "\u6A19\u9EDE\u4E0D\u53EF\u9023\u7E8C";
 var S2T = (() => {
   const map2 = /* @__PURE__ */ new Map();
   const sc = Array.from(S2T_SOURCE);
@@ -36628,8 +36734,40 @@ function assertTraditional(text2) {
   if (ch)
     throw revisionError(400, `\u65CF\u52D9\u7D00\u6587\u9808\u4EE5\u7E41\u9AD4\u5B57\u9304\u5165\uFF08\u9996\u500B\u7C21\u9AD4\u5B57\uFF1A${ch}\uFF09`);
 }
-function cleanArticleText(s) {
-  return String(s == null ? "" : s).replace(PUNCT_RE, " ").replace(/ +/g, " ").trim();
+function isHanziCodePoint(cp) {
+  const n = Number(cp);
+  if (!Number.isFinite(n))
+    return false;
+  return n >= 13312 && n <= 19903 || n >= 19968 && n <= 40959 || n >= 63744 && n <= 64255 || n >= 131072 && n <= 195103 || n >= 196608 && n <= 201551;
+}
+function isArticlePunct(ch) {
+  return ARTICLE_PUNCT.includes(ch);
+}
+function firstIllegalArticleChar(text2) {
+  for (const ch of String(text2 == null ? "" : text2)) {
+    if (isArticlePunct(ch))
+      continue;
+    if (isHanziCodePoint(ch.codePointAt(0)))
+      continue;
+    return ch;
+  }
+  return "";
+}
+function hasConsecutiveArticlePunct(text2) {
+  let prevPunct = false;
+  for (const ch of String(text2 == null ? "" : text2)) {
+    const isP = isArticlePunct(ch);
+    if (isP && prevPunct)
+      return true;
+    prevPunct = isP;
+  }
+  return false;
+}
+function assertArticleText(text2) {
+  if (firstIllegalArticleChar(text2))
+    throw revisionError(400, ARTICLE_MSG_CHARSET);
+  if (hasConsecutiveArticlePunct(text2))
+    throw revisionError(400, ARTICLE_MSG_PUNCT_REPEAT);
 }
 function normalizeArticle(payload) {
   const p = payload || {};
@@ -36639,9 +36777,8 @@ function normalizeArticle(payload) {
     if (typeof raw !== "string" || !raw.trim())
       throw revisionError(400, `${ARTICLE_LABEL[k]}\u4E0D\u5F97\u70BA\u7A7A`);
     assertTraditional(raw);
-    out[k] = cleanArticleText(raw);
-    if (!out[k])
-      throw revisionError(400, `${ARTICLE_LABEL[k]}\u4E0D\u5F97\u70BA\u7A7A`);
+    assertArticleText(raw);
+    out[k] = raw;
   }
   return out;
 }
@@ -36649,17 +36786,36 @@ var nodeExists = (tree, handle) => !!(tree && tree.people && tree.people[handle]
 function normalizeHelpers(payload, tree) {
   if (!Array.isArray(payload))
     throw revisionError(400, "\u65CF\u52D9\u5354\u52A9\u8005\u9808\u70BA\u9663\u5217");
-  return payload.map((it, i) => {
+  if (!payload.length)
+    throw revisionError(400, "\u8ACB\u586B\u5BEB\u4E3B\u53F8");
+  const list2 = payload.map((it, i) => {
     const h = String(it?.person_handle || "").trim();
     const duty = String(it?.duty || "").trim();
     if (!h)
       throw revisionError(400, `\u7B2C ${i + 1} \u4F4D\u5354\u52A9\u8005\u7F3A\u5C11 person_handle`);
     if (!nodeExists(tree, h))
       throw revisionError(400, `\u7B2C ${i + 1} \u4F4D\u5354\u52A9\u8005\u7684\u7BC0\u9EDE\u4E0D\u5B58\u5728\u65BC\u672C\u6A39\uFF1A${h}`);
-    if (!duty)
-      throw revisionError(400, `\u7B2C ${i + 1} \u4F4D\u5354\u52A9\u8005\u8077\u8CAC\u4E0D\u5F97\u70BA\u7A7A`);
+    if (!HELPER_DUTIES.includes(duty))
+      throw revisionError(400, "\u8077\u52D9\u53EA\u80FD\u662F\u4E3B\u53F8\u6216\u526F\u53F8");
     return { person_handle: h, duty };
   });
+  const seen = /* @__PURE__ */ new Set();
+  for (const it of list2) {
+    if (seen.has(it.person_handle))
+      throw revisionError(400, "\u540C\u4E00\u4F4D\u65CF\u4EBA\u4E0D\u53EF\u91CD\u8907\u9304\u5165");
+    seen.add(it.person_handle);
+  }
+  const masters = list2.filter((it) => it.duty === HELPER_DUTY_MASTER);
+  const vices = list2.filter((it) => it.duty === HELPER_DUTY_VICE);
+  if (!masters.length)
+    throw revisionError(400, "\u8ACB\u586B\u5BEB\u4E3B\u53F8");
+  if (vices.length > HELPER_MAX_VICE)
+    throw revisionError(400, "\u526F\u53F8\u6700\u591A\u5169\u4F4D");
+  if (list2.length > HELPER_MAX_TOTAL)
+    throw revisionError(400, "\u8944\u4E8B\u6700\u591A\u4E09\u4F4D");
+  if (masters.length > 1)
+    throw revisionError(400, "\u4E3B\u53F8\u53EA\u80FD\u6709\u4E00\u4F4D");
+  return list2;
 }
 function normalizeDonations(payload, tree) {
   if (!Array.isArray(payload))
@@ -36995,6 +37151,7 @@ async function getRevisionView(treeId, now = /* @__PURE__ */ new Date()) {
   const revisions = [];
   for (const r of base.revisions)
     revisions.push(await decorate(r));
+  const postscript = await buildPostscript(id, base.revisions);
   const current = lastRevision(base.revisions);
   let active = null;
   if (current) {
@@ -37025,8 +37182,186 @@ async function getRevisionView(treeId, now = /* @__PURE__ */ new Date()) {
     seq: base.seq,
     can_start: canStartRevision({ revisions: base.revisions, now, intervalYears: interval }),
     active,
-    revisions
+    revisions,
+    postscript
   };
+}
+
+// cloudfunctions/compat-api/lib/tree-rename.js
+init_store();
+init_economy_ops();
+var GENEALOGY_NAME_KEY = "genealogy_name";
+var GENEALOGY_NAME_UPDATED_AT = "genealogy_name_updated_at";
+var RENAME_FEE_PIECES_KEY = "rename_fee_pieces";
+var TREE_RENAME_FEE_FIRST_OR_EXPIRED = 999;
+var TREE_RENAME_FEE_WITHIN_360D = 9999;
+var TREE_RENAME_FEE_WITHIN_30D = 99999;
+var TREE_RENAME_EXPIRED_DAYS = 360;
+var TREE_RENAME_WITHIN_30D_MAX_DAYS = 30;
+var TREE_RENAME_MAX_NAME_LEN = 30;
+var TREE_RENAME_TIER_FIRST_OR_EXPIRED = "first_or_expired";
+var TREE_RENAME_TIER_WITHIN_360D = "within_360d";
+var TREE_RENAME_TIER_WITHIN_30D = "within_30d";
+var TREE_RENAME_OP = "tree_rename_fee";
+var TREE_RENAME_TX_TYPE = "edit_fee";
+var TREE_RENAME_HINT = "\u8ACB\u4F7F\u7528\u3010\u4FEE\u6539\u8B5C\u540D\u3011\u4FEE\u6539\u8B5C\u540D";
+var ERR_TREE_RENAME_NAME_REQUIRED = "\u8B5C\u540D\u4E0D\u5F97\u70BA\u7A7A";
+var ERR_TREE_RENAME_NAME_TOO_LONG = `\u8B5C\u540D\u4E0D\u5F97\u8D85\u904E ${TREE_RENAME_MAX_NAME_LEN} \u500B\u5B57\u7B26`;
+var ERR_TREE_RENAME_FORBIDDEN = "\u50C5\u672C\u65CF\u5BB6\u65CF\u7BA1\u7406\u54E1\uFF08tree_steward\uFF09\u6216\u4E0A\u7D1A\u7BA1\u7406\u54E1\uFF08chief_editor\uFF09\u53EF\u4FEE\u6539\u672C\u65CF\u8B5C\u540D";
+var ERR_TREE_RENAME_MISSING_TREE = "\u7F3A\u5C11 tree_id";
+function treeRenameError(status, message) {
+  const e = new Error(message);
+  e.status = status;
+  return e;
+}
+var toIso3 = (d) => (d instanceof Date ? d : new Date(d)).toISOString();
+var nowMsOf = (now) => {
+  const t = now instanceof Date ? now.getTime() : new Date(now).getTime();
+  return Number.isFinite(t) ? t : Date.now();
+};
+function renameDaysSince(lastUpdatedAt, now = /* @__PURE__ */ new Date()) {
+  if (lastUpdatedAt === null || lastUpdatedAt === void 0 || lastUpdatedAt === "")
+    return null;
+  const t0 = new Date(lastUpdatedAt).getTime();
+  if (!Number.isFinite(t0))
+    return null;
+  return Math.ceil((nowMsOf(now) - t0) / 864e5);
+}
+function renameTierOf(days) {
+  if (days === null || days === void 0 || !Number.isFinite(Number(days)))
+    return TREE_RENAME_TIER_FIRST_OR_EXPIRED;
+  const d = Number(days);
+  if (d >= TREE_RENAME_EXPIRED_DAYS)
+    return TREE_RENAME_TIER_FIRST_OR_EXPIRED;
+  if (d >= TREE_RENAME_WITHIN_30D_MAX_DAYS)
+    return TREE_RENAME_TIER_WITHIN_360D;
+  return TREE_RENAME_TIER_WITHIN_30D;
+}
+function renamePiecesOfTier(tier) {
+  if (tier === TREE_RENAME_TIER_WITHIN_30D)
+    return TREE_RENAME_FEE_WITHIN_30D;
+  if (tier === TREE_RENAME_TIER_WITHIN_360D)
+    return TREE_RENAME_FEE_WITHIN_360D;
+  return TREE_RENAME_FEE_FIRST_OR_EXPIRED;
+}
+function renameFeeOf(lastUpdatedAt, now = /* @__PURE__ */ new Date()) {
+  const days = renameDaysSince(lastUpdatedAt, now);
+  const tier = renameTierOf(days);
+  return { pieces: renamePiecesOfTier(tier), tier, days };
+}
+function sameGenealogyName(a, b) {
+  return String(a === null || a === void 0 ? "" : a).trim() === String(b === null || b === void 0 ? "" : b).trim();
+}
+function normalizeGenealogyName(raw) {
+  if (typeof raw !== "string")
+    throw treeRenameError(400, ERR_TREE_RENAME_NAME_REQUIRED);
+  const s = raw.trim();
+  if (!s)
+    throw treeRenameError(400, ERR_TREE_RENAME_NAME_REQUIRED);
+  if (Array.from(s).length > TREE_RENAME_MAX_NAME_LEN)
+    throw treeRenameError(400, ERR_TREE_RENAME_NAME_TOO_LONG);
+  return s;
+}
+async function assertTreeRenameWritable({ role, treeId = "", phone = "" } = {}) {
+  try {
+    return await assertRevisionWritable({ role, treeId, phone });
+  } catch (e) {
+    if (e && Number(e.status) === 403)
+      throw treeRenameError(403, ERR_TREE_RENAME_FORBIDDEN);
+    throw e;
+  }
+}
+function findTreeEntry(meta, treeId) {
+  const id = String(treeId || "").trim();
+  if (!id)
+    return null;
+  return Object.values(meta?.trees || {}).find((t) => t && String(t.tree_id || "") === id) || null;
+}
+function decorateTreeMetaForRead(meta, now = /* @__PURE__ */ new Date()) {
+  const out = { ...meta || {} };
+  const trees = {};
+  for (const [key, entry] of Object.entries(meta?.trees || {})) {
+    if (!entry || typeof entry !== "object") {
+      trees[key] = entry;
+      continue;
+    }
+    const updatedAt = entry[GENEALOGY_NAME_UPDATED_AT];
+    trees[key] = {
+      ...entry,
+      [GENEALOGY_NAME_UPDATED_AT]: updatedAt ? String(updatedAt) : null,
+      [RENAME_FEE_PIECES_KEY]: renameFeeOf(updatedAt, now).pieces
+    };
+  }
+  out.trees = trees;
+  return out;
+}
+async function writeTreeRenameLog({ treeId, phone, amountPieces, txId, now = /* @__PURE__ */ new Date() } = {}) {
+  const created_at = toIso3(now);
+  const entry = {
+    id: opsLogId(),
+    ts: created_at,
+    op: TREE_RENAME_OP,
+    tree_id: String(treeId ?? ""),
+    operator: String(phone ?? ""),
+    amount_pieces: Number(amountPieces),
+    tx_id: String(txId ?? ""),
+    created_at
+  };
+  await mutateDoc(OPS_LOGS_COL, entry.id, () => entry);
+  return entry;
+}
+async function renameTreeGenealogy({ treeId, genealogyName, role, phone, now = /* @__PURE__ */ new Date() } = {}) {
+  const id = String(treeId || "").trim();
+  if (!id)
+    throw treeRenameError(400, ERR_TREE_RENAME_MISSING_TREE);
+  const name = normalizeGenealogyName(genealogyName);
+  await assertTreeRenameWritable({ role, treeId: id, phone });
+  const meta = await getMeta();
+  const entry = findTreeEntry(meta, id);
+  if (!entry)
+    throw treeRenameError(404, `\u672A\u627E\u5230 tree: ${id}`);
+  const current = String(entry[GENEALOGY_NAME_KEY] ?? "");
+  const fee = renameFeeOf(entry[GENEALOGY_NAME_UPDATED_AT], now);
+  if (sameGenealogyName(name, current)) {
+    return { ok: true, tree_id: id, genealogy_name: current, fee: { pieces: 0, tier: fee.tier }, no_op: true };
+  }
+  const charged = await chargeBamboo(phone, fee.pieces, {
+    op: "tree_rename",
+    tx_type: TREE_RENAME_TX_TYPE,
+    // 沿用既有 `edit_fee`，不新增 Tx.type
+    tree_id: id,
+    desc: `\u4FEE\u6539\u8B5C\u540D\uFF08\u6263 ${fee.pieces} \u7247\u7AF9\u7247\uFF09`
+  });
+  const nowIso = toIso3(now);
+  let written;
+  try {
+    written = await mutateTreeMeta(id, (e) => {
+      e[GENEALOGY_NAME_KEY] = name;
+      e[GENEALOGY_NAME_UPDATED_AT] = nowIso;
+      return e;
+    });
+  } catch (e) {
+    try {
+      await refund(phone, charged.spent, { unit: "bamboos", txn_id: charged.txn_id, tree_id: id, reason: "\u8B5C\u540D\u843D\u5EAB\u5931\u6557\uFF0C\u5DF2\u539F\u8DEF\u8FD4\u9084" });
+      e.fee_refunded = true;
+    } catch {
+    }
+    throw e;
+  }
+  const out = {
+    ok: true,
+    tree_id: id,
+    genealogy_name: String(written?.[GENEALOGY_NAME_KEY] ?? name),
+    fee: { pieces: fee.pieces, tier: fee.tier }
+  };
+  if (fee.pieces > 0) {
+    try {
+      await writeTreeRenameLog({ treeId: id, phone, amountPieces: fee.pieces, txId: charged.txn_id, now });
+    } catch {
+      out.log_warning = true;
+    }
+  }
+  return out;
 }
 
 // cloudfunctions/compat-api/index.js
@@ -37898,7 +38233,7 @@ async function handleRequest(event) {
       const meta = await getMeta();
       if (!meta)
         return send(500, { error: "tree-meta \u7F3A\u5931" });
-      return send(200, meta);
+      return send(200, decorateTreeMetaForRead(meta, /* @__PURE__ */ new Date()));
     }
     if (pathname === "/tree-meta" && method === "PUT") {
       const u = await authUser(headers);
@@ -37918,11 +38253,12 @@ async function handleRequest(event) {
       const found = Object.values(meta.trees).find((t) => t.tree_id === tree_id);
       if (!found)
         return send(404, { error: `\u672A\u627E\u5230 tree: ${tree_id}` });
+      if (genealogy_name !== void 0 && !sameGenealogyName(genealogy_name, found.genealogy_name)) {
+        return send(400, { error: TREE_RENAME_HINT });
+      }
       const entry = await mutateTreeMeta(tree_id, (e) => {
         if (display_title !== void 0)
           e.display_title = display_title;
-        if (genealogy_name !== void 0)
-          e.genealogy_name = genealogy_name;
         if (archive_url !== void 0)
           e.archive_url = archive_url;
         if (hall_name !== void 0)
@@ -37939,6 +38275,30 @@ async function handleRequest(event) {
         return e;
       });
       return send(200, { ok: true, entry });
+    }
+    if (pathname === "/admin/tree-rename" && method === "POST") {
+      try {
+        const u = await authUser(headers);
+        if (!u)
+          return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+        const body = parseBody(event);
+        const r = await renameTreeGenealogy({
+          treeId: body.tree_id,
+          genealogyName: body.genealogy_name,
+          role: u.role,
+          phone: u.phone,
+          now: /* @__PURE__ */ new Date()
+        });
+        return send(200, {
+          ok: true,
+          tree_id: r.tree_id,
+          genealogy_name: r.genealogy_name,
+          fee: r.fee,
+          ...r.log_warning ? { log_warning: true } : {}
+        });
+      } catch (e) {
+        return send(e.status || 400, { ...errorPayload(e, e.extra || {}), ...e.fee_refunded ? { fee_refunded: true } : {} });
+      }
     }
     if (pathname === "/admin/set-tree-origin" && method === "POST") {
       const u = await authUser(headers);
