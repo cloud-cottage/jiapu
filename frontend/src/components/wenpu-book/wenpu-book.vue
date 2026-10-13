@@ -1,7 +1,8 @@
 <template>
   <view class="wenpu-book">
-    <!-- 工具条（书页上方一行）：PDF 导出弱化收进右侧「⋯ 更多」菜单 -->
-    <view class="book-toolbar">
+    <!-- 工具条（书页上方一行）：PDF 导出弱化收进右侧「⋯ 更多」菜单。
+         **打印模式（`printAll` true）整条不渲染** ⇒ 修改谱名 / ✎ 修谱 / ⋯ 更多 与其菜单一并消失（屏上即打印预览） -->
+    <view v-if="!printAll" class="book-toolbar">
       <!-- 修改谱名入口（**与修谱入口同可见性**：既有 `canManageRevision`；视觉上排在「✎ 修谱」左侧）：
            谱名已从【编辑家族信息】表单移出 ⇒ 改名统一在本按钮的弹窗内完成（含本次消耗明示） -->
       <view v-if="canManageRevision" class="toolbar-rename" @click="openRenameDialog">
@@ -25,76 +26,26 @@
     <view v-if="loading" class="book-tip">加载中...</view>
     <view v-else-if="loadError" class="book-tip book-error">{{ loadError }}</view>
 
-    <!-- 窄屏不得压缩书页 ⇒ 外层横向滚动容器，纸页居中 -->
+    <!-- 打印模式（`printAll` true）：**一个展开（960×720）= 两张单页（480×720）**、**一张纸一张单页**；
+         顺序 = **左叶 → 右叶**（按数据层页码口径：左 = 2k+1 先、右 = 2k+2 后 ⇒ 打印页序 1,2,3,… 连续递增、
+         不倒序、不跳号）。每页一个分页容器 `.print-sheet`（分页 / 缩放见下方打印 CSS）。
+         ⚠️ 结构性事实（Kevin 已知情、正在裁定，**本单不修**）：「每人一行」的行宽最多 30 栏、**横跨 960 展开的
+         左右两半** ⇒ 竖切后每张单页上只有**该展开 4 个人的半行**（前半截 / 后半截）。这是书籍翻开的固有形态
+         （行越过版心换叶），**不是缺陷**；若 Kevin 裁定改为「单页装完整内容」或「打印单位改回展开」，那是
+         **另一批**（要动 `wenpu.ts` 版式真源）——**本单不改版式真源、不改栏数 / 分页**。 -->
+    <view v-else-if="printAll" class="print-book">
+      <view v-for="leaf of printLeaves" :key="leaf.key" class="print-sheet">
+        <view class="print-scale">
+          <WenpuSheet :page="leaf.page" :leaf="leaf.leaf" />
+        </view>
+      </view>
+    </view>
+
+    <!-- 阅读器模式（缺省）：横向滚动容器内**当前叶 1 张展开（960×720）**（窄屏不得压缩书页，纸页居中）。
+         页式模板 = 子组件 `wenpu-sheet.vue`（`leaf` 缺省 `both` ⇒ 整幅展开 + 书脊分割） -->
     <scroll-view v-else class="book-scroll" scroll-x :show-scrollbar="false">
       <view class="book-scroll-inner">
-        <view class="book-page" :class="flipClass">
-          <!-- 书口（左 / 右）：文案已是繁体、视图层零字形转换；空串 ⇒ 整条不渲染 -->
-          <view v-if="leftLabel" class="side-label side-label-left">
-            <text class="side-label-text">{{ leftLabel }}</text>
-          </view>
-          <view v-if="rightLabel" class="side-label side-label-right">
-            <text class="side-label-text">{{ rightLabel }}</text>
-          </view>
-
-          <!-- 修谱卷首（`kind === 'cover'`）：整幅大图占满纸页、**保留左右书口**（不走栏格；整体分列重构后仍独立整页、不入列） -->
-          <image v-if="isCoverPage" class="book-cover" :src="coverUrl" mode="aspectFit" />
-
-          <!-- 封面页（`kind === 'frontcover'` · 全书第一页）：整页**只有谱名**、竖排居中
-               （36px / 字距 6px）；**不写任何书口**（数据层 leftLabel / rightLabel 均空）、不占叶序 -->
-          <view v-else-if="isFrontCoverPage" class="book-front-cover">
-            <text class="front-cover-title">{{ frontTitle }}</text>
-          </view>
-
-          <!-- 第一部分修谱页 + 末尾后记页（`kind ∈ article|roster|donation|postscript`）：
-               **整页是个整体、整体上分列** —— 无 4 行结构与行分隔线，栏从右向左连续排满整页。
-               **族務紀文（`article`）与后记（`postscript`）= 乌丝栏双轨竖排**：栏格分
-               「字列轨（左 · 26px）」+「标点列轨（右 · 14px，真占版宽）」两轨 —— 仅当该栏带
-               `puncts`（数据层已把 `，`⇒`·` / `。`⇒`○` 挂到其前面紧邻那个汉字、空格不占位）时渲染；
-               名录（`roster`）/ 樂捐（`donation`）栏不带 `puncts` ⇒ 单轨渲染，与改动前**逐字一致**。 -->
-          <view v-else-if="isFlowPage" class="book-flow">
-            <view
-              v-for="(col, ci) in flowCols"
-              :key="ci"
-              class="book-col"
-              :class="{ 'name-col': col.isName, 'dual-col': !!col.puncts }"
-            >
-              <text class="col-text">{{ col.text }}</text>
-              <!-- 标点列轨：与字列轨同格的标点（`puncts` 与 `text` 码点数组同长逐位对齐；`''` ⇒ 留白） -->
-              <view v-if="col.puncts" class="col-punct">
-                <view v-for="(p, pi) in col.puncts" :key="pi" class="punct-slot">
-                  <text class="punct-text">{{ p }}</text>
-                </view>
-              </view>
-            </view>
-          </view>
-
-          <!-- 人物名录页（缺省 `genealogy`，**排版与字号一字不动**）：4 行（1 行 = 1 人）、行内最多 30 栏、从右往左排、未满右起留空 -->
-          <view v-else class="book-rows">
-            <view
-              v-for="(row, ri) in rows"
-              :key="ri"
-              class="book-row"
-              :class="{ 'row-first': ri === 0 }"
-            >
-              <template v-if="row">
-                <view
-                  v-for="(col, ci) in row.cols"
-                  :key="ci"
-                  class="book-col"
-                  :class="{ 'name-col': col.isName }"
-                >
-                  <text class="col-text">{{ col.text }}</text>
-                </view>
-              </template>
-            </view>
-          </view>
-
-          <!-- 纸面内空态（繁体） -->
-          <view v-if="isEmpty" class="book-empty">
-            <text class="book-empty-text">暫無譜文</text>
-          </view>
-        </view>
+        <WenpuSheet :page="currentPage" :empty="isEmpty" :flip="flipClass" />
       </view>
     </scroll-view>
 
@@ -137,15 +88,27 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { getCurrentInstance, onUnmounted } from 'vue';
 // #endif
 import { buildWenpuBook } from '@/business/wenpu';
-import type { WenpuBook, WenpuCol, WenpuPage, WenpuRow } from '@/business/wenpu';
+import type { WenpuBook, WenpuPage } from '@/business/wenpu';
 import { fetchRevisions, fetchTreeMetaRemote } from '@/business/api';
 import { canManageRevision as canManageRevisionOf } from '@/business/revision';
 import type { RevisionView } from '@/business/revision';
 import { authState } from '@/business/auth';
 import RevisionPanel from '@/components/revision-panel/revision-panel.vue';
 import RenameGenealogyModal from '@/components/rename-genealogy-modal/rename-genealogy-modal.vue';
+import WenpuSheet from '@/components/wenpu-book/wenpu-sheet.vue';
 
-const props = withDefaults(defineProps<{ treeId?: string }>(), { treeId: '' });
+/**
+ * 入参：
+ * - `treeId`：家族树 id（家谱 tab / 打印页均传本树）；
+ * - `printAll`（缺省 false = 阅读器模式，**既有调用方零影响**）：true ⇒ 打印模式 —— ① 不渲染工具条
+ *   （修改谱名 / ✎ 修谱 / ⋯ 更多 与其菜单）；② 不渲染翻页控件、键盘翻页同判据失效；③ **一个展开出两张单页**
+ *   （左叶 → 右叶），每页一个分页容器 `.print-sheet` + 缩放层 `.print-scale`（见下方打印 CSS）。
+ *   两种模式的**页式模板同一份** = 子组件 `wenpu-sheet.vue`（`leaf` = `both` / `left` / `right`）。
+ */
+const props = withDefaults(defineProps<{ treeId?: string; printAll?: boolean }>(), {
+  treeId: '',
+  printAll: false,
+});
 
 /** 改名成功 ⇒ 通知宿主（`tree-hall`）重取 tree-meta 刷新页眉谱名（书口由本组件自行重拉） */
 const emit = defineEmits<{ (e: 'renamed'): void }>();
@@ -246,31 +209,41 @@ function playFlip(dir: 'flip-next' | 'flip-prev') {
 const pages = computed<WenpuPage[]>(() => book.value?.pages || []);
 const totalPages = computed(() => pages.value.length);
 const currentPage = computed<WenpuPage | null>(() => pages.value[pageIndex.value] || null);
-/** 当前页的 4 行（数据层保证长度恒 4，不足为 null）—— 仅人物名录页（缺省 `genealogy`）使用 */
-const rows = computed<(WenpuRow | null)[]>(() => currentPage.value?.rows || []);
-/** 第一部分（修谱三类内容页）与后记页 ⇒ **整页整体分列**（无 4 行结构与行分隔线；26px / name-col 30px） */
-const isFlowPage = computed(() =>
-  ['article', 'roster', 'donation', 'postscript'].includes(currentPage.value?.kind || ''),
-);
-/** 整体分列页的栏序列（数据层已按每栏 26 字重分栏、每页 30 栏；空数组 ⇒ 纸面留白） */
-const flowCols = computed<WenpuCol[]>(() => currentPage.value?.flowCols || []);
-/** 书口文案已是繁体，视图层零字形转换 */
-const leftLabel = computed(() => currentPage.value?.leftLabel || '');
-const rightLabel = computed(() => currentPage.value?.rightLabel || '');
-/** 修谱卷首页（`kind === 'cover'` ⇒ 整幅大图分支；缺省语义 = 谱文页 ⇒ 与改动前完全一致） */
-const isCoverPage = computed(() => currentPage.value?.kind === 'cover');
-/** 卷首图地址（数据层产出，视图层零转换） */
-const coverUrl = computed(() => currentPage.value?.cover?.url || '');
-/** 封面页（`kind === 'frontcover'` · 全书第一页 · 整页只有谱名；**不写书口 / 不占叶序**） */
-const isFrontCoverPage = computed(() => currentPage.value?.kind === 'frontcover');
-/** 封面谱名（数据层产出 —— 已 `toTraditional`；视图层零字形转换） */
-const frontTitle = computed(() => currentPage.value?.frontTitle || '');
 /** 空谱：纸面内显示繁体空态 */
 const isEmpty = computed(() => !loading.value && !loadError.value && book.value?.empty === true);
-/** 翻页控件仅在读成功、有页可翻时出现 */
+/** 翻页控件仅在读成功、有页可翻时出现（**打印模式无翻页 ⇒ 恒不出现**；键盘翻页共用同一判据） */
 const showPager = computed(
-  () => !loading.value && !loadError.value && !isEmpty.value && totalPages.value > 0,
+  () =>
+    !props.printAll &&
+    !loading.value &&
+    !loadError.value &&
+    !isEmpty.value &&
+    totalPages.value > 0,
 );
+
+// ---------------- 打印单叶序列（**一个展开 = 两张单页**） ----------------
+
+/** 打印用单叶（页式模板 = 同一份子组件 `wenpu-sheet.vue`，零复制） */
+interface PrintLeaf {
+  /** v-for key */
+  key: string;
+  /** 本叶所属展开（数据层页对象；书口 / 版式一字不改） */
+  page: WenpuPage;
+  /** 左叶（2k+1）先、右叶（2k+2）后 */
+  leaf: 'left' | 'right';
+}
+
+/**
+ * 打印单叶序列：**每个展开出两张**（左叶 → 右叶），展开之间按数据层页序
+ * ⇒ 打印页序 1,2,3,… 连续递增、不倒序、不跳号（**只做取页与排序，不改任何版式真源**）。
+ */
+const printLeaves = computed<PrintLeaf[]>(() =>
+  pages.value.flatMap((page, spread) => [
+    { key: 's' + spread + '-left', page, leaf: 'left' as const },
+    { key: 's' + spread + '-right', page, leaf: 'right' as const },
+  ]),
+);
+
 /** 首 / 末页禁用判据 */
 const canPrev = computed(() => pageIndex.value > 0);
 const canNext = computed(() => pageIndex.value < totalPages.value - 1);
@@ -311,12 +284,18 @@ function nextPage() {
   playFlip('flip-next');
 }
 
-/** PDF 导出（弱化入口）：保持既有 stub，不新增 PDF 渲染引擎 */
+/**
+ * 菜单项【生成并下载 PDF】（文案一字不改）—— **不引任何 PDF 库、不嵌字体、不新造排版**：
+ * 走**浏览器打印路线**（H5 跳【导出文谱 PDF】薄壳页 `/pages/special/wenpu-print/index?tree_id=`——
+ * 该页用本组件的 `printAll` 模式按 A4 逐张单页预览（所见即打印所见；**一个展开 = 两张单页**），
+ * 点「🖨 打印 / 保存为 PDF」后在浏览器对话框里选「另存为 PDF」即得文件）。
+ * **小程序保持既有 stub 提示逐字不变。**
+ */
 function onPdfExport() {
   menuOpen.value = false;
 
   // #ifdef H5
-  uni.showToast({ title: 'PDF 生成中...', icon: 'loading' });
+  uni.navigateTo({ url: '/pages/special/wenpu-print/index?tree_id=' + props.treeId });
   // #endif
 
   // #ifdef MP-WEIXIN
@@ -363,7 +342,7 @@ function bookRootEl(): Element | null {
  * 键盘翻页：`ArrowLeft` = 后叶（下一页）、`ArrowRight` = 前叶（上一页）。以下条件**同时**为真才响应：
  * 1. 根元素可见（`getBoundingClientRect()` 宽 > 0 且高 > 0）——本组件虽由 `tree-hall` 以 `v-if` 链渲染，
  *    但宿主页被 keep-alive 缓存 / 页被隐藏时监听仍挂着，须防「幽灵响应」；
- * 2. `showPager` 为真（加载中 / 谱文读取失败 / 空谱「暫無譜文」/ 无页 ⇒ 一律不响应）；
+ * 2. `showPager` 为真（加载中 / 谱文读取失败 / 空谱「暫無譜文」/ 无页 / **打印模式（`printAll`）** ⇒ 一律不响应）；
  * 3. 键恰为 `ArrowLeft` / `ArrowRight`；
  * 4. 无修饰键（避开 Alt+← 浏览器后退、macOS Cmd+←/→ 行首行尾等冲突）；
  * 5. 焦点不在可编辑元素上（INPUT / TEXTAREA / SELECT / contentEditable）。
@@ -373,6 +352,9 @@ function bookRootEl(): Element | null {
  * 已知可接受（本批不处理）：页面遮罩弹窗（申请加入 / 编辑 / 认祖等）打开时，层下文谱仍会按键翻页（用户看不见）。
  */
 function onKeydown(event: KeyboardEvent) {
+  // 打印模式（`printAll`）：本组件按 A4 顺序渲染全部页、无翻页概念 ⇒ 键盘翻页一律不生效
+  // （`showPager` 已因 `printAll` 恒假，此处再显式挡一层，防判据被后续改动松动）
+  if (props.printAll) return;
   const root = bookRootEl();
   if (!root) return;
   const rect = root.getBoundingClientRect();
@@ -468,190 +450,6 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown));
   min-width: 100%;
 }
 
-/* 纸页：固定 960 × 720、背景 #F7F3E8、1px #222、padding 17px 40px
-   （上下 17px ⇒ 内容高 = 720 − 34 − 2 = 684；4 行含 3 条 1px 行线 ⇒ 行内容高 = (684−3)/4 = 170.25px
-    > 10 字 × 17px = 170px，留 0.25px 余量防亚像素 / 字体回退再折行；左右 40px 不变） */
-.book-page {
-  position: relative;
-  box-sizing: border-box;
-  width: 960px;
-  height: 720px;
-  padding: 17px 40px;
-  background: #F7F3E8;
-  border: 1px solid #222;
-  font-family: "Noto Serif TC", SimSun, serif;
-}
-
-/* 「拟翻书」翻页动效（轻微、有方向感）：纯 CSS @keyframes + class 切换，H5 与小程序两端同源支持
-   （**不用** Vue <transition> 包元素，小程序不支持）。
-   方向映射：后叶（下一页）⇒ 纸页「向左翻」；前叶（上一页）⇒「向右翻」。绕纸页竖直轴 rotateY + perspective
-   卷动，叠加小幅横向位移与淡出 / 淡入 ⇒ 即便个别小程序内核不认 3D 变换，位移 + 透明度仍能表达方向
-   （等价 2.5D，不静默降级成无动画）。幅度轻微：旋转峰值 16deg、位移 8px；总时长 300ms、ease-out；
-   结束回 rotateY(0) / opacity 1 ⇒ 静止态外观与改动前一致（class 由 playFlip() 在 320ms 后清掉）。 */
-@keyframes wenpu-flip-next {
-  0% { transform: perspective(1200px) rotateY(0deg) translateX(0); opacity: 1; }
-  40% { transform: perspective(1200px) rotateY(-16deg) translateX(-8px); opacity: 0.72; }
-  100% { transform: perspective(1200px) rotateY(0deg) translateX(0); opacity: 1; }
-}
-@keyframes wenpu-flip-prev {
-  0% { transform: perspective(1200px) rotateY(0deg) translateX(0); opacity: 1; }
-  40% { transform: perspective(1200px) rotateY(16deg) translateX(8px); opacity: 0.72; }
-  100% { transform: perspective(1200px) rotateY(0deg) translateX(0); opacity: 1; }
-}
-.book-page.flip-next { animation: wenpu-flip-next 300ms ease-out; }
-.book-page.flip-prev { animation: wenpu-flip-prev 300ms ease-out; }
-
-/* 书口：绝对定位、竖排、12px、字间距 2px、#333 */
-.side-label {
-  position: absolute;
-  top: 40px;
-  font-size: 12px;
-  letter-spacing: 2px;
-  color: #333;
-  writing-mode: vertical-rl;
-}
-.side-label-left { left: 6px; }
-.side-label-right { right: 6px; }
-/* 书口抬到纸面内容之上（修谱卷首大图占满纸页时仍须「保留左右书口」；普通谱文页无视觉变化） */
-.book-page .side-label { z-index: 2; }
-
-/* 修谱卷首（`kind === 'cover'`）：整幅图占满纸页（绝对定位铺满版心外的可绘区），
-   书口在左右页边距内、由上面的 z-index 压在图之上 */
-.book-cover {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: #F7F3E8;
-}
-
-/* 封面页（`kind === 'frontcover'` · 全书第一页）：整页只有谱名 —— 竖排居中（writing-mode: vertical-rl）
-   · 字号 36px · 字距 6px（**一句话可改**）；纸页仍 960×720 / padding 17px 40px / 底色与边框与其它页一致 */
-.book-front-cover {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.front-cover-title {
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  font-size: 36px;
-  letter-spacing: 6px;
-  line-height: 1.0;
-  color: #222;
-  white-space: nowrap;
-  font-family: "Noto Serif TC", SimSun, serif;
-}
-
-/* 4 行：纵向 4 等分；行间 1px #111 上边框（首行无） */
-.book-rows { height: 100%; display: flex; flex-direction: column; }
-.book-row {
-  flex: 1;
-  display: flex;
-  flex-direction: row-reverse;
-  justify-content: flex-start;
-  align-items: stretch;
-  overflow: hidden;
-  border-top: 1px solid #111;
-}
-.row-first { border-top: none; }
-
-/* 栏：一个竖条恰好容 10 字（17px × 10 = 170px）；栏间 1px #111 左边框 */
-.book-col {
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  font-size: 17px;
-  line-height: 1.0;
-  padding: 0 1px;
-  border-left: 1px solid #111;
-  height: 100%;
-  white-space: nowrap;
-}
-/* 栏内**文本节点**强制单行（兜底）：
-   H5 下 `<text>` 渲染为 `<uni-text class="col-text"><span>…</span></uni-text>`，而 uni-app 基础样式
-   `uni-text { white-space: pre-line }` 直接落在该元素 / 文本节点上，会把 `.book-col` 的 `nowrap` 覆盖掉
-   ⇒ 满 10 字（170px）时按 9+1 折行（栏宽 20 → 37px、行盒 2）。此处把 nowrap 直接施到可直接作用的元素
-   （uni `<text>` 本身 + 内层 `span`），小程序端 `<text>` 无内层 span，同样按第一条命中生效。 */
-.book-col .col-text,
-.book-col .col-text :deep(span) {
-  white-space: nowrap;
-}
-/* 名称栏：稍大 + 粗体，仍为一栏 */
-.name-col { font-size: 20px; font-weight: bold; }
-
-/* 整页整体分列（第一部分修谱页 + 后记页）：去 4 行结构与行分隔线 —— 整页一个容器，
-   栏从右向左连续排满（栏间 1px #111 左边框保留）；字号 26px / name-col 30px（**一句话可改**）；
-   人物名录页（缺省 `genealogy`）不受影响（仍走上方 17px / 20px 基础值） */
-.book-flow {
-  height: 100%;
-  display: flex;
-  flex-direction: row-reverse;
-  justify-content: flex-start;
-  align-items: stretch;
-  overflow: hidden;
-}
-.book-flow .book-col { font-size: 26px; }
-.book-flow .name-col { font-size: 30px; }
-
-/* ---- 乌丝栏双轨竖排（**仅 `article` 族務紀文 / `postscript` 后记**；名录与樂捐页零变化）----
-   栏格 = 字列轨（左 · 26px，字号 26px 不变）+ 标点列轨（右 · 14px，标点字号 14px，**真占版宽**）
-   ⇒ 栏格宽 = 26 + 14 + 2×1px padding + 1px 栏线 = 43px（与 `wenpu.ts` 的 `WENPU_DUAL_COL_WIDTH`
-   同口径 ⇒ 每页 20 栏，**一句话可改**）。父容器改横排（非 `row-reverse`，写作默认模式）：
-   DOM 顺序 = 字列在左、标点在右 ⇒ 竖排「字在左、标点在右」。 */
-.book-flow .dual-col {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  writing-mode: horizontal-tb;
-}
-/* 字列轨：宽恒 = 字号 26px（各栏格宽一律 43px ⇒ 标点轨起点一致；满 26 字 = 676px ≤ 内容高 684px） */
-.book-flow .dual-col .col-text {
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  flex: 0 0 26px;
-  width: 26px;
-}
-/* 标点列轨：宽恒 14px（真占版宽）；每格高度 = 字列一字的纵向步进 26px ⇒ 标点与所画之字同格同 y 带 */
-.book-flow .dual-col .col-punct {
-  flex: 0 0 14px;
-  width: 14px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  font-size: 14px;
-  line-height: 1;
-  overflow: hidden;
-}
-/* 标点格：与字列轨同一格的标点（格内水平 + 垂直居中 ⇒ 与所属字同 y 对齐）；无标点 ⇒ 空格留白 */
-.punct-slot {
-  flex: 0 0 26px;
-  width: 14px;
-  height: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-.punct-text { font-size: 14px; line-height: 1; white-space: nowrap; }
-
-/* 纸面内空态（繁体） */
-.book-empty {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.book-empty-text { font-size: 22px; color: #555; letter-spacing: 4px; }
-
 /* 翻页控件（纸页外 · 简体） */
 .pager { display: flex; justify-content: center; gap: 20px; margin-top: 16px; font-size: 16px; }
 .pager-btn {
@@ -662,4 +460,72 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown));
 .pager-btn.disabled { opacity: 0.4; }
 .pager-btn-text { font-size: 16px; color: #111; }
 .page-indicator { align-self: center; font-size: 18px; color: #111; }
+
+/* ---- 打印（浏览器打印路线；屏上导出视图 = 打印预览：见 pages/special/wenpu-print/index.vue）----
+   口径（**Kevin 2026-10-13 修正，取代 2026-10-11 的 960 宽适配**）：
+   **960×720 = 「两页并排的展开」，实际单页 = 480×720**（2:3 竖）⇒ **一个展开印两张纸**，
+   顺序 = **左叶 → 右叶**（按数据层页码口径：左 = 2k+1 先、右 = 2k+2 后 ⇒ 打印页序 1,2,3,… 连续递增）。
+   纸张 = A4 竖排、`@page { size: A4 portrait; margin: 10mm }` ⇒ 可印 **190 × 277mm**；
+   缩放 = **按高度适配**（**不再**按 190mm 宽适配）：单页 480×720 等比缩放后 = **184.6667 × 277mm**
+   （277 × 2/3 = 184.6667 ≤ 190 ✓）；缩放系数 = 277mm ÷ 720px = 1046.92913px ÷ 720px = **1.4535127**
+   （1mm = 96 ÷ 25.4 px，CSS 物理像素恒定）。
+   `transform` **不占位** ⇒ 分页容器 `.print-sheet` 显式占**缩放后**尺寸（184.6667mm × 277mm）、
+   `transform-origin: top left` ⇒ 二者左上重合；`margin: 0 auto` ⇒ 在 190mm 可印宽内横向居中。
+   分页：**每张单页之后**分页（`break-after: page`），**末页撤销分页点**（`:last-child`）⇒
+   **末页之后不多出空白纸**；并保留「其后每页另起一纸」的同义兜底规则（相邻两条强制分页点按
+   CSS Fragmentation 只解析为**一次**分页，实测 4 / 6 页 = 4 / 6 张）。
+   ⚠️ 实测（headless Chrome `--print-to-pdf`，复刻同尺寸结构）：`transform: scale()` 的**绘制区**
+   比布局盒大（480px 布局盒 → 697.7px 绘制区），浏览器会把这份溢出**排到下一张纸** ⇒ 每页多出一张
+   **幽灵白纸**（实测 1 页 = 2 张、4 页 = 5 张）；`.print-sheet` 加 `overflow: hidden` 夹回绘制区后
+   = 张数 = 纸数（实测 4 / 6 页 → 4 / 6 张，末页无空白）。底色保留：`print-color-adjust: exact`（含 `-webkit-` 前缀）。
+   ⚠️ 结构性事实（Kevin 已知情、正在裁定，**本单不修**）：「每人一行」的行宽最多 30 栏、**横跨 960 展开的
+   左右两半** ⇒ 竖切后每张单页上只有**该展开 4 个人的半行**（前半截 / 后半截）。这是书籍翻开的固有形态
+   （行越过版心换叶），**不是缺陷**；若 Kevin 裁定改为「单页装完整内容」或「打印单位改回展开」，那是**另一批**
+   （要动 `wenpu.ts` 版式真源）——**本单不要自行改版式、不要自行改栏数/分页**。 */
+@page {
+  size: A4 portrait;
+  margin: 10mm;
+}
+
+@media print {
+  /* 屏上工具条 / 纸外提示（加载中 · 读取失败）/ 翻页控件：一律不打印 */
+  .book-toolbar,
+  .book-tip,
+  .pager { display: none !important; }
+
+  /* 分页容器（**一张纸一张单页**）：占缩放后尺寸、不跨页拆分、在可印宽内横向居中；
+     `overflow: hidden` = 夹住缩放层的绘制溢出 ⇒ 不再多出幽灵白纸
+     （容器已按缩放后尺寸略留 0.4px 余量 ⇒ 纸页边框不被裁掉） */
+  .print-sheet {
+    width: 184.6667mm;
+    height: 277mm;
+    margin: 0 auto;
+    overflow: hidden;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    /* 每张单页**之后**分页 */
+    break-after: page;
+    page-break-after: always;
+  }
+  /* 末页：撤销分页点 ⇒ **末页之后不得产生额外空白纸** */
+  .print-sheet:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+  /* 同义兜底：其后每页另起一张纸（与上面「之后分页」只解析为一次分页） */
+  .print-sheet + .print-sheet {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  /* 缩放层：480×720 单页 → 277mm 高（左上对齐 ⇒ 与分页容器左上重合）、保留纸页底色 */
+  .print-scale {
+    width: 480px;
+    height: 720px;
+    transform: scale(1.4535127);
+    transform-origin: top left;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
 </style>

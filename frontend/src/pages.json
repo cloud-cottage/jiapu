@@ -126,6 +126,14 @@
             "navigationBarTitleText": "迁徙地图"
           }
         },
+        // #ifdef H5
+        {
+          "path": "wenpu-print/index",
+          "style": {
+            "navigationBarTitleText": "导出文谱 PDF"
+          }
+        },
+        // #endif
         {
           "path": "pdf-export/index",
           "style": {

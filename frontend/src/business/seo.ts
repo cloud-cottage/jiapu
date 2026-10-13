@@ -65,6 +65,7 @@ export const ROUTE_TITLE: Record<string, string> = {
   'pages/special/generation-poem/index': '字辈检索',
   'pages/special/migration-map/index': '迁徙地图',
   'pages/special/pdf-export/index': '族谱PDF导出',
+  'pages/special/wenpu-print/index': '导出文谱 PDF',
 };
 
 /**
