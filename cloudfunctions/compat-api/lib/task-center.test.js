@@ -785,11 +785,12 @@ test('⑬ TOCTOU：锁定读与兰帖扣减同锁（持锁期间读不得返回�
 // 镜像内容读侧派生（方案 A）新增 mirror-derive.test.js（42）；修谱域批次新增 revision.test.js（43）；
 // 后记 name 解析批次新增 revision-postscript.test.js（44）；
 // 谱名改名域批次新增 tree-rename.test.js（45，专用计费路由 POST /admin/tree-rename）。
-test('⑩ 注册数 45 = 磁盘 *.test.js 数；「已注册但磁盘缺失」0 条；磁盘未注册 0 条', () => {
+// 后台可配后记 / 标点 ● 批新增 wenpu-config.test.js（46，文谱配置）⇒ 定额同步为实得真值 46。
+test('⑩ 注册数 46 = 磁盘 *.test.js 数；「已注册但磁盘缺失」0 条；磁盘未注册 0 条', () => {
   const pkg = JSON.parse(fs.readFileSync(PKG_FILE, 'utf8'));
   const registered = (pkg.scripts.test.match(/[\w./-]+\.test\.js/g) || []).map((p) => p.replace(/^.*lib\//, ''));
   const onDisk = fs.readdirSync(HERE).filter((f) => f.endsWith('.test.js'));
-  assert.equal(registered.length, 45, `注册数应为 45，实得 ${registered.length}`);
+  assert.equal(registered.length, 46, `注册数应为 46，实得 ${registered.length}`);
   assert.equal(onDisk.length, registered.length, `磁盘 *.test.js 数 ${onDisk.length} 应等于注册数 ${registered.length}`);
   assert.equal(new Set(registered).size, registered.length, '注册项不得重复');
   const missing = registered.filter((f) => !fs.existsSync(path.join(HERE, f)));
@@ -804,6 +805,7 @@ test('⑩ 注册数 45 = 磁盘 *.test.js 数；「已注册但磁盘缺失」0 
   assert.ok(registered.includes('mirror-derive.test.js'), '镜像读侧派生单测必须已注册（方案 A · 未注册 = 假绿）');
   assert.ok(registered.includes('revision-postscript.test.js'), '后记 name 解析单测必须已注册（未注册 = 假绿）');
   assert.ok(registered.includes('tree-rename.test.js'), '谱名改名域单测必须已注册（未注册 = 假绿）');
+  assert.ok(registered.includes('wenpu-config.test.js'), '文谱配置单测必须已注册（后台可配后记 / 标点 ● 批 · 未注册 = 假绿）');
 });
 
 test('⑪ 真源零写入：config/ + migrate-output/ 全量指纹与本文件开工时逐字节一致', () => {

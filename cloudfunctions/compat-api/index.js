@@ -81,6 +81,12 @@ import * as bco from './lib/branch-clan-ops.js';
 //   一键可配（读函数在 lib/wallet.js、写函数在 lib/revision.js），写入口沿用既有 PUT /admin/wallet-fee。
 //   修谱费一律常量写死（开轮 999 / 锁定 9999 / 长锁 99999）——`revision_fee_bamboos` 键与分支已删除。
 import * as rev from './lib/revision.js';
+// 在线文谱·后记文案「后台可配」（**单点真源 = lib/wenpu-config.js** · Kevin 2026-10-13 拍定）：
+//   新集合 `jiapu_wenpu_config`（单档 `_id='global'`；已同步登记进 upload 脚本 COLLECTIONS）；
+//   `GET /revisions` 顶层**新增** `wenpu_config`（只增不改 ⇒ 未配置返回默认模板、前端零默认逻辑）；
+//   `GET|PUT /admin/wenpu-config`（**仅 chief_editor**；PUT 400 缺字段/变量非法、409 版本并发冲突）。
+//   ⚠️ 写路径**不进计费闸门**（非「修改节点」）且**不写 `jiapu_ops_logs`**（非资产类设定改动不入运营审计）。
+import * as wpc from './lib/wenpu-config.js';
 // 谱名改名域（Kevin 2026-10-12 拍定）：`genealogy_name` 从通用更新路由拆出 ⇒ 专用计费路由
 //   `POST /admin/tree-rename`（999 / 9999 / 99999 三档 + 首次或 >=360 天 999 + no-op 0 片）。
 // 权限**不另写**：lib/tree-rename.js 整份复用 lib/revision.js 的 assertRevisionWritable（本树主理人锚点判据）。
@@ -2743,11 +2749,48 @@ async function handleRequest(event) {
       try {
         const want = String(query.tree_id || treeId || '').trim();
         if (!want) return send(400, { error: '缺少 tree_id' });
-        return send(200, await rev.getRevisionView(want, new Date()));
+        const view = await rev.getRevisionView(want, new Date());
+        // 顶层**新增**键 `wenpu_config`（只增不改 · 单键 `{ postscript_template }`）：后记文案模板。
+        // 未配置 / 读失败 ⇒ 默认模板（`lib/wenpu-config.js` 读容错）⇒ 前端零默认逻辑、读路径绝不 500。
+        view.wenpu_config = await wpc.getWenpuConfig();
+        return send(200, view);
       } catch (e) {
-        // 读路径容错已在 lib 层（集合缺失 ⇒ 空档）；此处兜底：非业务错误按 500（与 errorPayload 的 status 一致，
-        // **不得**再出现「HTTP 400 + body status:500」的错配）。
+        // 读路径容错已在 lib 层（集合缺失 ⇒ 空档 / 默认模板）；此处兜底：非业务错误按 500
         return send(e.status || 500, eco.errorPayload(e, e.extra || {}));
+      }
+    }
+
+    // GET /admin/wenpu-config —— 后记文案当前配置（**仅 chief_editor**）；注册在树编辑闸门之前（无 X-Tree-Id 依赖）
+    //   ⇒ `200 { ok, postscript_template, is_default, defaults, version, updated_at, updated_by }`（未配置 ⇒ 默认 + is_default:true）
+    if (pathname === '/admin/wenpu-config' && method === 'GET') {
+      const u = await authUser(headers);
+      if (!u) return send(401, { error: '未登录或登录已过期' });
+      if (u.role !== 'chief_editor') return send(403, { error: '需要总编辑权限' });
+      try {
+        return send(200, await wpc.getAdminWenpuConfig());
+      } catch (e) {
+        return send(e.status || 400, eco.errorPayload(e, e.extra || {}));
+      }
+    }
+
+    // PUT /admin/wenpu-config {postscript_template, version?} —— 后记文案设定（**仅 chief_editor**）
+    //   校验：缺字段 / 循环块非法 / 变量非法 ⇒ 400；`version` 与现档不符 ⇒ 409（并发冲突）。
+    //   ⚠️ **不进计费闸门**（非「修改节点」、无竹片消耗）；**不写 `jiapu_ops_logs`**（按本仓先例）。
+    if (pathname === '/admin/wenpu-config' && method === 'PUT') {
+      const u = await authUser(headers);
+      if (!u) return send(401, { error: '未登录或登录已过期' });
+      if (u.role !== 'chief_editor') return send(403, { error: '需要总编辑权限' });
+      try {
+        const body = parseBody(event);
+        const r = await wpc.setWenpuConfig({
+          postscript_template: body.postscript_template,
+          version: body.version,
+          phone: u.phone,
+          now: new Date(),
+        });
+        return send(200, { ok: true, version: r.version });
+      } catch (e) {
+        return send(e.status || 400, eco.errorPayload(e, e.extra || {}));
       }
     }
 

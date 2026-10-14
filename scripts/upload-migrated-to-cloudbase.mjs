@@ -71,6 +71,9 @@ const COLLECTIONS = [
   'jiapu_marriage_requests',
   // 修谱域（冻结契约）：每树一档（_id = tree_id）—— 漏登记则云端首写直接报错（AGENTS.md §8，启动自检拦下）
   'jiapu_revisions',
+  // 在线文谱·后记文案「后台可配」（Kevin 2026-10-13）：单档 _id='global'（version = CAS 乐观锁）——
+  //   漏登记漏项 ⇒ 启动自检 exit 1（代码引用 jiapu_wenpu_config 却不在名单内）。
+  'jiapu_wenpu_config',
 ];
 
 // ---- 启动自检：代码引用的 jiapu_* 集合必须全部列入 COLLECTIONS ----
