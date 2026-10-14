@@ -6,8 +6,10 @@
   >
     <!-- 书页（**页式模板唯一一份** = 960 宽，即「一个展开」）：
          阅读器整幅上屏；打印单叶 = 外层 480 裁切窗取左半（`margin-left: 0`）/ 右半（`margin-left: -480px`）。
-         封面 / 封底页额外挂 `page-cover` ⇒ `overflow: hidden`（半叶色块按 480×720 铺设，
-         超出纸页的那 2px 由纸页自身裁掉 ⇒ 1px `#222` 外框完整可见）。 -->
+         封面 / 封底页额外挂 `page-cover`（**留白半叶彻底留白** · Kevin 2026-10-15 拍定）：
+         该页纸壳**去纸色底、去 1px `#222` 外框、padding 归零**，留白的那半叶**不渲染任何元素**
+         （无占位块 / 空 view / 伪元素）⇒ 真的露出背后的东西；深棕半叶的边由自身 `.cover-half`
+         的 1px `#222` 边框承担；`overflow: hidden` 兼作半叶色块的溢出兜底。 -->
     <view class="book-page" :class="[{ 'leaf-right': leaf === 'right' }, { 'page-cover': isHalfLeafPage }]">
       <!-- 书口（左 / 右）：文案已是繁体、视图层零字形转换；空串 ⇒ 整条不渲染 -->
       <view v-if="leftLabel" class="side-label side-label-left">
@@ -20,27 +22,27 @@
       <!-- 修谱卷首（`kind === 'cover'`）：整幅大图占满纸页、**保留左右书口**（不走栏格；整体分列重构后仍独立整页、不入列） -->
       <image v-if="isCover" class="book-cover" :src="coverUrl" mode="aspectFit" />
 
-      <!-- 封面页（`kind === 'frontcover'` · 全书第一页 · Kevin 2026-10-14 拍定半叶化）：
-           **只占左半 480×720**（深棕 `#4A3629` 铺满、边到边）、**右半留白**（纸色 `#F7F3E8`）；
+      <!-- 封面页（`kind === 'frontcover'` · 全书第一页 · Kevin 2026-10-14 拍定半叶化；
+           2026-10-15 拍定「留白半叶彻底留白」）：
+           **只占左半 480×720**（深棕 `#4A3629` 铺满、自带宽 1px `#222` 边框）、**右半不渲染任何元素**
+           （不留空 view / 占位块 / 伪元素；纸页本体在本页也去底色去边框 ⇒ 右半真的什么都没有、露出背后的东西）；
            左半正中一块**米色题签**（`#F7F3E8` 底 + 2px `#8B7355` 边框 · 150×430），谱名竖排
            **36px / 字距 6px / 色 `#222`（字色一字不改）**；**不写任何书口**（数据层两书口均空）、不占叶序。
-           逐字对照 `mockup-v2.html` 变体 A（`.label` 150×430 · `border:2px solid #8B7355`）。 -->
-      <view v-else-if="isFrontCover" class="book-front-cover">
-        <view class="cover-half cover-half-left">
-          <view class="cover-label">
-            <text class="front-cover-title">{{ frontTitle }}</text>
-          </view>
+           逐字对照 `mockup-v2.html` 变体 A（`.label` 150×430 · `border:2px solid #8B7355`）。
+           类名 `book-front-cover` 保留在同一元素上（= 该页的半叶块本体，不再另套整幅空容器）。 -->
+      <view v-else-if="isFrontCover" class="cover-half cover-half-left book-front-cover">
+        <view class="cover-label">
+          <text class="front-cover-title">{{ frontTitle }}</text>
         </view>
       </view>
 
       <!-- 封底页（`kind === 'backcover'` · 全书最后一页（后记之后）· 与封面镜像）：
-           **左半留白**（纸色 `#F7F3E8`）、**只占右半 480×720**（深棕 `#4A3629` 铺满、边到边）；
+           **左半不渲染任何元素**（同封面口径：纸页本体去底色去边框 ⇒ 彻底留白）、
+           **只占右半 480×720**（深棕 `#4A3629` 铺满、自带 1px `#222` 边框）；
            右半正中一枚**印章**（暖白 `#F1E7D6` · 约 300×300 居中）；资产 = `icons.ts` 的 `ICON.WENPU_SEAL`
            （**SVG**；印文「中华数字家谱」）；**不写任何书口**、不占叶序。 -->
-      <view v-else-if="isBackCover" class="book-back-cover">
-        <view class="cover-half cover-half-right">
-          <image class="cover-seal" :src="sealSrc" mode="aspectFit" />
-        </view>
+      <view v-else-if="isBackCover" class="cover-half cover-half-right book-back-cover">
+        <image class="cover-seal" :src="sealSrc" mode="aspectFit" />
       </view>
 
       <!-- 第一部分修谱页 + 末尾后记页（`kind ∈ article|roster|donation|postscript`）：
@@ -91,10 +93,11 @@
       <view v-if="empty" class="book-empty">
         <text class="book-empty-text">暫無譜文</text>
       </view>
-      <!-- 书脊（**仅阅读器「展开」态** `leaf='both'` 渲染）：正中一条 1px 竖线 + 线两侧各 14px 柔和渐隐阴影
+      <!-- 书脊（**仅阅读器「展开」态且** `leaf='both'` **且非半叶页**（封面 / 封底）渲染）：正中一条 1px 竖线 + 线两侧各 14px 柔和渐隐阴影
            （模拟书脊凹陷）；`pointer-events: none` ⇒ 不拦点击；色为半透明 ⇒ **不遮文字**。
-           **打印单叶一律不渲染**（`v-if` 挡掉 ⇒ 不把缝印在纸上）。 -->
-      <view v-if="leaf === 'both'" class="book-spine">
+           **打印单叶一律不渲染**（`v-if` 挡掉 ⇒ 不把缝印在纸上）；
+           **封面页 / 封底页整体不渲染**（Kevin 2026-10-15 拍定：半叶化页的留白半叶要**彻底留白** ⇒ 不留书脊线 / 阴影）。 -->
+      <view v-if="leaf === 'both' && !isHalfLeafPage" class="book-spine">
         <view class="spine-shadow spine-shadow-left"></view>
         <view class="spine-line"></view>
         <view class="spine-shadow spine-shadow-right"></view>
@@ -214,9 +217,18 @@ const isHalfLeafPage = computed(() => isFrontCover.value || isBackCover.value);
   border: 1px solid #222;
   font-family: "Noto Serif TC", SimSun, serif;
 }
-/* 半叶页（**仅封面 / 封底**）：裁掉半叶色块溢出的那 2px（色块盒仍 480×720）⇒ 1px `#222` 外框全周可见。
+/* 半叶页（**仅封面 / 封底** · Kevin 2026-10-15 拍定「留白半叶彻底留白」）：**纸页本体去纸色底、去 1px `#222` 外框**
+   —— 该页不再有任何纸色底 / 外框，留白的那半叶**真的什么都不渲染**（露出背后的东西）。
+   深棕半叶的边界改由 `.cover-half` **自身的 1px `#222` 边框**承担（见下）。
+   半叶色块仍按 480×720 绝对铺设：纸页定位包含块 = padding box（此处 = border box 960×720，因 padding 归零）
+   ⇒ 色块与纸页左上重合、`overflow: hidden` 兼作溢出兜底。
    其余页（谱文 / 修谱 / 后记）**不加本类** ⇒ 现有版式与读数零变化。 */
-.book-page.page-cover { overflow: hidden; }
+.book-page.page-cover {
+  padding: 0;
+  background: transparent;
+  border: none;
+  overflow: hidden;
+}
 
 /* 「拟翻书」翻页动效（轻微、有方向感）：纯 CSS @keyframes + class 切换，H5 与小程序两端同源支持
    （**不用** Vue <transition> 包元素，小程序不支持）。
@@ -264,32 +276,30 @@ const isHalfLeafPage = computed(() => isFrontCover.value || isBackCover.value);
   background: #F7F3E8;
 }
 
-/* ---- 封面页 / 封底页（半叶化 · Kevin 2026-10-14 拍定 · 逐字对照 `mockup-v2.html` 变体 A）----
+/* ---- 封面页 / 封底页（半叶化 · Kevin 2026-10-14 拍定；**留白半叶彻底留白** · 2026-10-15 拍定 ·
+   逐字对照 `mockup-v2.html` 变体 A）----
    口径：**一个展开 960×720 的左右各半 480×720 各归其主** —— 封面**只占左半**（深棕 `#4A3629`
-   铺满、边到边 480×720），**右半留白**（纸色 = 纸页自身底色 `#F7F3E8`）；封底**只占右半**深棕，
-   左半留白（与封面镜像）。纸页的 **1px `#222` 外框**、**书脊**（阅读器展开态）**维持不变**。
-   半叶色块按 480×720 绝对铺设：纸页定位包含块 = padding box（958×718）⇒ 右侧 / 下侧各溢出 2px，
-   由 `.book-page.page-cover` 的 `overflow: hidden` 裁掉 ⇒ 色块视觉上**顶到外框内侧、不多出来**，
-   而元素的盒子读数仍是 **480×720**（`getBoundingClientRect()` 不受裁剪影响）。 */
-.book-front-cover,
-.book-back-cover {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 1;
-}
-/* 半叶色块：深棕 #4A3629 铺满 480×720、内容（题签 / 印章）在色块正中 */
+   铺满、自带 1px `#222` 边框），**右半什么都不渲染**（纸页本体已去底色去边框 ⇒ 留白半叶完全空、
+   露出背后的东西；不留占位块 / 空 view / 伪元素）；封底**只占右半**深棕，左半同样彻底留白（与封面镜像）。
+   半叶块按 480×720 绝对铺设（`.book-page` 本页 `padding: 0` ⇒ 包含块 = 960×720 的 padding box，
+   与纸页左上重合），`.book-page.page-cover` 的 `overflow: hidden` 兼作溢出兜底；
+   元素盒子读数恒为 **480×720**（`getBoundingClientRect()` 不受裁剪影响）。
+   注：`.book-front-cover` / `.book-back-cover` 两个类名仍挂在半叶块本体上（语义标记，无独立样式）。 */
+/* 半叶色块：深棕 #4A3629 铺满 480×720、内容（题签 / 印章）在色块正中；
+   **自带 1px `#222` 边框**（Kevin 2026-10-15：纸页壳已去边框 ⇒ 深棕区必须有自己的边，不得无边）——
+   `box-sizing: border-box` ⇒ 边框画在 480×720 盒内、读数仍是 480×720。
+   若日后裁定「不要左右半叶之间那条中缝线」，改法一句话：`border-top/right/bottom` 三条 / 去掉与中缝重合的那一边。 */
 .cover-half {
   position: absolute;
   top: 0;
+  box-sizing: border-box;
   width: 480px;
   height: 720px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #4A3629;
+  border: 1px solid #222;
 }
 .cover-half-left { left: 0; }
 .cover-half-right { left: 480px; }
