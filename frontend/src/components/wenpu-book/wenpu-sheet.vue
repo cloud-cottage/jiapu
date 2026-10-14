@@ -5,8 +5,10 @@
     :class="[leaf === 'both' ? 'sheet-window-both' : 'sheet-window-leaf', flip]"
   >
     <!-- 书页（**页式模板唯一一份** = 960 宽，即「一个展开」）：
-         阅读器整幅上屏；打印单叶 = 外层 480 裁切窗取左半（`margin-left: 0`）/ 右半（`margin-left: -480px`）。 -->
-    <view class="book-page" :class="{ 'leaf-right': leaf === 'right' }">
+         阅读器整幅上屏；打印单叶 = 外层 480 裁切窗取左半（`margin-left: 0`）/ 右半（`margin-left: -480px`）。
+         封面 / 封底页额外挂 `page-cover` ⇒ `overflow: hidden`（半叶色块按 480×720 铺设，
+         超出纸页的那 2px 由纸页自身裁掉 ⇒ 1px `#222` 外框完整可见）。 -->
+    <view class="book-page" :class="[{ 'leaf-right': leaf === 'right' }, { 'page-cover': isHalfLeafPage }]">
       <!-- 书口（左 / 右）：文案已是繁体、视图层零字形转换；空串 ⇒ 整条不渲染 -->
       <view v-if="leftLabel" class="side-label side-label-left">
         <text class="side-label-text">{{ leftLabel }}</text>
@@ -18,10 +20,27 @@
       <!-- 修谱卷首（`kind === 'cover'`）：整幅大图占满纸页、**保留左右书口**（不走栏格；整体分列重构后仍独立整页、不入列） -->
       <image v-if="isCover" class="book-cover" :src="coverUrl" mode="aspectFit" />
 
-      <!-- 封面页（`kind === 'frontcover'` · 全书第一页）：整页**只有谱名**、竖排居中
-           （36px / 字距 6px）；**不写任何书口**（数据层 leftLabel / rightLabel 均空）、不占叶序 -->
+      <!-- 封面页（`kind === 'frontcover'` · 全书第一页 · Kevin 2026-10-14 拍定半叶化）：
+           **只占左半 480×720**（深棕 `#4A3629` 铺满、边到边）、**右半留白**（纸色 `#F7F3E8`）；
+           左半正中一块**米色题签**（`#F7F3E8` 底 + 2px `#8B7355` 边框 · 150×430），谱名竖排
+           **36px / 字距 6px / 色 `#222`（字色一字不改）**；**不写任何书口**（数据层两书口均空）、不占叶序。
+           逐字对照 `mockup-v2.html` 变体 A（`.label` 150×430 · `border:2px solid #8B7355`）。 -->
       <view v-else-if="isFrontCover" class="book-front-cover">
-        <text class="front-cover-title">{{ frontTitle }}</text>
+        <view class="cover-half cover-half-left">
+          <view class="cover-label">
+            <text class="front-cover-title">{{ frontTitle }}</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 封底页（`kind === 'backcover'` · 全书最后一页（后记之后）· 与封面镜像）：
+           **左半留白**（纸色 `#F7F3E8`）、**只占右半 480×720**（深棕 `#4A3629` 铺满、边到边）；
+           右半正中一枚**印章**（暖白 `#F1E7D6` · 约 300×300 居中）；资产 = `icons.ts` 的 `ICON.WENPU_SEAL`
+           （**SVG**；印文「中华数字家谱」）；**不写任何书口**、不占叶序。 -->
+      <view v-else-if="isBackCover" class="book-back-cover">
+        <view class="cover-half cover-half-right">
+          <image class="cover-seal" :src="sealSrc" mode="aspectFit" />
+        </view>
       </view>
 
       <!-- 第一部分修谱页 + 末尾后记页（`kind ∈ article|roster|donation|postscript`）：
@@ -87,6 +106,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { WenpuCol, WenpuPage, WenpuRow } from '@/business/wenpu';
+import { ICON } from '@/business/icons';
 
 /**
  * 书页子组件 = **页式模板唯一真源**（`wenpu-book.vue` 的阅读器与打印视图共用同一份，零复制）。
@@ -124,9 +144,15 @@ const rightLabel = computed(() => props.page?.rightLabel ?? '');
 /** 修谱卷首页（`kind === 'cover'`）与卷首图地址（数据层产出，视图层零转换） */
 const isCover = computed(() => props.page?.kind === 'cover');
 const coverUrl = computed(() => props.page?.cover?.url ?? '');
-/** 封面页（`kind === 'frontcover'` · 全书第一页 · 整页只有谱名；不写书口 / 不占叶序） */
+/** 封面页（`kind === 'frontcover'` · 全书第一页 · 只占左半；不写书口 / 不占叶序） */
 const isFrontCover = computed(() => props.page?.kind === 'frontcover');
 const frontTitle = computed(() => props.page?.frontTitle ?? '');
+/** 封底页（`kind === 'backcover'` · 全书最后一页 · 只占右半；不写书口 / 不占叶序） */
+const isBackCover = computed(() => props.page?.kind === 'backcover');
+/** 封底印章资产（统一经 `business/icons.ts` 引用，组件内**不手写** `/static/icons/...` 路径） */
+const sealSrc = computed(() => ICON.WENPU_SEAL);
+/** 半叶页（封面 / 封底）：纸页需 `overflow: hidden`（半叶色块按 480×720 铺设、超出部分裁掉） */
+const isHalfLeafPage = computed(() => isFrontCover.value || isBackCover.value);
 </script>
 
 <style scoped>
@@ -188,6 +214,9 @@ const frontTitle = computed(() => props.page?.frontTitle ?? '');
   border: 1px solid #222;
   font-family: "Noto Serif TC", SimSun, serif;
 }
+/* 半叶页（**仅封面 / 封底**）：裁掉半叶色块溢出的那 2px（色块盒仍 480×720）⇒ 1px `#222` 外框全周可见。
+   其余页（谱文 / 修谱 / 后记）**不加本类** ⇒ 现有版式与读数零变化。 */
+.book-page.page-cover { overflow: hidden; }
 
 /* 「拟翻书」翻页动效（轻微、有方向感）：纯 CSS @keyframes + class 切换，H5 与小程序两端同源支持
    （**不用** Vue <transition> 包元素，小程序不支持）。
@@ -235,14 +264,49 @@ const frontTitle = computed(() => props.page?.frontTitle ?? '');
   background: #F7F3E8;
 }
 
-/* 封面页（`kind === 'frontcover'` · 全书第一页）：整页只有谱名 —— 竖排居中（writing-mode: vertical-rl）
-   · 字号 36px · 字距 6px（**一句话可改**）；纸页仍 960×720 / padding 17px 40px / 底色与边框与其它页一致 */
-.book-front-cover {
-  height: 100%;
+/* ---- 封面页 / 封底页（半叶化 · Kevin 2026-10-14 拍定 · 逐字对照 `mockup-v2.html` 变体 A）----
+   口径：**一个展开 960×720 的左右各半 480×720 各归其主** —— 封面**只占左半**（深棕 `#4A3629`
+   铺满、边到边 480×720），**右半留白**（纸色 = 纸页自身底色 `#F7F3E8`）；封底**只占右半**深棕，
+   左半留白（与封面镜像）。纸页的 **1px `#222` 外框**、**书脊**（阅读器展开态）**维持不变**。
+   半叶色块按 480×720 绝对铺设：纸页定位包含块 = padding box（958×718）⇒ 右侧 / 下侧各溢出 2px，
+   由 `.book-page.page-cover` 的 `overflow: hidden` 裁掉 ⇒ 色块视觉上**顶到外框内侧、不多出来**，
+   而元素的盒子读数仍是 **480×720**（`getBoundingClientRect()` 不受裁剪影响）。 */
+.book-front-cover,
+.book-back-cover {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+}
+/* 半叶色块：深棕 #4A3629 铺满 480×720、内容（题签 / 印章）在色块正中 */
+.cover-half {
+  position: absolute;
+  top: 0;
+  width: 480px;
+  height: 720px;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: #4A3629;
 }
+.cover-half-left { left: 0; }
+.cover-half-right { left: 480px; }
+
+/* 题签（封面 · 米色底 + 边框）：150×430 居中于左半深棕区 —— 尺寸 / 边框色 / 底色逐字照 mockup
+   （`.label{width:150px;height:430px;background:#F7F3E8;border:2px solid #8B7355;box-sizing:border-box}`） */
+.cover-label {
+  box-sizing: border-box;
+  width: 150px;
+  height: 430px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #F7F3E8;
+  border: 2px solid #8B7355;
+}
+/* 封面谱名（谱名竖排居中 · 36px · 字距 6px · **色 #222 一字不改**） */
 .front-cover-title {
   writing-mode: vertical-rl;
   text-orientation: mixed;
@@ -252,6 +316,12 @@ const frontTitle = computed(() => props.page?.frontTitle ?? '');
   color: #222;
   white-space: nowrap;
   font-family: "Noto Serif TC", SimSun, serif;
+}
+
+/* 封底印章（暖白 `#F1E7D6` · 约 300×300 居中于右半深棕区；资产 = `ICON.WENPU_SEAL` 的 SVG） */
+.cover-seal {
+  width: 300px;
+  height: 300px;
 }
 
 /* 4 行：纵向 4 等分；行间 1px #111 上边框（首行无） */

@@ -101,9 +101,11 @@
  *    ⇒ **与书口谱名同口径**（已 `toTraditional`，繁体上屏；视图层零字形转换）；
  *    ③ **不参与叶序**：封面页**不写任何书口**（`leftLabel` / `rightLabel` 均空），`finishBook()` 计数**跳过封面**
  *    ⇒ 其后各页书口与「不加封面」时**逐字一致**（仍从 `葉一` 起）；
- *    ④ **排版**（一句话可改）：竖排居中（`writing-mode: vertical-rl` · 36px · 字距 6px）；纸页仍 960×720、
- *    padding 17px 40px、底色与边框与其它页一致（**视图层 `.book-front-cover` 分支**）；
- *    ⑤ **空书不渲染封面**（无谱文、无修谱 ⇒ 保持既有「暫無譜文」空态单页）；`empty` 判定**只看非封面页数**；
+ *    ④ **排版**（Kevin 2026-10-14 改定 · 半叶化）：**只占左半 480×720**（深棕 `#4A3629` 铺满、边到边），
+ *    **右半留白**（纸色 `#F7F3E8`）；左半正中一块**米色题签**（`#F7F3E8` 底 + 2px `#8B7355` 边框、
+ *    150×430 居中），谱名竖排 36px / 字距 6px / 色 `#222`（**字色一字不改**）；纸页仍 960×720、
+ *    1px `#222` 外框与书脊不变（**视图层 `.book-front-cover` 分支**）；
+ *    ⑤ **空书不渲染封面**（无谱文、无修谱 ⇒ 保持既有「暫無譜文」空态单页）；`empty` 判定**只看非封面/封底页数**；
  *    ⑥ 零后端改动、零新增请求（谱名已在既有 tree-meta 读取里）。
  *
  * 15) **乌丝栏双轨竖排（Kevin 2026-10-12 拍定 · 仅 `article` 族務紀文 / `postscript` 后记两页）**：
@@ -116,6 +118,16 @@
  *    （原单轨 29px / 30 栏 ⇒ 栏格变宽、每页栏数减少；常量见 `WENPU_DUAL_*`，**一句话可改**）。
  *    `roster` / `donation` / `genealogy` / `frontcover` / `cover` **一律保持单轨现状、字字不变**
  *    （单轨栏不设 `puncts` 字段 ⇒ 视图层不渲染标点轨）。
+ *
+ * 16) **封底页（Kevin 2026-10-14 拍定 · 与封面成对）**：新增页别 `WenpuPage.kind = 'backcover'`。
+ *    ① **位置 = 全书最后一页**（在**后记 `postscript` 之后**）；
+ *    ② **内容 = 只有一枚印章**（印文「中华数字家谱」；**暖白 `#F1E7D6`**、约 300×300 居中）；
+ *    ③ **不参与叶序**：与封面同口径（`leftLabel` / `rightLabel` 均空、`finishBook()` 计数同样跳过）
+ *    ⇒ 其后不存在页，**已有任何页的书口逐字不变**；
+ *    ④ **排版（半叶化 · 与封面镜像）**：**只占右半 480×720**（深棕 `#4A3629` 铺满、边到边），
+ *    **左半留白**（纸色 `#F7F3E8`）；纸页仍 960×720、1px `#222` 外框与书脊不变
+ *    （**视图层 `.book-back-cover` 分支**）；印章资产 = `static/icons/wenpu-seal.svg`（**SVG**，经 `icons.ts` 引用）；
+ *    ⑤ **空书不渲染**（与封面同口径：整本无页 ⇒ 不插封面也不插封底，保持「暫無譜文」空态单页）。
  *
  * 取数（既有 API，零新增后端调用）：`fetchPersonList(treeId, 0, 0)` 全量人物 +
  * `fetchFamilyList(treeId)` 家族（含 `father_handle` / `mother_handle` / `child_handles[]`）+
@@ -192,12 +204,16 @@ export interface WenpuPage {
    * 页类别 —— **缺省语义 = `'genealogy'`**（既有谱文页；⇒ 既有行为零变化）。
    * 修谱卷的四类内容取 `cover` / `article` / `roster` / `donation`（视图层只对 `cover` 走大图分支）；
    * **后记页 = `'postscript'`**（平台自动生成、读者不可编辑、独立整页置于全书最末）；
-   * **封面页 = `'frontcover'`**（W-26 · 全书**第一页**、整页只有繁体谱名、**不写任何书口**、**不占叶序**）。
+   * **封面页 = `'frontcover'`**（W-26 · 全书**第一页**、只占**左半**、只有繁体谱名、
+   * **不写任何书口**、**不占叶序**）；
+   * **封底页 = `'backcover'`**（Kevin 2026-10-14 · 全书**最后一页**（后记之后）、只占**右半**、
+   * 只有一枚暖白印章、**不写任何书口**、**不占叶序**；与封面成对）。
    */
-  kind?: 'genealogy' | 'frontcover' | 'cover' | 'article' | 'roster' | 'donation' | 'postscript';
+  kind?: 'genealogy' | 'frontcover' | 'backcover' | 'cover' | 'article' | 'roster' | 'donation' | 'postscript';
   /**
    * **封面页（`kind === 'frontcover'`）的谱名**（**已是繁体**、视图层零字形转换）：
-   * 整页只有该文本（竖排居中 · 36px · 字距 6px）。
+   * 只占**左半**深棕 **`#4A3629`**（480×720）内的**米色题签**（150×430 · 2px `#8B7355` 边框）里，
+   * 竖排居中 · 36px · 字距 6px · 色 `#222`（**字色一字不改**）。
    */
   frontTitle?: string;
   /** 卷首大图（**仅 `kind === 'cover'`**）：整幅图占满纸页、**保留左右书口** */
@@ -950,13 +966,13 @@ export function buildRevisionPages(revision: RevisionView | null | undefined): W
 
 /** 统一分页收口：按**全书页序**写书口 —— 左 `▲ <谱名> 葉<2k+1>` / 右 `▲ <堂号> 葉<2k+2>`（汉字序）。
  *
- *  **封面页（`kind === 'frontcover'`）不参与计数、不写任何书口**（leftLabel / rightLabel 均空）：
- *  叶序计数器只在非封面页上递增 ⇒ 封面**不占用叶序**，其后各页的书口与「不加封面」时**逐字一致**
- *  （新增封面页的下一叶仍为 `葉一` / `葉二`）。 */
+ *  **封面页（`kind === 'frontcover'`）与封底页（`kind === 'backcover'`）不参与计数、不写任何书口**
+ *  （leftLabel / rightLabel 均空）：叶序计数器只在其余页上递增 ⇒ 封面 / 封底**不占用叶序**，
+ *  其后各页的书口与「不加封面/封底」时**逐字一致**（新增封面页的下一叶仍为 `葉一` / `葉二`）。 */
 function finishBook(allPages: WenpuPage[], title: string, hall: string, rowCount: number): WenpuBook {
   let leafIndex = 0;
   for (const page of allPages) {
-    if (page.kind === 'frontcover') {
+    if (page.kind === 'frontcover' || page.kind === 'backcover') {
       page.leftLabel = '';
       page.rightLabel = '';
       continue;
@@ -970,8 +986,9 @@ function finishBook(allPages: WenpuPage[], title: string, hall: string, rowCount
     title,
     hall,
     rowCount,
-    // 空态**只按非封面页数**判定 ⇒ 空书不得仅因封面而由 `empty:true` 变假（与「暫無譜文」单页并存）
-    empty: allPages.filter((p) => p.kind !== 'frontcover').length === 0,
+    // 空态**只按非封面 / 非封底页数**判定 ⇒ 空书不得仅因封面 / 封底而由 `empty:true` 变假
+    //（与「暫無譜文」单页并存）
+    empty: allPages.filter((p) => p.kind !== 'frontcover' && p.kind !== 'backcover').length === 0,
   };
 }
 
@@ -1016,10 +1033,15 @@ export async function buildWenpuBook(
      *  且叶序计数跳过它 ⇒ 其后各页书口与「不加封面」时逐字一致，仍从 `葉一` 起）。 */
     const frontCoverPages = (): WenpuPage[] =>
       title ? [{ rows: [], leftLabel: '', rightLabel: '', kind: 'frontcover', frontTitle: title }] : [];
-    /** 全书页序 = 【封面】+（修谱卷 + 谱文页 + 后记）；**整本无页 ⇒ 不插封面**
-     *  （空书保持既有「暫無譜文」空态单页；`empty` 判定不得因封面由真变假）。 */
+    /** 封底页（Kevin 2026-10-14 · 与封面成对）：**全书最后一页**（在**后记之后**），
+     *  整页**只有一枚印章**（印文「中华数字家谱」· 暖白 `#F1E7D6` · 约 300×300 居中于右半）；
+     *  **不占叶序 / 不写任何书口** 同由 `finishBook()` 统一处置（与封面同一判据）。
+     *  无文本内容 ⇒ 不依赖 `title`（印文来自资产，与谱名无关）。 */
+    const backCoverPages = (): WenpuPage[] => [{ rows: [], leftLabel: '', rightLabel: '', kind: 'backcover' }];
+    /** 全书页序 = 【封面】+（修谱卷 + 谱文页 + 后记）+【封底】；**整本无页 ⇒ 封面 / 封底皆不插**
+     *  （空书保持既有「暫無譜文」空态单页；`empty` 判定不得因封面 / 封底由真变假）。 */
     const assemble = (core: WenpuPage[]): WenpuPage[] =>
-      core.length ? [...frontCoverPages(), ...core] : core;
+      core.length ? [...frontCoverPages(), ...core, ...backCoverPages()] : core;
 
     const people: PersonSummary[] = (list?.data || []).filter(Boolean);
     if (!people.length) {
@@ -1247,8 +1269,8 @@ export async function buildWenpuBook(
       while (slice.length < WENPU_ROWS_PER_PAGE) slice.push(null);
       genealogyPages.push({ rows: slice, leftLabel: '', rightLabel: '' });
     }
-    // 封面页**置于全书最前**、修谱页插在谱文页之前、后记页置于全书最末；书口与叶序由 `finishBook()`
-    // 按**全书页序**统一分配、**封面页跳过计数**（修谱页占前几葉、谱文顺延、后记收尾、不重起编号）
+    // 封面页**置于全书最前**、修谱页插在谱文页之前、后记页置于后段、封底页**置于全书最末**；书口与叶序由
+    // `finishBook()` 按**全书页序**统一分配、**封面 / 封底页跳过计数**（修谱页占前几葉、谱文顺延、后记收尾、封底压轴、不重起编号）
     return finishBook(assemble(appendPostscript([...revisionPages, ...genealogyPages])), title, hall, rows.length);
   } catch {
     // 读失败（网络错误 / 非 2xx / **树不存在 404**）⇒ **不得**静默当作 `empty:true`：

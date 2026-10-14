@@ -20,6 +20,12 @@ export const ICON = {
   SCROLL: '/static/icons/scroll.png',
   /** 兰帖碎片（兰帖碎裂产物） */
   SCROLL_SHARD: '/static/icons/scroll-shard.png',
+  /**
+   * 文谱封底印章（印文 =「中华数字家谱」；**SVG** —— 600×600 透明 PNG 要 95,972 B /
+   * 300×300 亦需 28,784 B，而本 SVG 仅 ~10.4 KB 且打印不虚）。
+   * 已重上色为**暖白**（原件本色 `#ad413c` ⇒ 现 `#F1E7D6`）⇒ 在**深棕 `#4A3629`** 封底底色上可见。
+   */
+  WENPU_SEAL: '/static/icons/wenpu-seal.svg',
 } as const;
 
 /** 按资产种类取图标 URL（seed→石榴籽 / jade→石榴籽玉 / 其它→空串不显示） */
