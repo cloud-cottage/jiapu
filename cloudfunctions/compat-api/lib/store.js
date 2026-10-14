@@ -91,9 +91,83 @@ let app = null;
 let metaCache = null;
 /** local 模式：`metaCache` 对应的磁盘指纹（mtimeMs/size/ctimeMs）；null = 快照时拿不到 stat */
 let metaStamp = null;
-const treeCache = new Map(); // tree_id -> tree JSON
+const treeCache = new Map(); // tree_id -> { tree: 树 JSON, at: 写入缓存时刻(ms), stamp: local 磁盘指纹 }（见 TREE_CACHE_TTL_MS / statTreeFile）
 const eventIndexCache = new Map(); // tree_id -> Map(event_handle -> event)
 const colCache = new Map(); // col -> Map(_id -> doc)
+
+/**
+ * 树缓存**短路 TTL**（毫秒）—— 单点常量，改这一处即可。
+ *
+ * 为什么需要：云函数是**多常驻实例**，每个实例各自在自己进程内存里缓存树 JSON，实例之间**没有**
+ * 失效通道（实测事故：同一棵树连续 GET /tree/rank 得 118/119/118/118/118，其中 119 才是云存储真值）。
+ * 没有 TTL ⇒ 单个实例返回陈旧树的窗口上界是「无穷大」。
+ * 15s 让「最多多久以后必然重新从真源取」有界；显式失效点（`treeCache.delete`：写成功 /
+ * 写失败回滚 / 删树 / 跨树事务失败）保持原样且优先级更高（命中即立刻失效，不必等 TTL）。
+ * TTL 只影响「多久后重读」，命中语义与返回值形状不变。
+ */
+const TREE_CACHE_TTL_MS = 15 * 1000;
+
+/**
+ * `trees/<tree_id>.json` 的磁盘指纹（**local 模式**「外部变更检测」的比对基准）。
+ *
+ * 为什么 local 需要它（与上面 TTL 是**互补**的两件事，不是替代）：
+ * 云端的真源是对象存储，进程内没有廉价的变更检测通道（只能整份 `downloadFile`）⇒ 靠 TTL 兜底；
+ * local 的真源就是**盘上那个文件**，而盘上的文件**不只被 saveTree 改**（迁移脚本 / 运维修数 /
+ * 另一个进程 / 测试夹具直接 `fs.writeFileSync`）。此时进程内缓存条目已不是真源快照，
+ * 若仍当基准（`tree.version` 取自它），写路径的权威 CAS 就会把「基于真源的合法写」误判成冲突。
+ * 同口径先例 = `metaCache` / `metaStamp`（第 507 行注释）。
+ *
+ * 精度用 **bigint 纳秒**（`mtimeNs` / `ctimeNs`）：夹具在同一毫秒内重写同一棵树是真实存在的，
+ * 而 `version` 只差 1 时文件 size 常常完全相同 ⇒ 毫秒精度会漏判（TTL 15s 内的陈旧命中）。
+ * 指纹取不到（文件不存在 / 目录被占位 / 无权限）→ null：调用方沿用现有缓存，**绝不因此新增抛错**。
+ */
+function statTreeFile(treeId) {
+  try {
+    const st = fs.statSync(path.join(OUT, 'trees', `${treeId}.json`), { bigint: true });
+    return { mtimeNs: st.mtimeNs, size: st.size, ctimeNs: st.ctimeNs };
+  } catch {
+    return null;
+  }
+}
+
+/** 两个指纹是否同一快照；任一侧为 null（取不到 stat）一律判「不可比」→ 沿用缓存（不改变失败面） */
+function sameTreeStamp(a, b) {
+  return !!a && !!b && a.mtimeNs === b.mtimeNs && a.size === b.size && a.ctimeNs === b.ctimeNs;
+}
+
+/**
+ * 写入进程内树缓存（唯一入口）。
+ * @param {string} treeId
+ * @param {object} tree 树 JSON
+ * @param {{mtimeNs:bigint,size:bigint,ctimeNs:bigint}|null} [stamp] 该内容对应的真源指纹：
+ *   local 必须传「内容读出 / 落盘当时」的指纹（**先取指纹再动内容**，保证指纹不后于内容）；
+ *   cloud 传 undefined（云端无此通道，靠 TTL）。
+ */
+function cacheTree(treeId, tree, stamp) {
+  if (treeId) treeCache.set(treeId, { tree, at: Date.now(), stamp: stamp || null });
+}
+
+/**
+ * 读进程内树缓存；以下情形视为未命中并顺手清掉（返回 null = 调用方回真源取）：
+ * ① 已过 TTL；②（local）磁盘指纹与缓存条目不符 —— 盘上被外部改过 ⇒ 本条目不再是真源快照。
+ * 注意：本函数**只影响「这次读要不要回真源」**，不参与写路径的 CAS 判定（陈旧写照旧被拒）。
+ */
+function cachedTree(treeId) {
+  const entry = treeCache.get(treeId);
+  if (!entry) return null;
+  if (Date.now() - entry.at >= TREE_CACHE_TTL_MS) {
+    treeCache.delete(treeId);
+    return null;
+  }
+  // local：只有「两边都取到指纹且不同」才判定盘上被外部改过（取不到 stat 一律沿用缓存，
+  // 与 `getMeta` 的 metaStamp 口径一致 —— 目录被占位 / 权限异常时不新增抛错也不新增失效）
+  const stamp = statTreeFile(treeId);
+  if (stamp && entry.stamp && !sameTreeStamp(stamp, entry.stamp)) {
+    treeCache.delete(treeId);
+    return null;
+  }
+  return entry.tree;
+}
 
 // ---- SDK 互斥队列（并发 abort 防护） ----
 
@@ -779,10 +853,13 @@ export async function saveMeta(meta) {
 // ---- 树 JSON（结构真源） ----
 
 export async function getTree(treeId) {
-  if (treeCache.has(treeId)) return treeCache.get(treeId);
+  const cached = cachedTree(treeId); // TTL 内 **且**（local）磁盘未被外部改过才命中
+  if (cached) return cached;
   let tree = null;
+  let stamp; // local：本次内容对应的磁盘指纹（**先取指纹再读内容**，指纹绝不后于内容）
   if (SOURCE === 'local') {
     const p = path.join(OUT, 'trees', `${treeId}.json`);
+    stamp = statTreeFile(treeId);
     if (fs.existsSync(p)) tree = JSON.parse(fs.readFileSync(p, 'utf8'));
   } else {
     const meta = await getMeta();
@@ -792,14 +869,68 @@ export async function getTree(treeId) {
       tree = JSON.parse(Buffer.from(r.fileContent).toString('utf8'));
     }
   }
-  if (tree) treeCache.set(treeId, tree);
+  if (tree) cacheTree(treeId, tree, stamp);
   return tree;
 }
 
-/** 保存树 JSON（version 乐观锁：写前比对，冲突抛错） */
+/**
+ * 写前**权威版本重读**（绕开进程内 treeCache，从真源现场取当前落库版本）：
+ * - cloud：按 tree-meta.storage_files[treeId] 的 fileID **重新 downloadFile** 那份对象；
+ * - local：读盘上的 `trees/<treeId>.json`。
+ * 返回 `{ found, version }`；`found === false` = 真源里还没有这棵树（首写，无版本可比）。
+ * 读不到（下载失败 / JSON 坏）**不吞异常**：交给调用方 fail-closed，宁可不写也不拿内存旧树覆盖。
+ */
+async function readAuthoritativeVersion(treeId) {
+  if (SOURCE === 'local') {
+    const p = assertWriteAllowed(path.join(OUT, 'trees', `${treeId}.json`)); // 保持「沙箱护栏优先于并发冲突」的既有错误优先级
+    if (!fs.existsSync(p)) return { found: false, version: undefined };
+    const cur = JSON.parse(fs.readFileSync(p, 'utf8'));
+    return { found: true, version: cur?.version };
+  }
+  const meta = await getMeta();
+  const fileId = meta?.storage_files?.[treeId];
+  if (!fileId) return { found: false, version: undefined };
+  const r = await sdkCall(() => getApp().downloadFile({ fileID: fileId }));
+  const cur = JSON.parse(Buffer.from(r.fileContent).toString('utf8'));
+  return { found: true, version: cur?.version };
+}
+
+/**
+ * 并发冲突错误（树被别处改过 / 调用方自带的期望版本不符）。
+ *
+ * **`status: 409` 是必须的**：本错误没有 `code` 也没有有限 `status` 时，路由 catch 的
+ * `errorStatusOf` / `eco.errorPayload` 会把它判成系统错误 ⇒ HTTP 400 + body
+ * `{error:'服务内部错误',status:500}`（状态码与文案互相矛盾，用户看不懂也刷不掉）；
+ * 带上 409 后走「无 code 且带 status 的业务错误」分支 ⇒ **HTTP 409 + 后端原文**。
+ * 计费路由的冲正（`fee_refunded`）语义不受影响（由闸门标记决定，与 status 无关）。
+ */
+function treeConflictError() {
+  const e = new Error('并发冲突：树已被其他操作修改，请刷新后重试');
+  e.status = 409;
+  return e;
+}
+
+/**
+ * 保存树 JSON（version 乐观锁：写前比对，冲突抛错）
+ *
+ * **权威 CAS（本次修复）**：`expectedVersion` 只是调用方自带的期望值（多数调用点传的就是
+ * 自己手里那棵树的 `tree.version`，等于自比、形同虚设；未传时旧实现整段跳过校验）。
+ * 因此这里**无条件**从真源重读当前落库版本，与「本树对象携带的版本」比对：不一致 ⇒ 抛并发冲突、
+ * **绝不写**。旧实现只比内存里那棵树、从不读云端对象的版本 ⇒ 多实例下陈旧实例的一次写会把
+ * 内存里的旧树**整份覆盖**云端（静默丢失别人刚写进去的节点）。
+ * local 模式行为不变（同样更稳：盘上文件即真源）。
+ */
 export async function saveTree(tree, expectedVersion) {
   if (expectedVersion !== undefined && tree.version !== expectedVersion) {
-    throw new Error('并发冲突：树已被其他操作修改，请刷新后重试');
+    throw treeConflictError();
+  }
+  // 权威 CAS：真源版本 ≠ 本树对象携带的版本 ⇒ 本对象已陈旧，拒绝覆盖
+  const authoritative = await readAuthoritativeVersion(tree.tree_id);
+  if (authoritative.found && authoritative.version !== tree.version) {
+    // 内存里这棵树已陈旧 → 失效缓存，让调用方的下一次读回真源
+    treeCache.delete(tree.tree_id);
+    eventIndexCache.delete(tree.tree_id);
+    throw treeConflictError();
   }
   // 落盘失败要「不留幻影」：记住自增前的版本与时间戳，失败时**原地还原**（磁盘才是真值），
   // 并失效进程内缓存 —— 否则同进程后续 getTree 会读到盘上不存在的幻影结构（真实缺陷 B：
@@ -808,11 +939,13 @@ export async function saveTree(tree, expectedVersion) {
   const prevUpdatedAt = tree.updated_at;
   tree.version = (tree.version || 1) + 1;
   tree.updated_at = new Date().toISOString();
+  let stamp; // local：落盘后重新取指纹（本条目对应「我们刚写下的那份字节」）
   try {
     if (SOURCE === 'local') {
       const p = assertWriteAllowed(path.join(OUT, 'trees', `${tree.tree_id}.json`));
       fs.mkdirSync(path.dirname(p), { recursive: true });
       fs.writeFileSync(p, JSON.stringify(tree, null, 2));
+      stamp = statTreeFile(tree.tree_id);
     } else {
       const meta = await getMeta();
       const fileId = meta?.storage_files?.[tree.tree_id];
@@ -827,7 +960,7 @@ export async function saveTree(tree, expectedVersion) {
     eventIndexCache.delete(tree.tree_id);
     throw e;
   }
-  treeCache.set(tree.tree_id, tree);
+  cacheTree(tree.tree_id, tree, stamp); // 写成功 → 刷新缓存（带 TTL 时间戳 + local 磁盘指纹）
   eventIndexCache.delete(tree.tree_id); // 树变更 → 事件索引失效
   return tree;
 }
@@ -837,10 +970,12 @@ export async function saveTree(tree, expectedVersion) {
  * 之后 saveTree 才能按 fileID 覆盖（saveTree 依赖 storage_files 已有该树）。
  */
 export async function createTreeFile(tree) {
+  let stamp; // local：落盘后取指纹（首写 = 本缓存条目对应的就是这份字节）
   if (SOURCE === 'local') {
     const p = assertWriteAllowed(path.join(OUT, 'trees', `${tree.tree_id}.json`));
     fs.mkdirSync(path.dirname(p), { recursive: true });
     fs.writeFileSync(p, JSON.stringify(tree, null, 2));
+    stamp = statTreeFile(tree.tree_id);
   } else {
     const r = await sdkCall(() =>
       getApp().uploadFile({ cloudPath: `trees/${tree.tree_id}.json`, fileContent: Buffer.from(JSON.stringify(tree)) }),
@@ -852,7 +987,7 @@ export async function createTreeFile(tree) {
       storage_files: { ...(cfg.storage_files || {}), [tree.tree_id]: r.fileID },
     }));
   }
-  treeCache.set(tree.tree_id, tree);
+  cacheTree(tree.tree_id, tree, stamp); // 首写入 → 刷新缓存（带 TTL 时间戳 + local 磁盘指纹）
   return tree;
 }
 
