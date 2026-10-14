@@ -633,3 +633,50 @@ export interface InviteBindResult {
   /** 奖励回执（后端口径未定 ⇒ 只透传，不解析、不外显） */
   rewards?: unknown;
 }
+
+// ---- 家谱内容设定（后记文案模板）------------------------------------------------------------
+//
+// 契约（后端并行批）：读谱侧 `GET /revisions?tree_id=` 顶层 `wenpu_config`；管理侧
+// `GET /admin/wenpu-config`（读现值）/ `PUT /admin/wenpu-config`（保存，体带 `version` 乐观锁）。
+
+/**
+ * 家谱内容设定 = **后记文案模板**（**真源在后端**；前端**不内置默认文案**）。
+ *
+ * 两个消费面：① 读谱（`wenpu_config`）⇒ `business/wenpu.ts` 的 `buildPostscriptPages()` 按模板渲染；
+ * ② 后台（`pages/admin/index.vue` 的「家谱内容设定」版块）⇒ 读写现值 + 「恢复默认」填回默认模板。
+ *
+ * ⚠️ 模板**逐字使用、不做简繁转换**（后台直接输繁体）；逗号须**全角「，」**。
+ */
+export interface WenpuConfig {
+  /**
+   * 后记文案**模板**（单一模板 —— 后端真源；逐轮重复句由 `{{{ … }}}` 块表达）。
+   * 可用变量 —— **一律繁体标签**（本层**只认繁体**、不做简繁归一；未命中即未知变量、原样保留）：
+   * - **任意位置**：`{肇創年份}` `{肇創人}` `{當前年份}`；
+   * - **`{{{…}}}` 块内**（随轮；**至多一个块**）：`{修譜序次}` `{修譜年份}` `{主司}`
+   *   —— 写在块**外**由**管理面**判 400。
+   */
+  postscript_template: string;
+  /** 是否仍为后端内置默认模板（**缺失 ⇒ 未知**，界面显示「未知」—— 不猜） */
+  is_default?: boolean;
+  /** 并发版本号（`PUT` 必带；与服务端现值不一致 ⇒ 409） */
+  version: number;
+  /**
+   * 后端内置**默认模板**（`GET /admin/wenpu-config` 出参 `defaults.postscript_template` 的就地摊平）——
+   * 供后台「恢复默认」填回；**缺失 ⇒ 退回前端兜底常量**（`business/wenpu.ts` 的 `DEFAULT_POSTSCRIPT_TEMPLATE`，
+   * 与后端默认逐字一致）。
+   */
+  default_postscript_template?: string;
+}
+
+/** `PUT /admin/wenpu-config` 请求体（`version` = 乐观锁：带上读出时的现值） */
+export interface WenpuConfigPayload {
+  postscript_template: string;
+  version: number;
+}
+
+/** `PUT /admin/wenpu-config` 出参（后端若随保存回传新配置则直接采用；缺失 ⇒ 页面回读 `GET`） */
+export interface WenpuConfigSaveResult {
+  ok?: boolean;
+  config?: WenpuConfig;
+  version?: number;
+}

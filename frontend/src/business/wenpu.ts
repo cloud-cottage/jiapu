@@ -78,17 +78,17 @@
  *    昭範正圖（`cover`）仍独立整页大图、**不入列**。
  * 13) **后记页（新增 · `kind = 'postscript'` · 平台自动生成、读者不可编辑）**：**独立整页置于全书最末**
  *    （仅当全书已有页面时追加；书口沿用 `finishBook()` 同一套连号）。
- *    **文案 = Kevin 2026-10-12 定稿（繁体 · 逐字上屏、不经 `toTraditional`；标点一字不改）**：
+ *    **文案 = Kevin 2026-10-12 定稿（繁体 · 逐字上屏；标点一字不改）**；仅**最终整段过一次** `toTraditional`（补齐月名简体字 `闰`/`腊`）：
  *      多轮（**每轮各出一句**「其後…主司…」；Kevin 例文只给 1 轮 ⇒ 逐轮句 **一句话可改**，本句按「一經 / 二經 / 三經…」逐轮各写一句）：
- *        `本族家譜，肇創於{Y1}之年，由{C1}始纂。其後{N}經修輯於{Y}，主司{M}。今為最新釐正版，是為{Ylast}訂本。願後之族人、續而增修之。`
+ *        `本族家譜，肇創於{Y1}，由{C1}始纂。其後{N}經修輯於{Y}，主司{M}。今為最新釐正版，是為{Ylast}訂本。願後之族人、續而增修之。`
  *      无修订（省「其後…主司…」句）：
- *        `本族家譜，肇創於{Y1}之年，由{C1}始纂。今為最新釐正版，是為{Y1}訂本。願後之族人、續而增修之。`
+ *        `本族家譜，肇創於{Y1}，由{C1}始纂。今為最新釐正版，是為{Y1}訂本。願後之族人、續而增修之。`
  *    取值来源 = 后端并行批 `GET /revisions` 顶层**新增** `postscript`（只增不改）+ tree-meta + `revisions[]`：
  *      `{C1}` = `postscript.created_by_name`；`{M}` = `postscript.masters[]` 里 `seq` 匹配该轮的 `name`；
- *      `{Y1}` = 创建农历干支年 = tree-meta `created_at`（复用 `lunar.ts`）；`{Y}` = 该轮 `effective_at`
- *      优先、缺则 `started_at` 的农历干支年；`{Ylast}` = 最后一轮的农历年（无修订 ⇒ 创建年）。
+ *      `{Y1}` = 创建农历**年月**位 = tree-meta `created_at`（复用 `lunar.ts`；值如「丙午年七月」/「乙酉年」）；
+ *      `{Y}` = 该轮 `effective_at` 优先、缺则 `started_at` 的同形年月位；`{Ylast}` = 最后一轮者（无修订 ⇒ 创建年位）。
  *    **兜底（`postscript` 缺失 / 字段缺失 / 请求失败 ⇒ 不改前两部分、不报错；全部「一句话可改」）**：
- *      · `postscript` 缺失 或 `created_by_name` 空串 ⇒ 省「由{C1}」半句 ⇒ `肇創於{Y1}之年。`；
+ *      · `postscript` 缺失 或 `created_by_name` 空串 ⇒ 省「由{C1}」半句 ⇒ `肇創於{Y1}。`；
  *      · `masters` 缺失 或该轮无名 ⇒ 省「，主司{M}」半句 ⇒ `其後{N}經修輯於{Y}。`；
  *      · `created_at` 非 ISO / 缺失 ⇒ 年位用 `不詳`（**仍保持句形完整**）；各轮年位同理。
  *    revisions 读取失败或空 ⇒ 按「无修订」态渲染、不报错、不影响前两部分。
@@ -124,8 +124,8 @@
 
 import { fetchFamilyList, fetchPersonList, fetchTreeMetaRemote } from './api';
 import type { FamilySummary } from './api';
-import type { PersonSummary, TreeMeta, TreeEntry } from './types';
-import { ganZhiOf, LUNAR_FIRST_YEAR, LUNAR_LAST_YEAR, solarToLunarFields, solarToLunarText } from './lunar';
+import type { PersonSummary, TreeMeta, TreeEntry, WenpuConfig } from './types';
+import { ganZhiOf, LUNAR_FIRST_YEAR, LUNAR_LAST_YEAR, lunarMonthName, solarToLunarFields, solarToLunarText } from './lunar';
 import { toTraditional } from './traditional';
 import type { RevisionRecord, RevisionView } from './revision';
 
@@ -146,7 +146,7 @@ export const WENPU_FLOW_COLS_PER_PAGE = 30;
  * 每个栏格拆为 **字列轨（左）** + **标点列轨（右）** —— 标点列**真占版宽**（不再是「标点也吃一个 26px 字位」）。
  *
  * 转译规则（**仅渲染时派生**：底层存储保留原文含标点，本层**零回写、不改后端**）：
- *   `，` ⇒ `·`（实心圆点）/ `。` ⇒ `○`（空心圆）；标点字符**从字列中剔除**（不占字位），改画在
+ *   `，` ⇒ `●`（实心圆点）/ `。` ⇒ `○`（空心圆）；标点字符**从字列中剔除**（不占字位），改画在
  *   **它前面紧邻那个汉字**同一格的标点轨内（竖排：字在左、标点在右，格内垂直居中 ⇒ 与所属字**同 y 带**）；
  *   无标点的格 ⇒ 标点轨留白。空格（三字段拼接空格 / 存量数据折出的空格）**一律不占字位**（两轨皆不进）。
  *
@@ -171,7 +171,7 @@ export interface WenpuCol {
   /**
    * **乌丝栏双轨竖排**（仅 `article` / `postscript` 页的栏）：标点列轨逐位对齐数组 ——
    * 与 `text` 的**码点数组同长且逐位对齐**（`puncts[i]` = `text` 第 i 个字右侧标点轨内的字面，
-   * 无标点 = `''` 留白）。**标点字符已从 `text` 剔除**（`，` ⇒ `·` / `。` ⇒ `○`）+ **空格不占位**。
+   * 无标点 = `''` 留白）。**标点字符已从 `text` 剔除**（`，` ⇒ `●` / `。` ⇒ `○`）+ **空格不占位**。
    * 缺省（`undefined`）= 单轨栏（`roster` / `donation` / `genealogy` 一律不设该字段 ⇒ 行为字字不变）。
    */
   puncts?: string[];
@@ -250,6 +250,39 @@ function chineseNum(n: number): string {
     return DIGITS[Math.floor(v / 1000)] + '千' + (r === 0 ? '' : r < 100 ? '零' + chineseNum(r) : chineseNum(r));
   }
   return String(v);
+}
+
+/** **大写数字字形**（修譜序次口径；**繁体**：2 = `貳`、3 = `參` —— 不是「贰 / 叁」；**一句话可改**） */
+const UPPER_DIGITS = ['零', '壹', '貳', '參', '肆', '伍', '陸', '柒', '捌', '玖'];
+/** 大写数字位名（万位以内：仟 / 佰 / 拾；个位位名为空串） */
+const UPPER_UNITS = ['', '拾', '佰', '仟'];
+
+/**
+ * 正整数 → **繁体大写数字**（`{修譜序次}` 专用；与 `chineseNum()`（小写 一/二/三）**两套并存、互不替换**）：
+ *   1–9 ⇒ 壹貳參肆伍陸柒捌玖；10 ⇒ 壹拾；11 ⇒ 壹拾壹；100 ⇒ 壹佰；101 ⇒ 壹佰零壹；110 ⇒ 壹佰壹拾；
+ *   1000 ⇒ 壹仟；1001 ⇒ 壹仟零壹（`拾/佰/仟` 位 + **缺位补一个 `零`**、末尾缺位不写）。
+ * **兜底**：超 1–9999 ⇒ 退回阿拉伯数字串；非有限数 ⇒ `''` —— **与后端 `bigNumOf()` 逐字同口径**
+ * （同一序次 ⇒ 同一字形；前后端不得各写一套）。
+ */
+function chineseUpperNum(n: number): string {
+  const v = Math.floor(Number(n));
+  if (!Number.isFinite(v)) return '';
+  if (v < 1 || v > 9999) return String(v); // 兜底：退回阿拉伯数字串（**不静默丢内容**；同后端 `bigNumOf()`）
+  const s = String(v);
+  let out = '';
+  let pendingZero = false;
+  for (let i = 0; i < s.length; i += 1) {
+    const d = Number(s[i]);
+    const unit = UPPER_UNITS[s.length - 1 - i];
+    if (d === 0) {
+      pendingZero = true;
+      continue;
+    }
+    if (pendingZero && out) out += UPPER_DIGITS[0]; // 缺位补**一个** `零`
+    pendingZero = false;
+    out += UPPER_DIGITS[d] + unit;
+  }
+  return out;
 }
 
 /** 子女标签：同性别内**各自**计数（长子 / 次子 / 三子…；长女 / 次女 / 三女…） */
@@ -416,7 +449,8 @@ function errorBook(title: string, hall: string): WenpuBook {
 // - **人物名录页（缺省 `genealogy`）一字不动**：17px / 每页 4 行 / 每行 ≤30 栏 / 每栏恰 10 字 /
 //   name-col 20px / 行间 1px #111 上边框全保留（本节不产 genealogy 页）。
 // - **繁体例外**：修谱卷内容**存储即繁体** ⇒ 此处**不经 `toTraditional`**（避免 s2t 表非幂等 quirk
-//   造成字形漂移）；后记文案亦按繁体逐字给出、同此先例；书口文案仍走 `toTraditional`（`titleOf` / `hallOf`）。
+//   造成字形漂移）；后记文案按繁体逐字给出，**仅对其最终文本过一次** `toTraditional`（单次；补齐
+//   `lunar.ts` 月名简体字 `闰`/`腊`，见 `buildPostscriptPages` ⑤）；书口文案仍走 `toTraditional`（`titleOf` / `hallOf`）。
 // - **同一套连号**：修谱页插在谱文页**之前**、后记页**置于全书最末**，页码由 `finishBook()` 按
 //   **全书页序**统一分配（第 k 页左 `2k+1` / 右 `2k+2`，汉字序）⇒ 全书连号、**不重起编号**。
 // - **历次全部并列**：`revision.revisions` 按 `seq` 升序累加（第 1 次在前），不分组、不折叠；
@@ -445,12 +479,12 @@ function flowColsOf(texts: string[]): WenpuCol[] {
 
 // ---- 乌丝栏双轨竖排（**仅 `article`（族務紀文）/ `postscript`（后记）**）------------------------------------
 // 转译规则（**仅渲染时派生**：底层存储保留原文含标点，本层零回写、不改后端 / 存储口径）：
-//   `，` ⇒ `·`（实心圆点）、`。` ⇒ `○`（空心圆）；**标点字符从字列剔除**（不占字位），
+//   `，` ⇒ `●`（实心圆点）、`。` ⇒ `○`（空心圆）；**标点字符从字列剔除**（不占字位），
 //   改挂到**它前面紧邻那个汉字**的标点轨（竖排：字在左、标点在右，格内垂直居中 ⇒ 与所属字同 y 带）。
 //   空格（三字段拼接空格 / 存量旧数据折出的空格）**两轨皆不进**（不占字位）。
 
-/** 双轨标点映射（**仅渲染时**）：`，` ⇒ `·`（实心圆点）/ `。` ⇒ `○`（空心圆）—— 未列出的字符一律原样进字列 */
-const DUAL_PUNCT_MAP: Record<string, string> = { '，': '·', '。': '○' };
+/** 双轨标点映射（**仅渲染时**）：`，` ⇒ `●`（实心圆点）/ `。` ⇒ `○`（空心圆）—— 未列出的字符一律原样进字列 */
+const DUAL_PUNCT_MAP: Record<string, string> = { '，': '●', '。': '○' };
 
 /** 双轨「字 + 其标点」对：`char` 进**字列轨**、`punct` 进**标点列轨**（`''` = 该格标点轨留白） */
 interface DualChar {
@@ -529,10 +563,11 @@ function flowPagesOf(
 }
 
 /**
- * 后记：日期（公历 ISO，含 `YYYY-MM-DDTHH:mm:ss…Z` 带时刻形态）→ **农历干支**（如「丙午」，**不带「年」**
- * —— 文案模板自带年位（`肇創於{Y}之年` / `修輯於{Y}` / `是為{Y}訂本`）；复用 `lunar.ts`，跨春节前属上一年）。
+ * 后记：日期（公历 ISO，含 `YYYY-MM-DDTHH:mm:ss…Z` 带时刻形态）→ **农历「年 + 月」位**：
+ * 完整日期 / 只有年月 ⇒ 如「丙午年七月」、闰月「丙午年闰七月」；**只有年 ⇒ 仅到年**，如「乙酉年」
+ * （值**自带「年」字**，故模板写 `肇創於{肇創年份}`、**不再补「之年」**；复用 `lunar.ts`，跨春节前属上一年）。
  * 只有年月 ⇒ 取该月 15 日所在农历月（沿 W-7 既有口径）；
- * 非 ISO / 超 1900–2100 / 表外 ⇒ **空串**（调用方按「年位用 `不詳`」兜底 —— **一句话可改**；不印原字面）。
+ * 非 ISO / 超 1–2100 / 表外 ⇒ **空串**（调用方按「年位用 `不詳`」兜底 —— **一句话可改**；不印原字面）。
  */
 function lunarYearTextOf(iso: string | undefined): string {
   const s = (iso || '').trim();
@@ -543,9 +578,9 @@ function lunarYearTextOf(iso: string | undefined): string {
   const mo = m[2] ? Number(m[2]) : 0;
   const d = m[3] ? Number(m[3]) : 0;
   if (mo && (mo < 1 || mo > 12)) return '';
-  if (!mo) return ganZhiOf(y);
+  if (!mo) return ganZhiOf(y) + '年';
   const f = solarToLunarFields(y + '-' + mo + '-' + (d >= 1 && d <= 31 ? d : 15));
-  return f ? ganZhiOf(f.year) : '';
+  return f ? ganZhiOf(f.year) + '年' + lunarMonthName(f.month, f.isLeap) : '';
 }
 
 /**
@@ -567,27 +602,218 @@ interface PostscriptView {
 }
 
 /**
+ * **模板变量名（六个）** —— 模板里逐字写作 `{变量}`；模板本体**不做 s2t 转换**（后台直接输繁体；
+ * 月名等少数简体字由渲染末尾**单次** `toTraditional` 补齐）。
+ * - `{肇創年份}` = 创建农历干支年（tree-meta `created_at`；解析不出 ⇒ `不詳`）——**任意位置**；
+ * - `{肇創人}`   = `postscript.created_by_name`（始纂人；缺失 / 空串 ⇒ 省片段）——**任意位置**；
+ * - `{當前年份}` = 最后一轮的农历年（无修订 ⇒ 创建年）——**任意位置**；
+ * - `{修譜序次}` / `{修譜年份}` / `{主司}` = **`{{{…}}}` 块内专用（随轮）**：该轮繁体大写序次 / 该轮年位 /
+ *   该轮主司；写在块**外**由**管理面**判 400（本层只管渲染，不自造校验文案）。
+ */
+const WENPU_TPL_VARS: readonly string[] = [
+  '肇創年份', '肇創人', '當前年份', '修譜序次', '修譜年份', '主司',
+];
+
+/** 占位符 token（**由上表生成** = 单一真源；其它 `{…}` 一律当字面保留 —— 不自造、不清空） */
+const WENPU_TPL_TOKEN = new RegExp('\\{(' + WENPU_TPL_VARS.join('|') + ')\\}', 'g');
+
+/**
+ * **逐轮重复块**符号 `{{{ … }}}`（**恰 0 或 1 个**）：块体按轮（`seq` 升序）逐轮渲染后**拼接**，
+ * 再整体替换掉 `{{{…}}}`；**缺失 / 无修订 ⇒ 空串**（轮段不展开）。
+ * 「恰 0 或 1 个 · 须闭合 · 不得嵌套 · 块专用变量不得出块」由**管理面**判 400；
+ * 渲染层**容错**（违规模板视作「无块」⇒ 原样上屏，**不抛、不空白**）。
+ */
+const WENPU_BLOCK_OPEN = '{{{';
+const WENPU_BLOCK_CLOSE = '}}}';
+
+/**
+ * 后记文案**默认模板** —— **与后端 `DEFAULT_POSTSCRIPT_TEMPLATE` 逐字一致；双处，改一处须同步另一处**。
+ * 仅作**兜底 / 后台「恢复默认」填回**用：读谱主路径一律用后端 `wenpu_config.postscript_template`。
+ * 变量：`{肇創年份}` `{肇創人}` `{當前年份}`（任意位置）+ `{{{…}}}` 块内 `{修譜序次}` `{修譜年份}` `{主司}`（随轮）。
+ */
+export const DEFAULT_POSTSCRIPT_TEMPLATE =
+  '本族家譜，肇創於{肇創年份}，由{肇創人}始纂。{{{其後{修譜序次}經修輯於{修譜年份}，主司{主司}。}}}今為最新釐正版，是為{當前年份}訂本。願後之族人、續而增修之。';
+
+/** 空值标记（渲染期临时插在文本里；**输出前一律剥除** —— 与后端 `applyVars()` 同口径） */
+const WENPU_EMPTY_MARK = '\u0000E';
+/** 非空值标记（同上） */
+const WENPU_NONEMPTY_MARK = '\u0000N';
+
+/**
+ * 占位符 → **带标记值**（空值打空标记、非空值打非空标记；**未登记 / 未知的 `{…}` 原样保留**）。
+ * 标记随文本一路带到最后的「缺项省片段」⇒ **块内块外同规则、只扫一遍**（与后端逐字同口径）。
+ */
+function markWenpuVars(raw: string, values: Record<string, string>): string {
+  return raw.replace(WENPU_TPL_TOKEN, (token, name: string) => {
+    if (!Object.prototype.hasOwnProperty.call(values, name)) return token;
+    const v = String(values[name] ?? '');
+    return v === '' ? WENPU_EMPTY_MARK : WENPU_NONEMPTY_MARK + v;
+  });
+}
+
+/** 剥除标记（**输出前**） */
+function stripWenpuMarks(s: string): string {
+  return s.split(WENPU_EMPTY_MARK).join('').split(WENPU_NONEMPTY_MARK).join('');
+}
+
+/** `sub` 在 `t` 中的**全部**出现下标（步进 1、含重叠 —— 用于枚举候选块边界） */
+function wenpuPositionsOf(t: string, sub: string): number[] {
+  const out: number[] = [];
+  let i = 0;
+  for (;;) {
+    const j = t.indexOf(sub, i);
+    if (j < 0) break;
+    out.push(j);
+    i = j + 1;
+  }
+  return out;
+}
+
+/** 花括号是否**完全配对**（`{` 与 `}` 数量相等且无提前闭合 —— 占位符 `{name}` 天然配对）。**纯函数** */
+function wenpuBracesBalanced(s: string): boolean {
+  let depth = 0;
+  for (const ch of s) {
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth < 0) return false;
+    }
+  }
+  return depth === 0;
+}
+
+/**
+ * 切出循环块（**纯函数** · 与后端 `splitLoopBlock()` 同口径）：
+ * - 0 个块 ⇒ `hasBlock:false`；恰 1 个块 ⇒ 块体 + 下标（`close` 指向 `}}}` 首字符）；
+ * - 收尾 `}}}` 取**第一个能使块体花括号完全配对**者 —— 块体形如 `…{主司}` 紧贴块尾时不会误判；
+ * - **≥2 个块 / 单边未闭合 / 嵌套**（管理面已判 400）⇒ **容错**：视作「无块」（原样上屏，不抛）。
+ */
+function splitWenpuLoopBlock(
+  template: string,
+): { hasBlock: boolean; body: string; open: number; close: number } {
+  const none = { hasBlock: false, body: '', open: -1, close: -1 };
+  const opens = wenpuPositionsOf(template, WENPU_BLOCK_OPEN);
+  const closes = wenpuPositionsOf(template, WENPU_BLOCK_CLOSE);
+  if (!opens.length && !closes.length) return none;
+  if (opens.length !== 1) return none; // ≥2 个块 / 有 `}}}` 无 `{{{`（未闭合）⇒ 容错
+  const open = opens[0];
+  let close = -1;
+  for (const c of closes) {
+    if (c <= open) continue;
+    if (wenpuBracesBalanced(template.slice(open + WENPU_BLOCK_OPEN.length, c))) {
+      close = c;
+      break;
+    }
+  }
+  if (close < 0) return none; // 未闭合 ⇒ 容错
+  const body = template.slice(open + WENPU_BLOCK_OPEN.length, close);
+  if (body.includes(WENPU_BLOCK_OPEN) || body.includes(WENPU_BLOCK_CLOSE)) return none; // 嵌套 ⇒ 容错
+  return { hasBlock: true, body, open, close };
+}
+
+/** 句读符（切句；与后端 `SENTENCE_DELIMS` 同体例）—— 句读符**留在句内** */
+const WENPU_SENTENCE_DELIMS = '。！？';
+/** 片段分隔符（句内切片；**分隔符归其后的片段** ⇒ 即该片段的「前置分隔符」） */
+const WENPU_FRAGMENT_DELIMS = '，、；';
+
+/**
+ * 清理一个「句」（尾句读符已剥离）：按 `，、；` 切片段，**占位符全空**的片段**连其前置分隔符一起删**；
+ * 不含占位符的片段**恒保留**；**跨句互不影响**（只在本句内删，句读符 / 相邻句一概不动）。
+ * （与后端 `cleanSentence()` 同口径）
+ */
+function cleanWenpuSentence(sentence: string): string {
+  let body = sentence;
+  let tail = '';
+  const last = sentence.slice(-1);
+  if (WENPU_SENTENCE_DELIMS.includes(last)) {
+    tail = last;
+    body = sentence.slice(0, -1);
+  }
+  const frags: Array<{ delim: string; content: string }> = [];
+  let cur = '';
+  let delim = '';
+  for (const ch of body) {
+    if (WENPU_FRAGMENT_DELIMS.includes(ch)) {
+      frags.push({ delim, content: cur });
+      cur = '';
+      delim = ch;
+    } else {
+      cur += ch;
+    }
+  }
+  frags.push({ delim, content: cur });
+
+  let kept = '';
+  for (const f of frags) {
+    const hasEmpty = f.content.includes(WENPU_EMPTY_MARK);
+    const hasNonEmpty = f.content.includes(WENPU_NONEMPTY_MARK);
+    // 片段含占位符且其占位符**全为空** ⇒ 连前置分隔符一起删（不含占位符 ⇒ 恒保留）
+    if ((hasEmpty || hasNonEmpty) && !hasNonEmpty) continue;
+    kept += f.delim + stripWenpuMarks(f.content);
+  }
+  return kept + tail;
+}
+
+/**
+ * **缺项省片段**（入参 = 已把占位符替换成「带标记值」的文本；出参 = 最终正文，**标记已剥除**）：
+ * 每**句**（按 `。！？` 切）内按 `，、；` 切片段 ⇒ 规则见 `cleanWenpuSentence()`；
+ * 年位占位符**永不空**（缺 / 非 ISO ⇒ `不詳`）⇒ 年位片段恒不省；**块内块外同规则、只扫这一遍**。
+ */
+function pruneWenpuEmptyFragments(marked: string): string {
+  const out: string[] = [];
+  let sentence = '';
+  for (const ch of marked) {
+    sentence += ch;
+    if (WENPU_SENTENCE_DELIMS.includes(ch)) {
+      out.push(cleanWenpuSentence(sentence));
+      sentence = '';
+    }
+  }
+  if (sentence !== '') out.push(cleanWenpuSentence(sentence));
+  return out.join('');
+}
+
+/**
  * 后记页（`kind = 'postscript'`；**纯函数** · 平台自动生成、读者不可编辑 · **独立整页置于全书最末**，
  * 由 `buildWenpuBook()` 在全书页序末尾追加、仅当全书已有页面时）。
  *
- * 文案（繁体 · 纸内 · **Kevin 2026-10-12 定稿 · 逐字上屏、不经 `toTraditional`**；标点一字不改）：
+ * 文案（繁体 · 纸内 · **Kevin 2026-10-12 定稿**；标点一字不改）：模板 / 后台变量**逐字上屏**，
+ * 仅**最终整段过一次** `toTraditional`（单次；补齐 `lunar.ts` 月名简体字 `闰`/`腊`，见函数内 ⑤）。
  *   多轮（**每轮各出一句**「其後…主司…」；Kevin 例文只给 1 轮 ⇒ 逐轮句 **一句话可改**）：
- *     `本族家譜，肇創於{Y1}之年，由{C1}始纂。其後{N}經修輯於{Y}，主司{M}。今為最新釐正版，是為{Ylast}訂本。願後之族人、續而增修之。`
+ *     `本族家譜，肇創於{Y1}，由{C1}始纂。其後{N}經修輯於{Y}，主司{M}。今為最新釐正版，是為{Ylast}訂本。願後之族人、續而增修之。`
  *   无修订（省「其後…主司…」句）：
- *     `本族家譜，肇創於{Y1}之年，由{C1}始纂。今為最新釐正版，是為{Y1}訂本。願後之族人、續而增修之。`
+ *     `本族家譜，肇創於{Y1}，由{C1}始纂。今為最新釐正版，是為{Y1}訂本。願後之族人、續而增修之。`
  *
  * - `{N}` = 该轮 `seq` 的**汉字序**（一 / 二 / 三…，与书口 / 行第同一体例）；各轮按 `seq` 升序。
  * - `{C1}` = `postscript.created_by_name`（始纂人名）；`{M}` = `postscript.masters[]` 里 `seq` 匹配该轮的 `name`（主司）。
- * - `{Y1}` = 创建农历干支年（tree-meta `created_at`）；`{Y}` = 该轮 `effective_at` 优先、缺则 `started_at` 的
- *   农历干支年；`{Ylast}` = 最后一轮的农历年（无修订 ⇒ 创建年）。
+ * - `{Y1}` = 创建农历**年月**位（tree-meta `created_at`；值如「丙午年七月」/「乙酉年」）；`{Y}` = 该轮
+ *   `effective_at` 优先、缺则 `started_at` 的同形年月位；`{Ylast}` = 最后一轮者（无修订 ⇒ 创建年位）。
  * - **兜底（`postscript` 缺失 / 字段缺失 / 请求失败 ⇒ 不改前两部分、不报错；每条均「一句话可改」）**：
- *   ① 名称空串 ⇒ 省「由{C1}」半句（⇒ `肇創於{Y1}之年。`）/ 省「，主司{M}」半句（⇒ `其後{N}經修輯於{Y}。`）；
+ *   ① 名称空串 ⇒ 省「由{C1}」半句（⇒ `肇創於{Y1}。`）/ 省「，主司{M}」半句（⇒ `其後{N}經修輯於{Y}。`）；
  *   ② `created_at` 非 ISO / 缺失 ⇒ 年位用 `不詳`（**仍保持句形完整**；各轮年位同理）。
  * - revisions 读取失败或空 ⇒ 按「无修订」态渲染、不报错、不影响前两部分。
+ *
+ * **模板驱动（本批）** —— 文案真源 = **后端** `wenpu_config.postscript_template`（**单一模板**；
+ * 变量名见 `WENPU_TPL_VARS`；本层只兜底）。渲染四步（**与后端 `renderPostscript()` 逐字同口径** ——
+ * 同一模板、同一域数据 ⇒ **同一正文**）：
+ *   ① 循环块体（`{{{…}}}`，恰 0 或 1 个）按轮（`seq` 升序）**逐轮渲染**（块专用三变量随轮绑定；
+ *      全局变量块内亦可用、值恒为全局）⇒ **拼接**（**无修订 / 无块 ⇒ 空串**）；
+ *   ② 用拼接结果**替换** `{{{…}}}`（`splitWenpuLoopBlock()`）；
+ *   ③ 块外**全局变量替换**；④ **缺项省片段**（`pruneWenpuEmptyFragments()`：空占位符所在片段连前置分隔符
+ *      一并删）—— ③④ 由**标记**驱动、**块内块外同规则 ⇒ 只扫一遍**（`markWenpuVars()` ⇒ 标记 ⇒ 剥除）；
+ *   ⑤ 模板**逐字用**（后台直接输繁体）；`{修譜序次}` = 该轮**繁体大写数字**（壹貳參…）。
+ *   （渲染末尾对**最终整段**过一次 `toTraditional` —— 本层唯一 s2t 应用点，见函数体 ⑤。）
+ * - `postscriptTemplate` **缺省（undefined）⇒ 用兜底常量 `DEFAULT_POSTSCRIPT_TEMPLATE`**
+ *   （= 与后端默认逐字一致；**不报错、不空白**）。
+ *
+ * @param entry 树 tree-meta 条目（`created_at` ⇒ `{肇創年份}`）
+ * @param revision 修谱视图（`revisions` ⇒ 逐轮；`postscript` ⇒ 始纂人 / 各轮主司）
+ * @param postscriptTemplate 后端 `wenpu_config.postscript_template`（缺省 ⇒ 兜底常量）
  */
 export function buildPostscriptPages(
   entry: TreeEntry | undefined,
   revision: RevisionView | null | undefined,
+  postscriptTemplate?: string,
 ): WenpuPage[] {
   /** 后端 `postscript`（**只增不改**；缺失 ⇒ 全兜底，不改前两部分、不报错） */
   const postscript = (revision as (RevisionView & { postscript?: PostscriptView }) | null | undefined)
@@ -615,15 +841,45 @@ export function buildPostscriptPages(
     return (hit?.name || '').trim();
   };
 
-  /** 逐字拼句（封面句 → 逐轮句 → 版本句；标点 / 字形一字不改，名称缺失即省半句） */
-  let text = '本族家譜，肇創於' + y1 + '之年' + (founder ? '，由' + founder + '始纂。' : '。');
-  rounds.forEach((r, i) => {
-    const master = masterOf(r.seq || 0);
-    text += '其後' + chineseNum(r.seq || 0) + '經修輯於' + roundYears[i] + (master ? '，主司' + master + '。' : '。');
-  });
-  text += '今為最新釐正版，是為' + yLast + '訂本。願後之族人、續而增修之。';
+  // 后记文案同样走**乌丝栏双轨竖排**（`，`⇒`●` / `。`⇒`○`、空格不占位；每页 20 栏）
+  //
+  /** 模板：**后端下发优先**；**缺省（undefined）⇒ 兜底常量**（与后端 `DEFAULT_POSTSCRIPT_TEMPLATE` 逐字一致） */
+  const template = postscriptTemplate === undefined ? DEFAULT_POSTSCRIPT_TEMPLATE : postscriptTemplate;
+  /** 全局变量（**块外**填；块内亦可用、值恒为全局）：年位恒非空（缺 / 非 ISO ⇒ `不詳`） */
+  const mainValues: Record<string, string> = {
+    '肇創年份': y1,
+    '肇創人': founder,
+    '當前年份': yLast,
+  };
+  const block = splitWenpuLoopBlock(template);
+  /** ① 循环块体：`seq` 升序**逐轮**渲染（块专用三变量随轮绑定）⇒ 拼接（**无修订 / 无块 ⇒ 空串**） */
+  const expanded = block.hasBlock
+    ? rounds
+        .map((r, i) =>
+          markWenpuVars(block.body, {
+            ...mainValues,
+            '修譜序次': chineseUpperNum(r.seq || 0),
+            '修譜年份': roundYears[i],
+            '主司': masterOf(r.seq || 0),
+          }),
+        )
+        .join('')
+    : '';
+  /** ② 替换 `{{{…}}}` */
+  const assembled = block.hasBlock
+    ? template.slice(0, block.open) + expanded + template.slice(block.close + WENPU_BLOCK_CLOSE.length)
+    : template;
+  /** ③ 块外全局变量替换 + ④ 缺项省片段（标记驱动、块内块外同规则 ⇒ 只扫一遍） */
+  const pruned = pruneWenpuEmptyFragments(markWenpuVars(assembled, mainValues));
+  /**
+   * ⑤ **整段过 `toTraditional`（本函数仅此一次）** —— 模板 / 后台变量已按繁体给出（逐字上屏），
+   * 但**月名字面取自 `lunar.ts` 的 `MONTHS`（简体：`闰` / `腊`）** ⇒ 后记会印出「庚子年闰四月」
+   * 「腊月」，是纸内**唯一的简体字**（违背「纸内一律繁体」）；此处对**最终文本**统一转一次补齐。
+   * ⚠️ **单次应用、不得重复套用**：本仓 s2t 表对个别字**非幂等**（如 `苎→苧→薴`）。
+   * `，` / `。`（双轨切分依据）与干支字在 s2t 下不变 ⇒ **不改变双轨切分**，其余字**逐字不变**。
+   */
+  const text = toTraditional(pruned);
 
-  // 后记文案（**逐字不改**）同样走**乌丝栏双轨竖排**（`，`⇒`·` / `。`⇒`○`、空格不占位；每页 20 栏）
   return dualFlowPagesOf([text], 'postscript');
 }
 
@@ -654,7 +910,7 @@ export function buildRevisionPages(revision: RevisionView | null | undefined): W
       });
     }
     // ② 族務紀文（`article` 内容）：标题 / 正文 / 落款 → **乌丝栏双轨竖排**
-    //    （`，`⇒`·` / `。`⇒`○` 走标点列轨、空格不占位；字列 26px + 标点列 14px ⇒ 栏格 43px、每页 20 栏）
+    //    （`，`⇒`●` / `。`⇒`○` 走标点列轨、空格不占位；字列 26px + 标点列 14px ⇒ 栏格 43px、每页 20 栏）
     out.push(
       ...dualFlowPagesOf(
         [rec.article?.title || '', rec.article?.body || '', rec.article?.signature || ''],
@@ -743,9 +999,16 @@ export async function buildWenpuBook(
     hall = hallOf(entry);
     /** 修谱页（卷首 + 三类内容）：插在谱文页**之前**；无修谱记录 ⇒ 空数组（零变化） */
     const revisionPages = buildRevisionPages(revision);
-    /** 后记页（`postscript` · 平台自动生成）：置于**全书最末**；仅当全书已有页面时追加（空谱保持「暫無譜文」空态） */
+    /** 家谱内容设定（`GET /revisions` 顶层**新增** `wenpu_config` —— **同一份出参取用、不新增请求**）：
+     *  两模板缺失 ⇒ 皆 `undefined` ⇒ 后记走**既有硬编码文案**（零回归）。 */
+    const wenpuConfig = (revision as (RevisionView & { wenpu_config?: WenpuConfig }) | null | undefined)
+      ?.wenpu_config;
+    /** 后记页（`postscript` · 平台自动生成 · 文案由 `wenpu_config` 模板驱动）：置于**全书最末**；
+     *  仅当全书已有页面时追加（空谱保持「暫無譜文」空态） */
     const appendPostscript = (pages: WenpuPage[]): WenpuPage[] =>
-      pages.length ? [...pages, ...buildPostscriptPages(entry, revision)] : pages;
+      pages.length
+        ? [...pages, ...buildPostscriptPages(entry, revision, wenpuConfig?.postscript_template)]
+        : pages;
     /** 封面页（W-26 · Kevin 2026-10-12）：**全书第一页**（在「第一部分·修谱卷」之前），
      *  整页**只有谱名** —— 取 `genealogy_name`（空 ⇒ `display_title`）经既有 `titleOf()`
      *  ⇒ **与书口谱名同口径**（已 `toTraditional`，视图层零转换）。

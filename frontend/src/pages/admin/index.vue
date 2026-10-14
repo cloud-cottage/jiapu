@@ -392,6 +392,36 @@
         </template>
       </view>
 
+      <!-- 家谱内容设定（后记文案模板；`GET/PUT /admin/wenpu-config`）：**文案真源在后端**，
+           本页只读写现值 + 「恢复默认」把兜底常量填回；模板**逐字使用、系统不做简繁转换**
+           ⇒ 后台直接输繁体、变量标签一律繁体（未命中的 `{…}` 原样上屏、不报错） -->
+      <view class="section">
+        <text class="section-title">家谱内容设定</text>
+        <view v-if="!isChief" class="empty">需要总编辑权限</view>
+
+        <template v-else>
+          <text class="field-label">后记文案模板</text>
+          <textarea
+            class="wenpu-textarea"
+            :value="wenpuTemplateInput"
+            :disabled="wenpuSaving"
+            placeholder="后记文案模板（繁体；逗号用全角「，」）"
+            @input="(e: any) => onWenpuInput(e)"
+          />
+          <text class="wenpu-hint">{{ WENPU_VAR_HINT }}</text>
+          <text class="wenpu-hint">{{ WENPU_RULE_HINT }}</text>
+          <text class="wenpu-hint">当前状态：{{ wenpuStatusText }} ｜ 版本 {{ wenpuVersionText }}</text>
+          <text v-if="wenpuLoading" class="wenpu-hint">正在读取当前配置…</text>
+
+          <view v-if="wenpuError" class="grant-error">{{ wenpuError }}</view>
+          <view class="wenpu-actions">
+            <t-button theme="primary" :loading="wenpuSaving" @click="submitWenpuConfig">保存</t-button>
+            <t-button variant="outline" :disabled="wenpuSaving" @click="restoreWenpuDefaults">恢复默认</t-button>
+            <t-button variant="outline" :disabled="wenpuSaving" @click="loadWenpuConfig">刷新</t-button>
+          </view>
+        </template>
+      </view>
+
       <view v-if="error" class="error">{{ error }}</view>
     </template>
   </view>
@@ -399,13 +429,14 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { fetchUserList, setUserRole, setAnchor, fetchLeaveRequests, approveLeave, fetchJoinRequests, approveJoinRequest, rejectJoinRequest, searchPeople, fetchMarriageRequests, decideMarriageRequest, postAdminAssetsGrant, fetchAdminAssetsLogs, fetchAdminAssetsUser, jadeListOf, jadeCountOf, putSigninFeeSettings } from '@/business/api';
+import { fetchUserList, setUserRole, setAnchor, fetchLeaveRequests, approveLeave, fetchJoinRequests, approveJoinRequest, rejectJoinRequest, searchPeople, fetchMarriageRequests, decideMarriageRequest, postAdminAssetsGrant, fetchAdminAssetsLogs, fetchAdminAssetsUser, jadeListOf, jadeCountOf, putSigninFeeSettings, fetchWenpuConfigAdmin, putWenpuConfig } from '@/business/api';
 import { isAuthenticated, authState, getAuthToken } from '@/business/auth';
 import type { ManagedUser, LeaveRequestItem, JoinRequestItem, OpsLog, AdminAssetSnapshot } from '@/business/api';
 import type { AssetDelta, Jade } from '@/business/api';
 import { scrollDeltaLabel, scrollFragmentDeltaLabel, signinKindName } from '@/business/asset-text';
 import { SCROLL_PIECES_PER_ITEM } from '@/business/inventory';
-import type { ScrollLot, SigninPoolEntry, SigninFeeSettingsPayload } from '@/business/types';
+import { DEFAULT_POSTSCRIPT_TEMPLATE } from '@/business/wenpu';
+import type { ScrollLot, SigninPoolEntry, SigninFeeSettingsPayload, WenpuConfig } from '@/business/types';
 import type { PersonSummary } from '@/business/types';
 import { personIdDisplay } from '@/business/format';
 
@@ -785,6 +816,95 @@ async function submitSigninFee() {
   }
 }
 
+// ---- 家谱内容设定（后记文案模板；`GET/PUT /admin/wenpu-config`）----
+//
+// 契约：文案真源在**后端**（`wenpu_config.postscript_template`，读谱侧由 `buildPostscriptPages()` 渲染）；
+// 本页只读写现值 —— 「恢复默认」= 把**前端兜底常量**（与后端 `DEFAULT_POSTSCRIPT_TEMPLATE` 逐字一致）填回
+// 输入框，**不直接提交**，仍需点「保存」。模板**逐字用**（系统不做简繁转换）、变量标签**一律繁体**；
+// 逐轮重复句写在 `{{{ … }}}` 块内（**至多一个**），该限制由**管理面**判 400 —— 本页**透出后端原文、不吞**。
+
+/** 变量说明行（**逐字**；与 `business/wenpu.ts` 的变量表同口径） */
+const WENPU_VAR_HINT =
+  '可用变量：{肇創年份} {肇創人} {當前年份}（任意位置） ｜ {修譜序次} {修譜年份} {主司}（只能写在 {{{ }}} 内）';
+/** 规则提示行（**逐字**） */
+const WENPU_RULE_HINT =
+  '用 {{{ }}} 包住逐轮重复的句子（如 {{{其後{修譜序次}經修輯於{修譜年份}，主司{主司}。}}}），至多一个；逗号请用全角「，」；本框直接写繁体，系统不做简繁转换';
+
+const wenpuTemplateInput = ref('');
+const wenpuConfig = ref<WenpuConfig | null>(null);
+const wenpuError = ref('');
+const wenpuLoading = ref(false);
+const wenpuSaving = ref(false);
+
+/** 当前是否默认模板（`is_default` **缺失 ⇒ 未知**，不猜） */
+const wenpuStatusText = computed(() => {
+  const d = wenpuConfig.value?.is_default;
+  return d === true ? '默认模板' : d === false ? '已自定义' : '未知（后端未下发）';
+});
+const wenpuVersionText = computed(() => (wenpuConfig.value ? String(wenpuConfig.value.version) : '—'));
+
+/** textarea 取值（uni-app：`e.detail.value`） */
+function onWenpuInput(e: any) {
+  const v = e && e.detail ? e.detail.value : '';
+  wenpuTemplateInput.value = typeof v === 'string' ? v : '';
+}
+
+/** 读现值（`GET /admin/wenpu-config`）；失败**不静默**（就地显示后端 `error` 原文） */
+async function loadWenpuConfig() {
+  wenpuError.value = '';
+  wenpuLoading.value = true;
+  try {
+    const cfg = await fetchWenpuConfigAdmin();
+    wenpuConfig.value = cfg;
+    wenpuTemplateInput.value = cfg.postscript_template;
+  } catch (e: any) {
+    wenpuError.value = e?.message || '读取家谱内容设定失败';
+  } finally {
+    wenpuLoading.value = false;
+  }
+}
+
+/**
+ * 「恢复默认」= 把**默认模板**填回输入框（**不直接提交**，仍需点「保存」）。
+ * 默认值取后端 `defaults.postscript_template`（缺失 ⇒ 退回前端兜底常量，二者逐字一致 ——
+ * 真源在后端，前端常量只为「后端未下发」时兜底）。
+ */
+function restoreWenpuDefaults() {
+  wenpuError.value = '';
+  wenpuTemplateInput.value = wenpuConfig.value?.default_postscript_template ?? DEFAULT_POSTSCRIPT_TEMPLATE;
+  uni.showToast({ title: '已填回默认模板，记得点保存', icon: 'none' });
+}
+
+/**
+ * 保存（`PUT /admin/wenpu-config`；体带 `version` **乐观锁**）：
+ * 成功 ⇒ **刷新现值 + toast**；失败**不得静默** —— **409 ⇒ 「配置已被他人修改，请刷新后重试」**，
+ * 其余一律透出后端 `error` 原文。
+ */
+async function submitWenpuConfig() {
+  wenpuError.value = '';
+  const cfg = wenpuConfig.value;
+  if (!cfg) {
+    wenpuError.value = '尚未读取到当前配置，请先点「刷新」';
+    return;
+  }
+  const tpl = wenpuTemplateInput.value;
+  if (!tpl.trim()) {
+    wenpuError.value = '后记文案模板不能为空';
+    return;
+  }
+  wenpuSaving.value = true;
+  try {
+    await putWenpuConfig({ postscript_template: tpl, version: cfg.version });
+    uni.showToast({ title: '家谱内容设定已保存', icon: 'success' });
+    await loadWenpuConfig();
+  } catch (e: any) {
+    wenpuError.value =
+      e?.status === 409 ? '配置已被他人修改，请刷新后重试' : e?.message || '保存家谱内容设定失败';
+  } finally {
+    wenpuSaving.value = false;
+  }
+}
+
 /** 发放 / 扣减（POST /admin/assets/grant）：成功 toast「资产已变更」并回读快照 + 日志 */
 async function submitGrant() {
   grantError.value = '';
@@ -993,6 +1113,8 @@ onMounted(() => {
   }
   // 资产运维区仅总编加载（其余角色后端 403，前端不发请求）
   if (isChief.value) loadLogs();
+  // 家谱内容设定同口径（仅总编；非总编后端 403，前端不发请求）
+  if (isChief.value) loadWenpuConfig();
 });
 
 function goLogin() {
@@ -1058,6 +1180,20 @@ function goLogin() {
 .approve-result-id { font-size: 11px; color: #999; margin-left: auto; }
 .approve-error { color: #C62828; font-size: 13px; text-align: center; margin: 8px 0; }
 .approve-actions { display: flex; gap: 8px; margin-top: 8px; }
+
+/* 家谱内容设定（后记文案模板：单框 + 变量说明 + 规则提示 + 三个动作） */
+.wenpu-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  height: 132px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid #E0D5C8;
+  background: #FFFDF8;
+}
+.wenpu-hint { font-size: 12px; color: #777; display: block; margin-top: 6px; line-height: 1.6; }
+.wenpu-actions { display: flex; gap: 8px; margin-top: 12px; }
 
 /* 资产运维（资产发放 / 用户快照 / 变动日志） */
 .field-label { font-size: 13px; color: #3E2723; display: block; margin: 10px 0 4px; }

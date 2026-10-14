@@ -65,3 +65,8 @@ export {
   INVITE_LANDING_PATH,
 } from './api';
 export type { InviteKind, InviteDecision, InviteCodeResult, InviteResolveResult, InviteBindResult } from './types';
+// 家谱内容设定（后记文案模板）：读谱侧 `GET /revisions` 顶层 `wenpu_config`（`fetchRevisions()` 已透出）+
+// 管理侧 `GET/PUT /admin/wenpu-config`；兜底默认模板常量与后端 `DEFAULT_POSTSCRIPT_TEMPLATE` 逐字一致
+export { fetchWenpuConfigAdmin, putWenpuConfig } from './api';
+export { DEFAULT_POSTSCRIPT_TEMPLATE } from './wenpu';
+export type { WenpuConfig, WenpuConfigPayload, WenpuConfigSaveResult } from './types';

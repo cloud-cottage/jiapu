@@ -39,6 +39,9 @@ import type {
   InviteCodeResult,
   InviteResolveResult,
   InviteBindResult,
+  WenpuConfig,
+  WenpuConfigPayload,
+  WenpuConfigSaveResult,
 } from './types';
 import type { RevisionSaveItem, RevisionView } from './revision';
 
@@ -3221,18 +3224,28 @@ function revisionAuthHeaders(): Record<string, string> {
   return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token };
 }
 
-/** 读修谱视图（`GET /revisions?tree_id=`）。出参缺 `revisions` ⇒ 视作**无修谱记录**（视图层零变化） */
-export async function fetchRevisions(treeId: string): Promise<RevisionView> {
-  const raw = await request<RevisionView>(
+/**
+ * 读修谱视图（`GET /revisions?tree_id=`）。出参缺 `revisions` ⇒ 视作**无修谱记录**（视图层零变化）。
+ *
+ * 顶层**新增** `wenpu_config`（家谱内容设定 = 后记文案模板；**只增不改**）⇒ 就地归一后**随同一份出参**透出：
+ * `buildWenpuBook()` 就在这份出参里取用（**不新增请求**）；缺失 / 字段缺失 ⇒ 键不落 ⇒
+ * `buildPostscriptPages()` 走既有硬编码文案（零回归）。
+ */
+export async function fetchRevisions(
+  treeId: string,
+): Promise<RevisionView & { wenpu_config?: WenpuConfig }> {
+  const raw = await request<RevisionView & { wenpu_config?: WenpuConfig }>(
     `/revisions?tree_id=${encodeURIComponent(treeId)}`,
     { treeId },
   );
-  return {
+  const view: RevisionView & { wenpu_config?: WenpuConfig } = {
     ...(raw || ({} as RevisionView)),
     can_start: raw?.can_start ?? { ok: true, reason: 'first', next_start_at: '' },
     active: raw?.active ?? null,
     revisions: Array.isArray(raw?.revisions) ? raw.revisions : [],
   };
+  if (raw?.wenpu_config) view.wenpu_config = normalizeWenpuConfig(raw.wenpu_config);
+  return view;
 }
 
 /**
@@ -3293,4 +3306,71 @@ export async function saveRevision(
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw revisionErrorOf(body, res.status, '保存修谱失败');
   return body as RevisionSaveResult;
+}
+
+// ---- 家谱内容设定（后记文案模板 · `wenpu_config`）------------------------------------------------
+//
+// 与后端（并行单）的接口契约（本批前端只消费 / 只封装，**不改后端路由**）：
+// - `GET  /revisions?tree_id=`  顶层 `wenpu_config`（**读谱侧**用）—— `fetchRevisions()` 已就地归一、
+//                               随**同一份出参**透出（`buildWenpuBook()` 直接取用 ⇒ **不新增请求**）；
+// - `GET  /admin/wenpu-config`  后台读现值（`{ postscript_template, is_default, version }`）；
+// - `PUT  /admin/wenpu-config`  后台保存（体 `{ postscript_template, version }`；`version` = **乐观锁**）
+//                               —— `version` 与服务端现值不一致 ⇒ **409**（页面须提示「配置已被他人修改，请刷新后重试」）。
+//
+// 模板**逐字使用、不做简繁转换**（后台直接输繁体）；变量标签**一律繁体**（`{肇創年份}` …）。
+
+/**
+ * 归一 `wenpu_config`（读谱侧 / 管理侧**共用**；字段缺失一律兜底成安全值 —— **不猜语义**）：
+ * `postscript_template` 非串 ⇒ `''`、`version` 非数 ⇒ `0`；`is_default` **缺失 ⇒ 键不落**（= 未知）。
+ */
+function normalizeWenpuConfig(raw: any): WenpuConfig {
+  const v = raw && typeof raw === 'object' ? raw : {};
+  const cfg: WenpuConfig = {
+    postscript_template: typeof v.postscript_template === 'string' ? v.postscript_template : '',
+    version: Number.isFinite(v.version) ? Number(v.version) : 0,
+  };
+  if (typeof v.is_default === 'boolean') cfg.is_default = v.is_default;
+  // 「恢复默认」的默认值：后端 `defaults.postscript_template` 优先（缺失 ⇒ 页面退回前端兜底常量）
+  const dflt = v?.defaults?.postscript_template ?? v?.default_postscript_template;
+  if (typeof dflt === 'string') cfg.default_postscript_template = dflt;
+  return cfg;
+}
+
+/** 家谱内容设定管理面请求头（登录必需；未登录 / 过期 ⇒ 401，**不静默降级**） */
+function wenpuConfigAuthHeaders(): Record<string, string> {
+  const token = getAuthToken();
+  if (!token) throw new ApiStatusError('登录已过期，请重新登录', 401);
+  return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token };
+}
+
+/**
+ * 后台读「家谱内容设定」现值（`GET /admin/wenpu-config`）。
+ * 出参兼容两种壳：**直给** 或 `{ config: {…} }`；字段缺失一律经 `normalizeWenpuConfig()` 兜底。
+ * 权限由后端判（非 chief_editor ⇒ 403）；错误一律**透出后端 `error` 原文**（不吞、不自造）。
+ */
+export async function fetchWenpuConfigAdmin(): Promise<WenpuConfig> {
+  const res = await fetch(`${API_BASE}/admin/wenpu-config`, { headers: wenpuConfigAuthHeaders() });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw revisionErrorOf(body, res.status, '读取家谱内容设定失败');
+  return normalizeWenpuConfig(body?.config ?? body);
+}
+
+/**
+ * 后台保存「家谱内容设定」（`PUT /admin/wenpu-config`；体带 `version` **乐观锁**）。
+ * 409 ⇒ 抛 `ApiStatusError`（`status === 409`）—— 页面据此提示「配置已被他人修改，请刷新后重试」；
+ * 出参兼容 `{ ok }` / `{ ok, config }` / `{ ok, version }`（**只取已知键**）。
+ */
+export async function putWenpuConfig(payload: WenpuConfigPayload): Promise<WenpuConfigSaveResult> {
+  const res = await fetch(`${API_BASE}/admin/wenpu-config`, {
+    method: 'PUT',
+    headers: wenpuConfigAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw revisionErrorOf(body, res.status, '保存家谱内容设定失败');
+  const out: WenpuConfigSaveResult = { ok: body?.ok !== false };
+  const cfg = body?.config ?? (body && typeof body.postscript_template === 'string' ? body : null);
+  if (cfg) out.config = normalizeWenpuConfig(cfg);
+  if (Number.isFinite(body?.version)) out.version = Number(body.version);
+  return out;
 }
