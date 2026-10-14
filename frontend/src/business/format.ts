@@ -3,9 +3,9 @@
  *
  * 编号前缀约定：Gramps 记录类型前缀 I=Individual（个人）/ F=Family（家庭）。
  * **全站唯一编号**（docs/id-system.spec.md；2026-10-10 新口径）：
- * - 人：**存储 = 9 位纯数字**（`000000052`，无 `I`）；**展示 = `I` + 存值**（`I000000052`）。
+ * - 人：**存储 = 9 位纯数字**（`000000052`，无 `I`）；**展示 = 九位纯数字**（`000000052`，无前缀）。
  * - 家庭：`F` + 6 位（`F000012`），展示原样。
- * 过渡期新旧形态互认：入参 `I0052`（旧）/ `I000052` / `000000052` 一律归一化后加 `I` 前缀展示。
+ * 过渡期新旧形态互认（输入兼容）：入参 `I0052`（旧）/ `I000052` / `000000052` 一律归一化后按九位纯数字展示。
  * 存储/引用层不得带 `I` 前缀（人号靠纯数字 + 家庭号靠 `F` 前缀区分）。
  */
 const PERSON_ID_WIDTH = 9;
@@ -18,16 +18,17 @@ export function personIdDisplay(id?: string | null): string {
   if (!m) return s;
   // 家庭编号：原样展示（F 前缀保留）
   if (m[1].toUpperCase() === 'F') return s;
-  // 人：补零/归一（去可选前缀 + 去前导零）后加 I 前缀 → I000000052
-  return `I${String(parseInt(m[2], 10)).padStart(PERSON_ID_WIDTH, '0')}`;
+  // 人：去可选前缀 + 去前导零后补零为九位纯数字 → 000000052（不带 I 前缀）
+  return String(parseInt(m[2], 10)).padStart(PERSON_ID_WIDTH, '0');
 }
 
 /**
  * 「编号」输入框的统一提示（docs/id-system.spec.md §5）：
- * 全局编号（如 I000000052）或 handle —— 全局编号全站唯一定位，**无需再选目标家族树**。
+ * 全局编号（如 000000052）或 handle —— 全局编号全站唯一定位，**无需再选目标家族树**。
+ * 输入兼容不变：`I0052` / `0052` / `000000052` 三种形态均可定位同一人节点。
  */
-export const PERSON_REF_HINT = '全局编号（如 I000000052）或 handle';
-export const PERSON_REF_PLACEHOLDER = '全局编号（如 I000000052）或 handle';
+export const PERSON_REF_HINT = '全局编号（如 000000052）或 handle';
+export const PERSON_REF_PLACEHOLDER = '全局编号（如 000000052）或 handle';
 
 /**
  * 生卒日期展示统一格式化（档案/列表共用，避免各处手写转换不一致）。
