@@ -119,13 +119,19 @@
         <view
           class="mode-btn"
           :class="{ active: addPickMode === 'new' }"
-          @click="addPickMode = 'new'"
+          @click="switchAddPickTab('new')"
         >新建节点</view>
         <view
           class="mode-btn"
-          :class="{ active: addPickMode === 'pick' }"
-          @click="addPickMode = 'pick'"
+          :class="{ active: addPickMode === 'pick' && addPickTab !== 'ref' }"
+          @click="switchAddPickTab('pick')"
         >{{ (isMasterChain && !addLocalTree) || addMode === 'spouse' ? '挂接已有节点' : '从树中选择' }}</view>
+        <!-- 第三档「指定 ID」（F-1）：填全局编号 / handle → 解析出既有节点 → 按「挂接已有节点」提交（只挂接、不新建） -->
+        <view
+          class="mode-btn"
+          :class="{ active: addPickTab === 'ref' }"
+          @click="switchToRef"
+        >指定 ID</view>
       </view>
 
       <!-- 「承母嗣」特例：只在「加子女 + 本人为女性（以母亲为家长）」形态显示；
@@ -192,6 +198,24 @@
             class="search-input"
             @update:value="(v: any) => addHao = v"
           />
+        </view>
+      </template>
+      <!-- 「指定 ID」档（F-1~F-7）：填全局编号 / handle → 解析出**本树既有节点** → 写进既有 addSelected
+           选中槽 → 提交完全复用「从树中选择」的挂接路径（本档只挂接、绝不新建节点） -->
+      <template v-else-if="addPickTab === 'ref'">
+        <view class="search-row" style="margin-top: 8px;">
+          <t-input
+            :value="addRefInput"
+            :placeholder="PERSON_REF_PLACEHOLDER"
+            class="search-input"
+            @update:value="onRefInputChange"
+            @confirm="doResolveRef"
+          />
+          <t-button size="small" theme="primary" :loading="addRefResolving" @click="doResolveRef">解析</t-button>
+        </view>
+        <!-- ① 本树命中：确认行「已定位：」+ 姓名·九位编号（编号展示复用 personIdDisplay），提交按钮随之可用 -->
+        <view v-if="addRefSelected" class="batch-preview">
+          <text class="batch-preview-line">已定位：{{ addRefSelected.name }}·{{ personIdDisplay(addRefSelected.gramps_id) }}</text>
         </view>
       </template>
       <template v-else-if="addPickMode === 'pick'">
@@ -278,6 +302,7 @@ import { ref, computed, watch } from 'vue';
 import {
   splitTree,
   searchPeople,
+  searchPeopleGlobal,
   addParentNode,
   addChildNode,
   appendChainNode,
@@ -292,7 +317,7 @@ import type { MasterClanFounder } from '@/business';
 import { isAssetInsufficientError, goMyAssets } from '@/business/asset-guide';
 import { shortageLine, SEED_QTY_UNIT } from '@/business/asset-text';
 import { isAuthenticated, authState, getAuthToken } from '@/business/auth';
-import { personIdDisplay } from '@/business/format';
+import { personIdDisplay, PERSON_REF_PLACEHOLDER } from '@/business/format';
 import {
   BATCH_MAX_GEN,
   buildBatchConfirmContent,
@@ -456,6 +481,11 @@ const panelTitle = computed(() => {
   return `为「${props.personName}」添加${addMode.value === 'parent' ? '父节点' : '子节点'}`;
 });
 const panelHint = computed(() => {
+  // 「指定 ID」档（F-1）专属说明：本档既无新建表单、也不渲染候选列表（模板为独立档位块），
+  // 放在分支链最前；addPickTab === 'ref' 与 'batch' 互斥，故既有分支文案与先后关系零改动。
+  if (addPickTab.value === 'ref') {
+    return '填全局编号（如 000000052）或 handle 解析出本树已有节点，解析成功后按「挂接」提交（本档不新建节点）；编号属于别的家族树时不能挂接。';
+  }
   if (addPickMode.value === 'batch') {
     // 祖谱：拿不到结构世数（后端才推），文案按「相对序号」口径，不猜世数
     if (isClanTree.value) {
@@ -481,7 +511,23 @@ const hasAnyPermission = computed(() => canAddNode.value || canSplit.value || ca
 // ---- 添加父/子/配偶节点 ----
 const showAddNode = ref(false);
 const addMode = ref<'parent' | 'child' | 'spouse'>('parent');
-const addPickMode = ref<'new' | 'pick' | 'batch'>('new');
+/**
+ * 档位状态（UI 侧）：新增第三档 `ref` =「指定 ID」（F-1）；模板渲染与按钮激活态读它。
+ * `ref` 档是**挂接档的一种输入方式**（编号 → 解析出既有节点 → 写既有 addSelected 槽），
+ * 故提交侧见下方 addPickMode 的口径说明。
+ */
+const addPickTab = ref<'new' | 'pick' | 'batch' | 'ref'>('new');
+/**
+ * 提交侧档位（F-7）：既有提交分支与提交判定一律读它，`ref` 档在此**归一到 `'pick'`**：
+ * - doAddNode 的四条分支（配偶挂接 / 世本挂接 / 加父传 handle / 加子传 child_handle）判据
+ *   为 `addPickMode.value === 'pick'` → 本档因此**一字不改**地走既有挂接路径（只挂接、不新建）；
+ * - addCanSubmit 的 `=== 'pick'` 分支在新档下等于「已定位成功」（addSelected 非空）→ 可直接复用。
+ * 取值域含 'ref' 仅为模板侧赋值（@click / openAddNode）通过类型检查；get 恒不返回 'ref'。
+ */
+const addPickMode = computed({
+  get: (): 'new' | 'pick' | 'batch' | 'ref' => (addPickTab.value === 'ref' ? 'pick' : addPickTab.value),
+  set: (v: 'new' | 'pick' | 'batch' | 'ref') => { addPickTab.value = v; },
+});
 const addName = ref('');
 const addSurname = ref('');
 /** 姓默认随（父/子）姓锁定；点「改姓」解锁为特例姓氏 */
@@ -497,6 +543,18 @@ const addResults = ref<PersonSummary[]>([]);
 const addSearching = ref(false);
 const addSearched = ref(false);
 const addSelected = ref<PersonSummary | null>(null);
+/** 「指定 ID」档（F-2）：输入的编号 / handle 原文（报错文案要原文代入，故不 trim 存储） */
+const addRefInput = ref('');
+/** 「指定 ID」档：已定位命中的既有节点（= addSelected 槽的镜像，仅用于渲染确认行） */
+const addRefSelected = ref<PersonSummary | null>(null);
+const addRefResolving = ref(false);
+/**
+ * 「指定 ID」档解析的**请求代次**（R-2）：每次发起解析前自增并捕获本次值，两段 await 之后
+ * 与 catch 落地前都再核一次 —— 同一输入连发两次解析（连点按钮 / 回车与点击叠发）时，
+ * 只有最后一次说的话算，前一次的落地（回填 / 报错）整段丢弃。
+ * 模板不读它（非响应式需求），故用普通计数而非 ref。
+ */
+let addRefResolveSeq = 0;
 const addingNode = ref(false);
 
 // ---- 批量添加子孙（总谱续编）状态 ----
@@ -599,6 +657,9 @@ function openAddNode(mode: 'parent' | 'child' | 'spouse', pickMode: 'new' | 'pic
   addResults.value = [];
   addSearched.value = false;
   addSelected.value = null;
+  // 「指定 ID」档：每次打开都清空输入与解析结论（不给上一次的定位结果留痕）
+  addRefInput.value = '';
+  addRefSelected.value = null;
   // 「承母嗣」每次打开都复位（不给上一次的勾选留痕）
   addMaternalSuccession.value = false;
   // 批量档：每次打开都清空粘贴文本与解析结果（不复用上次输入）
@@ -642,6 +703,167 @@ async function doSearchAddNode() {
     addResults.value = [];
   } finally {
     addSearching.value = false;
+  }
+}
+
+// ---- 「指定 ID」档：按全局编号 / handle 解析本树内的既有节点（F-2~F-7）----
+
+/**
+ * F-3 编号等价归一（R-3：**纯字符串**实现，不经过 parseInt —— 超过 21 位的数字串会被
+ * parseInt 塌缩成科学计数法（26 个 9 → `1e+26`），两个不同数字因此得到同一个键）：
+ * 去空白 → 去可选字母 I 前缀（大小写均算）→ 剩余全为数字则去掉前导零（全零保留单个 0）→ 返回；
+ * 非纯数字形态（handle）原样返回。
+ * 故 `000000052` / `I000052` / `52` / `I52` / `0052` / `i52` 视为同一个编号，
+ * 且现网 9 位编号的行为与旧实现逐例一致。
+ */
+function normalizePersonRef(raw: string): string {
+  const s = (raw || '').replace(/\s+/g, '');
+  const m = s.match(/^[Ii]?(\d+)$/);
+  if (!m) return s;
+  return m[1].replace(/^0+(?=\d)/, '');
+}
+
+/**
+ * 某条搜索结果是否与输入等价（F-3 冻结口径，R-4 **按形态分工**：
+ * **编号形态按数值等价比对，handle 形态按去空白全等比对**）：
+ * 输入归一后为纯数字 ⇒ 只比候选的**编号**（归一后等值）；非纯数字 ⇒ 只比候选的 **handle**
+ * （归一后全等）。不再用或关系并列 —— 否则纯数字输入会命中一条 handle 恰为纯数字的节点。
+ */
+function isRefHit(raw: string, r: PersonSummary): boolean {
+  const key = normalizePersonRef(raw);
+  if (!key) return false;
+  if (/^\d+$/.test(key)) return key === normalizePersonRef(r.gramps_id || '');
+  return key === normalizePersonRef(r.handle || '');
+}
+
+/** F-6 自身防护：解析出的 handle === 当前档案节点 handle → 按档位给报错文案（'' = 通过） */
+function refSelfError(handle: string): string {
+  if (!handle) return '';
+  const isSelf = handle === props.handle || (useLocalTreeContext.value && handle === props.localHandle);
+  if (!isSelf) return '';
+  const what = addMode.value === 'parent' ? '父节点' : addMode.value === 'child' ? '子节点' : '配偶';
+  return `不能把本人指定为自己的${what}`;
+}
+
+/** 输入变更：定位结论随输入作废（改字即回到「未定位」→ 提交按钮不可用，F-2） */
+function onRefInputChange(v: any) {
+  addRefInput.value = typeof v === 'string' ? v : '';
+  addRefSelected.value = null;
+  addSelected.value = null;
+}
+
+/** 切到「指定 ID」档：清掉别的档（或本档上一次解析）留下的选中槽，保证「解析成功前不可提交」 */
+function switchToRef() {
+  addPickMode.value = 'ref';
+  addRefSelected.value = null;
+  addSelected.value = null;
+  panelError.value = '';
+}
+
+/**
+ * 切到「新建节点」/「从树中选择」档（单点控制：模板该两颗按钮共用本函数）。
+ * 仅当**当前正处于「指定 ID」档**（UI 档位 addPickTab === 'ref'）时清掉该档留下的选中槽：
+ * 该档的定位结果写入的就是既有 addSelected 槽，而这两档下界面并无与之对应的候选列表/选中态
+ * （addResults 为空），留着会出现「界面无选中态、提交按钮却可用」的错配 —— 会把刚解析出的
+ * 那个节点当成本档选中的节点挂接上去。在 pick 档内部重复点该按钮不清槽（用户已选候选保持）。
+ * 同一 if 内一并**复位面板报错区**（与进入本档的 switchToRef 清错误区对称）：否则本档留下的
+ * 报错（如「编号「…」属于《某树》家族树」）会跟着串到另一档的面板上；同样只在本档离开时清，
+ * 「从树中选择」档内部重复点按钮不得误清本档自己的搜索报错。
+ */
+function switchAddPickTab(tab: 'new' | 'pick') {
+  if (addPickTab.value === 'ref') {
+    addSelected.value = null;
+    addRefSelected.value = null;
+    panelError.value = '';
+  }
+  addPickMode.value = tab;
+}
+
+/**
+ * 解析是否仍然「说了算」（F-4 异步守卫）：本档解析有**两段 await**，用户在请求在飞时可能已切到
+ * 别的档、或在输入框里改了字 —— 此时任何回填（选中槽 / 渲染镜像）与报错都不得落地：否则会出现
+ * 「选中槽被写上、界面却停在别的档」的错配（该档候选列表为空、无任何选中态，提交按钮却变可用），
+ * 可能把刚解析出的节点当成本档选中的节点挂接上去。
+ * 判据：**当前 UI 档位仍是「指定 ID」档**（`addPickTab === 'ref'`）**且** 输入框内容自本次解析
+ * 发起后未变（与发起时的原文全等）。不满足 ⇒ 本次解析**整段丢弃**（不写选中槽、不写渲染镜像、
+ * 不写 panelError），`finally` 里的 addRefResolving 复位照常执行。
+ * 注意：同输入连发两次解析时本守卫**两次都通过**（档位没切、输入没变），故另有 R-2 的请求代次
+ * 判据（`addRefResolveSeq === seq`）作平行守卫 —— 前一次解析整段丢弃，见 addRefResolveSeq 注释。
+ */
+function refResolveStillCurrent(raw: string): boolean {
+  return addPickTab.value === 'ref' && addRefInput.value === raw;
+}
+
+/**
+ * 解析「指定 ID」档（F-4 / F-5 三态）：
+ * ① 本树 `searchPeople`（tree_id = 既有 searchTreeId 计算值）返回集合里按 F-3 **恰好一个**命中
+ *    （**绝不取第一条**——该通道会掺入按姓名模糊命中的无关节点）→ 写既有 addSelected 槽，
+ *    走与「从树中选择」完全相同的提交路径；
+ * ② 本树未中、但全站 `searchPeopleGlobal` 有 `matched === 'id'` 的命中**且命中树 ≠ 本档搜索
+ *    目标树**（R-1）→ 报「属于《树名》家族树」（不允许跨树挂接）；命中树就是本树目标树
+ *    （树内旧编号形态）则不报跨树，落 ③；
+ * ③ 全站也没有（或只有本树命中，见 R-1）→ 报「找不到编号为「…」的节点」。
+ * 命中后仍要过 F-6 自身防护（本人不可作自己的父 / 子 / 配偶）。
+ * 两条 await 之后的四处落地（命中回填 / 跨树报错 / 找不到报错 / catch 报错）均先过两重守卫再写：
+ * ① `refResolveStillCurrent`（切档或改字 ⇒ 整段丢弃，见该函数注释）；
+ * ② R-2 请求代次 `addRefResolveSeq === seq`（同输入连发两次解析 ⇒ 只有最后一次说的话算，
+ *    前一次的落地含报错整段丢弃）。
+ */
+async function doResolveRef() {
+  const raw = addRefInput.value;
+  const q = raw.trim();
+  addRefSelected.value = null;
+  addSelected.value = null;
+  panelError.value = '';
+  if (!q) {
+    panelError.value = '请输入编号或 handle';
+    return;
+  }
+  addRefResolving.value = true;
+  // R-2 请求代次：自增后捕获本次值；两段 await 之后与 catch 落地前都要复核它仍是当前代次
+  addRefResolveSeq += 1;
+  const seq = addRefResolveSeq;
+  try {
+    const res = await searchPeople({ query: q, tree_id: searchTreeId.value });
+    // 守卫 ①：本树搜索回来后（命中回填 / 自身防护报错都在其下游）先确认本次解析仍有效
+    if (!refResolveStillCurrent(raw)) return;
+    // 守卫 ①′（R-2）：本次须仍是最后一次发起的解析 —— 同输入连发两次时前一次整段丢弃
+    if (addRefResolveSeq !== seq) return;
+    const hits = res.people.filter((r) => isRefHit(q, r));
+    if (hits.length === 1) {
+      const hit = hits[0];
+      const selfMsg = refSelfError(hit.handle || '');
+      if (selfMsg) {
+        panelError.value = selfMsg;
+        return;
+      }
+      addSelected.value = hit;
+      addRefSelected.value = hit;
+      return;
+    }
+    const globalHits = await searchPeopleGlobal(q);
+    // 守卫 ②：全站搜索回来后（跨树报错 / 找不到报错都在其下游）再确认一次
+    if (!refResolveStillCurrent(raw)) return;
+    // 守卫 ②′（R-2）：同理，前一次解析的全站结论不得落地
+    if (addRefResolveSeq !== seq) return;
+    const idHit = globalHits.find((h) => h.matched === 'id');
+    // R-1 前提：全站命中若就落在**本档搜索目标树**（= 本树搜索用的 searchTreeId），不得输出跨树
+    // 文案 —— 真实形态是树内旧编号：本树搜索能定位到节点、前端按现编号比不出来 ⇒ 落入本分支，
+    // 而全站把命中树如实报为本树；此时输出跨树文案会把本树节点说成别树节点、把本可成功的输入
+    // 变成硬失败。故只命中**别树**才报跨树，命中本树则落到下一支「找不到编号」。
+    if (idHit && idHit.tree_id !== searchTreeId.value) {
+      panelError.value = `编号「${raw}」属于《${idHit.tree_title}》家族树，不能作为本树的节点`;
+      return;
+    }
+    panelError.value = `找不到编号为「${raw}」的节点`;
+  } catch (e: any) {
+    // 守卫 ③：报错同样只在本次解析仍有效时落地（切档 / 改字后失败不得污染面板报错区）
+    if (!refResolveStillCurrent(raw)) return;
+    // 守卫 ③′（R-2）：前一次解析的失败报错也不得落地（同输入连发时只有最后一次算）
+    if (addRefResolveSeq !== seq) return;
+    panelError.value = e?.message || '解析失败';
+  } finally {
+    addRefResolving.value = false;
   }
 }
 
@@ -1031,7 +1253,7 @@ async function confirmEstablishBranch() {
 .mp-panel-close:active { background: #F0E8DE; }
 .mp-panel-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 
-.mode-switch { display: flex; gap: 8px; margin: 10px 0 4px; }
+.mode-switch { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
 .mode-btn {
   padding: 6px 14px; border-radius: 8px; font-size: 13px;
   border: 1px solid #F0E8DE; color: #5D4037;
