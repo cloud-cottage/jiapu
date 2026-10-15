@@ -517,9 +517,12 @@ function statMetaFile() {
 function sameMetaStamp(a, b) {
   return !!a && !!b && a.mtimeMs === b.mtimeMs && a.size === b.size && a.ctimeMs === b.ctimeMs;
 }
+function metaCacheExpired(fetchedAt, now) {
+  return !fetchedAt || now - fetchedAt >= META_CACHE_TTL_MS;
+}
 async function getMeta() {
   if (SOURCE !== "local") {
-    if (metaCache)
+    if (metaCache && !metaCacheExpired(metaFetchedAt, Date.now()))
       return metaCache;
     const metaRes = await sdkCall(() => getApp().database().collection(META_COL).doc(META_DOC_ID).get());
     const md = metaRes?.data;
@@ -538,6 +541,7 @@ async function getMeta() {
       storage_files: metaDoc?.storage_files || {},
       trees
     };
+    metaFetchedAt = Date.now();
     return metaCache;
   }
   if (metaCache) {
@@ -616,8 +620,10 @@ async function mutateTreeMeta(treeId, mutator) {
     if (curEntry) {
       const probe = await mutator({ ...curEntry });
       if (probe && typeof probe === "object" && sameEntryContent(probe, curEntry)) {
-        if (metaCache)
+        if (metaCache) {
           metaCache.trees = { ...metaCache.trees || {}, [id]: curEntry };
+          metaFetchedAt = Date.now();
+        }
         return curEntry;
       }
     }
@@ -629,8 +635,10 @@ async function mutateTreeMeta(treeId, mutator) {
       }
       return next;
     });
-    if (metaCache)
+    if (metaCache) {
       metaCache.trees = { ...metaCache.trees || {}, [id]: stripMetaDoc(written) };
+      metaFetchedAt = Date.now();
+    }
     return stripMetaDoc(written);
   }
   return withMetaWriteLock(async () => {
@@ -671,6 +679,7 @@ async function removeTreeMeta(treeId) {
       if (key)
         delete next[key];
       metaCache.trees = next;
+      metaFetchedAt = Date.now();
     }
     return;
   }
@@ -702,6 +711,7 @@ async function mutateMetaDoc(mutator) {
       metaCache._schema = written._schema;
       metaCache._description = written._description;
       metaCache.storage_files = written.storage_files || {};
+      metaFetchedAt = Date.now();
     }
     return written;
   }
@@ -738,6 +748,7 @@ async function saveMeta(meta) {
     await sdkCall(() => getApp().database().collection(META_COL).doc(id).set(body));
   }
   metaCache = meta;
+  metaFetchedAt = Date.now();
 }
 async function getTree(treeId) {
   const cached = cachedTree(treeId);
@@ -997,8 +1008,14 @@ async function getAllDetails(treeId) {
   return r?.data || [];
 }
 async function getEventIndex(treeId) {
-  if (eventIndexCache.has(treeId))
-    return eventIndexCache.get(treeId);
+  const entry = eventIndexCache.get(treeId);
+  if (entry) {
+    if (Date.now() - entry.at >= EVENT_INDEX_CACHE_TTL_MS) {
+      eventIndexCache.delete(treeId);
+    } else {
+      return entry.index;
+    }
+  }
   const index = /* @__PURE__ */ new Map();
   const details = await getAllDetails(treeId);
   for (const d of details) {
@@ -1007,10 +1024,10 @@ async function getEventIndex(treeId) {
         index.set(e.handle, e);
     }
   }
-  eventIndexCache.set(treeId, index);
+  eventIndexCache.set(treeId, { index, at: Date.now() });
   return index;
 }
-var import_node_sdk, import_fs2, import_path2, import_url, import_meta, __dirname, REPO, OUT, COLS_DIR, REAL_META_FILE, SANDBOX_BY_ENV, SANDBOX, META_FILE, samePath, ENV, SOURCE, PATHS, app, metaCache, metaStamp, treeCache, eventIndexCache, colCache, TREE_CACHE_TTL_MS, sdkQueue, CAS_MAX_RETRIES, CAS_BACKOFF_MS, sleep, versionOf, META_DOC_ID, META_COL, metaWriteLock, treeWriteLocks;
+var import_node_sdk, import_fs2, import_path2, import_url, import_meta, __dirname, REPO, OUT, COLS_DIR, REAL_META_FILE, SANDBOX_BY_ENV, SANDBOX, META_FILE, samePath, ENV, SOURCE, PATHS, app, metaCache, metaStamp, metaFetchedAt, treeCache, eventIndexCache, colCache, TREE_CACHE_TTL_MS, META_CACHE_TTL_MS, EVENT_INDEX_CACHE_TTL_MS, sdkQueue, CAS_MAX_RETRIES, CAS_BACKOFF_MS, sleep, versionOf, META_DOC_ID, META_COL, metaWriteLock, treeWriteLocks;
 var init_store = __esm({
   "cloudfunctions/compat-api/lib/store.js"() {
     import_node_sdk = __toESM(require("@cloudbase/node-sdk"), 1);
@@ -1058,10 +1075,13 @@ var init_store = __esm({
     app = null;
     metaCache = null;
     metaStamp = null;
+    metaFetchedAt = 0;
     treeCache = /* @__PURE__ */ new Map();
     eventIndexCache = /* @__PURE__ */ new Map();
     colCache = /* @__PURE__ */ new Map();
     TREE_CACHE_TTL_MS = 15 * 1e3;
+    META_CACHE_TTL_MS = TREE_CACHE_TTL_MS;
+    EVENT_INDEX_CACHE_TTL_MS = TREE_CACHE_TTL_MS;
     sdkQueue = Promise.resolve();
     CAS_MAX_RETRIES = 5;
     CAS_BACKOFF_MS = [20, 50, 120, 300, 700];
