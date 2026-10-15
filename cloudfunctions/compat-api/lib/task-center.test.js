@@ -788,11 +788,13 @@ test('⑬ TOCTOU：锁定读与兰帖扣减同锁（持锁期间读不得返回�
 // 后台可配后记 / 标点 ● 批新增 wenpu-config.test.js（46，文谱配置）⇒ 定额同步为实得真值 46。
 // cloud CAS 三路分派修复批新增 cas-write-plan.test.js（47，写入决策器 add/guarded/bootstrap
 //   + 新建祖谱 500 事故回归锚）⇒ 定额同步为实得真值 47。
-test('⑩ 注册数 47 = 磁盘 *.test.js 数；「已注册但磁盘缺失」0 条；磁盘未注册 0 条', () => {
+// meta 读缓存 TTL 修复批新增 meta-cache-ttl.test.js（48，cloud metaCache 15s TTL 纯函数 + 静态锚）
+//   ⇒ 定额同步为实得真值 48。
+test('⑩ 注册数 48 = 磁盘 *.test.js 数；「已注册但磁盘缺失」0 条；磁盘未注册 0 条', () => {
   const pkg = JSON.parse(fs.readFileSync(PKG_FILE, 'utf8'));
   const registered = (pkg.scripts.test.match(/[\w./-]+\.test\.js/g) || []).map((p) => p.replace(/^.*lib\//, ''));
   const onDisk = fs.readdirSync(HERE).filter((f) => f.endsWith('.test.js'));
-  assert.equal(registered.length, 47, `注册数应为 47，实得 ${registered.length}`);
+  assert.equal(registered.length, 48, `注册数应为 48，实得 ${registered.length}`);
   assert.equal(onDisk.length, registered.length, `磁盘 *.test.js 数 ${onDisk.length} 应等于注册数 ${registered.length}`);
   assert.equal(new Set(registered).size, registered.length, '注册项不得重复');
   const missing = registered.filter((f) => !fs.existsSync(path.join(HERE, f)));

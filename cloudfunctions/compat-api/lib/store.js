@@ -91,8 +91,13 @@ let app = null;
 let metaCache = null;
 /** local 模式：`metaCache` 对应的磁盘指纹（mtimeMs/size/ctimeMs）；null = 快照时拿不到 stat */
 let metaStamp = null;
+/**
+ * cloud：`metaCache` 从真源聚合完成 / 就地写后对齐的时刻（ms）；0 = 尚未取过。
+ * ⚠️ 只作 TTL 判定用，**绝不**塞进 metaCache 对象 —— metaCache 会原样返回给调用方（出参形状不变）。
+ */
+let metaFetchedAt = 0;
 const treeCache = new Map(); // tree_id -> { tree: 树 JSON, at: 写入缓存时刻(ms), stamp: local 磁盘指纹 }（见 TREE_CACHE_TTL_MS / statTreeFile）
-const eventIndexCache = new Map(); // tree_id -> Map(event_handle -> event)
+const eventIndexCache = new Map(); // tree_id -> { index: Map(event_handle -> event), at: 构建时刻(ms) }（见 EVENT_INDEX_CACHE_TTL_MS）
 const colCache = new Map(); // col -> Map(_id -> doc)
 
 /**
@@ -106,6 +111,24 @@ const colCache = new Map(); // col -> Map(_id -> doc)
  * TTL 只影响「多久后重读」，命中语义与返回值形状不变。
  */
 const TREE_CACHE_TTL_MS = 15 * 1000;
+
+/**
+ * meta 缓存**短路 TTL**（毫秒）—— 与 `TREE_CACHE_TTL_MS` **同源同口径**（同一常量，15s）。
+ *
+ * 为什么需要（2026-10-15 实测事故）：cloud 分支 `getMeta` 原为 `if (metaCache) return metaCache;`
+ * 的**进程生命周期级**缓存 —— 无 TTL、无失效通道。新建祖谱（写侧 CAS 落库成功，本实例
+ * 也就地更新了自己的 metaCache）之后，**其它常驻实例**的 metaCache 仍是旧快照 ⇒
+ * `GET /tree-meta` 永远少一棵树、世本挂载状态读不到，直到实例重启。
+ * local 分支早有 `statMetaFile` 指纹失效（互补机制，见 getMeta 注释）；云端真源是文档库 /
+ * 对象存储，进程内无廉价的变更检测通道 ⇒ 只能靠 TTL 兜底（与 treeCache 同理）。
+ * 15s 让「最多多久以后必然重新从真源取」有界；写成功后的就地刷新（`metaFetchedAt = Date.now()`）
+ * 优先级更高 —— 本实例自己的写入立刻对自己可见，不必等 TTL。
+ */
+export const META_CACHE_TTL_MS = TREE_CACHE_TTL_MS;
+
+/** 事件索引缓存**短路 TTL** —— 与 `TREE_CACHE_TTL_MS` 同源同口径（15s）；树写后的显式失效
+ *  （`eventIndexCache.delete`，与 `treeCache.delete` 同点位）保持原样且优先级更高。 */
+const EVENT_INDEX_CACHE_TTL_MS = TREE_CACHE_TTL_MS;
 
 /**
  * `trees/<tree_id>.json` 的磁盘指纹（**local 模式**「外部变更检测」的比对基准）。
@@ -602,6 +625,18 @@ function sameMetaStamp(a, b) {
 }
 
 /**
+ * meta 缓存是否已过 TTL（**纯函数**，单点判定；导出仅为单测锚定口径）。
+ * - `fetchedAt = 0`（从未取过）/ NaN 恒判过期 ⇒ 失效方向安全（多拉一次真源，绝不陈旧返回）；
+ * - `>=` 与 `cachedTree` 的 TTL 判定同口径（恰满 TTL 即失效）。
+ * @param {number} fetchedAt 缓存快照时刻（ms）
+ * @param {number} now 当前时刻（ms）
+ * @returns {boolean} true = 已过期，应回真源重拉
+ */
+export function metaCacheExpired(fetchedAt, now) {
+  return !fetchedAt || now - fetchedAt >= META_CACHE_TTL_MS;
+}
+
+/**
  * 读 meta（local = 副本 / 真源文件；cloud = `jiapu_tree_meta/global` 文档）。
  *
  * ★ 为什么 local 模式要做「外部变更检测」（真实数据丢失事故的根因修复）：
@@ -623,8 +658,8 @@ function sameMetaStamp(a, b) {
  */
 export async function getMeta() {
   if (SOURCE !== 'local') {
-    // cloud：缓存命中即返回（绝不每调一次就远程拉取）；未命中则聚合「_meta 单档 + 每树一档」
-    if (metaCache) return metaCache;
+    // cloud：缓存命中**且未过 TTL** 即返回（绝不每调一次就远程拉取）；过期 / 未命中则聚合「_meta 单档 + 每树一档」
+    if (metaCache && !metaCacheExpired(metaFetchedAt, Date.now())) return metaCache;
     const metaRes = await sdkCall(() => getApp().database().collection(META_COL).doc(META_DOC_ID).get());
     const md = metaRes?.data;
     const metaDoc = (Array.isArray(md) ? md[0] : md) || null;
@@ -641,6 +676,7 @@ export async function getMeta() {
       storage_files: metaDoc?.storage_files || {},
       trees,
     };
+    metaFetchedAt = Date.now(); // TTL 起点对齐本次聚合（metaFetchedAt 不进 metaCache —— 出参形状不变）
     return metaCache;
   }
   if (metaCache) {
@@ -762,7 +798,10 @@ export async function mutateTreeMeta(treeId, mutator) {
     if (curEntry) {
       const probe = await mutator({ ...curEntry });
       if (probe && typeof probe === 'object' && sameEntryContent(probe, curEntry)) {
-        if (metaCache) metaCache.trees = { ...(metaCache.trees || {}), [id]: curEntry };
+        if (metaCache) {
+          metaCache.trees = { ...(metaCache.trees || {}), [id]: curEntry };
+          metaFetchedAt = Date.now(); // curEntry 刚自真源读回 → 就地对齐 TTL 起点（本实例立即可见，不等 TTL）
+        }
         return curEntry; // 无净变化 ⇒ 不写、不 bump version（幂等）
       }
     }
@@ -774,7 +813,10 @@ export async function mutateTreeMeta(treeId, mutator) {
       }
       return next;
     });
-    if (metaCache) metaCache.trees = { ...(metaCache.trees || {}), [id]: stripMetaDoc(written) };
+    if (metaCache) {
+      metaCache.trees = { ...(metaCache.trees || {}), [id]: stripMetaDoc(written) };
+      metaFetchedAt = Date.now(); // CAS 写成功 → 就地对齐 TTL 起点（仅缓存簿记，不改写路径语义）
+    }
     return stripMetaDoc(written);
   }
   return withMetaWriteLock(async () => {
@@ -817,6 +859,7 @@ export async function removeTreeMeta(treeId) {
       const key = metaKeyOf(metaCache, id);
       if (key) delete next[key];
       metaCache.trees = next;
+      metaFetchedAt = Date.now(); // 云端删档成功 → 就地对齐 TTL 起点（与 mutateTreeMeta 同类写点，同口径）
     }
     return;
   }
@@ -854,6 +897,7 @@ export async function mutateMetaDoc(mutator) {
       metaCache._schema = written._schema;
       metaCache._description = written._description;
       metaCache.storage_files = written.storage_files || {};
+      metaFetchedAt = Date.now(); // _meta 单档 CAS 写成功 → 就地对齐 TTL 起点
     }
     return written;
   }
@@ -902,6 +946,7 @@ export async function saveMeta(meta) {
     await sdkCall(() => getApp().database().collection(META_COL).doc(id).set(body));
   }
   metaCache = meta;
+  metaFetchedAt = Date.now(); // 逐档写成功 → 就地对齐 TTL 起点（saveMeta 确实更新 metaCache，故同步刷新）
 }
 
 // ---- 树 JSON（结构真源） ----
@@ -1233,9 +1278,16 @@ export async function getAllDetails(treeId) {
   return r?.data || [];
 }
 
-/** event handle → 事件对象 索引（lazy 构建 + 缓存） */
+/** event handle → 事件对象 索引（lazy 构建 + 缓存；TTL 见 EVENT_INDEX_CACHE_TTL_MS —— 跨实例写入靠它兜底） */
 export async function getEventIndex(treeId) {
-  if (eventIndexCache.has(treeId)) return eventIndexCache.get(treeId);
+  const entry = eventIndexCache.get(treeId);
+  if (entry) {
+    if (Date.now() - entry.at >= EVENT_INDEX_CACHE_TTL_MS) {
+      eventIndexCache.delete(treeId); // 过 TTL → 丢弃回真源重建（树写后的显式 delete 失效点不受影响）
+    } else {
+      return entry.index;
+    }
+  }
   const index = new Map();
   const details = await getAllDetails(treeId);
   for (const d of details) {
@@ -1243,7 +1295,7 @@ export async function getEventIndex(treeId) {
       if (e.handle) index.set(e.handle, e);
     }
   }
-  eventIndexCache.set(treeId, index);
+  eventIndexCache.set(treeId, { index, at: Date.now() });
   return index;
 }
 

@@ -462,7 +462,7 @@ test('指纹自洽：saveMeta 刚落盘后 getMeta 不把自己写的文件误�
   assert.ok((await store.getMeta()).trees.ext_w2, '外部再改 → 仍重读');
 });
 
-test('静态守卫：cloud 分支保持「缓存命中即返回」，不得引入每次远程拉取（外部变更检测只在 local 生效）', () => {
+test('静态守卫：cloud 分支保持「TTL 内缓存命中即返回」，不得引入每次远程拉取（外部变更检测只在 local 生效）', () => {
   const src = fs.readFileSync(path.join(LIB, 'store.js'), 'utf8');
   const body = src.slice(src.indexOf('export async function getMeta()'), src.indexOf('export async function saveMeta('));
   const firstSdkCall = body.indexOf('sdkCall(');
@@ -470,9 +470,9 @@ test('静态守卫：cloud 分支保持「缓存命中即返回」，不得引�
   assert.ok(firstSdkCall > 0, 'getMeta 内应只有 cloud 分支走 sdkCall');
   assert.ok(cloudPart.includes("if (SOURCE !== 'local')"), 'cloud 分支必须先按 SOURCE 分流');
   assert.equal(
-    /if \(metaCache\) return metaCache;/.test(cloudPart),
+    /if \(metaCache && !metaCacheExpired\(metaFetchedAt, Date\.now\(\)\)\) return metaCache;/.test(cloudPart),
     true,
-    'cloud 分支必须缓存命中即返回（改动不得让云端每调一次就拉一次）',
+    'cloud 分支必须「TTL 内缓存命中」即返回（短路 TTL 只限「多久后必然重读」，不得每调一次就拉一次）',
   );
   assert.equal(/statMetaFile\(\)/.test(cloudPart), false, 'cloud 分支不得做磁盘指纹检测');
   assert.equal(/META_FILE/.test(cloudPart), false, 'cloud 分支不得触碰 local 的 meta 文件');
