@@ -34809,19 +34809,53 @@ function cleanAttributes(attrs) {
   }
   return out;
 }
+function isFounderAncestorMirror(person) {
+  return String(person?.external_link_type || "") === FOUNDER_LINK_TYPE;
+}
 function mirrorParentOf(family, people) {
   const isMirror = (p) => p?.external_mirror === "true";
   const father = family?.father_handle ? people[family.father_handle] || null : null;
   const mother = family?.mother_handle ? people[family.mother_handle] || null : null;
   if (father && !isMirror(father))
     return null;
+  if (father && isFounderAncestorMirror(father))
+    return null;
   const owner2 = father || mother;
   if (!isMirror(owner2))
+    return null;
+  if (isFounderAncestorMirror(owner2))
     return null;
   if (isMirror(father) && isMirror(mother)) {
     throw new Error("\u8BE5\u5BB6\u5EAD\u7236\u6BCD\u53CC\u65B9\u5747\u4E3A\u5916\u6811\u955C\u50CF\u8282\u70B9\uFF0C\u65E0\u6CD5\u786E\u5B9A\u5B50\u5973\u5F52\u5C5E\uFF0C\u8BF7\u8054\u7CFB\u603B\u7F16\u8F91");
   }
   return owner2;
+}
+var DEFAULT_MASTER_TREE_ID = process.env.MASTER_TREE_ID || "zhonghua";
+function clanOfMasterNode(metaTrees, personHandle) {
+  const h = String(personHandle || "").trim();
+  if (!h)
+    return null;
+  const hits = Object.values(metaTrees || {}).filter(
+    (e) => treeKindOf(e) === TREE_KIND.CLAN && String(e?.master_handle || "").trim() === h
+  );
+  if (!hits.length)
+    return null;
+  return hits.sort((a, b) => String(a.tree_id || "").localeCompare(String(b.tree_id || "")))[0];
+}
+function clanFounderChildBlockMessage(clanEntry) {
+  const title = String(clanEntry?.display_title || clanEntry?.tree_id || "").trim() || "\u8BE5\u7956\u8C31";
+  return `\u8BE5\u8282\u70B9\u5DF2\u4F5C\u4E3A\u300A${title}\u300B\u7684\u59CB\u7956\uFF0C\u8BF7\u5230\u8BE5\u7956\u8C31\u5185\u6DFB\u52A0\u5B50\u55E3`;
+}
+async function assertMasterChildAddAllowed({ treeId, masterTreeId, personHandle }) {
+  const masterId = String(masterTreeId || DEFAULT_MASTER_TREE_ID);
+  if (!treeId || treeId !== masterId)
+    return;
+  const clan = clanOfMasterNode((await getMeta())?.trees, personHandle);
+  if (!clan)
+    return;
+  const e = new Error(clanFounderChildBlockMessage(clan));
+  e.status = 400;
+  throw e;
 }
 function findRealFamily(tree, parentHandle, mirror, localTreeId) {
   const parent = tree.people[parentHandle];
@@ -34863,6 +34897,7 @@ async function addChildNode({
   const person = tree0.people[personHandle];
   if (!person)
     throw new Error("\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u8BE5\u6811");
+  await assertMasterChildAddAllowed({ treeId, masterTreeId, personHandle });
   const famHandle = (person.spouse_families || [])[0] || "";
   const family = famHandle ? tree0.families[famHandle] || null : null;
   const mirror = mirrorParentOf(family, tree0.people);
