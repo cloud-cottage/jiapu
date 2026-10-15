@@ -750,6 +750,37 @@ async function saveMeta(meta) {
   metaCache = meta;
   metaFetchedAt = Date.now();
 }
+function legacyTreeObjectPath(treeId) {
+  return `trees/${treeId}.json`;
+}
+function cloudTreeObjectPath(treeId, version) {
+  return `trees/${treeId}/v${version}.json`;
+}
+function isVersionedTreeFileId(fileId, treeId, version) {
+  const fid = String(fileId || "");
+  return !!fid && fid.endsWith(`/${cloudTreeObjectPath(treeId, version)}`);
+}
+function sweepTargets(treeId, newVersion, hasLegacy) {
+  const v = Number(newVersion);
+  const targets = [];
+  if (Number.isFinite(v) && v - 2 >= 1)
+    targets.push(cloudTreeObjectPath(treeId, v - 2));
+  if (hasLegacy && v >= 3)
+    targets.push(legacyTreeObjectPath(treeId));
+  return targets;
+}
+async function sweepSupersededTreeObjects(treeId, newVersion, replacedFileId) {
+  try {
+    const fid = String(replacedFileId || "");
+    const prefix = fid.slice(0, fid.lastIndexOf("/") + 1);
+    const hasLegacy = isVersionedTreeFileId(fid, treeId, Number(newVersion) - 1);
+    const targets = sweepTargets(treeId, newVersion, hasLegacy).map((p) => `${prefix}${p}`);
+    if (!targets.length)
+      return;
+    await sdkCall(() => getApp().deleteFile({ fileList: targets }));
+  } catch {
+  }
+}
 async function getTree(treeId) {
   const cached = cachedTree(treeId);
   if (cached)
@@ -820,7 +851,19 @@ async function saveTree(tree, expectedVersion) {
       const fileId = meta?.storage_files?.[tree.tree_id];
       if (!fileId)
         throw new Error(`storage_files \u7F3A\u5C11 ${tree.tree_id}`);
-      await sdkCall(() => getApp().uploadFile({ cloudPath: `trees/${tree.tree_id}.json`, fileContent: Buffer.from(JSON.stringify(tree)) }));
+      const r = await sdkCall(
+        () => getApp().uploadFile({
+          cloudPath: cloudTreeObjectPath(tree.tree_id, tree.version),
+          fileContent: Buffer.from(JSON.stringify(tree))
+        })
+      );
+      if (!r?.fileID)
+        throw new Error("\u4E91\u5B58\u50A8\u4E0A\u4F20\u672A\u8FD4\u56DE fileID");
+      await mutateMetaDoc((cfg) => ({
+        ...cfg,
+        storage_files: { ...cfg.storage_files || {}, [tree.tree_id]: r.fileID }
+      }));
+      await sweepSupersededTreeObjects(tree.tree_id, tree.version, fileId);
     }
   } catch (e) {
     tree.version = prevVersion;
@@ -842,7 +885,10 @@ async function createTreeFile(tree) {
     stamp = statTreeFile(tree.tree_id);
   } else {
     const r = await sdkCall(
-      () => getApp().uploadFile({ cloudPath: `trees/${tree.tree_id}.json`, fileContent: Buffer.from(JSON.stringify(tree)) })
+      () => getApp().uploadFile({
+        cloudPath: cloudTreeObjectPath(tree.tree_id, tree.version || 1),
+        fileContent: Buffer.from(JSON.stringify(tree))
+      })
     );
     if (!r?.fileID)
       throw new Error("\u4E91\u5B58\u50A8\u4E0A\u4F20\u672A\u8FD4\u56DE fileID");
