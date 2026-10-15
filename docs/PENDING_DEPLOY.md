@@ -879,3 +879,59 @@
 - **无新集合 · 无数据修正 · 真源零写入**（**§75-1 ④ 继续成立**：`config/` / 树 JSON / 既有集合 / 云存储 / `jiapu_tree_meta` **均未动**；`scripts/upload-migrated-to-cloudbase.mjs` 的 `COLLECTIONS` 名单**未动**；**未跑任何迁移脚本**）；
 - **前端不入本单**（**§75-1 ③ / ⑤ / ⑥ 继续成立**：**本批零前端改动** ⇒ **H5 未重建部署、小程序未重打上传**；既有前端产物不受本批影响）；
 - **本回写 = 制度登记单（只改文档）**：`docs/PENDING_DEPLOY.md` **本节** ＋ `docs/data-model.md` **§11 追加的「部署实况」（§11.9 ＋ §11.8 状态续写一行）**；**未改任何代码 / `AGENTS.md` / `docs/*.qa.md` / 其它文档**；**本回写本身未跑构建、未跑测试、未部署、未 git 写、未重启任何服务**（**仅登记执行侧已完成的动作与读数**）。
+
+## §76 create-clan 云端首写 500 修复批（**casWritePlan 三路分派**）登记（**生产 500 → 修复 → 已部署 · 待 Kevin 重试确认为最终判据** · **源码 commit = `ca7cef0`（= `895087b` 的父）** · 口径真源 = `docs/data-model.md` **§11.10** · **2026-10-15 · 只追加 · 不改 §0–§75 任何行**）
+
+> **编号（对账用 · 硬）**：本册按现证续编为 **§76**（前节 = **§75**；现证 = `grep -n '^## ' docs/PENDING_DEPLOY.md | tail`；产物 commit `895087b` 提交信息亦预指「回填见 PENDING_DEPLOY §76」）—— 若与 Kevin 定稿冲突 ⇒ 就地加注别名、不改本节字面。
+> **性质**：本节 = **create-clan 云端首写 500 事故批的全量执行登记**（根因 / 修法 / 测试 / 部署 / 孤儿清理 / 提交链）；**事故与修复均已执行完毕**，本节为**逐字登记**（读数照抄执行侧现证，未改写、未推算）。
+> **状态词（硬）**：**已实现 · 已部署 · 待重试验证** —— **不得写「已通过」/「已修复完成」**：**最终判据 = Kevin 在生产重试「新建祖谱」成功，尚未发生**（见 §76-7）。
+
+### §76-1 事故与根因（**生产 500 · 2026-10-15**）
+
+- **事故**：`POST /admin/create-clan`（**新建祖谱**）⇒ **HTTP `500`**（生产）；
+- **根因**：云端 **`jiapu_tree_meta._meta` 档无 `version` 字段**（**keys = `['_id','_schema','_description','storage_files']`**，**只读探针 2026-10-15 实证**）⇒ 旧 `commitCloudCas` 以 **`curVersion === 0`** 推断「档不存在」⇒ 对**已存在**的 `_meta` 档走 **`add({_id})`** ⇒ CloudBase **`_id` 重复必败**（**异常被吞**）⇒ **读回比对恒失败** ⇒ **重试耗尽** ⇒ **500**；
+- **教训（现证 = `cloudfunctions/compat-api/lib/store.js:351-362` JSDoc）**：**「version 收口为 0」≠「档不存在」** —— `versionOf` 把缺失 / 非法 version 都收口成 0，**「遗留档无 version」与「档真不存在」在 curVersion 上不可区分**，必须看**原始档 `cur` 本身**；
+- **伴生损伤**：云存储留孤儿 **`trees/huang_40644.json`**（**09:06:56**，**tree-meta 无登记**）—— 已随本批清理（§76-5）。
+
+### §76-2 修法（**Kong · 源码 commit `ca7cef0`**）
+
+- **新增纯函数决策器 `casWritePlan(cur, next)`**（**现证 = `cloudfunctions/compat-api/lib/store.js:384`**），**三路分派按原始档形态**（**不按收口后的版本号猜**）：
+  - **`cur == null` ⇒ `add`**（档真不存在 ⇒ `collection(col).add(payload)` 完整新建档首写）；
+  - **有限数值 `version` ⇒ `guarded`**（**条件值 = 原始 version** ⇒ `where({_id, version}).update(payload)` 标准 CAS；`version: 0` 的存量档亦归此路 —— 0 是**真实落库的有限数值**，条件写照样成立且安全：归 add 撞 `_id` 重复、归 bootstrap 白丢条件保护；负数同理，条件值取原始值、读回比对不变）；
+  - **其余（无 `version` 或非数值：string / NaN / Infinity）⇒ `bootstrap`**（**一次性自举**：`doc(id).update(payload)` 无条件写，rest 自带 `version = curVersion + 1`，**自举后该档即有数值 version，后续走标准 guarded CAS** —— 代码自愈，不手工补生产数据）；
+- **`commitCloudCas` 删 `curVersion === 0 → add` 分支**，改按 `casWritePlan(cur, next)` 三路分派（**现证 = `store.js:403-422`**）；**写调用异常一律不据此判成败，仍以读回比对为准**（**读回比对口径不变**：`back.version === curVersion + 1`，`store.js:420-421`）；
+- **`mutateDoc` 传入原始档 `cur`**（决策器输入 = 原始档形态，非收口版本号）；
+- **`commitLocalCas` / local 分支零改动**（**local 的 `_meta` 走 `withMetaWriteLock`，不经 `mutateDoc`**）；
+- **改动面（现证 = `git show --stat ca7cef0` ⇒ 5 文件 / +247 / −13）**：`cloudfunctions/compat-api/lib/store.js`（+68）／ `lib/cas-write-plan.test.js`（**新建**，173 行）／ `lib/friend-ops.test.js` ／ `lib/task-center.test.js`（**注册数绊线 46→47 定额同步**）／ `package.json`（`scripts.test` 注册**第 47 项**）。
+
+### §76-3 测试（**过程判据 · 已过**）
+
+- **新建 `lib/cas-write-plan.test.js`**：**8 用例**，**含事故回归锚：无 version 存量档必须归 `bootstrap` 不得归 `add`**；
+- **注册数绊线同步**：`scripts.test` 注册**第 47 项**；`friend-ops` / `task-center` 两处注册数绊线 **46→47 定额同步**（**现证 = `task-center.test.js:789-795` ／ `friend-ops.test.js:865-867`**）；
+- **`npm test` = 762 / 762 / 0 · EXIT 0**（**主代理亲跑 · 2026-10-15**）。
+
+### §76-4 部署（**esbuild 重打包 ＋ `tcb fn deploy` · 2026-10-15**）
+
+- **产物（新）**：md5 **`9e86bea4f7b581dc86553f064529bfb9`** ／ **1,487,856 B**（**含 `casWritePlan` ×2**）；
+- **部署**：`tcb fn deploy` ⇒ **成功**；**函数指纹（部署后现证）= 代码大小 `6,331,536` B · 修改时间 `2026-10-15 10:23:44`**（上一版 = `6,331,376` B · `2026-10-15 08:55:25`，见 §75-6 (2)）；
+- **回归冒烟（部署后）**：`zhonghua` **`/tree/rank` 连打 5 次 = `119 × 5`** ／ **`/tree-meta` = `200`**。
+
+### §76-5 孤儿清理（**云存储 `trees/huang_40644.json` · 2026-10-15**）
+
+- **先备份后删除**：已下载备份（**675 B** → **`~/jiazu-backups/2026-10-15-orphan-huang/huang_40644.json`**）后删除（**SDK `deleteFile` 返 `SUCCESS`**）；
+- **删除后现证**：`tcb storage list trees/` **无 `huang_*`** ✓。
+
+### §76-6 提交链（**已推 main**）
+
+- **源码 commit** = **`ca7cef0`**（= **`895087b` 的父**；`fix(store): commitCloudCas 按真实档形态三路分派（add/guarded/bootstrap）—— 修云端新建祖谱/家族树首写 500`）；
+- **产物 commit** = **`895087b`**（`chore(deploy): 重打包 compat-api 产物（含 casWritePlan 三路分派修复）—— 云端已部署`）；
+- **均已推 main**（现证 = `git log --oneline -3` ⇒ `895087b` / `ca7cef0` / `a490c52`）。
+
+### §76-7 判据与状态词（**硬**）
+
+- **最终判据（未闭合）**：**Kevin 在生产重试「新建祖谱」成功** —— **尚未发生 ⇒ 待 Kevin 重试确认为最终判据**；**重试成功前，任何处不得写「已通过」/「已修复完成」**；
+- **过程判据（已过）**：**`npm test` 762/762/0** ＋ **产物指纹（md5 `9e86bea4f7b581dc86553f064529bfb9` ／ 函数指纹修改时间 `2026-10-15 10:23:44`）** ＋ **回归冒烟（`119 × 5` ／ `/tree-meta` 200）** —— 三件均已现证（§76-3 / §76-4）；
+- **状态词 = 已实现 · 已部署 · 待重试验证**；**「云端新建祖谱/家族树首写恢复可用」只能写「已部署 · 待重试验证」**；
+- **语义覆盖（旧行不回改）**：前登记（勘误 22 · commit `a490c52`）之「create-clan 云端首写预存缺陷登记（修复批在途）」挂账，**自本节起语义关闭**（修复已落地部署，判据见本节）；
+- **边界（继续成立）**：**无新集合 · 无数据修正**（孤儿文件 = 备份后删除，非数据修正）；**本批零前端改动**（H5 未重建部署、小程序未重打上传）；**`commitLocalCas` / local 分支零改动**；
+- **登记面**：`docs/PENDING_DEPLOY.md` 本节 ＋ `docs/data-model.md` **§11.10**；**本登记 = 制度登记单（只改文档）**（**未改任何代码 / `AGENTS.md` / `docs/*.qa.md` / 其它文档**；**本登记本身未跑构建 / 未跑测试 / 未部署 / 未 git 写**，仅登记执行侧已完成的动作与读数）。

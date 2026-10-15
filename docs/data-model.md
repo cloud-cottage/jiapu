@@ -539,3 +539,15 @@ body = Gramps RawPerson 形状 + 编辑表单约定顶层字段（仅 compat 消
 - **用户可见面已恢复（同批现证）**：`GET /people/fc4707894660e16cdff1907a`（带 `X-Tree-Id: zhonghua`）⇒ **HTTP `200`** 且**人档可读**（**此前 = `person not found`**），**`gramps_id = 000000415`**（**黄嘉**）；`GET /people/92d03c30e92509b93348a113` ⇒ **`family_list = ['645b7dcca2559f10d2927783']`**（**此前 = `[]`**）；
 - **回归（部署后）**：`ji_23395_01` **58/4** ／ `li_26446_01` **4/1** ／ `pan_28504_01` **16/0**；`/tree-meta` **`200`** ／ `/revisions?tree_id=ji_23395_01` **`200`** ／ `/tree/rank?tree_id=zhonghua` **`200`**；
 - **边界继续成立**：**无新集合 · 无数据修正 · 真源零写入**；**本批零前端改动**（**H5 未重建部署、小程序未重打上传**）；上云动作全量登记 = `docs/PENDING_DEPLOY.md` **§75-6**（**§75-1 / §75-3 的「待执行 / 未部署」挂账由其语义关闭，旧行不回改**）；**本回写 = 制度登记单（只改文档）**（**未改任何代码 / `AGENTS.md` / `docs/*.qa.md` / 其它文档**；**本回写本身未跑构建、未跑测试、未部署、未 git 写、未重启任何服务**）。
+
+### 11.10 `casWritePlan` 三路分派契约（**cloud CAS 写入决策器 · 2026-10-15 create-clan 500 修复批**）（**纯追加 · §11.1–§11.9 既有行原文一律保留 · 不回改**）
+
+- **决策器（纯函数）**：`casWritePlan(cur, next)`（**现证 = `cloudfunctions/compat-api/lib/store.js:384`**；源码 commit = `ca7cef0`）—— cloud 条件写的分派**按原始档 `cur` 的形态**决策，**不按收口后的版本号猜**；`next` = mutator 产出、已由 `mutateDoc` 强制覆写 `_id` / `version` 的新档：
+  - **`cur == null` ⇒ `add`**：档真不存在 ⇒ `collection(col).add({ _id, ...rest })`（完整新建档首写）；
+  - **`cur.version` 为有限数值 ⇒ `guarded`**：标准 CAS ⇒ `where({ _id, version: 原始version }).update(rest)`（**条件值 = 原始 version**；`version: 0` 的存量档亦归此路 —— 0 是**真实落库的有限数值**，条件写照样成立且安全：归 `add` 会撞 `_id` 重复，归 `bootstrap` 会白丢这层条件保护；负数同理，条件值取原始值、读回比对不变）；
+  - **其余（无 `version` 或非数值：string / NaN / Infinity）⇒ `bootstrap`**：**一次性自举** ⇒ `doc(id).update(rest)` 无条件写，rest 自带 `version = curVersion + 1` ⇒ **自举后该档即有数值 version，后续永远走标准 guarded CAS**（**代码自愈，不手工补生产数据**）；
+- **⚠️ bootstrap 的并发语义弱化边界（硬 · 必须明写）**：自举为**无条件写** ⇒ **两实例同时自举可能互相覆盖**（例：`_meta.storage_files`）；**可接受的理由**：① **触发面仅限 chief_editor 单人低频操作**（新建祖谱 / 改树名 / 删树等 meta 写）；② 属**一次性迁移自愈** —— **第二次起该档已有数值 version，永远不会再走 bootstrap**；**成败仍由读回比对兜底**（写后 `back.version === curVersion + 1` 才算成功，口径不变）；
+- **配套改动**：`commitCloudCas` 删「`curVersion === 0 ⇒ add`」分支，改按 `casWritePlan` 三路分派（现证 = `store.js:403-422`）；**`mutateDoc` 传入原始档**；**读回比对口径不变**；**`commitLocalCas` / local 分支零改动**（local 的 `_meta` 走 `withMetaWriteLock`，不经 `mutateDoc`）；
+- **不变量（继续成立）**：**「version 收口为 0」≠「档不存在」** —— `versionOf` 把缺失 / 非法 version 都收口成 0，**存在性判定必须看原始档 `cur` 本身，不得以收口版本号推断**；**写调用异常不据此判成败**（`updated` 计数三义同形），**一律读回比对**；
+- **案例（2026-10-15 生产 create-clan 500 · 引用）**：云端 `jiapu_tree_meta._meta` 遗留档无 `version` 字段（keys = `['_id','_schema','_description','storage_files']`，只读探针 2026-10-15 实证）⇒ 旧代码以 `curVersion === 0` 推断「档不存在」走 `add` ⇒ `_id` 重复必败（异常被吞）⇒ 读回比对恒失败 ⇒ 重试耗尽 ⇒ 500；伴生云存储孤儿 `trees/huang_40644.json`（已备份后删除，全量登记 = `docs/PENDING_DEPLOY.md` **§76**）；本契约即该事故的口径固化 —— **后续任何 cloud CAS 写路径不得再以 curVersion 推断存在性**；
+- **测试锚**：`lib/cas-write-plan.test.js` **8 用例**（含**事故回归锚：无 version 存量档必须归 bootstrap 不得归 add**）；`npm test` **762/762/0**（2026-10-15）；部署与验证状态 = **已部署 · 待重试验证**（**最终判据 = Kevin 生产重试新建祖谱成功，尚未发生**，登记 = `docs/PENDING_DEPLOY.md` **§76-7**）。
