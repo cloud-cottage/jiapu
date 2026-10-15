@@ -5,7 +5,9 @@
  *   - 树 JSON / 详情：读写 migrate-output/（trees/ + details/）
  *   - 集合：读写 migrate-output/collections/<col>.json（模拟 CloudBase 文档集合）
  * cloud 模式（COMPAT_SOURCE=cloud，默认）：
- *   - 树 JSON：云存储（fileID 来自 jiapu_tree_meta.storage_files）
+ *   - 树 JSON：云存储（fileID 来自 jiapu_tree_meta.storage_files；方案 A 版本化 —— 每次保存
+ *     上传全新对象 trees/<tree_id>/v<版本号>.json 后重指 fileID，杜绝「同路径覆盖写」撞上
+ *     服务端路径级读缓存（TTL ≈ 分钟级）导致写后 ~10 分钟才可见）
  *   - 详情 / 集合：CloudBase 文档库（jiapu_ 前缀集合）
  *
  * 全部 SDK 调用走 sdkCall 互斥队列（@cloudbase/node-sdk 并发会 aborted）。
@@ -951,6 +953,83 @@ export async function saveMeta(meta) {
 
 // ---- 树 JSON（结构真源） ----
 
+// ============================================================================
+// 方案 A：树对象云路径**版本化**（根治「新增节点后要等 ~10 分钟才可见」）
+//
+// 环境事实（主代理对照实验钉死）：腾讯云存储对**同一对象路径**有服务端读缓存（CDN/对象
+// 缓存），**同路径覆盖写不立即生效，TTL ≈ 分钟级（用户体感 ~10 分钟）**；downloadFile 每次
+// 签名的临时 URL 都不同 ⇒ 换 URL 无效，问题在**路径级**。
+// ⇒ 修法：每次保存都上传到**从未被读过的新对象** `trees/<tree_id>/v<版本号>.json`（版本号严格
+// 递增），上传成功后把 `_meta.storage_files[tree_id]` 重指到新 fileID（mutateMetaDoc = CAS +
+// 重试）。**读路径零改动**（getTree / readAuthoritativeVersion 仍按 storage_files 的 fileID
+// 下载）⇒ 写后同实例立即读必是新内容；其它实例 metaCache TTL（15s）后重取 meta 也必是新内容。
+// ============================================================================
+
+/**
+ * 遗留旧路径（迁移前唯一树对象）：当时每次保存都是**同路径覆盖写** ⇒ 受服务端路径级读缓存
+ * 影响，写后不立即可见。版本化上线后不再写入该路径；存量对象由清扫规则在「沦为上上版」后
+ * best-effort 回收（见 sweepTargets / sweepSupersededTreeObjects）。
+ */
+export function legacyTreeObjectPath(treeId) {
+  return `trees/${treeId}.json`;
+}
+
+/**
+ * 版本化树对象云路径：`trees/<tree_id>/v<version>.json`。每次保存版本号严格递增（saveTree
+ * 写入前已 +1；createTreeFile = v1）⇒ 每次都是全新对象，任何服务端路径级缓存都不可能命中
+ * 旧内容（写后立即可读即为真值）。
+ */
+export function cloudTreeObjectPath(treeId, version) {
+  return `trees/${treeId}/v${version}.json`;
+}
+
+/**
+ * 被替换 fileID 是否恰为「版本 version 的版本化对象」（以 `…/trees/<id>/v<version>.json` 结尾）。
+ * 用途：saveTree 清扫时判定遗留旧路径 `trees/<tree_id>.json` 是否已沦为**上上版** ——
+ * 被替换对象是版本化路径 ⇒ 上一轮保存已是版本化写 ⇒ 遗留对象（若存在）当时已沦为上一版并被
+ * 保留过一整轮，本次必已是上上版 ⇒ 可安全清扫。否则（遗留路径 / 未知 fileID 形态）一律视为
+ * 「可能是上一版」而保留 —— 宁留孤儿对象，不冒险删活对象。
+ */
+export function isVersionedTreeFileId(fileId, treeId, version) {
+  const fid = String(fileId || '');
+  return !!fid && fid.endsWith(`/${cloudTreeObjectPath(treeId, version)}`);
+}
+
+/**
+ * 版本化清扫目标（**纯函数**）：上传 v(N) 成功且 meta 重指成功后应删除的云路径数组。
+ * - 上一版 v(N-1) **绝不入选**：≤15s 内其它实例的 metaCache 仍指着它，删了会让其兜底读失败；
+ * - 上上版 v(N-2)：N-2 ≥ 1 时入选。对象可能不存在（迁移后前两轮保存的 v(N-2) 从未写过）
+ *   ⇒ 数组照含、由删除侧 best-effort 兜底 —— 「目标数组完整」与「删除尽力而为」分离；
+ * - 遗留旧路径 `trees/<tree_id>.json`：仅当 `hasLegacy`（被替换 fileID 已是版本化路径，见
+ *   isVersionedTreeFileId）且 N ≥ 3 时入选 —— N < 3 时它至多是上一版，绝不入选。
+ */
+export function sweepTargets(treeId, newVersion, hasLegacy) {
+  const v = Number(newVersion);
+  const targets = [];
+  if (Number.isFinite(v) && v - 2 >= 1) targets.push(cloudTreeObjectPath(treeId, v - 2));
+  if (hasLegacy && v >= 3) targets.push(legacyTreeObjectPath(treeId));
+  return targets;
+}
+
+/**
+ * 清扫被版本化写取代的旧树对象（**best-effort**：任何失败 —— 含对象不存在 / fileID 形态意外 /
+ * SDK 返回错误码 —— 一律吞掉，绝不影响本次保存的成功语义；残留对象只是孤儿，没有任何 fileID
+ * 再指向它们）。只删 `sweepTargets` 列出的路径；完整 fileID 由本次上传刚返回的 fileID 推导
+ * （`cloud://<env>.<bucket>` 前缀一致，仅替换路径段 —— 不依赖 deleteFile 接受裸路径）。
+ */
+async function sweepSupersededTreeObjects(treeId, newVersion, replacedFileId) {
+  try {
+    const fid = String(replacedFileId || '');
+    const prefix = fid.slice(0, fid.lastIndexOf('/') + 1); // `cloud://<env>.<bucket>/`；空 fid ⇒ 裸路径（删除必失败，被吞）
+    const hasLegacy = isVersionedTreeFileId(fid, treeId, Number(newVersion) - 1);
+    const targets = sweepTargets(treeId, newVersion, hasLegacy).map((p) => `${prefix}${p}`);
+    if (!targets.length) return;
+    await sdkCall(() => getApp().deleteFile({ fileList: targets })); // 返回值不检查：删除失败 = 留孤儿，无害
+  } catch {
+    /* 清扫是纯优化：一律忽略错误 */
+  }
+}
+
 export async function getTree(treeId) {
   const cached = cachedTree(treeId); // TTL 内 **且**（local）磁盘未被外部改过才命中
   if (cached) return cached;
@@ -1018,6 +1097,14 @@ function treeConflictError() {
  * **绝不写**。旧实现只比内存里那棵树、从不读云端对象的版本 ⇒ 多实例下陈旧实例的一次写会把
  * 内存里的旧树**整份覆盖**云端（静默丢失别人刚写进去的节点）。
  * local 模式行为不变（同样更稳：盘上文件即真源）。
+ *
+ * **cloud 写路径版本化（方案 A，根治「写后 ~10 分钟才可见」）**：不再向遗留路径
+ * `trees/<id>.json` 同路径覆盖写（服务端对该路径有读缓存，TTL ≈ 分钟级，覆盖写不立即生效），
+ * 而是上传到全新对象 `trees/<id>/v<N>.json`（N = 写入前已 +1 的新版本号），上传成功后经
+ * `mutateMetaDoc` 把 `storage_files[tree_id]` 重指到新 fileID。meta 重指失败 ⇒ **视为保存失败**
+ * （下方 catch：还原版本号 + 失效缓存 + 抛错；已上传的版本对象留作孤儿，无害 —— 没有任何
+ * fileID 指向它，且 version CAS 保证同版本号不会被复用重写）。重指成功后 best-effort 清扫
+ * 上上版对象与（已沦为上上版的）遗留旧路径 —— 上一版必保留（其它实例 metaCache ≤15s 内还指着它）。
  */
 export async function saveTree(tree, expectedVersion) {
   if (expectedVersion !== undefined && tree.version !== expectedVersion) {
@@ -1049,7 +1136,25 @@ export async function saveTree(tree, expectedVersion) {
       const meta = await getMeta();
       const fileId = meta?.storage_files?.[tree.tree_id];
       if (!fileId) throw new Error(`storage_files 缺少 ${tree.tree_id}`);
-      await sdkCall(() => getApp().uploadFile({ cloudPath: `trees/${tree.tree_id}.json`, fileContent: Buffer.from(JSON.stringify(tree)) }));
+      // 方案 A：上传到全新对象 trees/<id>/v<N>.json（N = 上方已 +1 的新版本号）
+      // —— 全新路径从未被读过 ⇒ 服务端路径级缓存不可能命中旧内容，写后立即可读。
+      const r = await sdkCall(() =>
+        getApp().uploadFile({
+          cloudPath: cloudTreeObjectPath(tree.tree_id, tree.version),
+          fileContent: Buffer.from(JSON.stringify(tree)),
+        }),
+      );
+      if (!r?.fileID) throw new Error('云存储上传未返回 fileID');
+      // 重指 storage_files[tree_id] → 新 fileID（mutateMetaDoc = _meta 单档 CAS + 重试；
+      // 成功后就地更新 metaCache —— 本实例的读立即可见新 fileID）。
+      // meta 写失败 ⇒ 抛错穿到外层 catch = 保存失败：还原版本号 + 失效缓存（已上传对象留作孤儿）。
+      await mutateMetaDoc((cfg) => ({
+        ...cfg,
+        storage_files: { ...(cfg.storage_files || {}), [tree.tree_id]: r.fileID },
+      }));
+      // best-effort 清扫：上一版必保留（其它实例 metaCache ≤15s 内还指着它）；删上上版；
+      // 被替换 fileID 已是版本化路径 ⇒ 遗留旧路径必已沦为上上版，顺带回收（迁移尾件）。
+      await sweepSupersededTreeObjects(tree.tree_id, tree.version, fileId);
     }
   } catch (e) {
     // 先还原版本号 / 时间戳（调用方可能还持有这棵树对象），再失效缓存
@@ -1065,8 +1170,9 @@ export async function saveTree(tree, expectedVersion) {
 }
 
 /**
- * 新建树 JSON（首写入）：local 直接落文件；cloud 先上传云存储拿 fileID 并写入 tree-meta.storage_files，
- * 之后 saveTree 才能按 fileID 覆盖（saveTree 依赖 storage_files 已有该树）。
+ * 新建树 JSON（首写入）：local 直接落文件；cloud 上传版本化对象 `trees/<id>/v1.json` 拿 fileID
+ * 并写入 tree-meta.storage_files（方案 A：首写即新路径，之后 saveTree 才能按 fileID 走版本化
+ * 覆盖 —— saveTree 依赖 storage_files 已有该树）。
  */
 export async function createTreeFile(tree) {
   let stamp; // local：落盘后取指纹（首写 = 本缓存条目对应的就是这份字节）
@@ -1076,11 +1182,16 @@ export async function createTreeFile(tree) {
     fs.writeFileSync(p, JSON.stringify(tree, null, 2));
     stamp = statTreeFile(tree.tree_id);
   } else {
+    // 方案 A：首写即版本化 v1（新建树 version 恒为 1，`|| 1` 仅防御性兜底）
     const r = await sdkCall(() =>
-      getApp().uploadFile({ cloudPath: `trees/${tree.tree_id}.json`, fileContent: Buffer.from(JSON.stringify(tree)) }),
+      getApp().uploadFile({
+        cloudPath: cloudTreeObjectPath(tree.tree_id, tree.version || 1),
+        fileContent: Buffer.from(JSON.stringify(tree)),
+      }),
     );
     if (!r?.fileID) throw new Error('云存储上传未返回 fileID');
-    // 定向写 `_meta` 单档的 storage_files（不再整份 saveMeta）
+    // 定向写 `_meta` 单档的 storage_files（不再整份 saveMeta）；写失败 ⇒ 首写失败，
+    // 已上传的 v1 对象留作孤儿（无害：storage_files 没有该树，任何读路径都不会引用它）。
     await mutateMetaDoc((cfg) => ({
       ...cfg,
       storage_files: { ...(cfg.storage_files || {}), [tree.tree_id]: r.fileID },
@@ -1097,6 +1208,10 @@ export async function createTreeFile(tree) {
  * 写序：**先落盘（删除）成功、再更新进程内缓存 / 写 meta**（与 colSet / saveTree 同口径）；
  * 缓存未命中视为已删（幂等，不抛错）。
  * 注：tree-meta 的 `trees[tree_id]` 条目由调用方按业务语义另行 `saveMeta` 处理（本函数不越权改注册表）。
+ * 注（方案 A 版本化）：cloud 只删 storage_files 当前指向的对象；历史版本对象
+ * `trees/<id>/v*.json` 与迁移遗留 `trees/<id>.json`（若已不被指向）**不在删除时枚举回收**
+ * （本批不引入列目录 / 定时清理）—— 由 saveTree 的清扫规则逐步回收；树删除时残留的未清扫
+ * 对象留作孤儿，无害（没有任何 fileID 再指向它们）。
  */
 export async function deleteTree(treeId) {
   const id = String(treeId || '');

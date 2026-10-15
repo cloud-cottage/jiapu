@@ -790,11 +790,13 @@ test('⑬ TOCTOU：锁定读与兰帖扣减同锁（持锁期间读不得返回�
 //   + 新建祖谱 500 事故回归锚）⇒ 定额同步为实得真值 47。
 // meta 读缓存 TTL 修复批新增 meta-cache-ttl.test.js（48，cloud metaCache 15s TTL 纯函数 + 静态锚）
 //   ⇒ 定额同步为实得真值 48。
-test('⑩ 注册数 48 = 磁盘 *.test.js 数；「已注册但磁盘缺失」0 条；磁盘未注册 0 条', () => {
+// 树对象云路径版本化批（方案 A）新增 tree-object-path.test.js（49，版本化路径/清扫纯函数
+//   + saveTree/createTreeFile 版本化写与读路径零改动静态锚）⇒ 定额同步为实得真值 49。
+test('⑩ 注册数 49 = 磁盘 *.test.js 数；「已注册但磁盘缺失」0 条；磁盘未注册 0 条', () => {
   const pkg = JSON.parse(fs.readFileSync(PKG_FILE, 'utf8'));
   const registered = (pkg.scripts.test.match(/[\w./-]+\.test\.js/g) || []).map((p) => p.replace(/^.*lib\//, ''));
   const onDisk = fs.readdirSync(HERE).filter((f) => f.endsWith('.test.js'));
-  assert.equal(registered.length, 48, `注册数应为 48，实得 ${registered.length}`);
+  assert.equal(registered.length, 49, `注册数应为 49，实得 ${registered.length}`);
   assert.equal(onDisk.length, registered.length, `磁盘 *.test.js 数 ${onDisk.length} 应等于注册数 ${registered.length}`);
   assert.equal(new Set(registered).size, registered.length, '注册项不得重复');
   const missing = registered.filter((f) => !fs.existsSync(path.join(HERE, f)));
