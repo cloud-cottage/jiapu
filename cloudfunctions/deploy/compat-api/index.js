@@ -375,14 +375,28 @@ function commitLocalCas(col, id, curVersion, next) {
   }
   return back && versionOf(back.version) === curVersion + 1 ? back : null;
 }
-async function commitCloudCas(col, id, curVersion, next) {
-  const db = getApp().database();
+function casWritePlan(cur, next) {
   const { _id, ...rest } = next;
+  if (cur == null) {
+    return { kind: "add", payload: { _id, ...rest } };
+  }
+  if (typeof cur.version === "number" && Number.isFinite(cur.version)) {
+    return { kind: "guarded", payload: rest, version: cur.version };
+  }
+  return { kind: "bootstrap", payload: rest };
+}
+async function commitCloudCas(col, id, curVersion, next, cur) {
+  const db = getApp().database();
+  const plan = casWritePlan(cur, next);
   try {
-    if (curVersion === 0) {
-      await sdkCall(() => db.collection(col).add({ _id: id, ...rest }));
+    if (plan.kind === "add") {
+      await sdkCall(() => db.collection(col).add(plan.payload));
+    } else if (plan.kind === "guarded") {
+      await sdkCall(
+        () => db.collection(col).where({ _id: id, version: plan.version }).update(plan.payload)
+      );
     } else {
-      await sdkCall(() => db.collection(col).where({ _id: id, version: curVersion }).update({ ...rest }));
+      await sdkCall(() => db.collection(col).doc(id).update(plan.payload));
     }
   } catch {
   }
@@ -401,7 +415,7 @@ async function mutateDoc(col, id, mutator) {
     }
     next._id = docId;
     next.version = curVersion + 1;
-    const written = SOURCE === "local" ? commitLocalCas(col, docId, curVersion, next) : await commitCloudCas(col, docId, curVersion, next);
+    const written = SOURCE === "local" ? commitLocalCas(col, docId, curVersion, next) : await commitCloudCas(col, docId, curVersion, next, cur);
     if (written) {
       const map2 = await loadCol(col);
       map2.set(docId, written);
