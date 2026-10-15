@@ -3,14 +3,26 @@
  *
  * 规则「子女归父系真身所在树」：
  * - 父母都在本树 → 老口径：本树建节点（沿用随父姓）+ 挂进本人第一个配偶家族，没有则新建家族。
- * - 家庭里父（或父空缺时的母）是外树镜像节点（external_mirror='true'）→ 子女建到真身所在树、
- *   挂进真身的婚姻家族；本树只留一个镜像子女（external_mirror + link_type='child'）用于显示。
+ * - 家庭里父（或父空缺时的母）是外树**婚姻**镜像节点（external_mirror='true'，link_type='marriage'）→
+ *   子女建到真身所在树、挂进真身的婚姻家族；本树只留一个镜像子女（external_mirror + link_type='child'）用于显示。
+ *
+ * ★ 例外（Kevin 2026-10-15 口径 ①，优先级高于上条；同日主代理收窄：**只认 founder**）：
+ *   祖谱顶端**认祖镜像**（**仅** `external_link_type === 'founder'`，真身在中华世本）名下的子嗣
+ *   **一律建在本树**（祖谱自有段真人节点，`external_*` 为空），**不回写真身（世本）树** ——
+ *   这些镜像代表的是「本支始祖在总谱里的位置」，其子嗣本源应落本祖谱。
+ *   子嗣归属判定 = `mirrorParentOf`（见该函数：founder 镜像返回 null ⇒ 走本树分支）。
+ *   `chain`（世系链镜像）**不在豁免内、保持既有路由**（子女归真身树 + 本树留镜像子女）：
+ *   产品侧对 chain 另有只读提示，不为未要求的情形引入行为变化。
+ *
+ * ★ 例外（Kevin 2026-10-15 口径 ②）：世本（MASTER_TREE_ID）里**已作为某祖谱始祖**的节点
+ *   （meta 里存在 kind='clan' 且 `master_handle` === 该节点 handle 的树）**不允许添加子嗣** ——
+ *   拦截在写任何一棵树之前（`assertMasterChildAddAllowed`，400）。
  *
  * 两侧写入统一走 store.updateTrees()：按 tree_id 顺序加锁 + 深拷贝快照 + 中途失败回滚。
  */
 import crypto from 'node:crypto';
-import { getTree, updateTrees, saveDetail, getDetail, deleteDetail, nextPersonId, nextFamilyId } from './store.js';
-import { treeKindOf, metaEntryOf } from './founder-attach.js';
+import { getTree, getMeta, updateTrees, saveDetail, getDetail, deleteDetail, nextPersonId, nextFamilyId } from './store.js';
+import { treeKindOf, metaEntryOf, TREE_KIND, FOUNDER_LINK_TYPE } from './founder-attach.js';
 import { nextGrampsId, inheritedSurname, parentSlot } from './tree-write.js';
 import { findMarriageSide } from './marriage.js';
 import { assertChildWriteAllowed, withMaternalSuccessionAttribute } from './family-write-guard.js';
@@ -72,10 +84,24 @@ function cleanAttributes(attrs) {
 }
 
 /**
+ * 认祖镜像（Kevin 2026-10-15 口径 ①，收窄后**只认 founder**）：`external_link_type === 'founder'`
+ * （祖谱顶端世本镜像段 / 立支新树始祖镜像 / 宗谱登记镜像）—— 真身在**别树**，但其名下子嗣
+ * **建在本树**（自有段真人节点），不回写真身树。
+ * ★ 收窄：`chain`（世系链镜像）**不算认祖镜像**（原实现把 founder / chain 同豁免，2026-10-15 主代理收窄），
+ *   与婚姻镜像（`marriage`）、镜像子女（`child`）一样维持既有「子女归真身树 + 本树留镜像子女」路由。
+ * 命名与 `founder-attach.js` 的 `isFounderMirror(person, masterTreeId)` 区分：后者是「本树始祖指向世本」判定。
+ */
+export function isFounderAncestorMirror(person) {
+  return String(person?.external_link_type || '') === FOUNDER_LINK_TYPE;
+}
+
+/**
  * 目标家庭里是否存在「需要把子女路由到真身树」的外树镜像父母（纯函数，可单测）。
  *
  * 归属原则：子女归父系 —— 父为真人（含父空缺而母为真人）→ 留本树；
- * 父为镜像 → 进父的真身树（招赘、母为真人同理）。父母双方都是镜像 → 数据异常，拒绝。
+ * 父为**婚姻**镜像 → 进父的真身树（招赘、母为真人同理）。父母双方都是镜像 → 数据异常，拒绝。
+ * **认祖镜像（仅 founder）例外**：不作真身路由 → 返回 null（走本树分支，口径 ①）；
+ * `chain` 镜像**不豁免**：按上条既有规则路由到真身树。
  * @returns {object|null} 需要路由到的镜像节点；不需要路由时 null
  */
 export function mirrorParentOf(family, people) {
@@ -83,12 +109,63 @@ export function mirrorParentOf(family, people) {
   const father = family?.father_handle ? people[family.father_handle] || null : null;
   const mother = family?.mother_handle ? people[family.mother_handle] || null : null;
   if (father && !isMirror(father)) return null;
+  // 口径 ①：父为认祖镜像（仅 founder）→ 不回写真身树，子女建在本树
+  if (father && isFounderAncestorMirror(father)) return null;
   const owner = father || mother;
   if (!isMirror(owner)) return null;
+  // 口径 ①：父空缺而母为认祖镜像（仅 founder）→ 同样建在本树
+  if (isFounderAncestorMirror(owner)) return null;
   if (isMirror(father) && isMirror(mother)) {
     throw new Error('该家庭父母双方均为外树镜像节点，无法确定子女归属，请联系总编辑');
   }
   return owner;
+}
+
+// ---- 口径 ②：世本里「已作为某祖谱始祖」的节点不得加子嗣 ----
+
+/**
+ * 中华世本（总谱）tree_id（与 `index.js` 的 MASTER_TREE_ID 同源：env 优先，缺省 `zhonghua`）。
+ * 仅在调用方未传 `masterTreeId` 时兜底。
+ */
+export const DEFAULT_MASTER_TREE_ID = process.env.MASTER_TREE_ID || 'zhonghua';
+
+/**
+ * 世本节点 → 「认它为始祖的祖谱」（纯函数 · 口径 ②）：
+ * meta.trees 里存在 `kind === 'clan'` 且 `master_handle === 该节点 handle` 的树。
+ * master_handle 语义见 `lib/clan.js`（建谱时落 master_handle = 上层世本始祖节点 handle）。
+ * @param {object} metaTrees meta.trees（tree_id → 条目）
+ * @param {string} personHandle 世本节点 handle
+ * @returns {object|null} 命中的祖谱 meta 条目（多命中按 tree_id 升序取第一条）；无 → null
+ */
+export function clanOfMasterNode(metaTrees, personHandle) {
+  const h = String(personHandle || '').trim();
+  if (!h) return null;
+  const hits = Object.values(metaTrees || {}).filter(
+    (e) => treeKindOf(e) === TREE_KIND.CLAN && String(e?.master_handle || '').trim() === h,
+  );
+  if (!hits.length) return null;
+  return hits.sort((a, b) => String(a.tree_id || '').localeCompare(String(b.tree_id || '')))[0];
+}
+
+/** 口径 ② 的拦截文案（逐字）：`该节点已作为《<祖谱名>》的始祖，请到该祖谱内添加子嗣` */
+export function clanFounderChildBlockMessage(clanEntry) {
+  const title = String(clanEntry?.display_title || clanEntry?.tree_id || '').trim() || '该祖谱';
+  return `该节点已作为《${title}》的始祖，请到该祖谱内添加子嗣`;
+}
+
+/**
+ * 断言「世本里已作为某祖谱始祖的节点」不可加子嗣（口径 ②；400，写任何一棵树之前）。
+ * 非世本树 / 非始祖节点一律放行（不影响其它树与其它节点）。
+ * @throws {Error} status=400 且文案含祖谱名
+ */
+async function assertMasterChildAddAllowed({ treeId, masterTreeId, personHandle }) {
+  const masterId = String(masterTreeId || DEFAULT_MASTER_TREE_ID);
+  if (!treeId || treeId !== masterId) return;
+  const clan = clanOfMasterNode((await getMeta())?.trees, personHandle);
+  if (!clan) return;
+  const e = new Error(clanFounderChildBlockMessage(clan));
+  e.status = 400;
+  throw e;
 }
 
 /**
@@ -118,8 +195,12 @@ function findRealFamily(tree, parentHandle, mirror, localTreeId) {
  * 添加子女（treeId 为操作发起树 = 前端当前所在树）
  *
  * - childHandle 存在 → 挂接该树已有节点（选人模式）；不存在 → 新建节点
- * - 跨树场景（家庭里父为镜像）时：新建的子女建到真身树，选人的节点整体搬到真身树
+ * - 跨树场景（家庭里父为**婚姻**镜像）时：新建的子女建到真身树，选人的节点整体搬到真身树
  *   （换新 handle / 按真身树重新分配编号），本树留镜像子女
+ * - 例外（口径 ①，2026-10-15；同日收窄为**仅 founder**）：家庭里的父（或父空缺时的母）是**认祖镜像**
+ *   （`external_link_type === 'founder'`）→ 子女建在**本树**（真人节点，`external_*` 为空），真身（世本）树零写入；
+ *   `chain` 镜像**不豁免** → 走上面的跨树路由（子女归真身树 + 本树留镜像子女）
+ * - 例外（口径 ②，2026-10-15）：世本里**已作为某祖谱始祖**的节点 → 400（新建 / 选人挂接同拦）
  * @returns {Promise<object>} { ok, child_handle, child_name, family_handle, mirror_handle, landed_tree_id, cross_tree, message }
  */
 export async function addChildNode({
@@ -140,8 +221,13 @@ export async function addChildNode({
   const person = tree0.people[personHandle];
   if (!person) throw new Error('节点不存在于该树');
 
+  // 口径 ②（Kevin 2026-10-15）：世本里已作为某祖谱始祖的节点不得加子嗣 ——
+  // 新建模式与选人挂接模式（attach）同拦；拦在解析家庭 / 任何写入之前（零写入）。
+  await assertMasterChildAddAllowed({ treeId, masterTreeId, personHandle });
+
   const famHandle = (person.spouse_families || [])[0] || '';
   const family = famHandle ? tree0.families[famHandle] || null : null;
+  // 认祖镜像（仅 founder）→ mirrorParentOf 返回 null ⇒ 走本树分支（口径 ①）；chain 镜像照旧路由
   const mirror = mirrorParentOf(family, tree0.people);
 
   const attach = String(childHandle || '').trim();

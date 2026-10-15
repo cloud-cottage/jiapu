@@ -5,6 +5,15 @@
  * 写路径部分：COMPAT_OUT_DIR 指向 /tmp 副本目录造树（绝不写 migrate-output 真源），
  * 收尾用 md5 校验真实树文件未被改动。
  *
+ * ★ 2026-10-15 口径追加（Kevin 当面拍定，优先级高于旧口径；同日主代理收窄 ①：**只认 founder**）：
+ *   ① 祖谱的**认祖镜像**（**仅** `external_link_type === 'founder'`，真身在世本）名下的子嗣
+ *      **建在本树**（自有段真人节点、`external_*` 为空），**不回写真身树**；
+ *   ② 世本里**已作为某祖谱始祖**的节点（meta 存在 kind='clan' 且 master_handle === 该节点 handle）
+ *      **不允许加子嗣** → 400 逐字文案；
+ *   ③ 普通 / 姻亲镜像（marriage / child / 空）**维持原路由**（防误伤对照）；
+ *      **`chain`（世系链镜像）同 ③ —— 不豁免**：照旧落真身树 + 本树留镜像子女（T4 对照用例）。
+ *   夹具 = 本文件顶部写入的 meta 副本（`<COMPAT_OUT_DIR>/tree-meta.json`）+ `ancestorMirrorFixture`。
+ *
  * 运行：node --test cloudfunctions/compat-api/lib/child-write.test.js
  */
 import test from 'node:test';
@@ -23,7 +32,62 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'jiazu-child-write-'));
 process.env.COMPAT_SOURCE = 'local';
 process.env.COMPAT_OUT_DIR = TMP;
 
-const { addChildNode, mirrorParentOf, MIRROR_CHILD_LINK_TYPE } = await import('./child-write.js');
+/**
+ * meta 副本夹具（2026-10-15 口径）：store 的 meta 读写根 = `<COMPAT_OUT_DIR>/tree-meta.json`
+ * （这里显式再写 `COMPAT_META_FILE`，保证同一根）。必须在 `import ./child-write.js`（→ store.js）
+ * **之前**落盘：store 的 local 分支按磁盘指纹失效缓存，一旦先读过再改盘就会读到旧快照。
+ * 只有本条口径用到的树进夹具 —— 两部祖谱的 `master_handle` 指向世本节点 `zh_founder` / `zh_founder2`
+ * ⇒ 口径 ② 命中；`zh_plain` 不是任何祖谱的始祖 ⇒ 照常可加子。
+ * 真实 `config/tree-meta.json` 由本文件收尾的 md5 断言守住（真源零写入）。
+ */
+const META_FILE = path.join(TMP, 'tree-meta.json');
+process.env.COMPAT_META_FILE = META_FILE;
+fs.writeFileSync(
+  META_FILE,
+  JSON.stringify(
+    {
+      _schema: '1.1',
+      trees: {
+        zhonghua: {
+          tree_id: 'zhonghua',
+          kind: 'master',
+          is_master: true,
+          display_title: '中华世本 · 全球华人家谱总谱',
+        },
+        clan_founder: {
+          tree_id: 'clan_founder',
+          kind: 'clan',
+          display_title: '季氏祖谱',
+          surname_char: '季',
+          master_tree_id: 'zhonghua',
+          master_handle: 'zh_founder',
+          founder_handle: 'cl_own',
+        },
+        clan_founder2: {
+          tree_id: 'clan_founder2',
+          kind: 'clan',
+          display_title: '季氏祖谱 · 二房',
+          surname_char: '季',
+          master_tree_id: 'zhonghua',
+          master_handle: 'zh_founder2',
+          founder_handle: 'cl2_own',
+        },
+      },
+    },
+    null,
+    2,
+  ),
+);
+
+const {
+  addChildNode,
+  mirrorParentOf,
+  MIRROR_CHILD_LINK_TYPE,
+  isFounderAncestorMirror,
+  clanOfMasterNode,
+  clanFounderChildBlockMessage,
+  DEFAULT_MASTER_TREE_ID,
+} = await import('./child-write.js');
 
 // 真实树文件基线（测试结束必须一模一样）
 const realBaseline = new Map(
@@ -620,4 +684,377 @@ test('真身树未达上限 → 正常写入（depthOf 返回 71 < 72）', async
   assert.equal(r.landed_tree_id, t.b);
   const rb = readTree(t.b);
   assert.ok(Object.values(rb.people).some((p) => p.name === '季清昆'), '真身树应落节点');
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 2026-10-15 口径（Kevin 当面拍定；① 同日主代理收窄为**仅 founder**）：
+//   ① 祖谱认祖镜像（**仅 founder**）名下的子嗣 ⇒ 建在**本树**（真人节点），不回写真身树；
+//   ② 世本里「已作为某祖谱始祖」的节点 ⇒ 加子拦下（400 逐字文案，新建 / 挂接同拦）；
+//   ③ 普通 / 姻亲镜像（marriage / child / 空）⇒ 维持原路由（对照，防误伤）；
+//      chain（世系链镜像）⇒ 同 ③ 维持原路由（T4 对照：落真身树 + 本树留镜像子女）。
+// ══════════════════════════════════════════════════════════════════════════════
+
+const md5Of = (p) => crypto.createHash('md5').update(fs.readFileSync(p)).digest('hex');
+const treePath = (id) => path.join(TMP, 'trees', `${id}.json`);
+const BLOCK_COPY = '该节点已作为《季氏祖谱》的始祖，请到该祖谱内添加子嗣';
+
+/** 世本（zhonghua）夹具：始祖 zh_founder / 二房始祖 zh_founder2 / 普通节点 zh_plain（每例重建，用例间互不污染） */
+function writeMasterTree() {
+  const person = (handle, grampsId, name, given, extra = {}) => ({
+    handle, gramps_id: grampsId, name, surname: '季', given, gender: 'M',
+    birth_date: '', death_date: '', birth_place: '', death_place: '',
+    parent_family: '', spouse_families: [], is_living: false, ...extra,
+  });
+  writeTree({
+    tree_id: 'zhonghua',
+    version: 41,
+    updated_at: '2026-10-15T00:00:00.000Z',
+    people: {
+      zh_founder: person('zh_founder', '000000001', '季始祖公', '始祖公', { spouse_families: ['zh_fam_1'] }),
+      zh_chain: person('zh_chain', '000000002', '季二世', '二世', { parent_family: 'zh_fam_1' }),
+      zh_founder2: person('zh_founder2', '000000003', '季二房公', '二房公'),
+      zh_plain: person('zh_plain', '000000050', '季某', '某'),
+    },
+    families: {
+      zh_fam_1: { handle: 'zh_fam_1', gramps_id: 'F000001', father_handle: 'zh_founder', mother_handle: '', child_handles: ['zh_chain'] },
+    },
+  });
+}
+
+/**
+ * 祖谱夹具（kind='clan'，meta 里 `master_handle='zh_founder'`）：
+ *   cl_mirror_founder 顶端认祖镜像（founder，真身 zh_founder）—— **无家庭**（生产实测形状：始祖镜像 spouse_families=[]）
+ *   cl_mirror_chain   世系链镜像（chain，真身 zh_chain）—— 无家庭
+ *   cl_own            自有段入口（真人）
+ */
+function writeClanTree() {
+  const mirror = (handle, grampsId, name, given, linkType, masterHandle, gender = 'M', note = '') => ({
+    handle, gramps_id: grampsId, name, surname: '季', given, gender,
+    birth_date: '', death_date: '', birth_place: '', death_place: '',
+    parent_family: '', spouse_families: [],
+    external_tree: 'zhonghua', external_person_handle: masterHandle,
+    external_link_type: linkType, external_mirror: 'true',
+    ...(note ? { external_relation_note: note } : {}),
+  });
+  writeTree({
+    tree_id: 'clan_founder',
+    version: 9,
+    updated_at: '2026-10-15T00:00:00.000Z',
+    people: {
+      cl_mirror_founder: mirror('cl_mirror_founder', '000500001', '季始祖公', '始祖公', 'founder', 'zh_founder', 'M', '季始祖公（中华世本 · 第 1 世）'),
+      cl_mirror_chain: mirror('cl_mirror_chain', '000500002', '季二世', '二世', 'chain', 'zh_chain', 'F'),
+      cl_own: {
+        handle: 'cl_own', gramps_id: '000000010', name: '季花', surname: '季', given: '花', gender: 'M',
+        birth_date: '', death_date: '', birth_place: '', death_place: '',
+        parent_family: '', spouse_families: ['cl_fam_own'],
+      },
+    },
+    families: {
+      cl_fam_own: { handle: 'cl_fam_own', gramps_id: 'F000010', father_handle: 'cl_own', mother_handle: '', child_handles: [] },
+    },
+  });
+}
+
+/** 二房祖谱夹具：认祖镜像**已占家庭父槽**（真身 zh_founder2）→ 加子应复用本树既有家庭 */
+function writeClanTree2() {
+  writeTree({
+    tree_id: 'clan_founder2',
+    version: 3,
+    updated_at: '2026-10-15T00:00:00.000Z',
+    people: {
+      cl2_mirror_founder: {
+        handle: 'cl2_mirror_founder', gramps_id: '000500011', name: '季二房公', surname: '季', given: '二房公', gender: 'M',
+        birth_date: '', death_date: '', birth_place: '', death_place: '',
+        parent_family: '', spouse_families: ['cl2_fam'],
+        external_tree: 'zhonghua', external_person_handle: 'zh_founder2',
+        external_link_type: 'founder', external_mirror: 'true',
+      },
+      cl2_wife: {
+        handle: 'cl2_wife', gramps_id: '000000011', name: '王氏', surname: '王', given: '氏', gender: 'F',
+        birth_date: '', death_date: '', birth_place: '', death_place: '',
+        parent_family: '', spouse_families: ['cl2_fam'],
+      },
+    },
+    families: {
+      cl2_fam: { handle: 'cl2_fam', gramps_id: 'F000011', father_handle: 'cl2_mirror_founder', mother_handle: 'cl2_wife', child_handles: [] },
+    },
+  });
+}
+
+// ---- 口径 ①：认祖镜像判定（纯函数） ----
+
+test('口径①·纯函数：**仅 founder** 认祖镜像不作真身路由（返回 null）；chain / marriage / child / 空 照旧路由', () => {
+  const base = { external_mirror: 'true', external_tree: 'zhonghua', external_person_handle: 'zh_founder' };
+  assert.equal(isFounderAncestorMirror({ ...base, external_link_type: 'founder' }), true);
+  assert.equal(
+    isFounderAncestorMirror({ ...base, external_link_type: 'chain' }),
+    false,
+    '收窄后 chain 不算认祖镜像（不豁免）',
+  );
+  assert.equal(isFounderAncestorMirror({ ...base, external_link_type: 'marriage' }), false);
+  assert.equal(isFounderAncestorMirror({ ...base, external_link_type: 'child' }), false);
+  assert.equal(isFounderAncestorMirror({ ...base, external_link_type: '' }), false);
+  assert.equal(isFounderAncestorMirror({ ...base, external_link_type: 'branch' }), false);
+  assert.equal(isFounderAncestorMirror(null), false);
+
+  const people = {
+    fm: { handle: 'fm', gender: 'M', ...base, external_link_type: 'founder' },
+    cm: { handle: 'cm', gender: 'F', ...base, external_link_type: 'chain' },
+    mm: { handle: 'mm', gender: 'M', ...base, external_link_type: 'marriage' },
+    real: { handle: 'real', gender: 'F' },
+  };
+  assert.equal(mirrorParentOf({ father_handle: 'fm', mother_handle: 'real' }, people), null, 'founder 镜像（父槽）→ 不路由');
+  assert.equal(
+    mirrorParentOf({ father_handle: 'cm', mother_handle: 'real' }, people)?.handle,
+    'cm',
+    'chain 镜像（父槽）→ 照旧路由（防误伤收窄）',
+  );
+  assert.equal(mirrorParentOf({ father_handle: '', mother_handle: 'fm' }, people), null, '父空缺 + founder 镜像（母槽）→ 不路由');
+  assert.equal(
+    mirrorParentOf({ father_handle: '', mother_handle: 'cm' }, people)?.handle,
+    'cm',
+    '父空缺 + chain 镜像（母槽）→ 照旧路由',
+  );
+  assert.equal(mirrorParentOf({ father_handle: 'mm', mother_handle: 'real' }, people)?.handle, 'mm', '婚姻镜像 → 照旧路由（防误伤）');
+});
+
+// ---- 口径 ①：写路径（T1 founder / T1b 复用家庭；T4 chain **对照** = 不豁免、照旧路由） ----
+
+test('口径①·T4（对照）：世系链镜像（chain）**不豁免** → 仍按既有路由落真身树 + 本树留镜像子女，真身分文不动地新建', async () => {
+  // 既有跨树路由的完整前提（与本文件既有 mirrorPair 用例同形状）：
+  //   本树 a：父 = chain 镜像（external_link_type='chain'，真身 b 的 rh）、母 = 真人；
+  //   真身树 b：父 rh 真人 / 母 mw = 本树镜像；两树各有一段互为镜像的婚姻家族。
+  const t = mirrorPair('t4chain');
+  const a0 = readTree(t.a);
+  a0.people[t.mh].external_link_type = 'chain'; // 只改 link_type：从婚姻镜像换成世系链镜像
+  writeTree(a0);
+
+  // 纯函数对照：chain **不被**认作认祖镜像（收窄后只认 founder）
+  assert.equal(isFounderAncestorMirror(a0.people[t.mh]), false, 'chain 不豁免');
+  const bBefore = readTree(t.b);
+
+  const r = await addChildNode({ treeId: t.a, personHandle: t.mh, name: '清晓', gender: 'F' });
+
+  assert.equal(r.cross_tree, true, 'chain 镜像照旧走真身路由（不再豁免）');
+  assert.equal(r.landed_tree_id, t.b, '子女落真身树');
+  assert.notEqual(r.mirror_handle, '', '本树留镜像子女');
+  assert.match(r.message, /真身所在家族树/);
+
+  // 真身树：新建真人子女（父 rh 的父亲姓）
+  const bAfter = readTree(t.b);
+  const real = bAfter.people[r.child_handle];
+  assert.ok(real, '真身树必须新建真人子女');
+  assert.equal(real.name, '季清晓');
+  assert.equal(real.surname, '季');
+  assert.equal(real.gender, 'F');
+  assert.equal(real.external_tree, '');
+  assert.equal(real.external_mirror, undefined, '真身子女不是镜像');
+  assert.equal(real.parent_family, t.famB);
+  assert.deepEqual(bAfter.families[t.famB].child_handles, [...bBefore.families[t.famB].child_handles, r.child_handle]);
+  assert.equal(readDetail(t.b, r.child_handle)?.tree_id, t.b, '详情落真身树');
+
+  // 本树：只留镜像子女（挂进本树既有家庭）
+  const aAfter = readTree(t.a);
+  const mirror = aAfter.people[r.mirror_handle];
+  assert.equal(mirror.name, '季清晓');
+  assert.equal(mirror.external_mirror, 'true');
+  assert.equal(mirror.external_link_type, MIRROR_CHILD_LINK_TYPE);
+  assert.equal(mirror.external_tree, t.b);
+  assert.equal(mirror.external_person_handle, r.child_handle);
+  assert.deepEqual(aAfter.families[t.famA].child_handles, [r.mirror_handle]);
+  assert.equal(aAfter.families[t.famA].father_handle, t.mh, '本树镜像父仍在父位');
+  assert.equal(
+    Object.values(aAfter.people).filter((p) => p.name === '季清晓' && !p.external_mirror).length,
+    0,
+    '本树不得落真人子女',
+  );
+});
+
+test('口径①·T1：祖谱认祖镜像（founder）加子 → 本树新建真人子 + 本树新建家庭；真身（世本）树零变化', async () => {
+  writeMasterTree();
+  writeClanTree();
+  const zhMd5Before = md5Of(treePath('zhonghua'));
+  const zhVerBefore = readTree('zhonghua').version;
+
+  const r = await addChildNode({ treeId: 'clan_founder', personHandle: 'cl_mirror_founder', name: '清昆', gender: 'M' });
+
+  assert.equal(r.cross_tree, false, '认祖镜像不作真身路由');
+  assert.equal(r.mirror_handle, '', '本树不留镜像子女');
+  assert.equal(r.landed_tree_id, 'clan_founder', '子嗣落在本树');
+
+  const clan = readTree('clan_founder');
+  const child = clan.people[r.child_handle];
+  assert.ok(child, '本树必须新建真人子节点');
+  assert.equal(child.name, '季清昆'); // 随父姓（认祖镜像本人姓）
+  assert.equal(child.surname, '季');
+  assert.equal(child.gender, 'M');
+  assert.equal(child.parent_family, r.family_handle);
+  // 本树真人节点：`external_*` 一律为空（不是镜像）
+  assert.equal(child.external_tree, '');
+  assert.equal(child.external_person_handle, '');
+  assert.equal(child.external_link_type, '');
+  assert.equal(child.external_mirror, undefined);
+  assert.equal(child.is_living, false, '祖谱（clan）新建节点一律已故（口径 5）');
+  const fam = clan.families[r.family_handle];
+  assert.equal(fam.father_handle, 'cl_mirror_founder', '本树新建家庭：父槽 = 本人');
+  assert.equal(fam.mother_handle, '');
+  assert.deepEqual(fam.child_handles, [r.child_handle]);
+  assert.deepEqual(clan.people.cl_mirror_founder.spouse_families, [r.family_handle]);
+  assert.equal(readDetail('clan_founder', r.child_handle)?.tree_id, 'clan_founder', '详情落本树');
+
+  // 真身（世本）零写入：字节 md5 / version / 节点集合 / 无新详情
+  assert.equal(md5Of(treePath('zhonghua')), zhMd5Before, '世本树字节一字未改');
+  const zh = readTree('zhonghua');
+  assert.equal(zh.version, zhVerBefore, '世本树 version 不变');
+  assert.deepEqual(Object.keys(zh.people).sort(), ['zh_chain', 'zh_founder', 'zh_founder2', 'zh_plain']);
+  assert.equal(fs.existsSync(path.join(TMP, 'details', `zhonghua:${r.child_handle}.json`)), false, '世本侧无新详情');
+});
+
+test('口径①·T1b：认祖镜像已在家庭父槽 → 复用本树既有家庭追加真人子（不新建家庭、不回写真身）', async () => {
+  writeMasterTree();
+  writeClanTree2();
+  const zhMd5Before = md5Of(treePath('zhonghua'));
+
+  const r = await addChildNode({ treeId: 'clan_founder2', personHandle: 'cl2_mirror_founder', name: '清昆', gender: 'M' });
+
+  assert.equal(r.cross_tree, false);
+  assert.equal(r.family_handle, 'cl2_fam', '复用既有家庭');
+  const clan = readTree('clan_founder2');
+  const child = clan.people[r.child_handle];
+  assert.equal(child.name, '季清昆');
+  assert.equal(child.parent_family, 'cl2_fam');
+  assert.equal(child.external_tree, '');
+  assert.deepEqual(clan.families.cl2_fam.child_handles, [r.child_handle]);
+  assert.equal(clan.families.cl2_fam.father_handle, 'cl2_mirror_founder', '父槽仍是认祖镜像');
+  assert.equal(clan.families.cl2_fam.mother_handle, 'cl2_wife');
+  assert.equal(Object.keys(clan.families).length, 1, '不得新建家庭');
+  assert.equal(md5Of(treePath('zhonghua')), zhMd5Before, '世本树字节一字未改');
+});
+
+// ---- 口径 ③：防误伤对照（marriage / child / 空 link_type 仍按原路由） ----
+
+test('口径③·T2（对照）：婚姻 / 镜像子女 / 无 link_type 的镜像父母 → 仍按原路由落真身树 + 本树留镜像子女', async () => {
+  for (const [tag, linkType] of [['ctl_marriage', 'marriage'], ['ctl_child', 'child'], ['ctl_empty', '']]) {
+    const { loc, far, h } = crossTreePair(tag);
+    const locTree = readTree(loc);
+    locTree.people[h.locMirror].external_link_type = linkType;
+    writeTree(locTree);
+
+    const r = await addChildNode({ treeId: loc, personHandle: h.locSelf, name: '清昆', gender: 'M' });
+
+    assert.equal(r.cross_tree, true, `link_type='${linkType}' 应仍走真身路由（防误伤）`);
+    assert.equal(r.landed_tree_id, far, `link_type='${linkType}' 应落真身树`);
+    const farAfter = readTree(far);
+    assert.equal(farAfter.people[r.child_handle].name, '季清昆');
+    assert.ok(farAfter.families.family_far.child_handles.includes(r.child_handle));
+    const locAfter = readTree(loc);
+    assert.equal(locAfter.people[r.mirror_handle].external_link_type, MIRROR_CHILD_LINK_TYPE, '本树仍留镜像子女');
+  }
+});
+
+// ---- 口径 ②：世本「已作某祖谱始祖」的节点拦加子 ----
+
+test('口径②·T3：世本里「已作某祖谱始祖」的节点加子 → 400 逐字文案 + 树字节不变（新建 / 挂接同拦）', async () => {
+  writeMasterTree();
+  const zhBefore = fs.readFileSync(treePath('zhonghua'), 'utf8');
+  const zhDetailCount = () =>
+    fs.readdirSync(path.join(TMP, 'details')).filter((f) => f.startsWith('zhonghua:')).length;
+  const detailsBefore = zhDetailCount();
+
+  // 纯函数：谁认它作始祖 + 文案 + 缺省世本 id
+  const meta = JSON.parse(fs.readFileSync(META_FILE, 'utf8'));
+  assert.equal(clanOfMasterNode(meta.trees, 'zh_founder')?.tree_id, 'clan_founder', 'zh_founder 是 clan_founder 的始祖');
+  assert.equal(clanOfMasterNode(meta.trees, 'zh_founder2')?.tree_id, 'clan_founder2');
+  assert.equal(clanOfMasterNode(meta.trees, 'zh_plain'), null, '非始祖 → 无祖谱命中');
+  assert.equal(clanOfMasterNode(meta.trees, ''), null);
+  assert.equal(clanOfMasterNode(null, 'zh_founder'), null);
+  assert.equal(
+    clanFounderChildBlockMessage({ display_title: '季氏祖谱' }),
+    BLOCK_COPY,
+    '拦截文案逐字：该节点已作为《<祖谱名>》的始祖，请到该祖谱内添加子嗣',
+  );
+  assert.equal(DEFAULT_MASTER_TREE_ID, 'zhonghua', '缺省世本 tree_id 与 index.js 的 MASTER_TREE_ID 同源');
+
+  // 新建模式（显式 masterTreeId）
+  await assert.rejects(
+    () => addChildNode({ treeId: 'zhonghua', masterTreeId: 'zhonghua', personHandle: 'zh_founder', name: '某某', gender: 'M' }),
+    (e) => e.status === 400 && e.message === BLOCK_COPY,
+    '世本始祖加子应 400 且文案逐字',
+  );
+  // 新建模式（不传 masterTreeId → 缺省兜底同样拦）
+  await assert.rejects(
+    () => addChildNode({ treeId: 'zhonghua', personHandle: 'zh_founder', name: '某某', gender: 'M' }),
+    (e) => e.status === 400 && e.message === BLOCK_COPY,
+  );
+  assert.equal(fs.readFileSync(treePath('zhonghua'), 'utf8'), zhBefore, '拦下时世本树字节不变（零写入）');
+  assert.equal(zhDetailCount(), detailsBefore, '拦下时不产生任何详情');
+
+  // 选人挂接模式（attach）：同拦
+  const zh = readTree('zhonghua');
+  zh.people.zh_orphan = {
+    handle: 'zh_orphan', gramps_id: '000000060', name: '季某乙', surname: '季', given: '某乙', gender: 'M',
+    birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [],
+  };
+  writeTree(zh);
+  const zhBeforeAttach = fs.readFileSync(treePath('zhonghua'), 'utf8');
+  await assert.rejects(
+    () => addChildNode({ treeId: 'zhonghua', masterTreeId: 'zhonghua', personHandle: 'zh_founder', childHandle: 'zh_orphan', gender: 'M' }),
+    (e) => e.status === 400 && e.message === BLOCK_COPY,
+    '选人挂接模式同样拦',
+  );
+  assert.equal(fs.readFileSync(treePath('zhonghua'), 'utf8'), zhBeforeAttach, '挂接被拦时世本树字节不变');
+  assert.equal(zhDetailCount(), detailsBefore, '挂接被拦时不产生任何详情');
+
+  // 路由层 POST /admin/add-child（总编辑）：400 + 同一文案
+  // 用户档走 store.colSet 落副本（本文件前面的路由用例已把 jiapu_users 读进 store 的进程内集合缓存，
+  // 直接改写文件不会刷新该缓存 → 会得到 401「用户不存在」）
+  const { handleRequest } = await import('../index.js');
+  const { signJwt } = await import('./auth.js');
+  const { colSet } = await import('./store.js');
+  const chief = '16600009201';
+  await colSet('jiapu_users', chief, { phone: chief, nickname: '总编辑', role: 'chief_editor' });
+  const token = signJwt({ sub: chief, phone: chief, role: 'chief_editor' }, 3600);
+  const zhBeforeRoute = fs.readFileSync(treePath('zhonghua'), 'utf8');
+  const res = await handleRequest({
+    path: '/admin/add-child',
+    httpMethod: 'POST',
+    headers: { authorization: `Bearer ${token}` },
+    body: JSON.stringify({ tree_id: 'zhonghua', person_handle: 'zh_founder', name: '某某', gender: 'M' }),
+  });
+  assert.equal(res.statusCode, 400);
+  assert.equal(JSON.parse(res.body).error, BLOCK_COPY, '路由出参与 lib 同文案');
+  assert.equal(fs.readFileSync(treePath('zhonghua'), 'utf8'), zhBeforeRoute, '路由拦截同样零写入');
+});
+
+test('口径②·T5：世本里非始祖的节点加子照常成功（拦截不误伤其它节点）', async () => {
+  writeMasterTree();
+  const r = await addChildNode({ treeId: 'zhonghua', masterTreeId: 'zhonghua', personHandle: 'zh_plain', name: '阿某', gender: 'M' });
+
+  assert.equal(r.cross_tree, false);
+  assert.equal(r.landed_tree_id, 'zhonghua');
+  const zh = readTree('zhonghua');
+  const child = zh.people[r.child_handle];
+  assert.equal(child.name, '季阿某');
+  assert.equal(child.is_living, false, '世本（master）新建节点一律已故（口径 5）');
+  assert.equal(child.parent_family, r.family_handle);
+  const fam = zh.families[r.family_handle];
+  assert.equal(fam.father_handle, 'zh_plain');
+  assert.equal(fam.mother_handle, '');
+  assert.deepEqual(fam.child_handles, [r.child_handle]);
+  assert.equal(readDetail('zhonghua', r.child_handle)?.tree_id, 'zhonghua');
+  // 其它节点（含两部祖谱的始祖）不受影响
+  assert.ok(zh.people.zh_founder, 'zh_founder 仍在（未被删改）');
+  assert.equal(zh.people.zh_founder.spouse_families.length, 1, 'zh_founder 的家族引用未被改');
+});
+
+test('口径②附加：非世本树（祖谱 / 普通家族树）的节点不受拦截（只在 treeId === 世本 时生效）', async () => {
+  writeMasterTree();
+  writeClanTree();
+  // 祖谱里的自有段入口照常可加子（与 meta 里的 clan 条目无关：本树不是世本）
+  const r = await addChildNode({ treeId: 'clan_founder', masterTreeId: 'zhonghua', personHandle: 'cl_own', name: '某孙', gender: 'M' });
+  assert.equal(r.landed_tree_id, 'clan_founder');
+  const clan = readTree('clan_founder');
+  assert.equal(clan.people[r.child_handle].name, '季某孙');
+  assert.equal(clan.people[r.child_handle].external_tree, '');
+  assert.deepEqual(clan.families.cl_fam_own.child_handles, [r.child_handle], '祖谱自有段家庭照常追加子女');
 });
