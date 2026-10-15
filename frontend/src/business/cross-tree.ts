@@ -375,3 +375,56 @@ export async function mirrorReadonlyViewOf(
   }
   return { readonly: true, tag: '始祖节点 · 中华世本镜像', note: FOUNDER_LOCK_MESSAGE, targetKind: kind };
 }
+
+// ============================================================================
+// Kevin 口径 ① / ②（2026-10-15 当面拍定）—— 与后端 `lib/child-write.js` **逐条同口径**：
+//   ① 认祖镜像（founder / chain）名下的子嗣**建在本树**（不回写真身树）；
+//   ② 世本里「已作为某祖谱始祖」的节点**不得在世本内添加子嗣**（应到该祖谱内添加）。
+// 前端判据必须与后端一致，否则会出现「界面可点、后端 400」或「入口被误藏」。
+// ============================================================================
+
+/**
+ * **认祖镜像档位**（口径 ①）：`external_link_type` ∈ {founder, chain}。
+ * 对应后端 `isAncestorMirror`（`lib/child-write.js`）。
+ * 与婚姻镜像（marriage）/ 镜像子女（child）区分开：后两者仍把子女路由到真身树。
+ */
+export function isAncestorMirrorLink(linkType?: string | null): boolean {
+  const t = String(linkType ?? '').trim();
+  return t === 'founder' || t === 'chain';
+}
+
+/** 世本节点命中的「认它为始祖的祖谱」（口径 ② 的前端视图） */
+export interface MasterClanFounder {
+  tree_id: string;
+  /** 祖谱谱名（tree-meta `display_title`；取不到时回退 tree_id） */
+  title: string;
+}
+
+/**
+ * 世本节点 → 「认它为始祖的祖谱」（口径 ②；对应后端 `clanOfMasterNode`）：
+ * tree-meta 里存在 `kind === 'clan'` 且 `master_handle === 该节点 handle` 的条目，
+ * 多命中按 `tree_id` 升序取第一条。
+ *
+ * tree-meta 走本模块**模块级缓存**（`cachedTreeMeta`，一次请求全仓复用）——
+ * 不得按节点逐个请求（树图里每个节点都可能要判一次）。
+ */
+export async function clanFounderOfMasterNode(handle: string): Promise<MasterClanFounder | null> {
+  const h = String(handle || '').trim();
+  if (!h) return null;
+  const meta = await cachedTreeMeta();
+  const hits = Object.values(meta?.trees || {}).filter(
+    (e) => treeKindOf(e) === 'clan' && String(e?.master_handle || '').trim() === h,
+  );
+  if (!hits.length) return null;
+  const first = hits.sort((a, b) => String(a.tree_id || '').localeCompare(String(b.tree_id || '')))[0];
+  return { tree_id: String(first.tree_id || ''), title: String(first.display_title || first.tree_id || '') };
+}
+
+/**
+ * 口径 ② 的引导文案（**逐字**，与后端 `clanFounderChildBlockMessage` 同字面不动）：
+ * `该节点已作为《<祖谱名>》的始祖，请到该祖谱内添加子嗣`；祖谱名取不到 → 「该祖谱」。
+ */
+export function clanFounderChildBlockMessage(title: string): string {
+  const name = String(title || '').trim() || '该祖谱';
+  return `该节点已作为《${name}》的始祖，请到该祖谱内添加子嗣`;
+}

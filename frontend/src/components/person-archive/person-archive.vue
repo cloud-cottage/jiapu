@@ -352,6 +352,9 @@
         :is-founder="isFounderNode"
         :is-mirror="isExternalMirror"
         :is-chain-mirror="isChainMirror"
+        :local-tree-id="localTreeId"
+        :local-handle="localHandle"
+        :master-clan-title="localTreeTitle"
         @tree-changed="onManageTreeChanged"
       />
     </view>
@@ -954,11 +957,21 @@ const props = withDefaults(defineProps<{
    * 由宿主传入提示文案（「真身内容不可见」）；非空时覆盖第 3 条标注。
    */
   mirrorFallbackNote?: string;
+  /**
+   * 口径 ①（Kevin 2026-10-15）：本次由**认祖镜像**（`external_link_type === 'founder'`；口径收窄裁定
+   * 后 chain 镜像不带下）进入时，镜像节点在**本树**的坐标（`localTreeId` = 本树 tree_id）。
+   * 非空 ⇒ 谱系管理区多出「在《本树名》内添加子节点」入口，请求带本树 tree_id（子嗣建在本树，
+   * 真身树零写入）。缺省 '' = 无本树上下文，行为与既有完全一致。
+   */
+  localTreeId?: string;
+  localHandle?: string;
 }>(), {
   mode: 'page',
   treeManage: false,
   mirrorOf: null,
   mirrorFallbackNote: '',
+  localTreeId: '',
+  localHandle: '',
 });
 
 const emit = defineEmits<{
@@ -1008,6 +1021,19 @@ watch(
     }
     const title = await treeDisplayTitleOf(target.treeId);
     mirrorNote.value = mirrorNoteText(title, gid);
+  },
+  { immediate: true },
+);
+
+/**
+ * 口径 ① 文案用：本树（镜像所在树）的展示名 —— 「在《…》内添加子节点」的谱名。
+ * 取 tree-meta（cross-tree 模块级缓存，一次请求全仓复用；不逐次请求），取不到回退 tree_id。
+ */
+const localTreeTitle = ref('');
+watch(
+  () => props.localTreeId,
+  async (id) => {
+    localTreeTitle.value = id ? await treeDisplayTitleOf(id) : '';
   },
   { immediate: true },
 );

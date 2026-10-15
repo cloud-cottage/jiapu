@@ -9,7 +9,10 @@
     <view class="mp-actions">
       <!-- 中华世本总谱：源流链续编（新建节点 / 挂接已有节点） -->
       <template v-if="isMasterChain">
-        <template v-if="canAppendChain">
+        <!-- 口径 ②（Kevin 2026-10-15）：本节点已作为某祖谱的始祖 → 世本内一律不得添加子嗣，
+             子嗣类入口就地换成引导文案（文案与后端 lib/child-write.js 的 clanFounderChildBlockMessage 同字面） -->
+        <text v-if="childAddBlocked" class="mp-hint">{{ childBlockMessage }}</text>
+        <template v-else-if="canAppendChain">
           <t-button
             size="small"
             variant="outline"
@@ -42,8 +45,9 @@
           theme="primary"
           @click="openAddNode('parent', 'new')"
         >＋ 添加父节点</t-button>
+        <!-- 口径 ② 的子嗣类闸门对本档案树（= 中华世本）生效；本分支下恒不触发（同口径守卫，防回归） -->
         <t-button
-          v-if="canAddNode"
+          v-if="canAddNode && !childAddBlocked"
           size="small"
           variant="outline"
           theme="primary"
@@ -69,7 +73,7 @@
         >{{ establishing ? '处理中...' : '🌱 立支（新家族树）' }}</t-button>
         <!-- 祖谱（clan）：批量添加子孙——自有段节点可用（世系链镜像节点不可作父节点，故不显示） -->
         <t-button
-          v-if="canAppendClanBatch"
+          v-if="canAppendClanBatch && !childAddBlocked"
           size="small"
           variant="outline"
           theme="primary"
@@ -78,7 +82,18 @@
         <text v-else-if="clanBatchBlockedHint" class="mp-hint">{{ clanBatchBlockedHint }}</text>
       </template>
 
-      <!-- 加配偶（总谱/普通树通用）：同树配偶；已有家族补空位，已满则新建家族 -->
+      <!-- 口径 ①（Kevin 2026-10-15）：由认祖镜像（external_link_type='founder'）开入本真身档案时，
+           子嗣建在镜像所在的本树内 —— 入口仅在宿主带下本树坐标（localTreeId）时出现；
+           提交一律带本树 tree_id / handle，真身树零写入。 -->
+      <t-button
+        v-if="canAddChildLocal"
+        size="small"
+        variant="outline"
+        theme="primary"
+        @click="openAddNode('child', 'new', true)"
+      >＋ 在《{{ localTreeTitle }}》内添加子节点</t-button>
+
+      <!-- 加配偶（总谱/普通树通用）：同树配偶；已有家族补空位，已满则新建家族（非子嗣操作，不受口径 ② 拦截） -->
       <t-button
         v-if="canAddNode"
         size="small"
@@ -88,7 +103,7 @@
       >＋ 添加配偶</t-button>
     </view>
     <!-- 计费口径提示（docs/economy-fee.spec.md §7 / §3-1 #9–#18）：新增类一律 0 片，避免用户因删改计费而不敢新增 -->
-    <text v-if="canAddNode" class="mp-hint">新增类操作（加父 / 加子 / 加配偶 / 挂接已有节点 / 续编 / 批量添加子孙）不消耗竹片</text>
+    <text v-if="canAddNode || canAddChildLocal" class="mp-hint">新增类操作（加父 / 加子 / 加配偶 / 挂接已有节点 / 续编 / 批量添加子孙）不消耗竹片</text>
     <text v-if="panelError" class="mp-error">{{ panelError }}</text>
 
     <!-- 加父/加子/续编/加配偶 内联面板 -->
@@ -110,7 +125,7 @@
           class="mode-btn"
           :class="{ active: addPickMode === 'pick' }"
           @click="addPickMode = 'pick'"
-        >{{ isMasterChain || addMode === 'spouse' ? '挂接已有节点' : '从树中选择' }}</view>
+        >{{ (isMasterChain && !addLocalTree) || addMode === 'spouse' ? '挂接已有节点' : '从树中选择' }}</view>
       </view>
 
       <!-- 「承母嗣」特例：只在「加子女 + 本人为女性（以母亲为家长）」形态显示；
@@ -259,7 +274,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import {
   splitTree,
   searchPeople,
@@ -272,6 +287,8 @@ import {
   fetchAssetsSummary,
   fetchTreeMetaRemote,
 } from '@/business/api';
+import { clanFounderOfMasterNode, clanFounderChildBlockMessage } from '@/business';
+import type { MasterClanFounder } from '@/business';
 import { isAssetInsufficientError, goMyAssets } from '@/business/asset-guide';
 import { shortageLine, SEED_QTY_UNIT } from '@/business/asset-text';
 import { isAuthenticated, authState, getAuthToken } from '@/business/auth';
@@ -329,6 +346,16 @@ const props = defineProps<{
    * 注意 `founder` 镜像**可以**（祖谱自有段就从始祖之下长出来）。
    */
   isChainMirror?: boolean;
+  /**
+   * 口径 ①（Kevin 2026-10-15）：由**认祖镜像**（口径收窄后仅 `external_link_type === 'founder'`）
+   * 开入本真身档案时，宿主带下的镜像节点在**本树**的坐标。非空 ⇒ 谱系管理区多出
+   * 「在《本树名》内添加子节点」入口，提交带本树 `tree_id` / `handle`（子嗣建在本树，真身树零写入）。
+   * 缺省 '' = 无本树上下文，行为与既有完全一致（chain 镜像保持现状，不带下）。
+   */
+  localTreeId?: string;
+  localHandle?: string;
+  /** 本树（祖谱）展示名，**仅供「在《…》内添加子节点」文案**用；缺省 '' → 回落 tree_id */
+  masterClanTitle?: string;
 }>();
 
 const emit = defineEmits<{
@@ -348,6 +375,42 @@ const canAddNode = computed(() => {
 });
 const canSplit = computed(
   () => isAuthenticated() && authState.role === 'chief_editor' && props.treeId !== 'zhonghua' && !!props.handle,
+);
+
+/**
+ * 口径 ① 本树入口可用性：**只看宿主带下的本树坐标**（`localTreeId` / `localHandle`，由宿主在
+ * `external_link_type === 'founder'` 的认祖镜像开入时带下）—— 与**目标树自身**的层级规则绑定，
+ * 不受本档案树（中华世本）规则影响：真身档案在总谱，若复用 `canAddNode` 会被「总谱须总编」挡住
+ * ⇒ 祖谱管家根本看不到入口。写权档位与 `canAddNode` 一致（tree_steward / chief_editor），
+ * zhonghua 规则按**目标树**复制一份（localTreeId 恒为镜像所在的自有树）。
+ */
+const canAddChildLocal = computed(() => {
+  if (!isAuthenticated()) return false;
+  const role = authState.role;
+  if (role !== 'tree_steward' && role !== 'chief_editor') return false;
+  if (props.localTreeId === 'zhonghua' && role !== 'chief_editor') return false;
+  return !!(props.localTreeId && props.localHandle);
+});
+
+// ---- 口径 ②（Kevin 2026-10-15）：世本里「已作为某祖谱始祖」的节点不得添加子嗣 ----
+/**
+ * 命中的祖谱（本节点已作为其始祖）。**与后端 `lib/child-write.js` 的 `assertMasterChildAddAllowed`
+ * 同口径：只在本档案树 = 中华世本时解析**（handle 仅树内唯一，别的树可能撞号）。
+ * tree-meta 走 cross-tree 模块级缓存（一次请求全仓复用，不按节点请求）。
+ */
+const masterClanFounder = ref<MasterClanFounder | null>(null);
+watch(
+  [() => props.treeId, () => props.handle],
+  async ([tid, h]) => {
+    masterClanFounder.value = tid === 'zhonghua' && h ? await clanFounderOfMasterNode(h) : null;
+  },
+  { immediate: true },
+);
+/** 子嗣类入口闸门（世本内本节点已作为某祖谱始祖 → 一律拦住；「添加配偶」非子嗣操作，不受拦） */
+const childAddBlocked = computed(() => isMasterChain.value && !!masterClanFounder.value);
+/** 就地引导文案（**逐字**与后端 `clanFounderChildBlockMessage` 同字面，页面不自拼） */
+const childBlockMessage = computed(() =>
+  childAddBlocked.value ? clanFounderChildBlockMessage(masterClanFounder.value?.title || '') : '',
 );
 
 // ---- 总谱源流链续编（zhonghua）----
@@ -379,8 +442,15 @@ const clanBatchBlockedHint = computed(() =>
     ? '该节点是中华世本世系链镜像（只读）：请在祖谱自有段的节点上批量添加子孙'
     : '',
 );
+/** 本树（祖谱）展示名（仅供「在《…》内添加子节点」文案；缺省回落 tree_id） */
+const localTreeTitle = computed(() => props.masterClanTitle || props.localTreeId || '');
+/** 本次表单是否由「在《本树名》内添加子节点」入口打开（口径 ①；addLocalTree 只由该入口置位） */
+const addLocalTree = ref(false);
+
 const panelTitle = computed(() => {
   if (addPickMode.value === 'batch') return `为「${props.personName}」批量添加子孙`;
+  // 口径 ①：本树入口不写「第 N 世」（子嗣建在镜像所在的自有树，不带世本链标记）
+  if (addLocalTree.value) return `为「${props.personName}」在《${localTreeTitle.value}》内添加子节点`;
   if (isMasterChain.value && addMode.value !== 'spouse') return `为「${props.personName}」续编第 ${nextGen.value} 世`;
   if (addMode.value === 'spouse') return `为「${props.personName}」添加配偶`;
   return `为「${props.personName}」添加${addMode.value === 'parent' ? '父节点' : '子节点'}`;
@@ -396,14 +466,17 @@ const panelHint = computed(() => {
   if (addMode.value === 'spouse') {
     return '配偶将与本人同属一个家族：本人已有家族则补上空位，家族已满则新建家族（再婚/多配偶）。';
   }
+  if (addLocalTree.value) {
+    return `新节点将建在《${localTreeTitle.value}》内（本树），不加「第 N 世」标记；中华世本（真身）树不被写入。`;
+  }
   if (isMasterChain.value) {
     return `新节点将带「第 ${nextGen.value} 世」标记写入源流链，总谱时间轴立即可见；也可把总谱内已有节点挂接为第 ${nextGen.value} 世。`;
   }
   return '新建节点后自动挂接到世系中；也可从树中选择已有节点。';
 });
 
-/** 是否有任一管理权限（决定整个操作区是否显示） */
-const hasAnyPermission = computed(() => canAddNode.value || canSplit.value);
+/** 是否有任一管理权限（决定整个操作区是否显示）＋口径 ① 本树入口（祖谱管家在总谱真身档案里只有它） */
+const hasAnyPermission = computed(() => canAddNode.value || canSplit.value || canAddChildLocal.value);
 
 // ---- 添加父/子/配偶节点 ----
 const showAddNode = ref(false);
@@ -504,10 +577,15 @@ function titleAttributes(): Array<{ key: string; value: string }> {
   ].filter((a) => a.value);
 }
 
-function openAddNode(mode: 'parent' | 'child' | 'spouse', pickMode: 'new' | 'pick' | 'batch' = 'new') {
+/**
+ * 打开内联表单。
+ * @param localTree 口径 ①：true = 「在《本树名》内添加子节点」入口（提交带本树 tree_id / handle）
+ */
+function openAddNode(mode: 'parent' | 'child' | 'spouse', pickMode: 'new' | 'pick' | 'batch' = 'new', localTree = false) {
   panelError.value = '';
   addMode.value = mode;
   addPickMode.value = pickMode;
+  addLocalTree.value = localTree;
   addName.value = '';
   // 姓：加子随父姓 / 加父随子姓（默认锁定跟随，改姓才解锁）；配偶姓不继承 → 空 + 可编辑
   addSurname.value = (mode === 'parent' ? props.personSurname : mode === 'child' ? props.childSurnameDefault : '') || '';
@@ -532,6 +610,14 @@ function closeAddNode() {
   showAddNode.value = false;
 }
 
+/**
+ * 本次提交是否走「本树上下文」（口径 ①）：由本树入口打开 **且** 宿主带下了本树坐标。
+ * 无本树坐标（普通打开 / chain 镜像）⇒ 恒 false ⇒ 原路径一字不变。
+ */
+const useLocalTreeContext = computed(() => addLocalTree.value && !!props.localTreeId && !!props.localHandle);
+/** 选择已有节点的搜索目标树：本树入口 → 搜本树（祖谱），否则搜本档案树 */
+const searchTreeId = computed(() => (useLocalTreeContext.value ? props.localTreeId : props.treeId));
+
 const addCanSubmit = computed(() => {
   if (addPickMode.value === 'pick') return !!addSelected.value;
   // 姓（继承值或手填）与名都必填
@@ -549,7 +635,7 @@ async function doSearchAddNode() {
   panelError.value = '';
   addSelected.value = null;
   try {
-    const res = await searchPeople({ query: q, tree_id: props.treeId });
+    const res = await searchPeople({ query: q, tree_id: searchTreeId.value });
     addResults.value = res.people;
   } catch (e: any) {
     panelError.value = e.message || '搜索失败';
@@ -572,9 +658,19 @@ async function doAddNode() {
   }
   addingNode.value = true;
   panelError.value = '';
+  // 口径 ②：世本里「已作为某祖谱始祖」的节点不得添加子嗣（入口已隐藏；此处兜住异步/重放，
+  // 与后端 assertMasterChildAddAllowed 同字面）；「添加配偶」不拦，本树入口（口径 ①）不拦。
+  if (childAddBlocked.value && addMode.value !== 'spouse' && !useLocalTreeContext.value) {
+    panelError.value = childBlockMessage.value;
+    addingNode.value = false;
+    return;
+  }
   try {
     // 姓：锁定时提交空串 → 服务端按「随父姓」继承；点过「改姓」才提交显式姓
     const surname = surnameLocked.value ? '' : addSurname.value.trim();
+    // 口径 ①：本树入口 → 子嗣建在镜像所在的本树（祖谱）；其余一律按本档案树
+    const targetTreeId = useLocalTreeContext.value ? props.localTreeId || '' : props.treeId;
+    const targetHandle = useLocalTreeContext.value ? props.localHandle || '' : props.handle;
     // 添加配偶（同树）：新建或挂接已有节点
     if (addMode.value === 'spouse') {
       const r = await addSpouseNode(
@@ -599,7 +695,8 @@ async function doAddNode() {
       return;
     }
     // 总谱源流链续编：世数由服务端按父节点世数 +1 计算并写入链属性
-    if (isMasterChain.value) {
+    // 口径 ①：本树入口（祖谱内添加子节点）走一般 addChildNode，不带世本链标记 → 由本树上下文绕开本分支
+    if (isMasterChain.value && !useLocalTreeContext.value) {
       const res = await appendChainNode(
         props.treeId,
         props.handle,
@@ -637,7 +734,7 @@ async function doAddNode() {
       const childPayload = addMaternalSuccession.value
         ? { ...childInput, maternal_succession: true }
         : childInput;
-      const res = await addChildNode(props.treeId, props.handle, childPayload, token);
+      const res = await addChildNode(targetTreeId, targetHandle, childPayload, token);
       // 跨树婚姻家庭（父/母为外树镜像）：子女真身落到对方树，本地只留镜像子女（marriage.spec §7-4）
       if (res.cross_tree) {
         toastTitle = res.message || `子节点已建到「${res.landed_tree_id}」，本树留镜像`;
@@ -675,6 +772,11 @@ async function doBatchAdd() {
   }
   const startGen = nextGen.value;
   const endGen = startGen + names.length - 1;
+  // 口径 ②：世本内「已作为某祖谱始祖」的节点同样不得批量添加子孙（入口已隐藏，此处兜住）
+  if (childAddBlocked.value) {
+    panelError.value = childBlockMessage.value;
+    return;
+  }
 
   const confirmed = await new Promise<boolean>((resolve) => {
     uni.showModal({

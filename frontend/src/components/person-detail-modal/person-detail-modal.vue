@@ -21,6 +21,8 @@
           :tree-manage="treeManage"
           :mirror-of="mirror"
           :mirror-fallback-note="mirrorFallbackNote"
+          :local-tree-id="localOrigin?.treeId || ''"
+          :local-handle="localOrigin?.handle || ''"
           @open-person="onOpenPerson"
           @open-tree="onOpenTree"
           @tree-changed="onTreeChanged"
@@ -35,7 +37,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 import { openTreeHome, mirrorTargetOf, MIRROR_UNAVAILABLE_NOTE } from '@/business';
 import type { MirrorFields, MirrorTarget } from '@/business';
 import PersonArchive from '@/components/person-archive/person-archive.vue';
@@ -70,6 +72,22 @@ const mirrorOrigin = ref<{ treeId: string; handle: string } | null>(null);
 const mirrorFellBack = ref(false);
 /** 顶部标注：由 PersonArchive 依此显示（回退态 = 「真身内容不可见」） */
 const mirrorFallbackNote = ref('');
+
+/**
+ * 口径 ① （Kevin 2026-10-15）：本次打开由**认祖镜像**进入时，镜像节点在**本树**的坐标 ——
+ * 交给档案内的谱系管理面板，供其提供「本树添加子节点」入口
+ * （请求带本树 tree_id，子嗣建在本树；真身树零写入）。
+ * 口径收窄（主代理裁定 2026-10-15）：**只对 `external_link_type === 'founder'` 开放**；
+ * `chain` 镜像保持现状（不带下本树坐标 → 不提供本节点本树加子，批量时的只读提示照旧）。
+ * 非认祖镜像 / 普通打开 / 已回退到本树副本（`curTreeId` 即本树）→ null（一并不显示该入口）。
+ */
+const localOrigin = computed(() => {
+  const origin = mirrorOrigin.value;
+  if (!mirror.value || !origin) return null;
+  if (mirror.value.linkType !== 'founder') return null;
+  if (curTreeId.value === origin.treeId) return null;
+  return origin;
+});
 
 /**
  * 打开人物档案。
