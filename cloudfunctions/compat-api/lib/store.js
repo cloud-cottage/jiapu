@@ -349,19 +349,70 @@ function commitLocalCas(col, id, curVersion, next) {
 }
 
 /**
- * cloud 条件写：`where({ _id, version: curVersion }).update(...)`（不存在 → `add` 以 `_id` 建）。
+ * cloud CAS **写入决策器**（纯函数；三路分派按**原始档形态**，不按收口后的版本号猜）。
+ *
+ * 事故根因（2026-10-15 生产 POST /admin/create-clan 500）：云端遗留档
+ * `jiapu_tree_meta._meta` 没有 `version` 字段 ⇒ `mutateDoc` 里
+ * `curVersion = versionOf(undefined) = 0`，而旧 `commitCloudCas` 用 `curVersion === 0`
+ * 推断「档不存在」⇒ 对**已存在**的 `_meta` 档走 `add({_id, ...})` ⇒ CloudBase `_id`
+ * 重复必败（catch 吞掉）⇒ 读回 `versionOf(undefined) = 0 ≠ 1` ⇒ 返 null ⇒ 重试耗尽
+ * ⇒ 抛「CAS 变更失败」⇒ 新建祖谱 500。
+ *
+ * 教训：**「version 收口为 0」≠「档不存在」**——`versionOf` 把缺失 / 非法 version 都收口成 0，
+ * 「遗留档无 version」与「档真不存在」在 curVersion 上不可区分，必须看原始档 `cur` 本身。
+ *
+ * @param {object|null} cur 本次尝试读到的**原始**档（读不到 = null；不收口、不改写）
+ * @param {object} next mutator 产出、已由 `mutateDoc` 强制覆写 `_id` / `version` 的新档
+ * @returns {{kind:'add'|'guarded'|'bootstrap', payload:object, version?:number}}
+ *  - `add`       档真不存在（`cur == null`）⇒ `payload` = 完整新建档 `{ _id, ...rest }`（首写）；
+ *                执行侧 `collection(col).add(payload)`。
+ *  - `guarded`   档存在且 `version` 为**有限数值** ⇒ `payload` = rest（update 数据体，不含 _id）、
+ *                `version` = 原始 version（条件值）；执行侧
+ *                `where({ _id, version: plan.version }).update(payload)`（标准 CAS）。
+ *                `version: 0` 的存量档（理论上不应存在，契约自 1 起）也归此路：0 是**真实落库
+ *                的有限数值**，条件写照样成立且安全——归 add 会撞 _id 重复，归 bootstrap 会
+ *                白白丢掉这层条件保护；负数同理（条件值取原始值，读回比对不变）。
+ *  - `bootstrap` 档存在但**没有**可用数值 version（遗留档，如云端 `jiapu_tree_meta._meta`；
+ *                string / NaN / Infinity 等非数值形态同归此路）⇒ `payload` = rest；
+ *                执行侧 `doc(id).update(payload)` **一次性自举**：rest 自带
+ *                `version = curVersion + 1`，自举后该档即有数值 version，后续走标准 guarded
+ *                CAS（代码自愈，不手工补生产数据）。
+ *    ⚠️ 自举窗口的并发语义弱化：无条件写，两实例同时自举可能互相覆盖（如 _meta.storage_files）。
+ *       可接受：触发面仅限 chief_editor 单人低频操作（新建祖谱 / 改树名 / 删树等 meta 写），
+ *       且属一次性迁移自愈——第二次起该档已有 version，永远不会再走 bootstrap。
+ */
+export function casWritePlan(cur, next) {
+  const { _id, ...rest } = next;
+  if (cur == null) {
+    return { kind: 'add', payload: { _id, ...rest } };
+  }
+  if (typeof cur.version === 'number' && Number.isFinite(cur.version)) {
+    return { kind: 'guarded', payload: rest, version: cur.version };
+  }
+  return { kind: 'bootstrap', payload: rest };
+}
+
+/**
+ * cloud 条件写（分派按 `casWritePlan(cur, next)` 的档形态决策，不再用 curVersion 推断存在性）：
+ * - add / guarded / bootstrap 三路见 `casWritePlan` JSDoc。
  * ⚠️ 已知教训：`updated` 计数三义同形（同值 / 无权静默 / 不存在）⇒ **一律读回比对**，
  * 读回 version 必须 == curVersion + 1 才算成功；写调用异常也不据此判失败（以读回为准）。
+ * @param {object|null} cur 本次尝试读到的原始档（由 `mutateDoc` 传入，可能与 curVersion 一起陈旧）
  * @returns {object|null}
  */
-async function commitCloudCas(col, id, curVersion, next) {
+async function commitCloudCas(col, id, curVersion, next, cur) {
   const db = getApp().database();
-  const { _id, ...rest } = next;
+  const plan = casWritePlan(cur, next);
   try {
-    if (curVersion === 0) {
-      await sdkCall(() => db.collection(col).add({ _id: id, ...rest }));
+    if (plan.kind === 'add') {
+      await sdkCall(() => db.collection(col).add(plan.payload));
+    } else if (plan.kind === 'guarded') {
+      await sdkCall(() =>
+        db.collection(col).where({ _id: id, version: plan.version }).update(plan.payload),
+      );
     } else {
-      await sdkCall(() => db.collection(col).where({ _id: id, version: curVersion }).update({ ...rest }));
+      // 遗留档一次性自举（语义与边界见 casWritePlan JSDoc）：无条件写，成败仍由读回比对兜底
+      await sdkCall(() => db.collection(col).doc(id).update(plan.payload));
     }
   } catch {
     /* 不据写调用结果判成败：一律以读回比对为准 */
@@ -374,6 +425,9 @@ async function commitCloudCas(col, id, curVersion, next) {
  * CAS 变更原语（R2，唯一写路径）：**读当前档 → 纯函数 mutator → version+1 → 条件写 → 读回比对**。
  *
  * - 档不存在 ⇒ 以 `{ _id: id, version: 0 }` 为起点；写入后 `version` 自 **1** 起。
+ * - cloud 分派按 `casWritePlan(cur, next)` 的**原始档形态**三路（add / guarded / bootstrap）：
+ *   遗留「无 version」档（如云端 `jiapu_tree_meta._meta`）走一次性自举，自举后该档即有
+ *   数值 version，后续走标准 CAS（详见 casWritePlan JSDoc）。
  * - `mutator(doc)` **必须是纯函数**：同输入同输出、无 IO、不读 `Date` / 随机数；需要时间 / 随机
  *   由调用方算好作参数传入 ⇒ 冲突重放（重读后再次调用）安全。返回**文档对象**（原语据其写库，
  *   并强制覆写 `_id` / `version`）。
@@ -399,7 +453,7 @@ export async function mutateDoc(col, id, mutator) {
     const written =
       SOURCE === 'local'
         ? commitLocalCas(col, docId, curVersion, next)
-        : await commitCloudCas(col, docId, curVersion, next);
+        : await commitCloudCas(col, docId, curVersion, next, cur);
     if (written) {
       // 成功后刷新进程内缓存（与磁盘 / 远端一致；缓存未命中则从盘读回，含本次写入）
       const map = await loadCol(col);

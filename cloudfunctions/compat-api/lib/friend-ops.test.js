@@ -862,15 +862,18 @@ test('F-A 只做编排：资产只经 ledger 的 withAssets/导出读写（无�
 //    ⇒ 定额同步为实得真值 45（依据 `npm test` 实测 # tests 与磁盘 readdir；本质断言一字未放宽）。
 //    后台可配后记 / 标点 ● 批新增第 46 个（wenpu-config.test.js，文谱配置）
 //    ⇒ 定额同步为实得真值 46（依据 `npm test` 实测 # tests 与磁盘 readdir；本质断言一字未放宽）。
-test('package.json 注册数 = 磁盘 *.test.js 数 = 46，且双向零缺口', async () => {
+//    cloud CAS 三路分派修复批新增第 47 个（cas-write-plan.test.js，写入决策器 add/guarded/bootstrap
+//      + 新建祖谱 500 事故回归锚）
+//    ⇒ 定额同步为实得真值 47（依据 `npm test` 实测 # tests 与磁盘 readdir；本质断言一字未放宽）。
+test('package.json 注册数 = 磁盘 *.test.js 数 = 47，且双向零缺口', async () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));
   const registered = pkg.scripts.test
     .split(/\s+/)
     .filter((x) => x.endsWith('.test.js'))
     .map((x) => path.basename(x));
   const onDisk = fs.readdirSync(HERE).filter((f) => f.endsWith('.test.js')).sort();
-  assert.equal(registered.length, 46, `注册数应为 46，实得 ${registered.length}`);
-  assert.equal(onDisk.length, 46, `磁盘 *.test.js 应为 46，实得 ${onDisk.length}`);
+  assert.equal(registered.length, 47, `注册数应为 47，实得 ${registered.length}`);
+  assert.equal(onDisk.length, 47, `磁盘 *.test.js 应为 47，实得 ${onDisk.length}`);
   assert.equal(new Set(registered).size, registered.length, '注册项不得重复');
   const missingOnDisk = registered.filter((f) => !onDisk.includes(f));
   const unregistered = onDisk.filter((f) => !registered.includes(f));
@@ -885,6 +888,7 @@ test('package.json 注册数 = 磁盘 *.test.js 数 = 46，且双向零缺口', 
   assert.ok(registered.includes('revision-postscript.test.js'), 'revision-postscript.test.js 必须已注册（未注册 = 假绿）');
   assert.ok(registered.includes('tree-rename.test.js'), 'tree-rename.test.js 必须已注册（谱名改名域 · 未注册 = 假绿）');
   assert.ok(registered.includes('wenpu-config.test.js'), 'wenpu-config.test.js 必须已注册（后台可配后记 / 标点 ● 批 · 未注册 = 假绿）');
+  assert.ok(registered.includes('cas-write-plan.test.js'), 'cas-write-plan.test.js 必须已注册（CAS 三路分派批 · 未注册 = 假绿）');
 });
 
 // ══ ⑰ 真源零写入 ════════════════════════════════════════════════════════════════
