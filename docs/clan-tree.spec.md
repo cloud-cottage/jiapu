@@ -240,3 +240,87 @@ npm test 2>&1 | tail -8        # 本节复测（2026-09-20 18:22:53 CST）：454
 
 - **真源零写入**：未改任何代码 / `config/` / `migrate-output/`；**未打包 / 未部署 / 未上传**；**未 `git` 任何写操作**；**未碰任何 `.qa.md`**（`AGENTS.md` §0-5）；**未尝试写 `AGENTS.md`**（§0 索引行以草稿交主代理落盘）。
 - 本册为**口径与实现锚点登记**；`mutateTreeMeta` 其余调用点审计（§12-3 待观察项）**未做**，归后续单。
+
+---
+
+## 13. 祖谱认祖镜像名下的子嗣落本树 ＋ 世本侧始祖节点拦加子嗣（**追加章节 · Kevin 2026-10-15 两句口径 + 一次纠偏 · 只追加 · 不改 §0–§12 任何历史行 · 删除行 = 0 · 本册无任何字面替换**）
+
+> **性质**：本节由 **Jing（制度员）** 追加（2026-10-15）—— **只写文档**（**未改代码 / 未写真源 / 未打包 / 未部署 / 未跑构建与测试 / 未 `git` 写**）。
+> **口径来源**：Kevin **2026-10-15** 两句口径（**① 祖谱认祖镜像名下的子嗣建在祖谱本树** · **② zhonghua 里已作某祖谱始祖的节点拦加子嗣**）＋ 同日**一次纠偏**（① 的豁免面**只认 `founder`**、`chain` 不豁免）。
+> **实现与部署**：后端 **`da4fe5f`**（`cloudfunctions/compat-api/lib/child-write.js` ＋ `lib/child-write.test.js`）· 前端 **`c34a5eb`** · 搬迁脚本 **`656fd35`** · 产物 **`a4ab4db`**；上云动作与执行回写 = `docs/PENDING_DEPLOY.md` **§77**（**本节不复写上云读数**）。
+> **状态词（硬）**：**已实现 · 已部署 · 已验证（数据层）· UI 可见性待 Kevin 复验** —— **不得**写成「UI 已验收」/「端到端已通过」。
+
+### 13-0 口径照录（**逐条 · 不改写**）
+
+**① 认祖镜像名下的子嗣建在祖谱本树（不回写真身树）**
+
+1. **适用面 = 仅 `external_link_type === 'founder'`** 的认祖镜像（祖谱顶端世本镜像段的始祖节点 / 立支新树始祖镜像 / 宗谱登记镜像）。
+2. **行为**：该镜像名下的子嗣**一律建在镜像所在的本树**（祖谱**自有段真人节点**、`external_*` 为空）—— **不回写真身（世本）树、不产生镜像子女、真身树零写入**。
+3. **纠偏（同一次 · 硬）**：豁免面**只认 `founder`**；**`chain`（世系链镜像）不豁免**，**维持既有真身路由**（子女归真身树 ＋ 本树留镜像子女）。**对照用例锚定** = `cloudfunctions/compat-api/lib/child-write.test.js:823`（`口径①·T4（对照）`）／ `:786`（纯函数对照断言）。
+4. **姻亲镜像路由规则一字未改**：`marriage`（配偶镜像）/ `child`（镜像子女）/ 空 `link_type` 一律照旧路由到真身树 ⇒ **对照用例锚定** = `:936`（`口径③·T2（对照）`）。
+
+**② zhonghua 里已被某祖谱认作始祖的节点：不允许在世本内添加子嗣**
+
+1. **命中条件**：`tree-meta.trees` 里存在 `kind='clan'` 且 `master_handle === 该节点 handle` 的条目（多命中按 `tree_id` 升序取第一条）。
+2. **拦截时机**：**写任何一棵树之前**（解析家庭、任何写入之前 ⇒ **零写入**）。
+3. **出参 = HTTP `400`**，文案**逐字**：**「该节点已作为《<祖谱名>》的始祖，请到该祖谱内添加子嗣」**（祖谱名取不到 ⇒ 回落「该祖谱」）。
+4. **新建 / 挂接两路同拦**（`POST /admin/add-child` 的 new 与 attach 两模式共用同一断言）；**「添加配偶」不拦**（非子嗣操作）；**非世本树**（祖谱 / 普通家族树）的节点**不拦**（仅 `treeId === 世本` 生效）。
+
+**③ 前端入口（口径 ①② 的呈现 · 逐条）**
+
+1. **口径 ①**：**祖谱页**开入认祖镜像时，档案的**谱系管理面板**多出本树入口 **「＋ 在《X》内添加子节点」**（X = 本树 / 祖谱展示名；口径原话「**不跳真身页**」）—— 提交**带本树 `tree_id` / `handle`**，子嗣建在本树、**真身树零写入**；机制锚点见 §13-1 第 2 条。
+2. **口径 ②**：zhonghua 侧子嗣类入口（**续编 / 挂接 / 批量**）**就地换成同一引导文案**（与后端**同一字面**，页面不自拼）；**「添加配偶」不拦**。
+
+### 13-1 文档落点（**现证锚点 · 逐个，`clan-tree.spec.md` 文档面 = 本节；代码面如下**）
+
+1. **后端（`cloudfunctions/compat-api/lib/child-write.js`）**
+   - `isFounderAncestorMirror(person)` —— **`:94`**（判定 `external_link_type === 'founder'`；`chain` / `marriage` / `child` / 空 / null 一律 `false`，`:786` 用例逐值断言）。
+   - `mirrorParentOf(family, people)` —— **`:107`**；**口径 ① 的两处早退**：父槽为 founder 镜像 **`:113`**、父空缺而母槽为 founder 镜像 **`:117`** ⇒ **返回 `null` = 走本树分支**；`chain` / 婚姻 / 镜像子女**继续走到既有真身路由**并返回该镜像（`:118-122`，双镜像父母仍拒）。
+   - `clanOfMasterNode(metaTrees, personHandle)` —— **`:140`**（纯函数；命中 `kind='clan'` 且 `master_handle` 相同的祖谱条目，多命中按 `tree_id` 升序取首）。
+   - `clanFounderChildBlockMessage(clanEntry)` —— **`:151`**（**文案单点**，逐字见 §13-0 ②-3）。
+   - `assertMasterChildAddAllowed({ treeId, masterTreeId, personHandle })` —— **`:161`**（`treeId !== 世本` / 非始祖节点 ⇒ 放行；否则抛 `Error` 且 `status = 400`）。
+   - **调用点** = `addChildNode` 内 **`:226`**（**早于**家庭解析 **`:228-231`** 与整条写路径 ⇒ 拦在零写入）；其下 **`:231`** 调 `mirrorParentOf` 决定本树 / 真身路由。
+   - 缺省世本 tree_id `DEFAULT_MASTER_TREE_ID` —— **`:130`**（env `MASTER_TREE_ID` 优先、缺省 `zhonghua`；与 `index.js:122` 同源）；路由挂点 `POST /admin/add-child` —— `index.js:1885`。
+2. **前端**
+   - `person-manage-panel.vue` —— 入口按钮 **`:89-94`**（文案 **`＋ 在《{{ localTreeTitle }}》内添加子节点`** `:94`）；可用性 `canAddChildLocal` **`:387-393`**（写权 `tree_steward` / `chief_editor`；`localTreeId === 'zhonghua'` 时需 `chief_editor` `:391`）；宿主下传 props `localTreeId` / `localHandle` / `masterClanTitle` **`:355 / :356 / :358`**；本树展示名 `localTreeTitle` **`:446`**；本树上下文 `useLocalTreeContext` **`:617`**（提交 `targetTreeId` / `targetHandle` 取本树 **`:672-673`**，并绕开世本链续编分支 **`:699`**）；面板标题 / 提示改口 **`:453 / :470`**。
+   - `person-manage-panel.vue`（口径 ②）—— 子嗣类按钮以 `childAddBlocked` 隐藏：「＋ 添加子节点」**`:49-55`**、「＋ 批量添加子孙」**`:66-73`**；闸门 `childAddBlocked` **`:412`**、**就地引导文案** `childBlockMessage` **`:413-415`**（**逐字调用 `clanFounderChildBlockMessage`，页面不自拼**）；提交前置兜底同一文案 **`:663-667`**（**「添加配偶」不拦**）；「添加配偶」按钮起于 **`:99`**（不受 `childAddBlocked` 约束）。
+   - `business/cross-tree.ts` —— `clanFounderOfMasterNode(handle)` **`:404-420`**（前端侧 `clanOfMasterNode`，tree-meta 走**模块级缓存** `cachedTreeMeta`，**不逐节点请求**）；`clanFounderChildBlockMessage(title)` **`:427-430`**（**与后端同字面**）；`business/index.ts:1` 同步导出。
+   - 宿主下传链 —— `person-detail-modal.vue` `localOrigin` **`:84-90`**（**只对 `linkType === 'founder'` 开放** **`:87`**；`mirrorOrigin` 记的是**镜像在本树的坐标** **`:102`**，`curTreeId` = 真身树）⇒ **`:24-25`** 传 `local-tree-id` / `local-handle`；`person-archive.vue` props **`:962-967`**（缺省空串 **`:973-974`**）、透传面板 **`:355-356`**、谱名解析（`localTreeTitle`）**:1033-1039`**。
+3. **用例锚定（判据）** —— `lib/child-write.test.js`：纯函数对照 **`:786`** ／ 口径① 写路径 **`:873`（T1）**、**`:913`（T1b）** ／ **`chain` 对照 `:823`（T4）** ／ 姻亲对照 **`:936`（T2）** ／ 口径② 主锚 **`:957`（T3，含 `BLOCK_COPY` `:699` 逐字 = 新建 / 挂接 / 路由层三路 400 且树字节不变）**、**`:1029`（T5，不误伤非始祖节点）**、**`:1050`（非世本树不拦）**；本文件 `test(` 计 **24** 个。
+
+### 13-2 与 §3-1 / §4-1 / §4-2 / §11-2 的衔接（**只作澄清，不改历史行**）
+
+- **§3-1 第 7 条**（「镜像节点在本层内**整节点只读**，要改到其真身所在层」）在**子嗣新建**这一动作上由本口径**细化**：**子嗣落在祖谱本树（自有段真人节点），不是在真身层新加** —— 即「改到真身层」说的是**改镜像自身**（姓名 / 生卒等身份数据），**不含**「在该镜像名下添子」。镜像节点自身的 `external_*` 指针与字段**一字不动**（迁移脚本亦只 `push` 一个家族号，见 §13-3）。
+- **§4-1（祖谱顶端镜像段）/ §4-2（祖谱自有段）** 写法不变：镜像段仍「只读、真身为准」（§11-2 方向 = 祖谱 → 世本，不变）；**口径 ① 的产物正是 §4-2 所述「祖谱自有真人节点」**（`external_*` 为空），故 §4-2 与本节同向、无取代关系。
+- **§11-2 保持有效**（祖谱顶端镜像段方向不变）；**§11-3 / §11-4 的宗谱登记镜像**若其 `link_type='founder'`，同样落入口径 ①（子嗣建在该登记镜像所在的祖谱本树）；§12-0 直建祖谱（方式 C）**建后即挂**的始祖镜像同属 `founder` ⇒ 同样适用。
+- **不在本节扩面**：`chain` 镜像的**只读提示 / 批量入口**口径**照旧**（`person-manage-panel.vue:438-444` 的 `canAppendClanBatch` / `clanBatchBlockedHint`），**本批未改**。
+
+### 13-3 数据迁移实况与读数（**逐字沿用执行侧现证 · 不得推算**）
+
+- **动作（已执行 · **生产**）**：**415（黄嘉）名下 10 个真人节点 ＋ 顶层家族 `F000256` ＋ 9 个内部家族**，从 `zhonghua` **搬入《黄氏祖谱》`huang_40644`** —— 脚本 = `scripts/migrate-clan-founder-descendants-2026-10.mjs`（**默认 dry-run**；`--apply` 必须同时 `--backup-dir`）；**只读** 用时点 = `2026-10-15T04:54:45.373Z`（= **12:54:45 CST**，备份 `summary.json` 现证）。
+- **编号口径**：`handle` / `gramps_id` **原样不变**（**跨树迁移沿用**，`docs/id-system.spec.md` **§2**）；**不写 `jiapu_id_seq`**（`summary.json` 的 `id_seq_written: false`、`gramps_id_reassigned: false`）。
+- **结构改动**：**F000256 的 `father` 改指镜像 handle**（`8501654c8e4778f90bd843a0` → `mir_fc4707894660e16cdff1907a`；`child_handles` 与其余字段一字不动）；祖谱镜像 `spouse_families` **`[] → [8501654c8e4778f90bd843a0]`**；415 的 `spouse_families` **`[F0] → []`**。
+- **详情档**：**10 档跟随**并**剥除陈旧 `external_*` 属性**（每档 2 条 × 10 = **20 条**；实测 key = `external_chain_gen` / `external_tree`）。
+- **世本侧抹净**（`summary.json` 现证：删 S 10 人 / 内部家族 9 个 / 顶层家族 1 个）；**树读数**：祖谱 **`version 1→2 · people 1→11 · families 0→10`**；世本 **`version 99→100 · people 129→119 · families 115→105`**。
+- **应用接口读数（迁移后）**：`/tree/rank?tree_id=huang_40644` ⇒ **person_count 11 / mirror 1 / gens 11**；`zhonghua` ⇒ **119 / 0 / 90**。
+- **备份**：**`~/jiazu-backups/2026-10-15-clan-descendants-move/`**（含 `files/trees/{zhonghua,huang_40644}.json`、`files/details/*.json` × 10、`MD5-LEDGER.txt`、`summary.json`）；**回滚方式** = 按写前字节重传两棵树 ＋ 详情档写回，逐条见脚本文件头「回滚方式」。
+
+### 13-4 环境事实：云存储 `uploadFile` → 立即 `downloadFile` 有传播延迟（**必须写进文档**）
+
+- **事实**：CloudBase 云存储 **`uploadFile` 成功后、立即 `downloadFile` 读回，可能拿到写前字节**（实测延迟 **秒级 ~ 分钟级**）。
+- **本批后果**：迁移脚本**首次 `--apply` 的写后校验 19 项误报不符**（**退出码 1**），但**数据实际已正确写入**（**几分钟后独立探针双路径复核一致**）。⇒ **不得**把它写成「**写入失败**」或「**已回滚**」：**未回滚、不需要回滚**。
+- **佐证（可复核 · 只读）**：备份 `summary.json` 的 `aggregate_md5` 两树 `after` 与 `before` 逐字相同（= 写后立即读回的仍是写前字节），与「传播延迟」一致；**该现象不得用于判「未写入」**。
+- **加固（在途 · 未提交）**：脚本已**加固为轮询重试** —— **另一单在途**。**登记时点（2026-10-15）工作区现证**：`git diff --stat scripts/migrate-clan-founder-descendants-2026-10.mjs` = **`65 + / 3 −`（未提交）**；`HEAD` = `a4ab4db`（**该提交的产物内脚本尚无此逻辑**）。现证改动面 = 文件头「**已知环境事实（写后校验必须容「传播延迟」）**」条款 **`:43-49`** ＋ §④「写后读回校验」改**轮询重试**（`runPostWriteVerify` **`:763`**；常量 `VERIFY_ROUNDS` 默认 **7** / `VERIFY_WAIT_MS` 默认 **10000 ms** ≈ 60s，可 `MIGRATE_VERIFY_ROUNDS` / `MIGRATE_VERIFY_WAIT_MS` 覆盖 —— **`:751-752`**）＋ 新增 `--summary-dir` **`:137-154`**（summary / 日志落点）。
+- **该加固未参与本批迁移**（本批迁移执行于其前 ⇒ 首次 `--apply` 的 19 项误报正发生在加固前）；**其逐条口径以该单交付 / 提交为准，本册不预判**（在途快照，勿作定稿引用）。
+
+### 13-5 未测试面（**如实登记 · 不得写成已验**）
+
+- **真实登录态 UI 点击未跑**：**未**在真实登录态下点过「＋ 在《X》内添加子节点」/ 世本侧被拦入口（**无浏览器点击流证据**）。
+- **页面可见性由 Kevin 复验**：入口**是否按预期出现 / 隐藏**、文案呈现，**待 Kevin 复验**；本节**只登记代码锚点与数据层读数**。
+- **轮询重试加固未提交 / 未参与本批**（§13-4）⇒ 该加固**不构成本批已交付项**。
+- 本节**未重跑**迁移脚本（含 dry-run），**未**触发任何云端写入。
+
+### 13-6 本节边界（**硬**）
+
+- **只改 `docs/**`**：**未改任何代码 / `AGENTS.md` / `docs/*.qa.md` / 其它文档**；**未跑 `npm test` / `vue-tsc` / 构建**；**未打包 / 未部署 / 未上传**；**未 `git` 任何写操作**。
+- 本节为**口径与实现锚点登记 ＋ 迁移实况登记**；**上云读数与判据** = `docs/PENDING_DEPLOY.md` **§77**（本节不复写）。
