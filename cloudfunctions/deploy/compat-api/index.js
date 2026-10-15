@@ -221,6 +221,36 @@ function assertWriteAllowed(target) {
   }
   return target;
 }
+function statTreeFile(treeId) {
+  try {
+    const st = import_fs2.default.statSync(import_path2.default.join(OUT, "trees", `${treeId}.json`), { bigint: true });
+    return { mtimeNs: st.mtimeNs, size: st.size, ctimeNs: st.ctimeNs };
+  } catch {
+    return null;
+  }
+}
+function sameTreeStamp(a, b) {
+  return !!a && !!b && a.mtimeNs === b.mtimeNs && a.size === b.size && a.ctimeNs === b.ctimeNs;
+}
+function cacheTree(treeId, tree, stamp) {
+  if (treeId)
+    treeCache.set(treeId, { tree, at: Date.now(), stamp: stamp || null });
+}
+function cachedTree(treeId) {
+  const entry = treeCache.get(treeId);
+  if (!entry)
+    return null;
+  if (Date.now() - entry.at >= TREE_CACHE_TTL_MS) {
+    treeCache.delete(treeId);
+    return null;
+  }
+  const stamp = statTreeFile(treeId);
+  if (stamp && entry.stamp && !sameTreeStamp(stamp, entry.stamp)) {
+    treeCache.delete(treeId);
+    return null;
+  }
+  return entry.tree;
+}
 async function sdkCall(fn) {
   const run = sdkQueue.then(async () => {
     try {
@@ -696,11 +726,14 @@ async function saveMeta(meta) {
   metaCache = meta;
 }
 async function getTree(treeId) {
-  if (treeCache.has(treeId))
-    return treeCache.get(treeId);
+  const cached = cachedTree(treeId);
+  if (cached)
+    return cached;
   let tree = null;
+  let stamp;
   if (SOURCE === "local") {
     const p = import_path2.default.join(OUT, "trees", `${treeId}.json`);
+    stamp = statTreeFile(treeId);
     if (import_fs2.default.existsSync(p))
       tree = JSON.parse(import_fs2.default.readFileSync(p, "utf8"));
   } else {
@@ -712,22 +745,51 @@ async function getTree(treeId) {
     }
   }
   if (tree)
-    treeCache.set(treeId, tree);
+    cacheTree(treeId, tree, stamp);
   return tree;
+}
+async function readAuthoritativeVersion(treeId) {
+  if (SOURCE === "local") {
+    const p = assertWriteAllowed(import_path2.default.join(OUT, "trees", `${treeId}.json`));
+    if (!import_fs2.default.existsSync(p))
+      return { found: false, version: void 0 };
+    const cur2 = JSON.parse(import_fs2.default.readFileSync(p, "utf8"));
+    return { found: true, version: cur2?.version };
+  }
+  const meta = await getMeta();
+  const fileId = meta?.storage_files?.[treeId];
+  if (!fileId)
+    return { found: false, version: void 0 };
+  const r = await sdkCall(() => getApp().downloadFile({ fileID: fileId }));
+  const cur = JSON.parse(Buffer.from(r.fileContent).toString("utf8"));
+  return { found: true, version: cur?.version };
+}
+function treeConflictError() {
+  const e = new Error("\u5E76\u53D1\u51B2\u7A81\uFF1A\u6811\u5DF2\u88AB\u5176\u4ED6\u64CD\u4F5C\u4FEE\u6539\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5");
+  e.status = 409;
+  return e;
 }
 async function saveTree(tree, expectedVersion) {
   if (expectedVersion !== void 0 && tree.version !== expectedVersion) {
-    throw new Error("\u5E76\u53D1\u51B2\u7A81\uFF1A\u6811\u5DF2\u88AB\u5176\u4ED6\u64CD\u4F5C\u4FEE\u6539\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5");
+    throw treeConflictError();
+  }
+  const authoritative = await readAuthoritativeVersion(tree.tree_id);
+  if (authoritative.found && authoritative.version !== tree.version) {
+    treeCache.delete(tree.tree_id);
+    eventIndexCache.delete(tree.tree_id);
+    throw treeConflictError();
   }
   const prevVersion = tree.version;
   const prevUpdatedAt = tree.updated_at;
   tree.version = (tree.version || 1) + 1;
   tree.updated_at = (/* @__PURE__ */ new Date()).toISOString();
+  let stamp;
   try {
     if (SOURCE === "local") {
       const p = assertWriteAllowed(import_path2.default.join(OUT, "trees", `${tree.tree_id}.json`));
       import_fs2.default.mkdirSync(import_path2.default.dirname(p), { recursive: true });
       import_fs2.default.writeFileSync(p, JSON.stringify(tree, null, 2));
+      stamp = statTreeFile(tree.tree_id);
     } else {
       const meta = await getMeta();
       const fileId = meta?.storage_files?.[tree.tree_id];
@@ -742,15 +804,17 @@ async function saveTree(tree, expectedVersion) {
     eventIndexCache.delete(tree.tree_id);
     throw e;
   }
-  treeCache.set(tree.tree_id, tree);
+  cacheTree(tree.tree_id, tree, stamp);
   eventIndexCache.delete(tree.tree_id);
   return tree;
 }
 async function createTreeFile(tree) {
+  let stamp;
   if (SOURCE === "local") {
     const p = assertWriteAllowed(import_path2.default.join(OUT, "trees", `${tree.tree_id}.json`));
     import_fs2.default.mkdirSync(import_path2.default.dirname(p), { recursive: true });
     import_fs2.default.writeFileSync(p, JSON.stringify(tree, null, 2));
+    stamp = statTreeFile(tree.tree_id);
   } else {
     const r = await sdkCall(
       () => getApp().uploadFile({ cloudPath: `trees/${tree.tree_id}.json`, fileContent: Buffer.from(JSON.stringify(tree)) })
@@ -762,7 +826,7 @@ async function createTreeFile(tree) {
       storage_files: { ...cfg.storage_files || {}, [tree.tree_id]: r.fileID }
     }));
   }
-  treeCache.set(tree.tree_id, tree);
+  cacheTree(tree.tree_id, tree, stamp);
   return tree;
 }
 async function deleteTree(treeId) {
@@ -932,7 +996,7 @@ async function getEventIndex(treeId) {
   eventIndexCache.set(treeId, index);
   return index;
 }
-var import_node_sdk, import_fs2, import_path2, import_url, import_meta, __dirname, REPO, OUT, COLS_DIR, REAL_META_FILE, SANDBOX_BY_ENV, SANDBOX, META_FILE, samePath, ENV, SOURCE, PATHS, app, metaCache, metaStamp, treeCache, eventIndexCache, colCache, sdkQueue, CAS_MAX_RETRIES, CAS_BACKOFF_MS, sleep, versionOf, META_DOC_ID, META_COL, metaWriteLock, treeWriteLocks;
+var import_node_sdk, import_fs2, import_path2, import_url, import_meta, __dirname, REPO, OUT, COLS_DIR, REAL_META_FILE, SANDBOX_BY_ENV, SANDBOX, META_FILE, samePath, ENV, SOURCE, PATHS, app, metaCache, metaStamp, treeCache, eventIndexCache, colCache, TREE_CACHE_TTL_MS, sdkQueue, CAS_MAX_RETRIES, CAS_BACKOFF_MS, sleep, versionOf, META_DOC_ID, META_COL, metaWriteLock, treeWriteLocks;
 var init_store = __esm({
   "cloudfunctions/compat-api/lib/store.js"() {
     import_node_sdk = __toESM(require("@cloudbase/node-sdk"), 1);
@@ -983,6 +1047,7 @@ var init_store = __esm({
     treeCache = /* @__PURE__ */ new Map();
     eventIndexCache = /* @__PURE__ */ new Map();
     colCache = /* @__PURE__ */ new Map();
+    TREE_CACHE_TTL_MS = 15 * 1e3;
     sdkQueue = Promise.resolve();
     CAS_MAX_RETRIES = 5;
     CAS_BACKOFF_MS = [20, 50, 120, 300, 700];
@@ -37187,6 +37252,157 @@ async function getRevisionView(treeId, now = /* @__PURE__ */ new Date()) {
   };
 }
 
+// cloudfunctions/compat-api/lib/wenpu-config.js
+init_store();
+var WENPU_CONFIG_COL = "jiapu_wenpu_config";
+var WENPU_CONFIG_ID = "global";
+var DEFAULT_POSTSCRIPT_TEMPLATE = "\u672C\u65CF\u5BB6\u8B5C\uFF0C\u8087\u5275\u65BC{\u8087\u5275\u5E74\u4EFD}\uFF0C\u7531{\u8087\u5275\u4EBA}\u59CB\u7E82\u3002{{{\u5176\u5F8C{\u4FEE\u8B5C\u5E8F\u6B21}\u7D93\u4FEE\u8F2F\u65BC{\u4FEE\u8B5C\u5E74\u4EFD}\uFF0C\u4E3B\u53F8{\u4E3B\u53F8}\u3002}}}\u4ECA\u70BA\u6700\u65B0\u91D0\u6B63\u7248\uFF0C\u662F\u70BA{\u7576\u524D\u5E74\u4EFD}\u8A02\u672C\u3002\u9858\u5F8C\u4E4B\u65CF\u4EBA\u3001\u7E8C\u800C\u589E\u4FEE\u4E4B\u3002";
+var POSTSCRIPT_MAIN_VARS = ["\u8087\u5275\u5E74\u4EFD", "\u8087\u5275\u4EBA", "\u7576\u524D\u5E74\u4EFD"];
+var POSTSCRIPT_ROUND_VARS = ["\u4FEE\u8B5C\u5E74\u4EFD", "\u4E3B\u53F8", "\u4FEE\u8B5C\u5E8F\u6B21"];
+var LOOP_OPEN = "{{{";
+var LOOP_CLOSE = "}}}";
+var MAIN_VAR_SET = new Set(POSTSCRIPT_MAIN_VARS);
+var ROUND_VAR_SET = new Set(POSTSCRIPT_ROUND_VARS);
+function wenpuConfigError(status, message, code = "") {
+  const e = new Error(message);
+  e.status = status;
+  if (code)
+    e.code = code;
+  return e;
+}
+function positionsOf(t, sub) {
+  const out = [];
+  let i = 0;
+  for (; ; ) {
+    const j = t.indexOf(sub, i);
+    if (j < 0)
+      break;
+    out.push(j);
+    i = j + 1;
+  }
+  return out;
+}
+function bracesBalanced(s) {
+  let depth = 0;
+  for (const ch of s) {
+    if (ch === "{")
+      depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth < 0)
+        return false;
+    }
+  }
+  return depth === 0;
+}
+function splitLoopBlock(template) {
+  const t = String(template == null ? "" : template);
+  const opens = positionsOf(t, LOOP_OPEN);
+  const closes = positionsOf(t, LOOP_CLOSE);
+  if (opens.length === 0 && closes.length === 0) {
+    return { hasBlock: false, blockBody: "", openIdx: -1, closeIdx: -1 };
+  }
+  if (opens.length !== 1) {
+    throw wenpuConfigError(400, `\u5FAA\u73AF\u5757 ${LOOP_OPEN}\u2026${LOOP_CLOSE} \u6070 0 \u6216 1 \u4E2A\uFF0C\u4E14\u987B\u95ED\u5408\u3001\u4E0D\u5F97\u5D4C\u5957`);
+  }
+  const openIdx = opens[0];
+  let closeIdx = -1;
+  for (const c of closes) {
+    if (c <= openIdx)
+      continue;
+    if (bracesBalanced(t.slice(openIdx + LOOP_OPEN.length, c))) {
+      closeIdx = c;
+      break;
+    }
+  }
+  if (closeIdx < 0)
+    throw wenpuConfigError(400, `\u5FAA\u73AF\u5757\u672A\u95ED\u5408\uFF1A\u7F3A\u5C11\u914D\u5BF9\u7684 ${LOOP_CLOSE}`);
+  const blockBody = t.slice(openIdx + LOOP_OPEN.length, closeIdx);
+  if (blockBody.includes(LOOP_OPEN) || blockBody.includes(LOOP_CLOSE)) {
+    throw wenpuConfigError(400, "\u5FAA\u73AF\u5757\u4E0D\u5F97\u5D4C\u5957");
+  }
+  return { hasBlock: true, blockBody, openIdx, closeIdx };
+}
+function placeholdersOf(text2) {
+  return [...String(text2 == null ? "" : text2).matchAll(/\{([^{}]+)\}/g)].map((m) => m[1]);
+}
+function validatePostscriptTemplate(template) {
+  const t = String(template == null ? "" : template);
+  const { hasBlock, blockBody, openIdx, closeIdx } = splitLoopBlock(t);
+  const outside = hasBlock ? t.slice(0, openIdx) + t.slice(closeIdx + LOOP_CLOSE.length) : t;
+  for (const name of placeholdersOf(outside)) {
+    if (ROUND_VAR_SET.has(name)) {
+      throw wenpuConfigError(400, `\u8F6E\u6BB5\u4E13\u7528\u53D8\u91CF {${name}} \u53EA\u80FD\u51FA\u73B0\u5728\u5FAA\u73AF\u5757 ${LOOP_OPEN}\u2026${LOOP_CLOSE} \u5185`);
+    }
+    if (!MAIN_VAR_SET.has(name))
+      throw wenpuConfigError(400, `\u672A\u77E5\u53D8\u91CF {${name}}`);
+  }
+  if (hasBlock) {
+    for (const name of placeholdersOf(blockBody)) {
+      if (!MAIN_VAR_SET.has(name) && !ROUND_VAR_SET.has(name))
+        throw wenpuConfigError(400, `\u672A\u77E5\u53D8\u91CF {${name}}`);
+    }
+  }
+  return true;
+}
+async function loadWenpuConfigDoc() {
+  try {
+    return await colGet(WENPU_CONFIG_COL, WENPU_CONFIG_ID);
+  } catch {
+    return null;
+  }
+}
+function templateOr(raw, fallback) {
+  return typeof raw === "string" && raw.trim() !== "" ? raw : fallback;
+}
+async function getWenpuConfig() {
+  const doc = await loadWenpuConfigDoc();
+  return {
+    postscript_template: templateOr(doc?.postscript_template, DEFAULT_POSTSCRIPT_TEMPLATE)
+  };
+}
+async function getAdminWenpuConfig() {
+  const doc = await loadWenpuConfigDoc();
+  const postscript_template = templateOr(doc?.postscript_template, DEFAULT_POSTSCRIPT_TEMPLATE);
+  return {
+    ok: true,
+    postscript_template,
+    is_default: postscript_template === DEFAULT_POSTSCRIPT_TEMPLATE,
+    defaults: { postscript_template: DEFAULT_POSTSCRIPT_TEMPLATE },
+    version: Number(doc?.version) || 0,
+    updated_at: typeof doc?.updated_at === "string" ? doc.updated_at : "",
+    updated_by: typeof doc?.updated_by === "string" ? doc.updated_by : ""
+  };
+}
+async function setWenpuConfig({ postscript_template, version, phone, now = /* @__PURE__ */ new Date() } = {}) {
+  if (typeof postscript_template !== "string" || postscript_template.trim() === "") {
+    throw wenpuConfigError(400, "\u7F3A\u5C11 postscript_template");
+  }
+  validatePostscriptTemplate(postscript_template);
+  const hasVersion = version !== void 0 && version !== null && String(version).trim() !== "";
+  let want = null;
+  if (hasVersion) {
+    want = Number(version);
+    if (!Number.isFinite(want) || want < 0 || Math.floor(want) !== want) {
+      throw wenpuConfigError(400, "\u7248\u672C\u53F7 version \u975E\u6CD5");
+    }
+  }
+  const updated_at = (now instanceof Date ? now : new Date(now)).toISOString();
+  const written = await mutateDoc(WENPU_CONFIG_COL, WENPU_CONFIG_ID, (doc) => {
+    const curVersion = Number(doc?.version) || 0;
+    if (hasVersion && want !== curVersion) {
+      throw wenpuConfigError(409, "\u5F8C\u8A18\u6587\u6848\u5DF2\u88AB\u4ED6\u4EBA\u4FEE\u6539\uFF08\u7248\u672C\u885D\u7A81\uFF09\uFF0C\u8ACB\u91CD\u65B0\u8B80\u53D6\u5F8C\u518D\u8A66");
+    }
+    return {
+      _id: WENPU_CONFIG_ID,
+      postscript_template,
+      updated_at,
+      updated_by: String(phone == null ? "" : phone)
+    };
+  });
+  return { ok: true, version: Number(written?.version) || 0 };
+}
+
 // cloudfunctions/compat-api/lib/tree-rename.js
 init_store();
 init_economy_ops();
@@ -40043,9 +40259,42 @@ async function handleRequest(event) {
         const want = String(query.tree_id || treeId || "").trim();
         if (!want)
           return send(400, { error: "\u7F3A\u5C11 tree_id" });
-        return send(200, await getRevisionView(want, /* @__PURE__ */ new Date()));
+        const view = await getRevisionView(want, /* @__PURE__ */ new Date());
+        view.wenpu_config = await getWenpuConfig();
+        return send(200, view);
       } catch (e) {
         return send(e.status || 500, errorPayload(e, e.extra || {}));
+      }
+    }
+    if (pathname === "/admin/wenpu-config" && method === "GET") {
+      const u = await authUser(headers);
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (u.role !== "chief_editor")
+        return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
+      try {
+        return send(200, await getAdminWenpuConfig());
+      } catch (e) {
+        return send(e.status || 400, errorPayload(e, e.extra || {}));
+      }
+    }
+    if (pathname === "/admin/wenpu-config" && method === "PUT") {
+      const u = await authUser(headers);
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (u.role !== "chief_editor")
+        return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
+      try {
+        const body = parseBody(event);
+        const r = await setWenpuConfig({
+          postscript_template: body.postscript_template,
+          version: body.version,
+          phone: u.phone,
+          now: /* @__PURE__ */ new Date()
+        });
+        return send(200, { ok: true, version: r.version });
+      } catch (e) {
+        return send(e.status || 400, errorPayload(e, e.extra || {}));
       }
     }
     if (pathname === "/admin/revision/start" && method === "POST") {
