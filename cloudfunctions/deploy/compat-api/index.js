@@ -915,7 +915,10 @@ async function deleteTree(treeId) {
   const meta = await getMeta();
   const fileId = meta?.storage_files?.[id];
   if (fileId) {
-    await sdkCall(() => getApp().deleteFile({ fileID: fileId }));
+    const dr = await sdkCall(() => getApp().deleteFile({ fileList: [fileId] }));
+    if (dr?.fileList?.[0]?.code !== "SUCCESS") {
+      throw new Error(`\u4E91\u5B58\u50A8\u5220\u9664\u672A\u6210\u529F\uFF08fileID=${fileId}\uFF09\uFF1A${JSON.stringify(dr?.fileList?.[0] || dr || null)}`);
+    }
     await mutateMetaDoc((cfg) => {
       const sf = { ...cfg.storage_files || {} };
       delete sf[id];
@@ -37755,7 +37758,10 @@ async function cloudUpload(cloudPath, buffer) {
 async function cloudDelete(fileID) {
   if (!fileID)
     return;
-  await cloudApp().deleteFile({ fileID });
+  const r = await cloudApp().deleteFile({ fileList: [fileID] });
+  if (r?.fileList?.[0]?.code !== "SUCCESS") {
+    throw new Error(`\u4E91\u5B58\u50A8\u5220\u9664\u672A\u6210\u529F\uFF08fileID=${fileID}\uFF09\uFF1A${JSON.stringify(r?.fileList?.[0] || r || null)}`);
+  }
 }
 async function coverTempUrl(fileID) {
   if (!fileID)
@@ -37936,7 +37942,8 @@ async function saveRevision({ treeId, seq, items, role, phone, now = /* @__PURE_
         if (oldFileID && oldFileID !== fileID) {
           try {
             await cloudDelete(oldFileID);
-          } catch {
+          } catch (e) {
+            console.log(`[revision] \u522A\u9664\u820A\u5C01\u9762\u672A\u6210\u529F\uFF08best-effort \u4E0D\u963B\u65B7\uFF0C\u50C5\u7559\u5B64\u5152\u5C0D\u8C61\uFF09\uFF1Atree=${id} seq=${targetSeq} fileID=${oldFileID} \u539F\u59CB\u932F\u8AA4\uFF1A${e?.message || e}`);
           }
         }
         newCover = { fileID, ext: p.value.ext, width: null, height: null, updated_at: nowIso };
