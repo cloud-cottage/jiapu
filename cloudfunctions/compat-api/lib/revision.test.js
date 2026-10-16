@@ -919,3 +919,71 @@ test('附 沙箱自证：测试根在 /tmp 副本，未触真源', () => {
   assert.equal(store.PATHS.out, TMP);
   assert.equal(store.PATHS.metaFile, path.join(TMP, 'tree-meta.json'));
 });
+
+// ══ 附2 cloudDelete 同族签名修复（与 store.js deleteTree 同口径 · 静态锚） ════════
+// 背景：`@cloudbase/node-sdk` 的 `deleteFile({ fileID })` 旧写法**参数不符时两条路都拿不到「删除成功」凭据**
+//   （默认 `throwOnCode=true` 下 SDK **抛** `INVALID_PARAM`；仅 `setThrowOnCode(false)` 返错误对象 —— 本仓未调 `setThrowOnCode`）
+//   ⇒ 静默无效（删旧封面从未真删）。本批按 `deleteFile({ fileList: [...] })` + 返回体 SUCCESS 判定修复。
+// 为何无行为用例：`cloudDelete` 是模块内私有函数、`getApp()` 无测试注入面（ESM 只读绑定），
+//   而任何「真调 SDK」都会触生产云存储 ⇒ 与「真源零写入」红线冲突；故依仓内既有体例（tree-object-path.test.js ⑧⑨）只落静态锚。
+const REVISION_SRC = fs.readFileSync(path.join(HERE, 'revision.js'), 'utf8');
+const revisionRegion = (from, to) => {
+  const a = REVISION_SRC.indexOf(from);
+  assert.ok(a > -1, `源码区间起点锚缺失：${JSON.stringify(from)}`);
+  const b = REVISION_SRC.indexOf(to, a + from.length);
+  assert.ok(b > a, `源码区间终点锚缺失：${JSON.stringify(to)}`);
+  return REVISION_SRC.slice(a, b);
+};
+
+test('附2.1 静态锚：cloudDelete 用 SDK 正确签名 { fileList } 并按返回体 SUCCESS 判成败（非 SUCCESS ⇒ 抛错）', () => {
+  const region = revisionRegion('/**\n * 删云存储对象', 'function decodeBase64');
+  // ① 正确签名 + 数组参数（旧写法参数只带 fileID ⇒ SDK 判参数非法（默认下抛 `INVALID_PARAM`）⇒ 调用方无从得知 ⇒ 静默无效）
+  assert.ok(
+    region.includes('cloudApp().deleteFile({ fileList: [fileID] })'),
+    'cloudDelete 必须用 SDK 正确签名 deleteFile({ fileList: [fileID] })（本文件经 cloudApp() 取 app）',
+  );
+  assert.ok(!/deleteFile\(\{\s*fileID/.test(region), 'cloudDelete 不得再出现参数只带 fileID 的旧写法');
+  // ② 按返回体判成败：只有 fileList[0].code === 'SUCCESS' 才算成功；非 SUCCESS / 缺 fileList ⇒ 抛错
+  assert.ok(
+    region.includes("r?.fileList?.[0]?.code !== 'SUCCESS'"),
+    '必须按返回体核对：非 SUCCESS / 缺 fileList 视为删除失败',
+  );
+  const failIdx = region.indexOf("!== 'SUCCESS'");
+  assert.ok(region.slice(failIdx).includes('throw new Error('), '判失败必须抛错（与 deleteTree 同为「不再静默」）');
+  // ③ 取舍与口径对齐必须在注释在案（与 store.js deleteTree 对齐说明 + 调用方 best-effort 差异点）
+  assert.ok(region.includes('deleteTree'), '注释必须登记与 store.js deleteTree 的取舍口径对齐');
+  assert.ok(region.includes('best-effort'), '注释必须写明调用方 best-effort（不阻断）的取舍');
+  assert.ok(region.includes('静默无效'), '注释必须写明旧写法「静默无效」这一缺陷本体');
+  assert.ok(
+    REVISION_SRC.includes('throwOnCode') && REVISION_SRC.includes('setThrowOnCode'),
+    '注释必须登记实测机制（默认 throwOnCode=true 抛 INVALID_PARAM / false 返错误对象；本仓未调 setThrowOnCode）',
+  );
+  assert.ok(
+    region.includes('fileList: [fileID]') && region.includes('getTempFileURL({ fileList: [fileID] })'),
+    '本文件同族 storage 调用签名清单在案：deleteFile / getTempFileURL 均 { fileList: [...] }',
+  );
+  // ④ 同族旧写法全文绝迹（防回退）
+  assert.equal(
+    (REVISION_SRC.match(/deleteFile\(\{\s*fileID/g) || []).length,
+    0,
+    'revision.js 全文不得残留任何「参数只带 fileID」的 deleteFile 旧写法',
+  );
+  assert.ok(
+    REVISION_SRC.includes('uploadFile({ cloudPath, fileContent: buffer })'),
+    'cloudUpload 的 uploadFile 必须用 { cloudPath, fileContent }（本已正确，防回退）',
+  );
+});
+
+test('附2.2 静态锚：换封面调用点「先传新、后删旧」写序不变；删旧失败 best-effort 不阻断但绝不静默', () => {
+  const region = revisionRegion("if (p.kind === 'cover')", 'patch.cover = newCover');
+  const upIdx = region.indexOf('const fileID = await cloudUpload(');
+  const delIdx = region.indexOf('await cloudDelete(oldFileID)');
+  assert.ok(upIdx > -1 && delIdx > upIdx, '写序必须保持：先上传新封面成功 → 再删旧 fileID');
+  assert.ok(region.includes('if (oldFileID && oldFileID !== fileID)'), '仅在确有不同的旧 fileID 时才删');
+  assert.ok(region.includes('try {') && /catch \(e\) \{/.test(region), '删旧仍在 try/catch 内 best-effort（不得阻断本次保存）');
+  assert.ok(!region.includes('throw '), '删旧失败不得对本次保存抛错（新封面已上传成功、正文仍须落库）');
+  assert.ok(
+    region.includes('console.log(`[revision]'),
+    '删旧失败必须记一行日志（不静默）——旧写法连异常都不产生，删除成败无从知晓',
+  );
+});

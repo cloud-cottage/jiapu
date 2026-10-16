@@ -31,9 +31,15 @@
  *      遗留路径仅由 legacyTreeObjectPath 单点产出（全文恰 1 次）；
  *   ⑧ 静态锚：清扫 best-effort —— sweepSupersededTreeObjects 内部吞错、deleteFile 用
  *      { fileList }（SDK 正确签名）、fileID 前缀由本次上传返回的 fileID 推导；
- *   ⑨ 静态锚：deleteTree 照旧只删当前 fileID，注释注明历史版本对象由清扫规则逐步回收。
+ *   ⑨ 静态锚：deleteTree 删当前 fileID 用 SDK 正确签名 `{ fileList: [fileId] }`，且按返回体
+ *      `fileList[0].code === 'SUCCESS'` 判成败（非 SUCCESS / 缺 fileList ⇒ 抛错）；写序
+ *      「先删对象成功 → 摘 storage_files → 失效缓存」与 local 分支行为不变；注释仍注明历史
+ *      版本对象由 saveTree 清扫规则逐步回收；
+ *   ⑩ 实跑（local 沙箱）：deleteTree 真删盘上树文件 + 失效树缓存（删后 getTree 回 null，不返
+ *      幻影）+ 幂等（重删 / 空 id 不抛）。
  *
- * 数据安全：设置沙箱 env 后仅 import store.js（取纯函数与常量）+ 读源码文本；不写任何真源文件。
+ * 数据安全：设置沙箱 env 后仅 import store.js（取纯函数与常量）+ 读源码文本；local 实跑（⑩）
+ * 只写沙箱 /tmp 副本目录，不写任何真源文件。
  * 运行：node --test cloudfunctions/compat-api/lib/tree-object-path.test.js
  */
 import test from 'node:test';
@@ -183,11 +189,60 @@ test('⑧ 静态锚：清扫 best-effort —— 吞错 + SDK 正确签名 + file
   assert.ok(region.includes("fid.slice(0, fid.lastIndexOf('/') + 1)"), '完整 fileID 必须由本次上传返回的 fileID 前缀推导（不依赖裸路径删除）');
 });
 
-test('⑨ 静态锚：deleteTree 照旧只删当前 fileID；历史版本对象由清扫规则逐步回收', () => {
+test('⑨ 静态锚：deleteTree 用 SDK 正确签名 { fileList } 并按返回体 SUCCESS 判成败；写序与 local 分支不变', () => {
   const region = regionBetween('* 删除树 JSON（与', 'export async function listTreeIds');
-  assert.ok(region.includes("getApp().deleteFile({ fileID: fileId })"), 'deleteTree 删当前 fileID 的调用必须原样保留（本批不改）');
+  // cloud：正确签名 + 数组参数（旧写法参数只带 fileID ⇒ SDK 判参数非法（默认下抛 `INVALID_PARAM`）、两条路都拿不到「删除成功」凭据 ⇒ 静默无效）
+  assert.ok(
+    region.includes('getApp().deleteFile({ fileList: [fileId] })'),
+    'deleteTree 必须用 SDK 正确签名 deleteFile({ fileList: [fileId] })',
+  );
+  assert.ok(!/deleteFile\(\{\s*fileID/.test(region), 'deleteTree 不得再出现参数只带 fileID 的旧写法');
+  // 按返回体核对成败：只有 fileList[0].code === 'SUCCESS' 才算删成功，否则抛错
+  assert.ok(
+    region.includes("dr?.fileList?.[0]?.code !== 'SUCCESS'"),
+    '必须按返回体逐条核对：非 SUCCESS / 缺 fileList 视为删除失败',
+  );
+  const failIdx = region.indexOf("!== 'SUCCESS'");
+  assert.ok(
+    region.slice(failIdx).includes('throw new Error('),
+    '删除失败必须抛错（让调用方感知；保住「先删成功再动缓存/meta」的写序）',
+  );
+  // 写序不变：删对象 → 摘 storage_files → 失效缓存（缓存那句取最后一次出现，即 cloud 段的收尾）
+  const delIdx = region.indexOf('deleteFile({ fileList: [fileId] })');
+  const metaIdx = region.indexOf('await mutateMetaDoc((cfg) => {');
+  const cacheIdx = region.lastIndexOf('treeCache.delete(id);');
+  assert.ok(delIdx > -1 && delIdx < metaIdx && metaIdx < cacheIdx, '写序必须保持：先删对象成功 → 摘 storage_files → 失效缓存');
+  // local 分支行为未变：仍删磁盘文件（unlink）+ 失效两处缓存，且不含任何云删除调用
+  const localRegion = region.slice(region.indexOf("if (SOURCE === 'local')"), region.indexOf('const meta = await getMeta();'));
+  assert.ok(localRegion.includes('if (fs.existsSync(p)) fs.unlinkSync(p);'), 'local 分支仍删 trees/<id>.json 文件');
+  assert.ok(
+    localRegion.includes('treeCache.delete(id);') && localRegion.includes('eventIndexCache.delete(id);'),
+    'local 分支仍失效两处缓存',
+  );
+  assert.ok(localRegion.includes('return;'), 'local 分支仍在 SDK 段之前返回（模式隔离不变）');
+  assert.ok(!localRegion.includes('deleteFile'), 'local 分支不得出现任何云删除调用');
+  // 版本化历史对象的回收口径不变（本批不动）
   assert.ok(
     region.includes('由 saveTree 的清扫规则逐步回收'),
-    'deleteTree 注释必须注明：版本化历史对象由 saveTree 清扫规则逐步回收（本批不引入列目录/定时清理）',
+    'deleteTree 注释必须保留：版本化历史对象由 saveTree 清扫规则逐步回收（本批不引入列目录/定时清理）',
   );
+});
+
+test('⑩ 实跑（local 沙箱）：deleteTree 真删树文件 + 失效树缓存 + 幂等', async () => {
+  const { deleteTree, getTree } = store;
+  const p = path.join(TMP, 'trees', 't_del_real.json');
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify({ tree_id: 't_del_real', version: 1, people: {} }));
+  // 先读一次 ⇒ 进程内 treeCache 里有该树（删后不回幻影 = 缓存确被失效的必要前提）
+  assert.equal((await getTree('t_del_real'))?.tree_id, 't_del_real', '前置：树可读且已进缓存');
+  await deleteTree('t_del_real');
+  assert.equal(fs.existsSync(p), false, 'local：trees/<id>.json 必须被真删');
+  assert.equal(
+    await getTree('t_del_real'),
+    null,
+    '删除后缓存必须失效（cachedTree 在盘上取不到指纹时会沿用缓存 ⇒ 不失效就会回幻影树）',
+  );
+  // 幂等：再删一次 / 空 id 不抛错（与既有「缓存未命中视为已删」口径一致）
+  await deleteTree('t_del_real');
+  assert.equal(await deleteTree(''), undefined, '空 treeId 直接返回（不抛错）');
 });

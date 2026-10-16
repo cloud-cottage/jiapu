@@ -1207,6 +1207,19 @@ export async function createTreeFile(tree) {
  * - cloud：删云存储文件（fileID 取自 tree-meta.storage_files）并移除该 storage_files 条目
  * 写序：**先落盘（删除）成功、再更新进程内缓存 / 写 meta**（与 colSet / saveTree 同口径）；
  * 缓存未命中视为已删（幂等，不抛错）。
+ * **cloud 删对象判失败即抛错**（本批修复）：SDK 实际签名是 `deleteFile({ fileList })`
+ * （现证 `node_modules/@cloudbase/node-sdk/dist/storage/index.js:111` 参数校验 `fileList必须是非空的数组`），
+ * 旧写法（`deleteFile` 的入参对象只带 `fileID`、缺 `fileList`）会让 SDK 判参数非法，且**两条路都拿不到
+ * 「删除成功」的返回体**（**本地只读探针实测 · @cloudbase/node-sdk@3.18.3**）：
+ *   · `throwOnCode = true`（SDK 模块级默认 `node_modules/@cloudbase/node-sdk/dist/utils/utils.js:69`；
+ *     **本仓从未调用 `setThrowOnCode`** ⇒ 默认即生效）下 SDK **会抛**
+ *     `Error(code='INVALID_PARAM', message='fileList必须是非空的数组')`；
+ *   · 只有 `setThrowOnCode(false)` 才返回 `{ code: 'INVALID_PARAM', message: 'fileList必须是非空的数组' }`
+ *     错误对象（`processReturn`）。
+ * ⇒ 旧写法**从未真删、且都静默**：抛的那条被调用方的 best-effort 空 `catch` 吞掉（连一行日志都没有）；
+ *   返错误对象的那条被当成「成功」继续走 —— 两条路都拿不到「删除成功」凭据，删树对象一直静默无效。
+ * 现按返回体逐条核对：只有 `fileList[0].code === 'SUCCESS'` 才算删成功；非 SUCCESS / 缺 fileList ⇒ 抛错
+ * （取舍与既有调用方影响见下方调用点注释）。`storage_files` 无该树 fileID 时**压根不调 SDK** —— 未登记过的树仍幂等。
  * 注：tree-meta 的 `trees[tree_id]` 条目由调用方按业务语义另行 `saveMeta` 处理（本函数不越权改注册表）。
  * 注（方案 A 版本化）：cloud 只删 storage_files 当前指向的对象；历史版本对象
  * `trees/<id>/v*.json` 与迁移遗留 `trees/<id>.json`（若已不被指向）**不在删除时枚举回收**
@@ -1226,7 +1239,22 @@ export async function deleteTree(treeId) {
   const meta = await getMeta();
   const fileId = meta?.storage_files?.[id];
   if (fileId) {
-    await sdkCall(() => getApp().deleteFile({ fileID: fileId }));
+    // SDK 实际签名 = `deleteFile({ fileList })`（参数不符时，默认 `throwOnCode=true` 下 SDK **抛** `INVALID_PARAM`、
+    // 只有 `setThrowOnCode(false)` 才返 `{ code:'INVALID_PARAM', message }` 错误对象 —— 两条路都没有
+    // 「删除成功」凭据 ⇒ 旧写法从未真删、且都静默），
+    // 故必须传数组，且**按返回体核对成败**：只有 fileList[0].code === 'SUCCESS' 才算删成功。
+    const dr = await sdkCall(() => getApp().deleteFile({ fileList: [fileId] }));
+    if (dr?.fileList?.[0]?.code !== 'SUCCESS') {
+      // 判失败 ⇒ 抛错（而非「记录后继续」），取舍理由：
+      // ① 保住本函数既定写序「先删除成功、再失效缓存 / 摘 storage_files」—— 继续走下去会把这条不变式
+      //    坐实成假的：对象还在、指针已被摘掉 ⇒ 对象永久失去引用且无人知晓（正是本批要修掉的缺陷类）；
+      // ② 抛错保留重试面：storage_files[id] 未被动过，调用方重试即可再次真删；
+      // ③ 两个既有调用方都已按「可能失败」编写：branch-clan-ops.js 删回收新树那份 try/catch 吞错（best-effort），
+      //    归宗删源树那份把异常收进 stageError → markShellSource（壳源树 reconcile 登记）+ 500（设计内路径）。
+      // 残余代价（如实登记）：对象其实已不存在、而 storage_files 仍指着它时也会判失败 —— 该路径从「静默放过」
+      // 变成 500 + 壳源树登记，可由既有 reconcile 收敛（重试仍会走真删）；未登记 fileID 的树压根不调 SDK，仍幂等。
+      throw new Error(`云存储删除未成功（fileID=${fileId}）：${JSON.stringify(dr?.fileList?.[0] || dr || null)}`);
+    }
     // 先删云文件成功，再由定向写从 `_meta` 档摘掉 storage_files 条目（不再整份 saveMeta）
     await mutateMetaDoc((cfg) => {
       const sf = { ...(cfg.storage_files || {}) };

@@ -568,6 +568,18 @@ async function writeRevisions(treeId, mutator) {
 }
 
 // ---- 云存储（图片） ----
+// 签名口径（本批修复 · 与 `store.js` `deleteTree` 的取舍口径对齐）：本仓 SDK `@cloudbase/node-sdk@3.18.3`
+// 的实际签名是 —— `deleteFile({ fileList: [...] })`（`node_modules/@cloudbase/node-sdk/dist/storage/index.js:111`
+// 校验「fileList必须是非空的数组」）、`getTempFileURL({ fileList: [...] })`、
+// `uploadFile({ cloudPath, fileContent })`、`downloadFile({ fileID })`。
+// 参数不符时的实际行为（**本地只读探针实测 · @cloudbase/node-sdk@3.18.3**，两条路都拿不到「删除成功」的返回体）：
+//   · `throwOnCode = true`（SDK 模块级默认 `dist/utils/utils.js:69`；**本仓从未调用 `setThrowOnCode`**）
+//     ⇒ 入参缺 `fileList` 时 SDK 抛 `Error(code='INVALID_PARAM', message='fileList必须是非空的数组')`；
+//   · `setThrowOnCode(false)` ⇒ 返回 `{ code: 'INVALID_PARAM', message }` 错误对象（`processReturn`）。
+// ⇒ 无论哪种配置，旧写法（`deleteFile` 的入参对象只带 `fileID`、缺 `fileList`）都**从未真删**：
+//   前者被调用方的 best-effort 空 catch 吞掉（连一行日志都没有）、后者被当成「成功」继续走 —— 同属**静默无效**。
+// （与 `store.js` `deleteTree` 注释**同一口径**：默认 `throwOnCode=true` ⇒ 抛 `INVALID_PARAM`；
+//   仅 `setThrowOnCode(false)` ⇒ 返错误对象 —— 两条路均**从未真删且静默**。）
 
 function cloudApp() {
   return getApp();
@@ -579,9 +591,36 @@ async function cloudUpload(cloudPath, buffer) {
   return r.fileID;
 }
 
+/**
+ * 删云存储对象（换封面后删旧图；**签名与判成败口径本批修复**，与 `store.js` `deleteTree` 同口径）。
+ *
+ * ① **SDK 正确签名**：必须传数组 `deleteFile({ fileList: [fileID] })` —— 旧写法参数只带 `fileID` 会被 SDK
+ *    判参数非法（默认 `throwOnCode=true` 下抛 `INVALID_PARAM`、`false` 下返错误对象），两条路都拿不到
+ *    「删除成功」的凭据 ⇒ 调用方看到的「删成功」是假的（对象一直留着，静默无效）。
+ * ② **按返回体判成败**：只有 `fileList[0].code === 'SUCCESS'` 才算删成功；非 SUCCESS / 缺 `fileList` ⇒ **抛错**。
+ *
+ * 取舍（与 `deleteTree` 的「判失败即抛错」**口径对齐**，差异点如实登记）：
+ *   · `deleteTree` 抛错是为了保住它自己的**写序不变式**（先删除成功 → 再摘 `storage_files` / 失效缓存）：
+ *     那边若静默继续，就是对象还在、指针已摘 ⇒ 对象永久失去引用且无人知晓。
+ *   · 本函数**自身没有写序不变式**（只删旧对象、不动任何指针 / 注册表），故「删旧失败是否阻断」是
+ *     **调用方**的语义，不由本函数替它拍 —— 本函数只保证「失败 = 异常」这一个可观测信号
+ *     （与 `deleteTree` 同为「非 SUCCESS 即 throw」，两者的 throw 语义一致：**不再静默**）。
+ *   · 唯一调用点（`saveRevision` 换封面）仍在 `try/catch` 内 **best-effort**：此刻新封面**已上传成功**、
+ *     修订正文随后**必须落库**，不能因「删旧失败」把整次保存判失败（那会走扣费返还 + 500，
+ *     代价远大于留一张孤儿图）。该 catch 记一行日志 ⇒ 既不阻断、又**不静默**（旧写法连异常都不产生，
+ *     删除成败无从知晓）。
+ *   · 失败后果 = 旧封面对象成孤儿（没有任何 fileID 再指向它），无害 —— 与本仓既有「未清扫的孤儿对象无害」口径一致。
+ */
 async function cloudDelete(fileID) {
   if (!fileID) return;
-  await cloudApp().deleteFile({ fileID });
+  // SDK 实际签名 = `deleteFile({ fileList })`（参数不符时，默认 `throwOnCode=true` 下 SDK **抛** `INVALID_PARAM`、
+  // 只有 `setThrowOnCode(false)` 才返 `{ code:'INVALID_PARAM', message }` 错误对象 —— 本仓从未调用 `setThrowOnCode`，
+  // 两条路都没有「删除成功」凭据 ⇒ 旧写法从未真删、且都静默），
+  // 故必须传数组，且按返回体核对成败：只有 fileList[0].code === 'SUCCESS' 才算删成功。
+  const r = await cloudApp().deleteFile({ fileList: [fileID] });
+  if (r?.fileList?.[0]?.code !== 'SUCCESS') {
+    throw new Error(`云存储删除未成功（fileID=${fileID}）：${JSON.stringify(r?.fileList?.[0] || r || null)}`);
+  }
 }
 
 /** 换临时链（失败 → ''，绝不因此让读接口 500） */
@@ -818,8 +857,14 @@ export async function saveRevision({ treeId, seq, items, role, phone, now = new 
         if (oldFileID && oldFileID !== fileID) {
           try {
             await cloudDelete(oldFileID);
-          } catch {
-            /* best-effort */
+          } catch (e) {
+            // best-effort 不阻断：此刻新封面**已上传成功**、修订正文随后必须落库 ——
+            // 不能因「删旧失败」把整次保存判失败（那会走扣费返还 + 500，代价远大于留一张孤儿图）。
+            // 但**绝不静默**（本批修复点）：旧写法（`deleteFile` 只收到 fileID、缺 fileList）在默认
+            // `throwOnCode=true` 下抛 INVALID_PARAM 被这个空 catch 吞掉、在 `false` 下返的错误对象被当成成功
+            // ⇒ 两种配置都不留任何痕迹，删除成败无从知晓；
+            // 现按返回体判失败并记一行日志（体例同 `branch-clan-ops.js` 的「登记 reconcile 失败」console.log）。
+            console.log(`[revision] 刪除舊封面未成功（best-effort 不阻斷，僅留孤兒對象）：tree=${id} seq=${targetSeq} fileID=${oldFileID} 原始錯誤：${e?.message || e}`);
           }
         }
         newCover = { fileID, ext: p.value.ext, width: null, height: null, updated_at: nowIso };
