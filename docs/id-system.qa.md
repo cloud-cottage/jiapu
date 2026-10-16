@@ -413,3 +413,74 @@ $ npm test                                       （cwd: /Users/kevin/bistro/jia
 
 - **F-1 的实际渲染：NOT_MEASURED → PASS（真浏览器实测）**。§⑨ 其余三项（登录态档位下的两通道可见性读数 / 云真源 `legacy_gramps_id` 存在性 / 与 spec 一致性）**状态不变**（第三项随后由规范入册覆盖）。
 - 边界（硬）：本节**未触发任何写请求**；取证完已删除注入的 `jiapu_auth`（读回确认该键不存在）；本仓工作区仍只有被检件（`M`）与本报告（`??`）两处改动。
+
+---
+
+## ⑬ 祖谱镜像编号（clan-tree 批次）编号面质检 · 两轮（**执行 = Neng** · 2026-10-16 · **只追加**，不改 ①~⑫ 任何行）
+
+> 用途：登记「本批（祖谱支系入口落点 + 镜像编号）」两轮质检中**与编号系统相关**的读数。**呈现面**读数见新建的 `docs/clan-tree.qa.md`；两册**来源不同、互不替代**。本节与上面各节（①~⑫）为不同批次 / 不同对象，不改任何既有行。
+
+### ⑬-1 快照与数据来源（逐轮标明）
+
+| 轮次 | 快照路径 | HEAD | `git status` | 数据来源 |
+|---|---|---|---|---|
+| **第一轮（预修）** | `/tmp/jiapu-qa-snap/jiapu` | `608333734d333bc4e2ce4c684f660d9ca78b44fc` | **19 项** | `/tmp/jiapu-qa-snap/{npm-test-snap.log,type-check-snap.log}`、judged-negative 副本 `/tmp/jiapu-qa-snap/mut`、真源归档副本 |
+| **第二轮（修后）** | `/tmp/jiapu-qa-r2/repo` | 同上 | **25 项** | `/tmp/jiapu-qa-r2/probe/`、`/tmp/jiapu-qa-r2/out-{new,mut1..4,old}.txt`、`/tmp/jiapu-qa-r2/{npm-test.log,type-check.log}` |
+
+### ⑬-2 交付门槛（两轮现取）
+
+| 轮次 | `npm test` | `cd frontend && npm run type-check` |
+|---|---|---|
+| 第一轮 | **799 tests / 799 pass / 0 fail**，EXIT 0 | EXIT 0 |
+| 第二轮 | **807 tests / 807 pass / 0 fail**，EXIT 0 | EXIT 0 |
+
+（+8 = 本批新增用例面。）
+
+### ⑬-3 编号不变量：「镜像号 = 真身号」
+
+- **端到端（第一轮，真源归档副本）**：认祖 `ji_23395_02 → ji_23395`，镜像号 **`000000384` 逐字 = 真身号**；父子边成立（父 = 落点 `mir_103ff661…`，复用既有家族 `1814c122…`，`created=false`）。
+- **人号计数器 md5 零变化**（`person.next` 仍 **414**）⇒ **镜像不铸新号、不耗号**。
+- 同树第二人 `000000277 ≠ 000000384`（号不串）。
+- 落点缺失 / 不在祖谱 ⇒ **400 且两侧零写入**；真身无号 ⇒ **400 且零写入**。
+- **判负 ②③④**（镜像取真身号回退为铸号：`founder-attach` / `child-write` / `marriage` / `branch-clan-ops`）⇒ `npm test` **15 红**（立支 8 + 婚姻 5 + A-2 镜像子女 1 + A-2 宗谱登记镜像 1），**全部落在本批具名变更面、零旁溢** ⇒ 该不变量**有判负网**，非「看起来对」。
+
+### ⑬-4 全站编号现状（独立复算 + 脚本对拍，第一轮）
+
+- 独立复算全站 **324 条人物记录** ⇒ 镜像 **32 条**、号≠真身号 **32 条**，与 `fix-mirror-gramps-ids` 脚本**逐条一致**；真身不可达 **0**。
+- 计划修正 **32 条**（顶端世本段 4 + 登记镜像 3 + 镜像子女 3 + 跨树婚姻 22）+ `tree-meta` 3 处 + 树档顶层 2 处；**撞号违规 0**；重跑输出逐字相同（**幂等**）；目录 md5 `d11514ffdcc954b423c4fc71a2249793` 前后同值（**零写入**）。
+- `migrate-clan-registration-edge` dry-run **EXIT 0**，待补边 **0**。
+
+### ⑬-5 残留与映射保真
+
+- `A2NEG-PROBE` **0 命中**（两轮）；未用 import **0**（两轮）。
+- **映射保真（第二轮）**：真源扁平 `external_*` **6 键**；前端 `PersonSummary` 声明 **4 项 ⊆ 真源、0 缺项**；7 字段投影 **0 失真** ⇒ **号 / 句柄投影无失真**。
+
+### ⑬-6 收工真源 md5 复取（**真源零写入自证**）
+
+| 项 | 开工（§⑬-1 时点） | 收工复取 | 结论 |
+|---|---|---|---|
+| `config/tree-meta.json` | `4728046764516172d8e6d584c2b3d7cc` | `4728046764516172d8e6d584c2b3d7cc` | **同值** |
+| 归档 `migrate-output` 汇总（`find … -type f -exec md5 -q {} \; \| sort \| md5`） | `d35138a4ca8a666dffd82e4488bd287c` | `d35138a4ca8a666dffd82e4488bd287c` | **同值** |
+
+### ⑬-7 未用 import 自查（补跑）
+
+命令：`node /tmp/jiapu-qa-r2/probe/check-imports.mjs frontend/src/business/pedigree.ts frontend/src/components/clan-hall/clan-hall.vue frontend/src/components/tree-pedigree/tree-pedigree.vue`
+
+| 被检件 | import 标识符 | 未被使用 |
+|---|---|---|
+| `frontend/src/business/pedigree.ts` | 5 | **0** |
+| `frontend/src/components/clan-hall/clan-hall.vue` | 34 | **0** |
+| `frontend/src/components/tree-pedigree/tree-pedigree.vue` | 20 | **0** |
+
+**EXIT 0**。**边界（硬）**：脚本为**文本级启发式**，与编译器不等价；`frontend/tsconfig.json` 无 `noUnusedLocals`、仓内无 eslint ⇒ `type-check` **不覆盖**未用 import，本自查为其**替代读数**（脚本 md5 `cbfaa1ad8755d92cfbc55747e9747a8e`）。
+
+### ⑬-8 未测面（编号面，逐条登记，不得略）
+
+1. guest 视角 depth≥2 登记镜像**目视**（链的目视验收只能在生产 / 登录态）；
+2. iOS 长按 / 真机触屏；小程序产物与主包体积；云函数据包与部署读数；
+3. **存量脚本修正的真实写入未执行**（全程 dry-run）⇒ 32 条修正落库后的编号现状**未复算**（本册为**零写入质检**，非执行单）；
+4. 前端**零自动化回归网** —— 判负 ②③④ 的 15 个红点由**后端套件**覆盖，非前端用例。
+
+### ⑬-9 一句话结论
+
+**编号不变量「镜像号 = 真身号、不铸新号、不耗号」经端到端 + 4 处判负变异 + 324 条独立复算逐条证实；两轮交付门槛 799/0 → 807/0 与 `type-check` 均 EXIT 0；真源 `config/tree-meta.json` 与归档 md5 收工复取与开工同值 = 真源零写入；全站 32 条镜像「号≠真身号」待存量脚本执行后复算，未用 import 已由文本级自查闭合（编译器不覆盖，如实登记边界）。**
