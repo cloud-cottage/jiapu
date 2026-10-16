@@ -1314,3 +1314,86 @@
   - **提交链（现证）** = **`6609534`**（代码面）→ **`5bb973a`**（产物）→ **`f1c5ae3`**（质检证据入册）→ **`380c0d2`**（存量修正脚本）；**H5 上线承 `push origin main`（`6083337..5bb973a`）**；**落笔时 `origin/main` 现证 = `5bb973abe752799947128e5248823ea891c73362`**。
   - **本追记 = 纯文档追加**：**未改任何代码 / 真源 / `config/` / `docs/*.qa.md` / 其它文档**；**未跑构建 / 未跑测试 / 未打包 / 未部署 / 未 `git add` / 未 `commit` / 未 `push`**。
 - **⑥ 未测 / 待办（如实登记 · 不得写成已验证）** = **§81-2 判据 1（同图成链目视）= 待 Kevin 登录态验收**（**guest 视角看不到 `depth≥2` 登记镜像**）· **小程序上传 = 待 Kevin 在微信开发者工具执行**（**未上传**）· **§81-5 ① 可达性判据的真机（触屏）读数未取**（**本单未跑构建、未开真机**）· **线上 H5 逐片确证**（承 §81-3 同款：Vercel 构建分片 ⇒ **以 push 触发构建为准**）。
+
+---
+
+## §82 同族 SDK 签名缺陷修复批（`deleteFile` **实签名 = `{ fileList: [...] }`** · 旧写法从未真删且静默）上云登记（**云函数 `compat-api` 重打包（`esbuild`）＋ 部署 · 已执行** · **前端本批零改动** · **无新集合 · 无数据修正 · 真源零写入** · 口径真源 = `AGENTS.md` **勘误 24 ⑤**（其「修复单在途」挂账自本批落地）· **2026-10-17 · 只追加 · 不改 §0–§81 任何行**）（Jing 制度员）
+
+> **编号（对账用 · 硬）**：本册按现证续编为 **§82**（前节 = **§81**（末子节 = **§81-6**）；**落笔前现证** = `grep -c '^## §82' docs/PENDING_DEPLOY.md` ⇒ **0** · `grep -c '§82-'` ⇒ **0** · `wc -l` ⇒ **1316**（**末行 = 第 1316 行**））—— **若与 Kevin 定稿冲突 ⇒ 就地加注别名、不改本节字面**。
+> **性质**：本节 = **同族 SDK 签名缺陷修复批的「上云动作 ＋ 执行回写 ＋ 判据 ＋ 未测面」登记单**（**执行侧已完成**：重打包 ＋ 部署已执行、产物已入库、提交链已推 `main`）；**逐字登记**（读数照抄执行侧现证与登记时只读探针现读，**未改写、未推算**）。
+> **状态词（硬）**：**已实现（Kong）· 已部署（2026-10-17）· 删除路径端到端未实测** —— **不得**写成「删除已恢复可用」/「端到端已通过」/「已验收」（原因与覆盖路径见 §82-4）。
+> **口径真源** = `AGENTS.md` **勘误 24 ⑤**（**本单不代改 `AGENTS.md`** —— 该处「修复单在途」的追记由主代理处理）。
+> **缺陷与修法（一句登记 · 只报告 · 细则以勘误 24 ⑤ 为准）**：`@cloudbase/node-sdk@3.18.3` 的 `deleteFile` **实际签名 = `{ fileList: [...] }`**；旧写法（入参只带 `fileID`、缺 `fileList`）在本仓默认配置（`throwOnCode = true` · SDK 模块级默认 `dist/utils/utils.js:69` · **本仓从未调用 `setThrowOnCode`**）下 **抛 `INVALID_PARAM`**（被调用方空 `catch` 吞掉）、在 `setThrowOnCode(false)` 下 **返错误对象**（被当成成功）⇒ **两条路都拿不到「删除成功」凭据：从未真删、且都静默**。**修法** = `lib/store.js` `deleteTree` 与 `lib/revision.js` `cloudDelete` 两处改用 `{ fileList: [id] }` ＋ 按 **`fileList[0].code === 'SUCCESS'`** 判成败；**`deleteTree` 判失败抛错**（保住「先删成功 → 再摘 `storage_files` / 失效缓存」写序不变式；两个既有调用方均按「可能失败」编写）；**`cloudDelete` 抛错由换封面调用方 best-effort `catch` 并记一行日志**（不阻断、不静默 —— 此刻新封面已上传成功、修订正文必须落库）。
+
+### §82-1 上云动作（**逐条 · 均已执行**）
+
+| # | 动作 | 口径 |
+|---|---|---|
+| **①** | **云函数 `compat-api` 重打包（`esbuild`）＋ 部署** | **已执行**（`tcb fn deploy` · 读数见 §82-2 (1)(2)）；**本批含后端逻辑改动**（`lib/store.js` `deleteTree` ／ `lib/revision.js` `cloudDelete`）⇒ **必须重打包**（**不重打包则云端仍是旧写法、删除链路照旧静默无效**）。**⚠️ 与 §79-1 ① / §81-1 ① 的「无需重打包、无需部署」相反，属不同批、不得互推** |
+| **②** | **前端（H5 / 小程序）** | **本批零改动** —— 改动面 100% 在后端（现证 = `git show --stat f08d97a` ⇒ **4 文件全在 `cloudfunctions/compat-api/**`**）⇒ **H5 未重建部署、小程序未重打上传**；**既有前端产物不受本批影响**（**⚠️ §74-1 ② ③ / §79-1 ② ③ / §81-1 ② ③ 的「两产物重打」属各自那一批，不得据本节免掉、亦不得据其为本批重打**） |
+| **③** | **CloudBase 集合** | **无新集合**（**不新建 / 不修改集合**）；`scripts/upload-migrated-to-cloudbase.mjs` 的 **`COLLECTIONS` 名单未动**；**本批未跑任何迁移脚本** |
+| **④** | **数据 / 真源面** | **无数据修正 · 真源零写入** —— `config/**` / `migrate-output/**` / 树 JSON / 既有集合 / 云存储 / `jiapu_tree_meta` **均未动** |
+| **⑤** | **文档面** | **本节**（`docs/PENDING_DEPLOY.md` · **本单只改这一个文档**）；**口径真源 = `AGENTS.md` 勘误 24 ⑤**（**本单不代改该册** —— 其追记由主代理处理） |
+
+- **跨文件已知项（只报告 · 不另行动作）**：**本批前** `cloudfunctions/deploy/compat-api/index.js`（旧产物 · §80 批那版）内**曾有 2 处旧签名**（现证 = `git show 3e13de9` 的产物 diff：`- deleteFile({ fileID: fileId })` ／ `- deleteFile({ fileID })`）⇒ **已由本次重打包消除**（现证 = 产物内 `deleteFile({ fileID` ⇒ **`0`**、旧形 `deleteFile({ … fileID }` ⇒ **`0`**、`deleteFile` **三处全部为 `{ fileList: [...] }`**，逐条见 §82-2 (1)）；**仓内其余 `deleteFile` 使用点**（`lib/store.js:1027` 清扫路径）**本就正确**（`{ fileList: targets }` · 返回值不检查 = 留孤儿无害 · **非本批改动面**）。
+
+### §82-2 执行回写（**实测读数 · 逐字沿用，不得推算**）
+
+**(1) 重打包（`esbuild`）· 对应 §82-1 ①**
+
+- 命令（逐字）：`frontend/node_modules/.bin/esbuild cloudfunctions/compat-api/index.js --bundle --platform=node --format=cjs --external:@cloudbase/node-sdk --outfile=cloudfunctions/deploy/compat-api/index.js`（体例承 §75-6 (1) / §80-6 ①）
+- 产物（新）：**md5 `33ac68ff8c46979fd8cc8535c1cd9cdd`** ／ **`1,618,494` B**（**Jing 落笔前现证复核同值**：`md5 -q` ＋ `ls -l`）
+- 产物（旧 · 被换下）：**md5 `352e90beeca40726156f839fb191679a`** ／ **`1,617,760` B**（照抄 §80-6 ①）
+- **产物三查（对新产物 · 本单现证）** = `deleteFile` **恰 3 处、全部 `{ fileList: [...] }`**（`:780` 清扫 ／ `:918` `deleteTree` ／ `:37761` `cloudDelete`）；**旧签名（`deleteFile({ fileID` ／ 旧形 `deleteFile({ … fileID }`）= `0`**；**`fileList[0].code !== "SUCCESS"` 判成败 ×2**（`:919` `deleteTree` ／ `:37762` `cloudDelete`）；**`require("@cloudbase/node-sdk")` ×1**（**`--external` 保持**）；**`node --check` OK**
+  - 注（**防误读 · 硬**）：产物内另有 **`downloadFile({ fileID: fileId })` ×2**（`:799` / `:819`）—— **同族 SDK 的 `downloadFile` 实签名就是 `{ fileID }`**（同族四签名清单见 `lib/revision.js:570-575` 注释：`deleteFile` / `getTempFileURL` = `{ fileList }`、`uploadFile` = `{ cloudPath, fileContent }`、`downloadFile` = `{ fileID }`）⇒ **不属旧签名残留、不得据之判负**。
+
+**(2) 部署 · 对应 §82-1 ①**
+
+- 命令（逐字）：`yes | tcb fn deploy compat-api -e liwu-d8gek6jjdab1d087c` ⇒ **部署成功**（**送 `y` 的坑**承 §80-6 ①：**不送 `y` 则不部署**）
+- **函数指纹（部署后 · 本单现取只读探针 `tcb fn detail compat-api -e liwu-d8gek6jjdab1d087c`）** = **状态 `部署完成`** · **代码大小（B） `6,346,104`** · **修改时间 `2026-10-17 07:27:44`** · **环境变量** = `MASTER_TREE_ID=zhonghua; COMPAT_SOURCE=cloud`（**未变**）
+  - **对照（已换版）** = §80-6 ① 登记 = `6,345,767` B ／ `2026-10-16 20:56:00` ⇒ **本次已换版**（**旧行原文不动**）
+
+**(3) 测试门槛（过程判据 · 已过）**
+
+- **`npm test` = `810 / 810 / 0`**（**主代理亲跑同值**）；
+- **注册数绊线 = `49`（不变）** —— **本批测试并入既有文件**（`lib/revision.test.js` 附2 ＋ `lib/tree-object-path.test.js` ⑨ 改锚 ＋ ⑩ 新增实跑）；**现证** = `friend-ops.test.js:873-880` ／ `task-center.test.js:795-799` 的绊线定额 **`49`**；**本单未跑测试**（读数照抄执行侧）。
+
+**(4) 提交链（**已推 `main`**）**
+
+- **`f08d97a`**（代码 ＋ 测试 ＋ 注释订正 · **2026-10-17 07:27:23**；现证 `git show --stat` ⇒ **4 文件 / +205 / −9**：`lib/revision.js` 51 ／ `lib/revision.test.js` 68 ／ `lib/store.js` 30 ／ `lib/tree-object-path.test.js` 65）→ **`3e13de9`**（产物 · **07:27:49**；**1 文件 / +10 / −3**）；
+- **现证**：`git rev-parse origin/main` = **`3e13de9f3d302fc60dc324097e41dcf4eb75e0b5`**（= `HEAD`）；`git status --porcelain` ⇒ **空**（工作区干净 · **本单只读探针，未 `git add` / 未 `commit` / 未 `push`**）。
+
+**(5) 注释订正（连带面 · 只报告）**
+
+- **四个文件**（`lib/store.js` ／ `lib/revision.js` ／ `lib/revision.test.js` ／ `lib/tree-object-path.test.js`）的**同类注释已按实测口径订正**（默认 `throwOnCode=true` ⇒ **抛 `INVALID_PARAM`**；仅 `setThrowOnCode(false)` ⇒ **返错误对象**；**两条路均从未真删且静默**）；
+- **该类不准确句式全仓 = `0` 命中**（**本单现证 grep**）；**唯二留存形式（均非「主张」· 不得据之写成「仍有残留」）** = **①** 本批新写的**背景引用注释**（`lib/revision.test.js:924` · **引旧写法原形**以说明缺陷本体）／ **②** **反回退负向断言**（`lib/revision.test.js:945` ／ `:967` ／ `lib/tree-object-path.test.js:199` · `!/deleteFile\(\{\s*fileID/`）。
+
+### §82-3 判据（**部署后 · 产物级 ＋ 生产回归**）
+
+| # | 判据 | 通过条件 |
+|---|---|---|
+| **1** | **旧签名残留 = `0`（产物级 · 硬）** | 对**重打包产物**（`cloudfunctions/deploy/compat-api/index.js`）grep 旧签名 ⇒ **`0`**；且 `deleteFile` **三处全部**为 `{ fileList: [...] }`、`fileList[0].code !== "SUCCESS"` 判成败 **×2** —— **读数 = 见 §82-2 (1)（本单已现证 · 全过）** |
+| **2** | **生产回归冒烟（部署后 · 本单只读实测 · 硬）** | `GET /tree-meta` ⇒ **`200`**；`GET /tree/rank?tree_id=zhonghua` **连打 3 次** ⇒ **`person_count` 恒 `119`**（`mirror_count` `0`）；`GET /tree/rank?tree_id=ji_23395_01` ⇒ **`58`** ／ 镜像 **`4`**；`GET /revisions?tree_id=ji_23395_01` ⇒ **`200`**（出参 **14 键**，含 `postscript` / `wenpu_config`）；`GET /search/global?query=000000209` ⇒ **`200`** —— **逐条均已现证通过** |
+| **3** | **写序不变式（静态锚 · 已过）** | `lib/tree-object-path.test.js` **⑨** 断言写序 **删对象 → 摘 `storage_files` → 失效缓存** ＋ local 分支仍 `unlinkSync` 且**不含任何云删除调用**；`lib/revision.test.js` **附2.2** 断言换封面**「先传新、后删旧」**写序 ＋ 删旧仍在 `try/catch (e)` 内 **best-effort**、**不 `throw`**、**必须记一行日志（不静默）** |
+| **4** | **云端真删成功路径（未测类 · 方向相反）** | **未实测** —— 见 §82-4（**不得据判据 1–3 写成「云端删除已恢复可用」/「已通过」**） |
+
+- **⚠️ 阈值方向（硬）**：判据 1 = **`0` 命中类** · 判据 2 = **`200` / 稳定一致类** · 判据 3 = **静态锚类** · 判据 4 = **未测类** —— **四者方向各不相同，不得混写、不得互推**（承 §72-2 / §73-2 / §74-2 / §75-2 同款）。
+- **判据 2 的一处如实登记（不得美化）**：对**未知路径**（现证探针 = `GET /api/no-such-route-xyz`）云函数返 **`400`**（**不是 `404`** —— 本函数对未匹配路径统一 `400`）；**该行为属既有形态、非本批引入**，**本单只登读数**。
+- **判据写法（逐字 · 供执行者照抄）**：产物级取计数 = 对 `cloudfunctions/deploy/compat-api/index.js` 按 **`deleteFile({` 全部命中**（应恰 **3** 处）与**旧签名模式**（应 **`0`**）分别 grep；**生产回归** = 上表判据 2 所列 **5 条 GET** 逐个取 HTTP 状态码 / `person_count`。
+
+### §82-4 未测面（**硬 · 如实登记 · 不得写成已验证 / 已通过 / 已恢复**）
+
+- **☐ 删除路径的真实端到端触发未做（本批核心未测面）**：**`deleteTree`（走分宗 / 归宗回收）与 `cloudDelete`（走换封面）两条删除路径在生产上均未实际触发过** —— **两者均低频**；
+  - **`deleteTree` 调用点（现证）** = `cloudfunctions/compat-api/lib/branch-clan-ops.js:765`（**分宗** —— 删回收新树那份 `try/catch` 吞错 best-effort）／ **`:920`**（**归宗** —— 删源树那份把异常收进 `stageError` → `markShellSource`（壳源树 reconcile 登记）＋ **`500`**）；**该两分支在生产未被触发**；
+  - **`cloudDelete` 调用点（现证）** = `lib/revision.js:859`（`saveRevision` 换封面）；**生产上「换封面且旧 `fileID` ≠ 新 `fileID`」路径未被触发** ⇒ **best-effort 日志（`[revision] 刪除舊封面未成功…`）在生产无实际日志读数**；
+  - **⇒ 云端 `fileList[0].code === 'SUCCESS'` 的「真删成功」路径、以及「判失败抛错 ⇒ `500` / 壳源树登记」的失败语义，均未在云上取得证据**。
+- **已有但不等价的证据（明写模式 · ⚠️ 不得当云上读数）**：**静态锚**（`tree-object-path.test.js` ⑨ ／ `revision.test.js` 附2.1 ／ 附2.2）＋ **local 沙箱实跑**（`tree-object-path.test.js` ⑩：真删盘上树文件 ＋ 失效树缓存 ＋ 幂等）—— **那是源码文本锚与 local 沙箱，不等价于云端 SDK 真删**。
+- **未跑（本单）**：**未跑构建 / 未跑测试 / 未打包 / 未部署 / 未重启任何服务**；**唯一执行的命令 = 只读探针**（`md5` / `ls` / `grep` / `node --check` / `tcb fn detail` / `curl` GET / `git log` / `git show` / `git status` / `git rev-parse` / `wc`）。
+- **前端面**：**H5 / 小程序未涉及**（本批零前端改动）⇒ 既有「旧 H5 缓存窗口」风险**不适用**（承 §69-4 / §70-4 / §71-5 / §72-5 / §73-3 / §74-1 ② 均为**其它批**）。
+- **`deleteTree` 抛错路径的一处残余代价（已在源码注释如实登记 · 云端未实测）**：**「对象其实已不存在、而 `storage_files` 仍指着它」时也会判失败** ⇒ 该路径从「静默放过」变成 **`500` ＋ 壳源树登记**，**可由既有 reconcile 收敛**（重试仍会走真删）；**未登记 `fileID` 的树压根不调 SDK、仍幂等**。
+
+### §82-5 登记面与边界（**硬**）
+
+- **登记面**：`docs/PENDING_DEPLOY.md` **本节**；**口径真源 = `AGENTS.md` 勘误 24 ⑤**（**本单不代改 `AGENTS.md`** —— 其「修复单在途」的追记由主代理处理）。
+- **本登记 = 制度登记单（只改文档）**：**只改 `docs/PENDING_DEPLOY.md` 本节**；**未改任何代码 / `AGENTS.md` / `docs/*.qa.md` / 其它文档 / `cloudfunctions/**` / `scripts/**` / `frontend/**` / `migrate-output/**` / `config/**`**；**未 commit / 未 push / 未部署 / 未跑构建 / 未跑测试 / 未重启任何服务**（**唯一执行的命令 = §82-4 所列只读探针**）；**零真源写入**；**未改 §0–§81 任何历史行**（**纯追加** · 承 `AGENTS.md` §0-4）。
+- **状态词（硬 · 重申）**：**已实现（Kong）· 已部署（2026-10-17）· 删除路径端到端未实测** —— **不得**写成「删除已恢复可用」/「端到端已通过」/「已验收」。
