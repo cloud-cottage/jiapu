@@ -929,15 +929,67 @@ test('§10-1-4/6 立支：新树仅 1 个始祖镜像节点 + 宗谱两条登记
   assert.equal(meta.trees[NEW_TREE_ID].founder_handle, mirror.handle);
   assert.equal(mine.founder_gramps_id, mirror.gramps_id, '新树顶层 founder_gramps_id = 镜像编号');
   assert.match(mirror.gramps_id, /^\d{9}$/);
-  assert.notEqual(mirror.gramps_id, '000000013', '镜像另铸全站新号（N 真身编号不变）');
+  // ★ 改锚（甲口径 A-2 · 2026-10-16）：原断言 `assert.notEqual(mirror.gramps_id, '000000013', '镜像另铸全站新号（N 真身编号不变）')`
+  //   → 新断言「镜像编号**逐字等于** N 真身号」。理由：编号口径自 2026-10-16 起由「记录级」改为「人级」
+  //   —— `gramps_id` 标识**人**（跨树同人同号），`handle` 才标识记录；镜像一律不铸号。
+  assert.equal(mirror.gramps_id, '000000013', '★ A-2：镜像编号逐字取 N 真身号（不再另铸全站新号）');
+  assert.equal(mirror.gramps_id, readTreeDisk(SRC).people['bc_src-n'].gramps_id, '镜像号 = 真身号（同人同号）');
 
-  // 全站唯一：新铸编号在副本所有树里只出现一次
-  const owners = [];
+  // ★ 改锚（甲口径 A-2 · 2026-10-16）：原断言 `assert.deepEqual(owners, [NEW_TREE_ID], '新铸编号全站唯一')`（记录级唯一）
+  //   → 新断言「**人级**唯一」：同一编号可跨树出现在多条**记录**上，但恰有 1 条**真身**，
+  //   其余持有者必为镜像（external_mirror='true'），且可沿 external_tree / external_person_handle 走回真身 N。
+  //   口径说明：本套件夹具共享同一个 /tmp 树库，各族夹具都把自族「N」编成 000000013（合成数据），
+  //   故「全站裸扫描」对同号无判别力；改锚断言限定在**本单立支涉及的 3 棵树**（原树 / 新树 / 宗谱）内做同号分析。
+  const allTrees = {};
   for (const f of fs.readdirSync(TREES_DIR)) {
     const t = JSON.parse(fs.readFileSync(path.join(TREES_DIR, f), 'utf8'));
-    for (const p of Object.values(t.people || {})) if (String(p.gramps_id) === mirror.gramps_id) owners.push(t.tree_id);
+    allTrees[t.tree_id] = t;
   }
-  assert.deepEqual(owners, [NEW_TREE_ID], '新铸编号全站唯一');
+  const holders = [];
+  for (const tid of [SRC, NEW_TREE_ID, CLAN]) {
+    const t = allTrees[tid];
+    assert.ok(t, `参与树 ${tid} 应存在`);
+    for (const p of Object.values(t.people || {})) {
+      if (String(p.gramps_id) === mirror.gramps_id) holders.push({ tree_id: tid, person: p });
+    }
+  }
+  const trueBodies = holders.filter((h) => h.person.external_mirror !== 'true');
+  assert.equal(trueBodies.length, 1, '★ 人级唯一：参与树内该编号恰有 1 条真身');
+  assert.deepEqual(
+    trueBodies.map((h) => [h.tree_id, h.person.handle]),
+    [[SRC, 'bc_src-n']],
+    '★ 人级唯一：真身 = 原树 N 本人（其余同号记录均为镜像）',
+  );
+  assert.equal(holders.length > 1, true, '镜像与原真身同号 ⇒ 同一编号跨树多条记录（记录级「只出现一次」已不成立）');
+  assert.deepEqual(
+    [...new Set(holders.map((h) => h.tree_id))].sort(),
+    [SRC, NEW_TREE_ID, CLAN].sort(),
+    '同号记录分布 = 原树真身 + 新树始祖镜像 + 宗谱登记镜像（三棵树都沾号）',
+  );
+  // 镜像链式指回真身：逐条镜像沿 external_* 走（≤2 跳）必落在 N 真身 SRC:bc_src-n 上
+  const chainOf = (h) => {
+    let cur = h;
+    let hops = 0;
+    while (cur.person.external_mirror === 'true') {
+      const tgt = allTrees[cur.person.external_tree];
+      assert.ok(tgt, `镜像 ${cur.tree_id}:${cur.person.handle} 的 external_tree 解析不到（${cur.person.external_tree}）`);
+      const next = tgt.people?.[cur.person.external_person_handle];
+      assert.ok(next, `镜像 ${cur.tree_id}:${cur.person.handle} 的 external_person_handle 解析不到`);
+      cur = { tree_id: cur.person.external_tree, person: next };
+      hops += 1;
+      assert.equal(hops <= 2, true, '镜像指回真身不超过 2 跳');
+    }
+    return [cur.tree_id, cur.person.handle];
+  };
+  const ourChain = holders
+    .filter((h) => h.person.external_mirror === 'true')
+    .filter((h) => JSON.stringify(chainOf(h)) === JSON.stringify([SRC, 'bc_src-n']));
+  assert.equal(ourChain.length >= 3, true, '新树始祖镜像 + 宗谱两条登记镜像都沿 external_* 指回 N 真身');
+  assert.deepEqual(
+    [...new Set(ourChain.map((h) => h.tree_id))].sort(),
+    [NEW_TREE_ID, CLAN].sort(),
+    '指回 N 真身的镜像分布在新树与宗谱（镜像不带自己的号，只带真身号）',
+  );
 
   // 宗谱两条登记镜像（一条登记 = 一个支系入口），落在宗谱自有段
   const clan = readTreeDisk(CLAN);
@@ -1787,6 +1839,182 @@ test('§7 系统级失败 · /admin/add-child 真实 EACCES → 500 + 通用文�
   );
   assert.equal(biz.statusCode, 400, `业务裸异常仍 400：${biz.body}`);
   assert.equal(bodyOf(biz).error, '所选节点不存在于该树', '业务文案不得被通用句覆盖');
+});
+
+// ================= ★ A-2（镜像不铸号 · 甲口径 2026-10-16）：立支 3 条镜像取 N 真身号 =================
+
+test('A-2 立支不铸号：新树始祖镜像 + 宗谱两条登记镜像编号一律取 N 真身号、人号计数器零增长；真身无号 → 400 不扣籽不建树', async () => {
+  const idSeq = await import('./id-seq.js');
+  const seqOf = () => idSeq.readSeq(idSeq.SEQ_PERSON);
+  /** 往副本 tree-meta 追加条目（store 的 local 分支按磁盘指纹失效缓存 ⇒ 立即生效） */
+  const addMeta = (entries) => {
+    const meta = metaNow();
+    for (const [id, entry] of Object.entries(entries)) meta.trees[id] = { tree_id: id, ...entry };
+    fs.writeFileSync(META_FILE, JSON.stringify(meta, null, 2) + '\n');
+  };
+  const groupBy = (tree) => {
+    const m = new Map();
+    for (const p of Object.values(tree.people)) {
+      const k = String(p.gramps_id || '');
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(p);
+    }
+    return m;
+  };
+
+  // ── ① 立支：3 条镜像（新树始祖镜像 + 宗谱两条登记镜像）编号**一律取 N 真身号 000000013** ──
+  const SRC = 'a2_src';
+  const CLAN = 'a2_clan';
+  writeTree(chainTree(SRC, { clanId: CLAN, clanHandle: 'a2_own' }));
+  writeTree(clanTree(CLAN, 'a2_own'));
+  addMeta({
+    [SRC]: {
+      kind: 'family',
+      path_alias: `/${SRC}`,
+      surname_char: '季',
+      display_title: '季氏测试家族（A-2 立支源）',
+      founder_handle: 'a2_src-m',
+      founder_gramps_id: '000000001',
+      founder_name: '季a2_src始祖',
+      clan_tree_id: CLAN,
+    },
+    [CLAN]: {
+      kind: 'clan',
+      path_alias: `/z/${CLAN}`,
+      surname: '季',
+      surname_char: '季',
+      display_title: '季氏宗谱（A-2 立支专用）',
+      founder_handle: 'a2_own',
+      master_tree_id: 'zhonghua',
+      master_handle: 'mRoot',
+    },
+  });
+
+  if (!(await seqOf())) await idSeq.initSeqIfMissing();
+  const seqBefore = await seqOf();
+  const treesBefore = treeFileCount();
+  await walletLib.setBranchFeeSeeds(1); // 费改 1 籽：不扰动既有夹具余额
+  let res;
+  try {
+    res = await call('/admin/establish-branch', { tree_id: SRC, person_handle: 'a2_src-n' }, tokenOf(STEWARD, 'tree_steward'));
+  } finally {
+    await walletLib.setBranchFeeSeeds(9999);
+  }
+  assert.equal(res.statusCode, 200, `立支应 200：${res.body}`);
+  const body = bodyOf(res);
+  const NEW = body.new_tree_id;
+  const seqAfter = await seqOf();
+
+  const newTree = readTreeDisk(NEW);
+  const newHandles = Object.keys(newTree.people);
+  assert.equal(newHandles.length, 1, '新树仅 1 个始祖镜像节点');
+  const mirror = newTree.people[newHandles[0]];
+  const src = readTreeDisk(SRC);
+  assert.equal(mirror.external_person_handle, 'a2_src-n', '镜像指向 N 真身');
+  assert.equal(mirror.external_tree, SRC);
+  assert.equal(mirror.gramps_id, '000000013', '★ A-2：新树始祖镜像编号逐字取 N 真身号（不再另铸全站新号）');
+  assert.equal(mirror.gramps_id, src.people['a2_src-n'].gramps_id, '镜像编号 = 真身编号（同一人两记录一号）');
+  assert.equal(newTree.founder_gramps_id, mirror.gramps_id, '新树顶层 founder_gramps_id = 镜像编号 = 真身号');
+  assert.equal(body.founder.gramps_id, '000000013');
+  assert.notEqual(mirror.handle, 'a2_src-n', 'A-1：handle 仍是记录级（镜像 ≠ 真身 handle）');
+  assert.equal(seqAfter, seqBefore, `★ A-2：立支全流程零铸人号（人号计数器 ${seqBefore} → ${seqAfter}）`);
+
+  const clan = readTreeDisk(CLAN);
+  const regs = Object.values(clan.people).filter((p) => p.external_mirror === 'true' && p.external_link_type === 'founder');
+  assert.equal(regs.length, 2, '宗谱两条登记镜像（原树 / 新树各一条）');
+  assert.deepEqual(regs.map((r) => r.external_tree).sort(), [SRC, NEW].sort(), '两条指向原树 / 新树');
+  for (const reg of regs) {
+    assert.equal(reg.gramps_id, '000000013', '★ A-2：登记镜像编号逐字取真身号');
+    assert.match(reg.external_relation_note, /立支登记/);
+  }
+  const regNew = regs.find((r) => r.external_tree === NEW);
+  assert.equal(regNew.external_person_handle, mirror.handle, '新树登记指向新树始祖镜像');
+  assert.equal(newTree.people[regNew.external_person_handle].gramps_id, '000000013', '链尾真身号一致（新树镜像亦取真身号）');
+
+  // A-3 不变量：同树内**不同人**不撞号（同号多记录必须同为一人）；无同人双记录的树 ⇒ 去重计数 = 人数
+  for (const [tid, tree] of [
+    [NEW, newTree],
+    [SRC, src],
+    [CLAN, clan],
+  ]) {
+    for (const [id, rows] of groupBy(tree)) {
+      assert.equal(new Set(rows.map((p) => p.name)).size, 1, `A-3：${tid} 同号记录（${id}）必须同为一人`);
+    }
+  }
+  for (const [tid, tree] of [
+    [NEW, newTree],
+    [SRC, src],
+  ]) {
+    const list = Object.values(tree.people);
+    assert.equal(
+      new Set(list.map((p) => String(p.gramps_id || ''))).size,
+      list.length,
+      `A-3：${tid} 同树内 gramps_id 去重计数 = 人数`,
+    );
+  }
+  // 立支特有：宗谱内 N 一人两条记录（两条登记镜像）⇒ 甲口径「编号标识人」下同号，去重计数 = 人数 - 1
+  const dupGroups = [...groupBy(clan)].filter(([, rows]) => rows.length > 1);
+  assert.equal(dupGroups.length, 1, '宗谱内只有 N 出现两条记录');
+  assert.equal(dupGroups[0][1].length, 2, '两条登记镜像同为 N ⇒ 同取 N 真身号（同号同人，非两人撞号）');
+  assert.equal(treeFileCount(), treesBefore + 1, '新增 1 个新树文件');
+
+  // 读侧推导零回归：宗谱「支系入口列表」仍由两条登记镜像各推一个入口（新增树 / 原树各 1）
+  const branches = await clanLib.listClanBranches({ clanTreeId: CLAN });
+  assert.deepEqual(branches.map((b) => b.tree_id).sort(), [SRC, NEW].sort(), '立支后两树都进支系入口列表');
+  assert.equal(branches.length, 2, '同号不影响力计数（按 tree_id 去重）');
+
+  // ── ② 真身无号 ⇒ 400（扣费之前拒绝，**绝不兜底铸号**）：不建新树、不扣籽、源树逐字节不变 ──
+  const SRC2 = 'a2_src_noid';
+  const CLAN2 = 'a2_clan_noid';
+  const noIdTree = chainTree(SRC2, { clanId: CLAN2, clanHandle: 'a2_own_noid' });
+  assert.equal(noIdTree.people[`${SRC2}-n`].gramps_id, '000000013', '夹具先带号，再抹掉');
+  delete noIdTree.people[`${SRC2}-n`].gramps_id;
+  writeTree(noIdTree);
+  writeTree(clanTree(CLAN2, 'a2_own_noid'));
+  addMeta({
+    [SRC2]: {
+      kind: 'family',
+      path_alias: `/${SRC2}`,
+      surname_char: '季',
+      display_title: '季氏测试家族（A-2 无号真身）',
+      founder_handle: `${SRC2}-m`,
+      founder_gramps_id: '000000001',
+      founder_name: '季a2无号始祖',
+      clan_tree_id: CLAN2,
+    },
+    [CLAN2]: {
+      kind: 'clan',
+      path_alias: `/z/${CLAN2}`,
+      surname: '季',
+      surname_char: '季',
+      display_title: '季氏宗谱（A-2 无号真身）',
+      founder_handle: 'a2_own_noid',
+      master_tree_id: 'zhonghua',
+      master_handle: 'mRoot',
+    },
+  });
+
+  const treesB2 = treeFileCount();
+  const src2Md5 = treeMd5Disk(SRC2);
+  const assetsB2 = JSON.stringify(await el.getAssets(STEWARD));
+  await walletLib.setBranchFeeSeeds(1);
+  let res2;
+  try {
+    res2 = await call(
+      '/admin/establish-branch',
+      { tree_id: SRC2, person_handle: `${SRC2}-n` },
+      tokenOf(STEWARD, 'tree_steward'),
+    );
+  } finally {
+    await walletLib.setBranchFeeSeeds(9999);
+  }
+  assert.equal(res2.statusCode, 400, `真身无号应 400：${res2.body}`);
+  assert.match(bodyOf(res2).error, /没有全站编号/);
+  assert.match(bodyOf(res2).error, /A-2：镜像不铸号/);
+  assert.equal(treeFileCount(), treesB2, '400 不得新建树文件');
+  assert.equal(treeMd5Disk(SRC2), src2Md5, '400 源树逐字节不变');
+  assert.equal(JSON.stringify(await el.getAssets(STEWARD)), assetsB2, '400 不扣籽（取号在扣费之前）');
+  assert.equal(await seqOf(), seqAfter, '400 不铸号');
 });
 
 // ================= ⑳ 真源护栏（收尾） =================

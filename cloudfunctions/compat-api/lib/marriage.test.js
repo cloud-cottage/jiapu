@@ -4,6 +4,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   normalizeMarriageDate,
   nextMarriageNo,
@@ -210,3 +211,87 @@ test('旧版出嫁链接（无 marriage_id / 无镜像）：结束只清链接�
   assert.equal(B.people.hB.external_link_type, '');
   assert.equal(B.people.hB.external_marriage_end_date, '1962');
 });
+
+// ================= ★ A-2（镜像不铸号 · 甲口径 2026-10-16）：跨树婚姻镜像取对方真身号 =================
+
+test('A-2 跨树婚姻镜像不铸号：两侧镜像编号逐字取对方真身号、不消费预留号；真身无号 → 400 两侧零写入', async () => {
+  const { buildMirror } = await import('./marriage.js');
+  const A = treeA(); // 风华胥 000000001（女，真身留 tree_a）
+  const B = treeB(); // 风伏羲 000000052（男，真身留 tree_b）
+
+  const r = applyMarriage({
+    treeA: A,
+    treeB: B,
+    handleA: 'hA',
+    handleB: 'hB',
+    direction: 'out',
+    marriageId: 'mid_a2',
+    // 旧口径的「预留人号」实参：A-2 后 `applyMarriage` **已无此人号形参**
+    //（形参连同 index.js 的 reservePersonIds(2) 一并删除）⇒ 多传该键必须完全不影响行为：
+    // 不抛（证其不被消费）、镜像号仍逐字取真身号（见下方签名级断言）。
+    allocPersonId: () => {
+      throw new Error('A-2：镜像不铸号 —— 镜像路径不得消费预留的人号');
+    },
+  });
+
+  const mirrorB = A.people[r.mirror_b];
+  const mirrorA = B.people[r.mirror_a];
+  assert.equal(mirrorB.gramps_id, B.people.hB.gramps_id, '★ A-2：A 侧镜像（代表 B）编号 = B 真身号');
+  assert.equal(mirrorB.gramps_id, '000000052');
+  assert.equal(mirrorA.gramps_id, A.people.hA.gramps_id, '★ A-2：B 侧镜像（代表 A）编号 = A 真身号');
+  assert.equal(mirrorA.gramps_id, '000000001');
+  assert.equal(mirrorA.external_person_handle, 'hA');
+  assert.equal(mirrorB.external_person_handle, 'hB');
+  assert.notEqual(mirrorA.handle, 'hA', 'A-1：handle 仍是记录级（同一人两条记录 = 两个 handle）');
+  assert.equal(mirrorA.external_mirror, 'true');
+  assert.equal(mirrorB.external_mirror, 'true');
+
+  // A-3：同树内编号去重计数 = 人数（镜像真身恒在别树 ⇒ 同树不出现同号两条）
+  for (const tree of [A, B]) {
+    const list = Object.values(tree.people);
+    assert.equal(
+      new Set(list.map((p) => String(p.gramps_id || ''))).size,
+      list.length,
+      `A-3：${tree.tree_id} 同树内 gramps_id 去重计数 = 人数`,
+    );
+  }
+
+  // ★ 签名自证（原用例「传入会抛的 allocPersonId 证其不被消费」→ 本断言「签名已不再接受预留号」）：
+  //   ① 源码级：`applyMarriage` 形参块内不得再出现 `allocPersonId`（本单连同 index.js 的 reservePersonIds(2) 一并删除）；
+  //   ② 行为级：上面多传的「会抛的分配器」形同虚设 —— 未抛异常、镜像号仍逐字取真身号。
+  const marriageSrc = fs.readFileSync(new URL('./marriage.js', import.meta.url), 'utf8');
+  const applyStart = marriageSrc.indexOf('export function applyMarriage');
+  const applySignature = marriageSrc.slice(applyStart, marriageSrc.indexOf('}) {', applyStart));
+  assert.ok(applySignature.length > 100, '签名切片须覆盖完整形参块（防切片失效导致假绿）');
+  assert.equal(/allocPersonId/.test(applySignature), false, '★ A-2：applyMarriage 签名已不再接受预留人号（形参已删）');
+  assert.equal(/allocPersonId/.test(marriageSrc), false, '★ A-2：marriage.js 全模块零 allocPersonId 残留');
+
+  // 取号器自身：不经调用方传号也取真身号（旧口径的「树内序号 I 号」兜底已随本单删除）
+  assert.equal(buildMirror(treeA(), B.people.hB, 'tree_b', 'mid_x', 1).gramps_id, '000000052');
+  assert.equal(
+    buildMirror(treeA(), B.people.hB, 'tree_b', 'mid_x', 1, () => '000000999').gramps_id,
+    '000000052',
+    '★ A-2：多传第 6 实参（旧口径预留号位）不影响行为 —— 编号仍取真身号',
+  );
+
+  // 真身无号 ⇒ 拒绝创建（绝不兜底铸号），两侧一个字节都不写
+  const A2 = treeA();
+  const B2 = treeB();
+  delete B2.people.hB.gramps_id;
+  const before = JSON.stringify([A2, B2]);
+  assert.throws(
+    () =>
+      applyMarriage({
+        treeA: A2,
+        treeB: B2,
+        handleA: 'hA',
+        handleB: 'hB',
+        direction: 'out',
+        marriageId: 'mid_a2b',
+      }),
+    (e) => e.status === 400 && /没有全站编号/.test(e.message) && /A-2：镜像不铸号/.test(e.message),
+    '真身无号 → 400（文案点明「镜像不铸号」）',
+  );
+  assert.equal(JSON.stringify([A2, B2]), before, '400 不得改动任何一侧（无镜像、无家族、无指针）');
+});
+

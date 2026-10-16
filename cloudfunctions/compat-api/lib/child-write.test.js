@@ -1058,3 +1058,98 @@ test('口径②附加：非世本树（祖谱 / 普通家族树）的节点不�
   assert.equal(clan.people[r.child_handle].external_tree, '');
   assert.deepEqual(clan.families.cl_fam_own.child_handles, [r.child_handle], '祖谱自有段家庭照常追加子女');
 });
+
+// ================= ★ A-2（镜像不铸号 · 甲口径 2026-10-16）：镜像子女取真身号 =================
+
+test('A-2 跨树镜像子女不铸号：编号逐字取真身子女号（新建 / 挂接两路）+ 真身无号 → 400 零写入', async () => {
+  const idSeq = await import('./id-seq.js');
+  const seqOf = () => idSeq.readSeq(idSeq.SEQ_PERSON);
+  // 计数器就位（若本套件此前未铸过号：按既有数据 max+1 播种，避免初始化跳变干扰 delta 读数）
+  if (!(await seqOf())) await idSeq.initSeqIfMissing();
+
+  // ── ① 跨树新建子女：真身树铸 1 个人号（真人），本树镜像子女**逐字沿用**该号（不再另铸）──
+  const t1 = crossTreePair('a2_new');
+  const seqB1 = await seqOf();
+  const r1 = await addChildNode({ treeId: t1.loc, personHandle: t1.h.locSelf, name: '清晓', gender: 'F' });
+  const seqA1 = await seqOf();
+  const locAfter = readTree(t1.loc);
+  const farAfter = readTree(t1.far);
+  const realChild = farAfter.people[r1.child_handle];
+  const mirrorChild = locAfter.people[r1.mirror_handle];
+  assert.ok(realChild && mirrorChild, '真身子女 + 本树镜像子女都落库');
+  assert.equal(mirrorChild.gramps_id, realChild.gramps_id, '★ A-2：镜像子女编号逐字取真身编号（同一人两记录一号）');
+  assert.equal(seqA1 - seqB1, 1, `★ A-2：镜像不铸号 —— 本次只真身铸 1 个号（人号计数器 ${seqB1} → ${seqA1}）`);
+  assert.equal(mirrorChild.external_tree, t1.far);
+  assert.equal(mirrorChild.external_person_handle, r1.child_handle);
+  assert.equal(mirrorChild.external_mirror, 'true');
+  assert.notEqual(mirrorChild.handle, realChild.handle, 'A-1：handle 仍是记录级（镜像 ≠ 真身 handle）');
+  for (const [tid, tree] of [
+    [t1.loc, locAfter],
+    [t1.far, farAfter],
+  ]) {
+    const list = Object.values(tree.people);
+    assert.equal(
+      new Set(list.map((p) => String(p.gramps_id || ''))).size,
+      list.length,
+      `A-3：${tid} 同树内 gramps_id 去重计数 = 人数`,
+    );
+  }
+
+  // ── ② 跨树挂接存量节点：编号随迁（真身 000000010）→ 镜像子女取该号，全程**零铸号** ──
+  const t2 = crossTreePair('a2_attach');
+  const loc2 = readTree(t2.loc);
+  loc2.people.orphan = {
+    handle: 'orphan',
+    gramps_id: '000000010',
+    name: '沈清昆',
+    surname: '沈',
+    given: '清昆',
+    gender: 'M',
+    birth_date: '',
+    death_date: '',
+    birth_place: '',
+    death_place: '',
+    parent_family: '',
+    spouse_families: [],
+  };
+  writeTree(loc2);
+  const seqB2 = await seqOf();
+  const r2 = await addChildNode({ treeId: t2.loc, personHandle: t2.h.locSelf, childHandle: 'orphan', gender: 'M' });
+  const seqA2 = await seqOf();
+  const loc2After = readTree(t2.loc);
+  const far2After = readTree(t2.far);
+  assert.equal(far2After.people[r2.child_handle].gramps_id, '000000010', '挂接存量节点：编号随迁（终身不变）');
+  assert.equal(loc2After.people[r2.mirror_handle].gramps_id, '000000010', '★ A-2：镜像子女编号 = 真身编号（不是新铸号）');
+  assert.equal(seqA2, seqB2, `★ A-2：挂接路径全程零铸号（人号计数器 ${seqB2} → ${seqA2}）`);
+
+  // ── ③ 真身无号 ⇒ 400 拒绝创建（**绝不兜底铸号**），两棵树 + 计数器零变化 ──
+  const t3 = crossTreePair('a2_noid');
+  const loc3 = readTree(t3.loc);
+  loc3.people.legacy = {
+    handle: 'legacy',
+    gramps_id: '',
+    name: '沈无号',
+    surname: '沈',
+    given: '无号',
+    gender: 'M',
+    birth_date: '',
+    death_date: '',
+    birth_place: '',
+    death_place: '',
+    parent_family: '',
+    spouse_families: [],
+  };
+  writeTree(loc3);
+  const loc3Before = fs.readFileSync(treePath(t3.loc), 'utf8');
+  const far3Before = fs.readFileSync(treePath(t3.far), 'utf8');
+  const seqB3 = await seqOf();
+  await assert.rejects(
+    () => addChildNode({ treeId: t3.loc, personHandle: t3.h.locSelf, childHandle: 'legacy', gender: 'M' }),
+    (e) => e.status === 400 && /没有全站编号/.test(e.message) && /A-2：镜像不铸号/.test(e.message),
+    '真身无号 → 400（文案点明「镜像不铸号」）',
+  );
+  assert.equal(fs.readFileSync(treePath(t3.loc), 'utf8'), loc3Before, '400 不得写本树');
+  assert.equal(fs.readFileSync(treePath(t3.far), 'utf8'), far3Before, '400 不得写真身树');
+  assert.equal(await seqOf(), seqB3, '400 不得铸号');
+});
+

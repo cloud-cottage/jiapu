@@ -213,9 +213,25 @@
           />
           <t-button size="small" theme="primary" :loading="addRefResolving" @click="doResolveRef">解析</t-button>
         </view>
-        <!-- ① 本树命中：确认行「已定位：」+ 姓名·九位编号（编号展示复用 personIdDisplay），提交按钮随之可用 -->
+        <!-- ① 本树命中：确认行「已定位：」+ 姓名·编号（编号展示 = format.ts 单点 personIdDisplayOf：
+             真身不带标注；镜像带「（镜像 · 源自 <来源树名>）」），提交按钮随之可用 -->
         <view v-if="addRefSelected" class="batch-preview">
-          <text class="batch-preview-line">已定位：{{ addRefSelected.name }}·{{ personIdDisplay(addRefSelected.gramps_id) }}</text>
+          <text class="batch-preview-line">已定位：{{ addRefSelected.name }}·{{ personIdDisplayOf(addRefSelected, addRefSourceTitle) }}</text>
+        </view>
+        <!-- ①′ 同一编号命中多条（甲口径 A-5：同人 = 1 条真身 + N 条镜像，镜像与真身同号）：
+             逐条标出真身 / 镜像 · 源自 <树名>，供用户看清后自选；择一默认按「真身 > 登记镜像 > 其它镜像」，
+             点行只切换既有 addSelected 槽，提交路径与「从树中选择」档完全一致（一字未改）。 -->
+        <view v-if="addRefHits.length > 1" class="attach-results">
+          <view
+            v-for="r in addRefHits"
+            :key="r.handle"
+            class="attach-item"
+            :class="{ selected: addSelected?.handle === r.handle }"
+            @click="selectRefHit(r)"
+          >
+            <text class="attach-name">{{ r.name }}</text>
+            <text class="attach-id">{{ personIdDisplayOf(r, addRefSourceTitles[r.handle] || '') }}</text>
+          </view>
         </view>
       </template>
       <template v-else-if="addPickMode === 'pick'">
@@ -312,12 +328,18 @@ import {
   fetchAssetsSummary,
   fetchTreeMetaRemote,
 } from '@/business/api';
-import { clanFounderOfMasterNode, clanFounderChildBlockMessage } from '@/business';
+import { clanFounderOfMasterNode, clanFounderChildBlockMessage, treeDisplayTitleOf } from '@/business';
 import type { MasterClanFounder } from '@/business';
 import { isAssetInsufficientError, goMyAssets } from '@/business/asset-guide';
 import { shortageLine, SEED_QTY_UNIT } from '@/business/asset-text';
 import { isAuthenticated, authState, getAuthToken } from '@/business/auth';
-import { personIdDisplay, PERSON_REF_PLACEHOLDER } from '@/business/format';
+import {
+  personIdDisplay,
+  personIdDisplayOf,
+  pickPreferredPerson,
+  isMirrorRecord,
+  PERSON_REF_PLACEHOLDER,
+} from '@/business/format';
 import {
   BATCH_MAX_GEN,
   buildBatchConfirmContent,
@@ -547,6 +569,17 @@ const addSelected = ref<PersonSummary | null>(null);
 const addRefInput = ref('');
 /** 「指定 ID」档：已定位命中的既有节点（= addSelected 槽的镜像，仅用于渲染确认行） */
 const addRefSelected = ref<PersonSummary | null>(null);
+/**
+ * 「指定 ID」档：同一编号**命中多条**记录时的全部命中（甲口径：同一编号可对应 1 条真身 + N 条镜像；
+ * 立支形态下同一棵树内可有两镜像同号）。**仅 >1 时渲染列表**（1 条时确认行已足够），
+ * 每行按 `format.ts` 的显示单点标出「真身 / 镜像 · 源自 <树名>」，点行即切换既有 `addSelected` 槽。
+ * 择一规则 = format.ts `pickPreferredPerson`（真身 > 登记镜像 > 其它镜像），**绝不取第一条**。
+ */
+const addRefHits = ref<PersonSummary[]>([]);
+/** 「指定 ID」档：命中记录 handle → 来源树名（镜像才有；真身 / 取不到 = ''，供确认行与列表行共用） */
+const addRefSourceTitles = ref<Record<string, string>>({});
+/** 「指定 ID」档：当前选中命中（addRefSelected）的来源树名 */
+const addRefSourceTitle = computed(() => addRefSourceTitles.value[addRefSelected.value?.handle || ''] || '');
 const addRefResolving = ref(false);
 /**
  * 「指定 ID」档解析的**请求代次**（R-2）：每次发起解析前自增并捕获本次值，两段 await 之后
@@ -660,6 +693,8 @@ function openAddNode(mode: 'parent' | 'child' | 'spouse', pickMode: 'new' | 'pic
   // 「指定 ID」档：每次打开都清空输入与解析结论（不给上一次的定位结果留痕）
   addRefInput.value = '';
   addRefSelected.value = null;
+  addRefHits.value = [];
+  addRefSourceTitles.value = {};
   // 「承母嗣」每次打开都复位（不给上一次的勾选留痕）
   addMaternalSuccession.value = false;
   // 批量档：每次打开都清空粘贴文本与解析结果（不复用上次输入）
@@ -749,6 +784,8 @@ function refSelfError(handle: string): string {
 function onRefInputChange(v: any) {
   addRefInput.value = typeof v === 'string' ? v : '';
   addRefSelected.value = null;
+  addRefHits.value = [];
+  addRefSourceTitles.value = {};
   addSelected.value = null;
 }
 
@@ -756,6 +793,8 @@ function onRefInputChange(v: any) {
 function switchToRef() {
   addPickMode.value = 'ref';
   addRefSelected.value = null;
+  addRefHits.value = [];
+  addRefSourceTitles.value = {};
   addSelected.value = null;
   panelError.value = '';
 }
@@ -774,6 +813,8 @@ function switchAddPickTab(tab: 'new' | 'pick') {
   if (addPickTab.value === 'ref') {
     addSelected.value = null;
     addRefSelected.value = null;
+    addRefHits.value = [];
+    addRefSourceTitles.value = {};
     panelError.value = '';
   }
   addPickMode.value = tab;
@@ -795,10 +836,37 @@ function refResolveStillCurrent(raw: string): boolean {
 }
 
 /**
+ * 命中记录的**来源树名**（甲口径 A-5「镜像 · 源自 <树名>」标注里的树名取处）：
+ * 仅镜像取 `external_tree` → tree-meta 的 `display_title`（`treeDisplayTitleOf`，模块级缓存一次全仓复用）；
+ * 真身 / 指针缺失 / meta 取不到 → `''`（显示端标注退化为「镜像」，绝不拼半截空树名）。
+ */
+async function resolveRefSourceTitle(r: PersonSummary): Promise<string> {
+  if (!isMirrorRecord(r)) return '';
+  const src = String(r.external_tree || '').trim();
+  if (!src) return '';
+  try {
+    return await treeDisplayTitleOf(src);
+  } catch {
+    return '';
+  }
+}
+
+/** 命中列表行点击：只切换既有 `addSelected` 槽（提交路径与「从树中选择」档共用，一字未改） */
+function selectRefHit(r: PersonSummary) {
+  addRefSelected.value = r;
+  addSelected.value = r;
+}
+
+/**
  * 解析「指定 ID」档（F-4 / F-5 三态）：
  * ① 本树 `searchPeople`（tree_id = 既有 searchTreeId 计算值）返回集合里按 F-3 **恰好一个**命中
  *    （**绝不取第一条**——该通道会掺入按姓名模糊命中的无关节点）→ 写既有 addSelected 槽，
  *    走与「从树中选择」完全相同的提交路径；
+ * ①′ 甲口径 A-5（取记录 = 真身优先 + 镜像标注）：同一编号可命中**多条**等值记录（镜像不铸号
+ *    ⇒ 镜像与真身同号，立支形态下同树内可有两条登记镜像同号）⇒ 择一按「真身 > 登记镜像 > 其它镜像」
+ *    的稳定规则（`format.ts` `pickPreferredPerson`，**仍绝不取第一条**），命中 >1 时另渲染候选列表
+ *    逐条标出「真身 / 镜像 · 源自 <树名>」；命中 ≥2 条**真身** = 违规（同一人只允许 1 条真身）⇒ 报错不静默择一。
+ *    来源树名取 `external_tree` → tree-meta `display_title`（跨树模块级缓存），取不到 → 标注退化「镜像」。
  * ② 本树未中、但全站 `searchPeopleGlobal` 有 `matched === 'id'` 的命中**且命中树 ≠ 本档搜索
  *    目标树**（R-1）→ 报「属于《树名》家族树」（不允许跨树挂接）；命中树就是本树目标树
  *    （树内旧编号形态）则不报跨树，落 ③；
@@ -813,6 +881,8 @@ async function doResolveRef() {
   const raw = addRefInput.value;
   const q = raw.trim();
   addRefSelected.value = null;
+  addRefHits.value = [];
+  addRefSourceTitles.value = {};
   addSelected.value = null;
   panelError.value = '';
   if (!q) {
@@ -830,13 +900,30 @@ async function doResolveRef() {
     // 守卫 ①′（R-2）：本次须仍是最后一次发起的解析 —— 同输入连发两次时前一次整段丢弃
     if (addRefResolveSeq !== seq) return;
     const hits = res.people.filter((r) => isRefHit(q, r));
-    if (hits.length === 1) {
-      const hit = hits[0];
+    if (hits.length) {
+      // R-1 / R-3（甲口径 A-5）：同一编号可命中**多条**记录（镜像不铸号 ⇒ 镜像与真身同号）⇒ 按
+      // 「真身 > 登记镜像 > 其它镜像」稳定择一（format.ts `pickPreferredPerson`，**绝不取第一条**）；
+      // 命中 ≥2 条真身 = 违规（同一人只允许 1 条真身）⇒ 报错，不静默取首条。
+      const reals = hits.filter((r) => !isMirrorRecord(r));
+      if (reals.length > 1) {
+        panelError.value = `编号「${raw}」在本树命中 ${reals.length} 条真身记录（同一人只允许 1 条真身），请巡检修正后再挂接`;
+        return;
+      }
+      const hit = pickPreferredPerson(hits) || hits[0];
       const selfMsg = refSelfError(hit.handle || '');
       if (selfMsg) {
         panelError.value = selfMsg;
         return;
       }
+      // 镜像的来源树名（真身不标注）：tree-meta 走 cross-tree 模块级缓存；取不到 → ''（标注退化「镜像」）
+      const titles: Record<string, string> = {};
+      const wantTitles = hits.length > 1 ? hits : [hit];
+      for (const r of wantTitles) titles[r.handle || ''] = await resolveRefSourceTitle(r);
+      // 守卫：来源树名解析是第三段 await —— 落地前仍须确认本次解析说了算（切档 / 改字 / 又问一次）
+      if (!refResolveStillCurrent(raw)) return;
+      if (addRefResolveSeq !== seq) return;
+      addRefHits.value = hits.length > 1 ? hits : [];
+      addRefSourceTitles.value = titles;
       addSelected.value = hit;
       addRefSelected.value = hit;
       return;

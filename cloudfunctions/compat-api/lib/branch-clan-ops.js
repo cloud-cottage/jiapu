@@ -47,6 +47,7 @@ import {
   resolveFounderHandle,
   currentFounderHandle,
   treeKindOf,
+  mirrorGrampsIdOfTrueBody,
 } from './founder-attach.js';
 import {
   LINK_LABEL,
@@ -58,7 +59,7 @@ import {
   surnamePinyin,
   treeLabelOf,
 } from './tree-write.js';
-import { idAllocator, reserveFamilyIds, reservePersonIds } from './id-seq.js';
+import { idAllocator, reserveFamilyIds } from './id-seq.js';
 import { resolveNode } from './id-resolve.js';
 import { FEE } from './economy-fee.js';
 import { chargeBase, readSpiritEntry, settle, withSpirit } from './economy-spirit.js';
@@ -589,14 +590,16 @@ export async function establishBranch({
     status: 400,
   });
 
-  // ---- 铸号 / 新树标识（扣费前先算出，Tx.ref.tree_id 需要它）----
+  // ---- 编号 / 新树标识（扣费前先算出，Tx.ref.tree_id 需要它）----
   const surnameChar = (person.surname || entry.surname_char || tree0.people[founderHandle]?.surname || '氏').slice(0, 1);
   const newTreeId = nextTreeId(m, surnameChar);
   const sourceTitle = entry.display_title || treeId;
   const newTreeTitle = `${sourceTitle} · ${person.name || ''}支`;
-  const personIds = await reservePersonIds(3); // 新树始祖镜像 + 两条登记镜像（全站唯一编号）
-  const familyIds = await reserveFamilyIds(2); // 宗谱落点家族（可能新建）+ 登记镜像家族
-  const allocPersonId = idAllocator(personIds);
+  // ★ A-2（镜像不铸号 · 甲口径 2026-10-16）：立支产生的 3 条镜像（新树始祖镜像 + 宗谱 2 条登记镜像）
+  //   一律取 **N 真身**的 `gramps_id` —— 不再 `reservePersonIds(3)` 逐条自铸、不消费 allocPersonId。
+  //   真身无号 ⇒ 取号器抛 400（在**扣费之前**，整单拒绝、零写入）。
+  const founderTrueGrampsId = mirrorGrampsIdOfTrueBody(person, `立支节点「${person.name || ''}」`);
+  const familyIds = await reserveFamilyIds(2); // 宗谱落点家族（可能新建）+ 登记镜像家族（家族编号口径不变）
   const allocFamilyId = idAllocator(familyIds);
   const mirrorHandle = genHandle();
   const mirror = planBranchFounderMirror({
@@ -604,7 +607,7 @@ export async function establishBranch({
     sourceTreeId: treeId,
     sourceTreeTitle: sourceTitle,
     handle: mirrorHandle,
-    grampsId: allocPersonId(),
+    grampsId: founderTrueGrampsId,
   });
   const registrations = planBranchRegistrations({
     sourceTreeId: treeId,
@@ -614,7 +617,7 @@ export async function establishBranch({
     person,
     mirrorHandle,
     handles: [genHandle(), genHandle()],
-    grampsIds: [allocPersonId(), allocPersonId()],
+    grampsIds: [founderTrueGrampsId, founderTrueGrampsId],
   });
   const newTree = {
     _schema: tree0._schema || '1.0',

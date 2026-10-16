@@ -33,7 +33,9 @@
  * attachFounder/detachFounder/listAttachedTrees 负责读树 → 事务写（store.updateTrees）。
  */
 import crypto from 'node:crypto';
-import { getMeta, getTree, getDetail, updateTrees, mutateTreeMeta, deleteDetail, listTreeIds, nextPersonId } from './store.js';
+// ⚠️ 本模块**不导入** `nextPersonId`：登记镜像的编号一律取自真身（A-2「镜像不铸号」，
+//    见 mirrorGrampsIdOfTrueBody）—— 少了这条导入，静态扫查即可确认镜像路径零铸号。
+import { getMeta, getTree, getDetail, updateTrees, mutateTreeMeta, deleteDetail, listTreeIds, nextFamilyId } from './store.js';
 // 始祖可编辑性例外（契约 v2 C6）：请求体只含出生地 / 居住地两项时放行
 import { isPlaceFieldsOnly } from './person-places.js';
 
@@ -565,6 +567,28 @@ export function assertOneRegistrationPerFamilyTree(clanTree, familyTreeId, clanT
 }
 
 /**
+ * A-2（**镜像不铸号**）· 镜像编号**唯一来源**（纯函数）：镜像的 `gramps_id` 一律取自
+ * `external_person_handle` 所指的真身记录 —— 「编号标识**人**」（docs/id-system.spec.md §2 表：
+ * `gramps_id` = 人读编号 / 全站唯一；`:41`「全局编号 = 全站唯一定位，不需要指定树」）；
+ * 一个人 N 棵树 = **1 个编号 + N 个 handle**（handle 仍是记录级机器主键，A-1）。
+ *
+ * 真身编号**取不到（空）⇒ 抛 400 拒绝创建**：**绝不兜底铸号** —— 兜底等于把「记录级编号」的
+ * 旧口径偷偷带回来（同一人两号），这正是本单要根除的缺陷。
+ * 各镜像创建点一律走本函数，不得各写一套（新增镜像创建点时把 `nextPersonId()` 换成它）。
+ *
+ * @param {object} trueBody 真身记录（别树的那一条；镜像的 `external_tree` + `external_person_handle` 指向它）
+ * @param {string} [label] 报错文案里的真身名（如「家族树「季氏费县白露家族」的始祖」）
+ * @returns {string} 真身编号（逐字沿用，不做任何加工）
+ */
+export function mirrorGrampsIdOfTrueBody(trueBody, label = '真身记录') {
+  const id = String(trueBody?.gramps_id || '').trim();
+  if (!id) {
+    throw badRequest(`${label}没有全站编号（gramps_id 为空）⇒ 不得建立镜像（A-2：镜像不铸号，编号必须取自真身）`);
+  }
+  return id;
+}
+
+/**
  * 宗谱登记镜像计划（纯函数 · R4）：宗谱自有段新增 1 个指向**家族树始祖真身**的只读镜像节点。
  * 字段：`external_tree=<家族树 tree_id>`、`external_person_handle=<家族树始祖 handle>`、
  * `external_link_type='founder'`、`external_mirror='true'`、
@@ -573,6 +597,9 @@ export function assertOneRegistrationPerFamilyTree(clanTree, familyTreeId, clanT
  * `prevClanFounderHandle` = 本次登记前宗谱 `tree-meta.founder_handle` 的值（可为空）：
  * 落成 `external_prev_clan_founder_handle`，供「解除登记」时**可逆还原**宗谱始祖登记
  * （⚠️ 非跨树指针：只在宗谱内自查，绝不作为反向引用挂在被登记的家族树上）。
+ *
+ * ⚠️ 编号（A-2）：`grampsId` **必须**由调用方经 `mirrorGrampsIdOfTrueBody(真身)` 取，
+ * 即**逐字沿用家族树始祖真身的 `gramps_id`**；本计划函数自身不铸号、也不校验（保持纯函数零意外）。
  */
 export function planClanRegistrationMirror({
   familyFounder,
@@ -590,23 +617,299 @@ export function planClanRegistrationMirror({
   };
 }
 
-/** 在宗谱树对象上应用登记镜像（供事务内调用；纯函数）：登记镜像落在宗谱**自有段** */
-export function applyClanRegistration({ clan, registration }) {
+/**
+ * 在宗谱树对象上应用登记镜像（供事务内调用；纯函数）：登记镜像落在宗谱**自有段**。
+ *
+ * E-1（父子边唯一形态）：登记镜像的父 = 认祖所选**落点节点** —— 调用方必须先算出落点家族
+ * （`ensureRegistrationParentFamily`：复用立支同款 `ensureParentFamily`）并把该家族 handle 传进来；
+ * 不传（历史空值 / 直调）时保持旧的「无父」写法（只为兼容既有直调与单测，**认祖写路径一律传**）。
+ */
+export function applyClanRegistration({ clan, registration, parentFamilyHandle = '' }) {
   if (!clan?.people || !registration?.handle) throw badRequest('宗谱登记镜像缺少必要字段');
   if (clan.people[registration.handle]) throw badRequest('宗谱登记镜像 handle 冲突');
-  clan.people[registration.handle] = { ...registration, parent_family: '', spouse_families: [] };
+  clan.people[registration.handle] = {
+    ...registration,
+    parent_family: String(parentFamilyHandle || ''),
+    spouse_families: [],
+  };
   return { registration_handle: registration.handle };
 }
 
-/** 在宗谱树对象上移除登记镜像（供事务内调用；纯函数）：连带摘掉家族槽位里的引用 */
+/**
+ * 在宗谱树对象上移除登记镜像（供事务内调用；纯函数）：**父子边一并拆净**（E-5）——
+ * ① 节点自身 `parent_family` 与所在父家族的 `child_handles` 双向摘除（`applyRegistrationParentDetach`）；
+ * ② 兜底清掉其它家族残留的 child 引用（历史脏数据）；
+ * ③ 删节点；④ 因本次摘除而**再无子女**的父家族一并摘除（不留空家族与悬空引用）。
+ */
 export function applyClanRegistrationRemoval({ clan, registrationHandle }) {
   const person = clan?.people?.[registrationHandle];
-  if (!person) return { removed_handle: '' };
+  if (!person) return { removed_handle: '', removed_family: '' };
+  const edge = applyRegistrationParentDetach({ clan, registrationHandle });
   for (const fam of Object.values(clan.families || {})) {
     fam.child_handles = (fam.child_handles || []).filter((h) => h !== registrationHandle);
   }
   delete clan.people[registrationHandle];
-  return { removed_handle: registrationHandle };
+  return { removed_handle: registrationHandle, removed_family: edge.removed_family };
+}
+
+// ---- 登记镜像的父子边（E-1 ~ E-5）：写入面统一 / 改挂 / 解绑一致 ----
+
+/**
+ * 写路径对 `lib/tree-write.js` 的**单点复用**（动态导入，唯一入口）。
+ *
+ * 为什么必须是动态导入：`lib/tree-write.js` 静态 import 本模块（`metaEntryOf` / `personEditLockMessage` /
+ * `TREE_KIND` …）；若本模块再静态 import 回去就形成 ESM 循环 —— tree-write 的模块体
+ * （`export const CHAIN_BATCH_KINDS = [TREE_KIND.MASTER, TREE_KIND.CLAN]`）会在本模块求值完成前
+ * 读到尚未初始化的 `TREE_KIND` 而抛错（TDZ）。动态导入发生在**调用期**（模块体早已求值），
+ * 既避开循环，又保证「落点父边」的家族复用顺序**只有 `ensureParentFamily` / `reusableParentFamily` 一套**
+ * （E-1：不得另造第二套写法；与 branch-clan-ops 的立支/汇宗同款）。
+ */
+let treeWriteModule = null;
+export async function treeWriteLib() {
+  if (!treeWriteModule) treeWriteModule = await import('./tree-write.js');
+  return treeWriteModule;
+}
+
+/**
+ * 落点闸门（E-2 · 纯函数）：登记镜像的父 = 目标上层树内的**一个具体节点**；
+ * 缺失 / 不在目标树 / 指向登记镜像自身 ⇒ 400。**绝不静默退回「独立根」。**
+ * @returns {string} 归一后的落点 handle
+ */
+export function assertRegistrationLanding({ clan, parentHandle, registrationHandle = '' }) {
+  const handle = String(parentHandle || '').trim();
+  if (!handle) throw badRequest('请选择落点节点（登记镜像必须挂在目标祖谱内的具体节点之下，不得留作独立根）');
+  if (!clan?.people?.[handle]) throw badRequest(`落点节点不在目标祖谱内：${handle}（不得退回独立根）`);
+  if (registrationHandle && handle === String(registrationHandle)) throw badRequest('落点不能是登记镜像自身');
+  return handle;
+}
+
+/**
+ * 落点候选家族（E-1）：复用**立支/汇宗同款** `ensureParentFamily`（家族复用顺序：落点对应槽位空着
+ * 的家族 → 同槽位家族 → 新建；新家族编号走调用方预留的 `nextFamilyId()`，与 `reparentNode` 一致）。
+ * @returns {Promise<{parent_family:string, family_handle:string, created_family:boolean}>}
+ */
+export async function ensureRegistrationParentFamily({ clan, parentHandle, registrationHandle = '', allocFamilyId = null }) {
+  const tw = await treeWriteLib();
+  const handle = assertRegistrationLanding({ clan, parentHandle, registrationHandle });
+  const { family, created } = tw.ensureParentFamily(clan, handle, allocFamilyId);
+  if (registrationHandle && !(family.child_handles || []).includes(registrationHandle)) {
+    family.child_handles = [...(family.child_handles || []), registrationHandle];
+  }
+  return { parent_family: family.handle, family_handle: family.handle, created_family: created };
+}
+
+/** 改挂专用：树内**已有**的登记镜像改挂到新落点之下（顺手回写节点自身 `parent_family`） */
+export async function linkRegistrationUnderParent({ clan, registrationHandle, parentHandle, allocFamilyId = null }) {
+  const edge = await ensureRegistrationParentFamily({ clan, parentHandle, registrationHandle, allocFamilyId });
+  const reg = clan?.people?.[registrationHandle];
+  if (reg) reg.parent_family = edge.parent_family;
+  return edge;
+}
+
+/** 仅当落点**没有可复用家族**时才铸家族号（复用时绝不铸号，与 `reparentNode` 同款） */
+async function reserveFamilyIdIfNeeded(clan, parentHandle) {
+  if (!clan?.people?.[String(parentHandle || '')]) return '';
+  const tw = await treeWriteLib();
+  return tw.reusableParentFamily(clan, String(parentHandle)) ? '' : await nextFamilyId();
+}
+
+/**
+ * 家族是否已「无内容」（**与 `lib/tree-write.js` 私有 `familyIsDead` 同口径**：无子女且家长 ≤ 1）
+ * —— 只有这种家族才允许随登记镜像一并摘除；**双亲俱全的家庭（夫妻无子）绝不动**。
+ */
+function childlessFamilyDroppable(fam) {
+  if (!fam) return false;
+  if ((fam.child_handles || []).length) return false;
+  return [fam.father_handle, fam.mother_handle].filter(Boolean).length <= 1;
+}
+
+/**
+ * 摘除登记镜像的**父边**（E-4 改挂 / E-5 解绑共用 · 纯函数）：只动父家族与节点自身的 `parent_family`，
+ * 登记镜像本身**保留**（改挂用；解绑由 `applyClanRegistrationRemoval` 再删节点）。
+ * 父家族若因此再无子女且只剩 ≤1 位家长 → 一并摘除（并从家长 `spouse_families` 移除），不留空家族。
+ * @returns {{previous_parent_family:string, previous_parent_handle:string, removed_family:string}}
+ */
+export function applyRegistrationParentDetach({ clan, registrationHandle }) {
+  const out = { previous_parent_family: '', previous_parent_handle: '', removed_family: '' };
+  const person = clan?.people?.[registrationHandle];
+  if (!person) return out;
+  const prevFam = person.parent_family ? clan.families?.[person.parent_family] : null;
+  if (!prevFam) {
+    // 历史脏数据（parent_family 指向缺失家族 / 为空）→ 全树兜底摘引用后按「无父」处理
+    for (const fam of Object.values(clan.families || {})) {
+      fam.child_handles = (fam.child_handles || []).filter((h) => h !== registrationHandle);
+    }
+    person.parent_family = '';
+    return out;
+  }
+  out.previous_parent_family = prevFam.handle;
+  out.previous_parent_handle = String(prevFam.father_handle || prevFam.mother_handle || '');
+  prevFam.child_handles = (prevFam.child_handles || []).filter((h) => h !== registrationHandle);
+  person.parent_family = '';
+  if (childlessFamilyDroppable(prevFam)) {
+    for (const h of [prevFam.father_handle, prevFam.mother_handle]) {
+      const p = h ? clan.people?.[h] : null;
+      if (p) p.spouse_families = (p.spouse_families || []).filter((x) => x !== prevFam.handle);
+    }
+    delete clan.families[prevFam.handle];
+    out.removed_family = prevFam.handle;
+  }
+  return out;
+}
+
+/** 改挂审计留痕上限（只留最近 N 条；更早的滚动丢弃） */
+export const REANCHOR_LOG_LIMIT = 10;
+
+/**
+ * 改挂审计留痕（E-3 · 纯函数）：**操作人 ＋ 时间 ＋ 旧落点 ＋ 新落点**。
+ * 只写**登记镜像节点自身**的 `external_reanchor_*` 字段（零新集合、不动其它节点、不动真源文件本体）。
+ * @returns {object|null} 本次留痕条目
+ */
+export function applyReanchorAudit(person, { by = '', at = '', from = '', to = '', familyTreeId = '', clanTreeId = '' } = {}) {
+  if (!person) return null;
+  const entry = { by: String(by || ''), at: String(at || ''), from: String(from || ''), to: String(to || '') };
+  const log = Array.isArray(person.external_reanchor_log) ? person.external_reanchor_log.slice() : [];
+  log.push(entry);
+  person.external_reanchor_log = log.slice(-REANCHOR_LOG_LIMIT);
+  person.external_reanchor_by = entry.by;
+  person.external_reanchor_at = entry.at;
+  person.external_reanchor_from = entry.from;
+  person.external_reanchor_to = entry.to;
+  person.external_reanchor_count = Number(person.external_reanchor_count || 0) + 1;
+  if (familyTreeId) person.external_reanchor_family_tree = String(familyTreeId);
+  if (clanTreeId) person.external_reanchor_clan_tree = String(clanTreeId);
+  return entry;
+}
+
+/**
+ * 原地改挂登记镜像落点（E-3 / E-4）——「登记镜像仍是只读镜像，唯一例外 = 落点父边改挂」：
+ *
+ * 入参 = 家族树 `treeId`（或登记镜像 `registrationHandle`）＋ **新落点节点**（祖谱内 `newMasterHandle`）；
+ * 效果 = ① 旧父家族摘除（`applyRegistrationParentDetach`：节点侧与家族侧双向摘净）
+ *        ② 新父家族接入（`ensureRegistrationParentFamily`：同款 `ensureParentFamily`，复用或新建）
+ *        ③ **家族侧落点指针同步**（始祖节点 `external_person_handle` / `external_relation_note` 改指新落点）
+ *        ④ 审计留痕（操作人 ＋ 时间 ＋ 旧落点 ＋ 新落点，写登记镜像节点自身）。
+ *
+ * **不新建、不删除登记、不重铸编号**（`handle` / `gramps_id` 一字不动）；同一家族树在本祖谱内仍**至多 1 条**。
+ * 硬边界：只服务「普通家族树 → 祖谱」；世本 / 祖谱目标一律 400（走 `attachClanToMaster`）。
+ */
+export async function remountClanRegistration({
+  treeId = '',
+  masterTreeId = '',
+  newMasterHandle = '',
+  registrationHandle = '',
+  operator = '',
+  requestedBy = '',
+  now = new Date().toISOString(),
+} = {}) {
+  const op = String(operator || requestedBy || '').trim();
+  const newHandle = String(newMasterHandle || '').trim();
+  if (!newHandle) throw badRequest('请选择新的落点节点（不得退回独立根）');
+
+  const familyTreeId = String(treeId || '').trim();
+  let familyTree0 = null;
+  if (familyTreeId) {
+    familyTree0 = await getTree(familyTreeId);
+    if (!familyTree0) throw badRequest(`树不存在: ${familyTreeId}`);
+    if (treeKindOf(await metaEntryOf(familyTreeId)) !== TREE_KIND.FAMILY) {
+      throw badRequest('改挂只受理普通家族树的始祖登记（祖谱 → 世本请走 attachClanToMaster）');
+    }
+  }
+
+  // 祖谱：显式给出优先；否则按家族树始祖的登记指针（external_tree）推导
+  let clanTreeId = String(masterTreeId || '').trim();
+  let founderHandle = '';
+  if (familyTree0) {
+    const entry = await metaEntryOf(familyTreeId);
+    founderHandle = currentFounderHandle(familyTree0, entry) || resolveFounderHandle(familyTree0, entry);
+    if (!clanTreeId) {
+      const f = founderHandle ? familyTree0.people[founderHandle] : null;
+      clanTreeId = String(f?.external_tree || '').trim();
+    }
+  }
+  if (!clanTreeId) throw badRequest('缺少祖谱：请给出 target_tree_id（或先完成认祖登记）');
+  if (clanTreeId === familyTreeId) throw badRequest('不能认祖到自己');
+
+  const clanEntry = await metaEntryOf(clanTreeId);
+  if (treeKindOf(clanEntry) !== TREE_KIND.CLAN) {
+    throw badRequest('改挂目标只能是祖谱（不得直挂中华世本）');
+  }
+  const clan0 = await getTree(clanTreeId);
+  if (!clan0) throw badRequest(`祖谱不存在: ${clanTreeId}`);
+
+  const reg = registrationHandle
+    ? clan0.people[String(registrationHandle).trim()]
+    : clanRegistrationOf(clan0, familyTreeId, clanTreeId);
+  if (!reg || !isClanRegistration(reg, clanTreeId)) throw notFound('本祖谱内没有该家族树的始祖登记，无法改挂');
+  const regHandle = reg.handle;
+  const registeredTreeId = String(reg.external_tree || familyTreeId || '');
+  if (familyTreeId && registeredTreeId && registeredTreeId !== familyTreeId) {
+    throw badRequest(`登记镜像 ${regHandle} 属于 ${registeredTreeId}，与 tree_id（${familyTreeId}）不符`);
+  }
+  const famId = String(familyTreeId || registeredTreeId);
+  const tree0 = familyTree0 || (await getTree(famId));
+  if (!tree0) throw badRequest(`树不存在: ${famId}`);
+  const entry0 = await metaEntryOf(famId);
+  founderHandle = founderHandle || currentFounderHandle(tree0, entry0) || resolveFounderHandle(tree0, entry0);
+  if (!founderHandle || !tree0.people?.[founderHandle]) throw notFound('该家族树没有登记的始祖节点，无法同步落点指针');
+
+  // E-2 同款闸门：新落点必须是**本祖谱内**的具体节点（缺失 / 不在本祖谱 ⇒ 400，绝不退回独立根）
+  const landingHandle = assertRegistrationLanding({ clan: clan0, parentHandle: newHandle, registrationHandle: regHandle });
+  const newMaster = clan0.people[landingHandle];
+  const layerLabel = kindLabel(treeKindOf(clanEntry));
+  const gen = (await resolveChainGen({ treeId: clanTreeId, handle: landingHandle })).gen;
+
+  const applied = await updateTrees([famId, clanTreeId], async (trees) => {
+    const familyTree = trees[famId];
+    const clanTree = trees[clanTreeId];
+    // ① 家族侧落点指针同步（真身身份字段一字不动）
+    const pointer = applyFounderAttach({
+      tree: familyTree,
+      founderHandle,
+      masterPerson: newMaster,
+      masterTreeId: clanTreeId,
+      gen,
+      requestedBy: op,
+      layerLabel,
+    });
+    // ② 旧父家族摘除 → ③ 新父家族接入（同款 ensureParentFamily）
+    const detached = applyRegistrationParentDetach({ clan: clanTree, registrationHandle: regHandle });
+    const allocFamilyId = await reserveFamilyIdIfNeeded(clanTree, landingHandle);
+    const edge = await linkRegistrationUnderParent({
+      clan: clanTree,
+      registrationHandle: regHandle,
+      parentHandle: landingHandle,
+      allocFamilyId: allocFamilyId || null,
+    });
+    // ④ 审计留痕（写登记镜像节点自身；零新集合）
+    const audit = applyReanchorAudit(clanTree.people[regHandle], {
+      by: op,
+      at: now,
+      from: detached.previous_parent_handle,
+      to: landingHandle,
+      familyTreeId: famId,
+      clanTreeId,
+    });
+    return { pointer, detached, edge, audit };
+  });
+
+  return {
+    ok: true,
+    tree_id: famId,
+    clan_tree_id: clanTreeId,
+    registration_handle: regHandle,
+    registration_gramps_id: String(clan0.people[regHandle]?.gramps_id || ''),
+    previous_parent_family: applied.detached.previous_parent_family,
+    previous_parent_handle: applied.detached.previous_parent_handle,
+    removed_family: applied.detached.removed_family,
+    parent_family: applied.edge.parent_family,
+    parent_family_created: applied.edge.created_family,
+    master_handle: landingHandle,
+    master_name: String(newMaster.name || ''),
+    gen,
+    audit: applied.audit,
+    message: `已改挂登记镜像落点：${landingHandle}（${newMaster.name || ''}）`,
+  };
 }
 
 // ---- 重置始祖（清空本树始祖登记，回到「无始祖」态） ----
@@ -747,7 +1050,10 @@ export function filterPendingRequests(list, { chief = false, myTree = '' } = {})
  *
  * ① 家族树始祖**保持真身**：只写登记指针，不覆盖身份字段、不写 `external_mirror='true'`、
  *    不清空本树详情 attributes（真身可写，见 `planFounderRegistration`）；
- * ② 宗谱**自有段**新增 1 条只读**登记镜像**（`external_tree = 本家族树`，R4）；
+ * ② 宗谱**自有段**新增 1 条只读**登记镜像**（`external_tree = 本家族树`，R4），并在**同一次事务**里
+ *    建立**父子边**：登记镜像的父 = 认祖所选**落点节点**（`masterHandle`），家族复用顺序复用
+ *    `ensureParentFamily`（与立支 / 汇宗的落点挂接**同款写法**，E-1；登记镜像不再落成「独立根」）；
+ *    落点缺失 / 不在目标祖谱 → 400（E-2，**不得静默退回独立根**）；
  *    同一家族树在本宗谱内已有登记 → 400（基数 1）；
  * ③ 世数（R6）沿 `external_*` 链下钻到真身节点后读 `external_chain_gen`。
  *
@@ -792,8 +1098,10 @@ export async function attachFounder({ treeId, founderHandle, masterTreeId, maste
 
   const masterTree = await getTree(masterTreeId);
   if (!masterTree) throw badRequest(`上层树不存在: ${masterTreeId}`);
-  const masterPerson = masterTree.people[masterHandle];
-  if (!masterPerson) throw notFound('所选上层树节点不存在');
+  // E-2 落点必选：落点 = 目标上层树内的**一个具体节点**；缺失 / 不在目标树 ⇒ **400**
+  // （旧行为在此只把落点记进家族侧指针，登记镜像落成**独立根** —— 该静默退回已根除）
+  const landingHandle = assertRegistrationLanding({ clan: masterTree, parentHandle: masterHandle });
+  const masterPerson = masterTree.people[landingHandle];
 
   // R6：沿 external_* 链下钻到真身节点后读世数（链断 → null → 备注省略「第 N 世」）
   const gen = (await resolveChainGen({ treeId: masterTreeId, handle: masterHandle })).gen;
@@ -802,27 +1110,55 @@ export async function attachFounder({ treeId, founderHandle, masterTreeId, maste
   // R4 基数：同一家族树在本宗谱内至多 1 条登记镜像（重复 → 400，先于任何写入）
   assertOneRegistrationPerFamilyTree(masterTree, treeId, masterTreeId);
 
+  // A-2（**镜像不铸号** —— 本单核心口径落地）：宗谱登记镜像 = 家族树始祖**真身**的展示副本
+  // ⇒ 其 `gramps_id` **逐字沿用真身**（`external_person_handle` 所指那条记录），**绝不**调用
+  // `nextPersonId()`：旧口径在此铸新号 → 「同一人两号」（如 季氏祖谱登记镜像 000000163 与
+  // 家族树真身 000000209 并存），编号便不再标识「人」。真身编号取不到 → 400 拒绝创建
+  // （**绝不兜底铸号**：兜底 = 把记录级编号的旧口径偷偷带回来）。
+  const trueBodyGrampsId = mirrorGrampsIdOfTrueBody(
+    founder,
+    `家族树「${String(meta?.display_title || treeId)}」的始祖`,
+  );
   const registration = planClanRegistrationMirror({
     familyFounder: founder,
     familyTreeId: treeId,
     familyTreeTitle: String(meta?.display_title || treeId),
     handle: crypto.randomBytes(12).toString('hex'),
-    grampsId: await nextPersonId(),
+    grampsId: trueBodyGrampsId,
     prevClanFounderHandle: String(tgt?.founder_handle || ''),
   });
 
-  const applied = await updateTrees([treeId, masterTreeId], (trees) => ({
-    founder: applyFounderAttach({
-      tree: trees[treeId],
-      founderHandle,
-      masterPerson,
-      masterTreeId,
-      gen,
-      requestedBy,
-      layerLabel,
-    }),
-    registration: applyClanRegistration({ clan: trees[masterTreeId], registration }),
-  }));
+  const applied = await updateTrees([treeId, masterTreeId], async (trees) => {
+    const clanTree = trees[masterTreeId];
+    // E-1（写入面统一）：**同一次事务**里既写登记镜像、又建父子边 ——
+    // 登记镜像的父 = 认祖所选落点节点（`landingHandle`）；家族复用顺序复用 `ensureParentFamily`
+    // （与立支 / 汇宗 / `reparentNode` 同款，不另造第二套写法；新家族编号走 `nextFamilyId()` 预留，
+    // 复用既有家族时绝不铸号）。
+    const allocFamilyId = await reserveFamilyIdIfNeeded(clanTree, landingHandle);
+    const parentEdge = await ensureRegistrationParentFamily({
+      clan: clanTree,
+      parentHandle: landingHandle,
+      registrationHandle: registration.handle,
+      allocFamilyId: allocFamilyId || null,
+    });
+    return {
+      founder: applyFounderAttach({
+        tree: trees[treeId],
+        founderHandle,
+        masterPerson,
+        masterTreeId,
+        gen,
+        requestedBy,
+        layerLabel,
+      }),
+      registration: applyClanRegistration({
+        clan: clanTree,
+        registration,
+        parentFamilyHandle: parentEdge.parent_family,
+      }),
+      parent_edge: parentEdge,
+    };
+  });
 
   // 无始祖态的认祖 = 指定始祖：同一次写入里把该节点回写为 tree-meta 的始祖（删除 founder_state）
   let registered = null;
@@ -853,6 +1189,10 @@ export async function attachFounder({ treeId, founderHandle, masterTreeId, maste
     founder_true_body: true,
     clan_registration_handle: registration.handle,
     clan_registration_gramps_id: registration.gramps_id,
+    // E-1：登记镜像的**父子边**（父 = 认祖所选落点节点；家族 = 复用落点家族或新建）
+    clan_registration_parent_handle: landingHandle,
+    clan_registration_parent_family: applied.parent_edge.parent_family,
+    clan_registration_parent_family_created: applied.parent_edge.created_family,
     message: `已认祖：${treeId} 始祖登记至${layerLabel}「${masterPerson.name}」（本树始祖仍可编辑）`,
   };
 }

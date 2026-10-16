@@ -18,6 +18,11 @@
  *      解析不到 → 代表保持镜像且 `restricted:true`（不泄漏真身）。restricted **不得**再用「组内有无真身」代理。
  *      三级链折叠为 1 条；环状镜像不死循环且结果确定；同名不同真身仍各自成条。
  *   C. `POST /wallet/transfer`、`GET /wallet/tree-balance` → 410 + `code='TREE_FUND_RETIRED'`（在任何鉴权/参数校验之前）。
+ *   R（甲口径 A-5）：`/search/global` **默认**逐条带 `is_mirror`（布尔）+ `mirror_source_title`（字符串，可空；
+ *      受限条一律 ''）；同 tier 内真身序列在前、镜像靠后。`annotate` 参数保留兼容（传 1 / 0 / 不传出参一致，不报错）。
+ *      **键集冻结断言已随批改锚**：`RESULT_KEYS`（10 键）→ `ANNOTATED_KEYS` = RESULT_KEYS + 上述两键（12 键）；
+ *      判据强度不变（仍逐键 deepEqual 冻结）。泄漏守护断言（M2 / N2 / N3 / R2′ 的 handle / gramps_id / tree_id / 树名
+ *      不得出现）一字未改。
  *
  * 数据安全：`COMPAT_OUT_DIR` / `COMPAT_META_FILE` 一律指向 /tmp 副本；文末断言真源（config/tree-meta.json +
  * migrate-output/trees + migrate-output/collections）md5 逐字节未变（照 economy-market.test.js / assets.test.js 模式）。
@@ -664,8 +669,20 @@ test('B5 /search/global：meta 登记了 tree_id 但无树文件 → 不 500，�
 
 // ================= M. /search/global · 镜像归并（口径 D） =================
 
-/** 出参字段全集（口径 D · 第 3/4 条：只新增 restricted，不得新增镜像计数 / 附注字段） */
+/**
+ * 出参字段全集（口径 D · 第 3/4 条：只新增 restricted，不得新增镜像计数 / 附注字段）
+ * 【改锚留痕 · 2026-10-16 甲口径裁定】
+ *   原断言：`Object.keys(it).sort() === [...RESULT_KEYS].sort()`（逐键冻结，10 键）
+ *   新断言：`Object.keys(it).sort() === [...RESULT_KEYS, 'is_mirror', 'mirror_source_title'].sort()`（逐键冻结，12 键）
+ *   改锚理由：A-5「真身优先 + 镜像标注」是甲口径本体，`is_mirror` / `mirror_source_title` 自 2026-10-16 起
+ *     由可选（`annotate=1`）改为 /search/global **默认出参** ⇒ 键集冻结基线随之多两键。
+ *   **判据强度不变**：仍是「Object.keys 逐键冻结 + deepEqual」，只是键集多两个；未删、未放宽任何其它断言。
+ *   RESULT_KEYS 本身保持原 10 键（= annotate 时代之前的既有契约），新基线一律写成 `[...RESULT_KEYS, ...]` 形态，
+ *   使「新增两键」这件事在每处断言点可见。
+ */
 const RESULT_KEYS = ['birth_date', 'death_date', 'gender', 'gramps_id', 'handle', 'matched', 'name', 'restricted', 'tree_id', 'tree_title'];
+/** 默认出参键集（= RESULT_KEYS + 甲口径 A-5 默认标注两键） */
+const ANNOTATED_KEYS = [...RESULT_KEYS, 'is_mirror', 'mirror_source_title'];
 
 test('M1 /search/global：真身 + 同名镜像 → 恰好 1 条（取真身，restricted=false，不夹带镜像信息）', async () => {
   const { status, body } = await json('/search/global', { query: { query: '季清昆' } });
@@ -679,7 +696,10 @@ test('M1 /search/global：真身 + 同名镜像 → 恰好 1 条（取真身，r
   assert.equal(it.name, '季清昆');
   assert.equal(it.matched, 'name');
   assert.equal(it.restricted, false, '真身在候选里 → restricted=false');
-  assert.deepEqual(Object.keys(it).sort(), [...RESULT_KEYS].sort(), '只新增 restricted，不得新增镜像计数/附注字段');
+  // 【改锚】原为 Object.keys(it).sort() === [...RESULT_KEYS].sort()；新基线多 is_mirror / mirror_source_title 两键
+  assert.deepEqual(Object.keys(it).sort(), [...ANNOTATED_KEYS].sort(), '默认出参 = RESULT_KEYS + 甲口径 A-5 两键（逐键冻结，判据强度不变）');
+  assert.equal(it.is_mirror, false, '真身条默认为 is_mirror=false');
+  assert.equal(it.mirror_source_title, '', '真身条默认不带来源树名');
 
   const raw = JSON.stringify(body);
   assert.ok(!raw.includes('h_mm_m1'), '不得出现镜像自身 handle');
@@ -719,7 +739,10 @@ test('M2 /search/global：真身被可见分层裁剪 → 返回镜像条 + rest
   assert.equal(it.name, '季望舒');
   assert.equal(it.birth_date, '1960-06-06', '生卒取镜像自身');
   assert.equal(it.restricted, true, '组内无真身（真身被可见分层裁剪）→ restricted=true');
-  assert.deepEqual(Object.keys(it).sort(), [...RESULT_KEYS].sort(), '不得新增 real_tree_id 之类的字段');
+  // 【改锚】键集冻结基线 + is_mirror / mirror_source_title（理由见 RESULT_KEYS 上方注释）
+  assert.deepEqual(Object.keys(it).sort(), [...ANNOTATED_KEYS].sort(), '默认出参多 is_mirror / mirror_source_title；不得新增 real_tree_id 之类的字段');
+  assert.equal(it.is_mirror, true, '受限条默认为 is_mirror=true');
+  assert.equal(it.mirror_source_title, '', '受限条即使默认标注也不得带来源树名（承 §5 泄漏契约）');
 
   const raw = JSON.stringify(body);
   assert.ok(!raw.includes('h_md_20'), '不得泄漏真身 handle');
@@ -809,7 +832,9 @@ test('N1 /search/global：编号精确命中镜像 + 真身对访问者可见 �
     assert.equal(it.name, '岳千山');
     assert.equal(it.matched, 'id', `query=${q}：保留原命中类型（编号命中）`);
     assert.equal(it.restricted, false, `query=${q}：真身对当前访问者可见 → 不得报假受限`);
-    assert.deepEqual(Object.keys(it).sort(), [...RESULT_KEYS].sort(), '不得新增字段');
+    // 【改锚】键集冻结基线 + is_mirror / mirror_source_title（理由见 RESULT_KEYS 上方注释）
+    assert.deepEqual(Object.keys(it).sort(), [...ANNOTATED_KEYS].sort(), '默认出参 = RESULT_KEYS + 甲口径 A-5 两键');
+    assert.equal(it.is_mirror, false, `query=${q}：真身条默认 is_mirror=false`);
     const raw = JSON.stringify(body);
     assert.ok(!raw.includes('h_n1_m'), '不得泄漏镜像 handle');
     assert.ok(!raw.includes('000000991'), '不得泄漏镜像编号');
@@ -934,6 +959,74 @@ test('N5 /search/global：两个不同真身同名（无镜像关系）→ 仍 2
   assert.deepEqual(body.map((x) => x.tree_id).sort(), ['n5a_tree', 'n5b_tree']);
   assert.ok(body.every((x) => x.restricted === false), '两条都是真身 → restricted=false');
   assert.ok(body.every((x) => x.matched === 'name'));
+});
+
+// ================= R. /search/global · 甲口径 A-5 出参（真身序列在前 ＋ 镜像标注开关） =================
+
+test('R1 /search/global：同一 tier 内真身序列在前、镜像条靠后（显式比较键；连查两次逐字节一致）', async () => {
+  const { status, body } = await json('/search/global', { query: { query: '季' } });
+  assert.equal(status, 200);
+  assert.equal(body.length, 7, '夹具不变：归并后 7 条（6 真身 + 1 镜像）');
+  const last = body[body.length - 1];
+  assert.equal(last.handle, 'h_mm_hid', '唯一镜像条（restricted）必须排在全部真身条之后');
+  assert.equal(last.restricted, true);
+  assert.ok(body.slice(0, -1).every((x) => x.restricted === false), '其余 6 条都是真身条');
+  const again = await json('/search/global', { query: { query: '季' } });
+  assert.deepEqual(again.body, body, '排序必须是全序、确定的（不依赖数组 / 遍历顺序）');
+});
+
+test('R2 /search/global：默认出参逐条带「是否镜像 + 来源树名」；annotate=1 等价兼容、不报错', async () => {
+  // 【改锚留痕 · 2026-10-16 甲口径裁定】
+  //   原用例名：'R2 /search/global：默认出参键集不变（零回归）；annotate=1 才逐条带「是否镜像 + 来源树名」'
+  //   原断言：默认出参 === [...RESULT_KEYS]，且 `!('is_mirror' in body[0])`（标注必须靠传参）
+  //   新断言：默认出参 === [...RESULT_KEYS, 'is_mirror', 'mirror_source_title']，且 annotate=1 与不传参逐字节一致
+  //   改锚理由：A-5 标注改为默认出参（口径本体，不该靠调用方记得传参）；判据强度不变（仍逐键冻结，键集多两键）。
+  const plain = await json('/search/global', { query: { query: '季清昆' } });
+  assert.deepEqual(Object.keys(plain.body[0]).sort(), [...ANNOTATED_KEYS].sort(), '默认（不传参）即带标注两键');
+  assert.ok('is_mirror' in plain.body[0], '默认即出 is_mirror');
+  assert.ok('mirror_source_title' in plain.body[0], '默认即出 mirror_source_title');
+
+  const ann = await json('/search/global', { query: { query: '季清昆', annotate: '1' } });
+  assert.equal(ann.status, 200, 'annotate 参数保留兼容：不得报错');
+  assert.equal(ann.body.length, 1);
+  const it = ann.body[0];
+  assert.equal(it.handle, 'h_nn_real', '代表仍取真身（归并口径不变）');
+  assert.equal(it.is_mirror, false, '真身条 is_mirror=false');
+  assert.equal(it.mirror_source_title, '', '真身条不带来源树名');
+  assert.deepEqual(
+    Object.keys(it).sort(),
+    [...ANNOTATED_KEYS].sort(),
+    'annotate=1 只多这两键（与默认等价）',
+  );
+  assert.deepEqual(ann.body, plain.body, 'annotate=1 与默认出参逐字节一致');
+
+  // 「一律逐条带」：annotate=0 / 任意值同样不改变出参（参数不再是开关，也不报错）
+  const off = await json('/search/global', { query: { query: '季清昆', annotate: '0' } });
+  assert.equal(off.status, 200);
+  assert.deepEqual(off.body, plain.body, 'annotate=0 亦不关闭标注（甲口径：标注为默认出参，非开关）');
+
+  assert.ok(!JSON.stringify(ann.body).includes('external_'), '标注不得把 external_* 内部字段透出');
+});
+
+test('R2′ /search/global：受限镜像条默认 is_mirror=true，且**不**带来源树名（不泄漏真身树）', async () => {
+  // 真身 mdeep_tree/h_md_20 对 guest 不可见（第 20 世）⇒ 代表保持镜像、restricted=true
+  // 【改锚】原用例只查 annotate=1；现默认即标注 ⇒ 同时押「默认」与「annotate=1」两条路径逐字节一致。
+  const { status, body } = await json('/search/global', { query: { query: '季望舒' } });
+  assert.equal(status, 200);
+  assert.equal(body.length, 1);
+  const it = body[0];
+  assert.equal(it.handle, 'h_mm_hid');
+  assert.equal(it.is_mirror, true, '镜像条 is_mirror=true');
+  assert.equal(it.mirror_source_title, '', '受限条一律不带来源树名（承 §5 泄漏契约）');
+  const raw = JSON.stringify(body);
+  assert.ok(!raw.includes('季氏远谱'), '默认标注下同样不得泄漏真身树名');
+  assert.ok(!raw.includes('mdeep_tree'), '同样不得泄漏真身 tree_id');
+  assert.ok(!raw.includes('h_md_20'), '同样不得泄漏真身 handle');
+
+  // annotate=1 路径与默认逐字节一致（兼容，不得因传参而漏守泄漏契约）
+  const ann = await json('/search/global', { query: { query: '季望舒', annotate: '1' } });
+  assert.deepEqual(ann.body, body, 'annotate=1 与默认逐字节一致');
+  assert.ok(!JSON.stringify(ann.body).includes('季氏远谱'), 'annotate 模式下同样不得泄漏真身树名');
 });
 
 // ================= C. 家族树资金 / 转账下线 =================

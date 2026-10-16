@@ -92,7 +92,7 @@ import * as wpc from './lib/wenpu-config.js';
 // 权限**不另写**：lib/tree-rename.js 整份复用 lib/revision.js 的 assertRevisionWritable（本树主理人锚点判据）。
 import * as trn from './lib/tree-rename.js';
 import { resolveNode } from './lib/id-resolve.js';
-import { idAllocator, reserveFamilyIds, reservePersonIds, numberOfId } from './lib/id-seq.js';
+import { idAllocator, reserveFamilyIds, numberOfId } from './lib/id-seq.js';
 import { treeActivity } from './lib/tree-activity.js';
 import { countFamilyMembers } from './lib/family-population.js';
 import { computeAccess, isHiddenFamily, accessToPayload, computePersonDepth } from './lib/tree-access.js';
@@ -2047,7 +2047,9 @@ async function handleRequest(event) {
         }
         const from = request.from_tree;
         const to = request.to_tree;
-        const marryPersonIds = request.action === 'marry' ? await reservePersonIds(2) : [];
+        // ★ A-2（甲口径 2026-10-16）：镜像人号一律取自对方真身 ⇒ 嫁娶审批**不再预留人号**
+        //   （原 `reservePersonIds(2)` 属白耗号：铸出的号无人消费、只让计数器空涨，故删除）。
+        //   家族编号仍需预留（家族编号不属镜像人号口径）。
         const marryFamilyIds = request.action === 'marry' ? await reserveFamilyIds(2) : [];
         const result =
           request.action === 'marry'
@@ -2061,7 +2063,6 @@ async function handleRequest(event) {
                   marriageDate: request.marriage_date,
                   createdBy: request.requested_by,
                   marriageId: request.marriage_id,
-                  allocPersonId: idAllocator(marryPersonIds),
                   allocFamilyId: idAllocator(marryFamilyIds),
                 }),
               )
@@ -2368,6 +2369,55 @@ async function handleRequest(event) {
           });
         }
         return send(200, result);
+      } catch (e) {
+        return safeError(e);
+      }
+    }
+
+    // 原地改挂登记镜像落点（E-3 / E-4）：登记镜像仍是只读镜像，**唯一例外 = 落点父边改挂**。
+    // - 入参：tree_id（家族树）或 registration_handle（登记镜像）＋ target_handle（新落点，祖谱内）
+    // - target_tree_id 缺省 = X-Tree-Id（祖谱）；鉴权 / 错误码体例照上方 /admin/attach-founder（方式 B）
+    // - 效果：旧父家族摘除 + 新父家族接入 + 家族侧落点指针同步 + 审计留痕；不新建 / 不删除登记、不重铸编号
+    if (pathname === '/admin/remount-founder' && method === 'POST') {
+      const body = parseBody(event);
+      const remountRegRef = String(body.registration_handle || body.registration_ref || '').trim();
+      const remountTree = String(body.tree_id || '').trim();
+      const remountClanId = String(body.target_tree_id || treeId || '').trim();
+      const remountRef = String(
+        body.target_handle || body.master_handle || body.new_parent_handle || body.target_ref || '',
+      ).trim();
+      if (!remountTree && !remountRegRef) return send(400, { error: '缺少 tree_id 或 registration_handle' });
+      if (!remountClanId) return send(400, { error: '缺少祖谱：请给出 target_tree_id（或 X-Tree-Id）' });
+      if (!remountRef) return send(400, { error: '请选择新的落点节点（不得退回独立根）' });
+      try {
+        const meta = await getMeta();
+        const targetEntry = clan.entryOf(meta, remountClanId);
+        if (fa.treeKindOf(targetEntry) !== fa.TREE_KIND.CLAN) {
+          return send(400, { error: '改挂只能落在祖谱内（普通家族树 → 祖谱）' });
+        }
+        const targetTree = await getTree(remountClanId);
+        if (!targetTree) return send(404, { error: `祖谱不存在: ${remountClanId}` });
+        let remountFamTree = remountTree;
+        if (remountRegRef) {
+          const regPerson = targetTree.people?.[remountRegRef];
+          if (!regPerson) return send(404, { error: `祖谱 ${remountClanId} 中找不到登记镜像「${remountRegRef}」` });
+          if (!remountFamTree) remountFamTree = String(regPerson.external_tree || '');
+        }
+        if (!remountFamTree) return send(400, { error: '缺少 tree_id（或登记镜像 handle）' });
+        // 新落点 = 本祖谱内的具体节点（全局编号 / handle / 树内旧号统一解析）
+        const remountHit = await resolveNode(remountRef, remountClanId, { targetTreeId: remountClanId });
+        if (!remountHit) return send(404, { error: `祖谱 ${remountClanId} 中找不到编号/句柄为「${remountRef}」的节点` });
+        if (remountHit.tree_id !== remountClanId) {
+          return send(400, { error: `新落点必须在祖谱 ${remountClanId} 内（不得退回独立根）` });
+        }
+        const u = await requireWriteUser(headers, remountClanId, pathname, remountHit.handle, false);
+        return send(200, await fa.remountClanRegistration({
+          treeId: remountFamTree,
+          masterTreeId: remountClanId,
+          newMasterHandle: remountHit.handle,
+          registrationHandle: remountRegRef,
+          operator: u.phone,
+        }));
       } catch (e) {
         return safeError(e);
       }
@@ -3163,6 +3213,12 @@ async function handleRequest(event) {
       if (!raw) return send(200, []);
       const parsedLimit = parseInt(String(query.limit ?? ''), 10);
       const limit = Number.isFinite(parsedLimit) ? Math.min(100, Math.max(1, parsedLimit)) : 30;
+      // R-2 镜像标注（甲口径 A-5）：**默认开启** —— 每条命中一律带「是否镜像 + 来源树名」。
+      // 【改锚留痕 · 2026-10-16 裁定】原实现为 `annotate=1` 才标注（默认关），因出参键集被既有断言
+      //   （home-sort-search.test.js 的 M1/M2/N1 RESULT_KEYS）逐键冻结。裁定：A-5「真身优先 + 镜像标注」
+      //   是口径本体，不该靠调用方记得传参 ⇒ 改为默认出参；键集冻结断言随批改锚为
+      //   `[...RESULT_KEYS, 'is_mirror', 'mirror_source_title']`（判据强度不变：仍是逐键冻结，只是键集多两键）。
+      //   `annotate` 参数保留兼容（传 1 / 传 0 / 不传一律同默认值，不报错；本路由不再读它）。
       const qNorm = raw.replace(/\s+/g, '').toLowerCase(); // 去空格 + 小写（大小写不敏感）
       const qNum = numberOfId(raw); // 纯数字形态（`123` / `000123` / `I000123` → 123；非编号 → null）
 
@@ -3381,15 +3437,27 @@ async function handleRequest(event) {
       }
       picked.sort((a, b) => {
         if (a.tier !== b.tier) return a.tier - b.tier;
+        // R-2（甲口径 A-5）：同一 tier 内**真身序列在前**（镜像条靠后）—— 显式比较键，不依赖数组 / 遍历顺序
+        const am = isMirrorNode(a.p) ? 1 : 0;
+        const bm = isMirrorNode(b.p) ? 1 : 0;
+        if (am !== bm) return am - bm;
         if (a.t.id !== b.t.id) return a.t.id < b.t.id ? -1 : 1;
         // 同 tier 同树 → 按该树 people 键序（显式 tie-break，不依赖遍历顺序）
         return (a.t.ord?.get(a.p.handle) ?? 0) - (b.t.ord?.get(b.p.handle) ?? 0);
       });
 
-      return send(200, picked.slice(0, limit).map(({ t, p, matched, restricted }) => ({
-        ...shape(t, p, matched),
-        restricted,
-      })));
+      return send(200, picked.slice(0, limit).map(({ t, p, matched, restricted }) => {
+        const row = { ...shape(t, p, matched), restricted };
+        // R-2（默认出参）：真身条 `is_mirror:false`；镜像条 `is_mirror:true` + 来源树名（= `external_tree` 指向的真身树）。
+        // ⚠️ `restricted=true` 的条**不得**出现真身的 handle / gramps_id / tree_id / tree_title ⇒ 来源树名
+        //    一律留空（承 §5 泄漏契约；M2 / N2 / R2′ 的泄漏断言逐字段守着这条）。
+        const mirror = isMirrorNode(p);
+        row.is_mirror = mirror;
+        row.mirror_source_title = mirror && !restricted
+          ? String(treeRefOf(String(p.external_tree || '').trim()).title || '')
+          : '';
+        return row;
+      }));
     }
 
     // ===== 跨树嫁娶配偶发现通道 GET /search/marriage-candidates（docs/marriage.spec.md §9-8）=====

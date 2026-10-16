@@ -42,9 +42,12 @@ import {
   planFounderRegister,
   resolveFounderHandle,
   listAttachedTrees,
+  mirrorGrampsIdOfTrueBody,
 } from './founder-attach.js';
 import { nextGrampsId, surnamePinyin } from './tree-write.js';
-import { idAllocator, reserveFamilyIds, reservePersonIds, formatPersonId } from './id-seq.js';
+// ⚠️ 本模块只预留**自有段真人**的号（`reservePersonIds(1)`）：镜像段的 `gramps_id` 一律取自上层真身
+//    （见 `planClanTopMirrorIds` / `applyClanTopMirror`，A-2「镜像不铸号」）—— 不再需要 `formatPersonId`。
+import { idAllocator, reserveFamilyIds, reservePersonIds } from './id-seq.js';
 import { isKnownOriginCode, resolveOrigin } from './geo.js';
 
 /** 建谱申请集合（新建集合 → docs/PENDING_DEPLOY.md） */
@@ -265,25 +268,61 @@ export function planClanMirrorPerson({ handle, grampsId, masterPerson, masterTre
  * - 删除镜像节点、指向镜像的家族；自有段节点被「解挂」为根（保留）
  * - **自有段的登记镜像（§11-3）不动**：它们不属于顶端镜像段（`clanMirrorNodes` 已按方向排除），
  *   误删会让「支系入口列表」凭空少入口
+ * - **A-7（2026-10-16 · 本单）登记镜像的父边不得被「解除世本挂载」打断**：旧实现把
+ *   「以顶端镜像为家长的家族」**一律拆掉**、并把子女 `parent_family` 置空 —— 而认祖落点可以选在
+ *   **顶端镜像段节点**上（E-1 允许；`ensureParentFamily` 会复用该镜像既有的无配偶家族）⇒
+ *   与该家族同宗的**登记镜像被一起解挂成独立根**（支系入口→落点这条链断掉）。
+ *   现口径 = **退化落点**：家族里仍在树内的自有段子女（非任何镜像）中取 handle 升序首个
+ *   **升为该家族的家长**；登记镜像的父家族与父边**一字不动**（绝不退回独立根）。
+ *   家族里一个自有段子女都没有时（祖谱自有段为空）⇒ 家族**保留**（家长清空）、
+ *   登记镜像的父边同样保留 —— 宁可留一个无家长家族，也不打断登记边。
  * @param {string} [upperTreeId] 本祖谱的世本 tree_id（缺省 → 句柄口径）
- * 返回 {removed_handles, removed_families}
+ * 返回 {removed_handles, removed_families, kept_families, degraded_landings}
  */
 export function clearClanTopMirror(tree, upperTreeId = '') {
   const mirrors = clanMirrorNodes(tree, upperTreeId);
-  if (!mirrors.length) return { removed_handles: [], removed_families: [] };
+  if (!mirrors.length) return { removed_handles: [], removed_families: [], kept_families: [], degraded_landings: [] };
   const rm = new Set(mirrors.map((p) => p.handle));
+  /** 自有段的**外指只读镜像**（登记镜像 §11-3 等；真身在别树）—— A-7 要保住它们的父边 */
+  const ownMirror = (h) => !rm.has(h) && isReadonlyMirror(tree.people?.[h], tree.tree_id);
   const removedFamilies = [];
+  const keptFamilies = [];
+  const degradedLandings = [];
   for (const [fh, fam] of Object.entries(tree.families || {})) {
     if (!fam) continue;
     const touched =
       rm.has(fam.father_handle) || rm.has(fam.mother_handle) || (fam.child_handles || []).some((c) => rm.has(c));
     if (!touched) continue;
-    for (const c of fam.child_handles || []) {
-      if (rm.has(c)) continue;
-      if (tree.people[c] && tree.people[c].parent_family === fh) tree.people[c].parent_family = '';
+    const keptRegs = (fam.child_handles || []).filter((c) => ownMirror(c));
+    if (!keptRegs.length) {
+      // 无登记镜像子女 → 与旧行为逐字一致：拆家族、非镜像子女解挂为根
+      for (const c of fam.child_handles || []) {
+        if (rm.has(c)) continue;
+        if (tree.people[c] && tree.people[c].parent_family === fh) tree.people[c].parent_family = '';
+      }
+      delete tree.families[fh];
+      removedFamilies.push(fh);
+      continue;
     }
-    delete tree.families[fh];
-    removedFamilies.push(fh);
+    // A-7 退化落点：家族里仍在树内的自有段子女（非镜像）→ handle 升序首个升为家长
+    const ownChildren = (fam.child_handles || [])
+      .filter((c) => !rm.has(c) && !ownMirror(c) && tree.people?.[c])
+      .sort();
+    const landing = ownChildren[0] || '';
+    for (const c of ownChildren) {
+      if (tree.people[c].parent_family === fh) tree.people[c].parent_family = '';
+    }
+    const selfKey = landing && tree.people[landing].gender === 'F' ? 'mother_handle' : 'father_handle';
+    fam.father_handle = selfKey === 'father_handle' ? landing : '';
+    fam.mother_handle = selfKey === 'mother_handle' ? landing : '';
+    fam.child_handles = keptRegs;
+    if (landing) {
+      const p = tree.people[landing];
+      // 家长槽位接入（重认祖重建时家族会被复用 → 去重，不重复 push）
+      if (!(p.spouse_families || []).includes(fh)) p.spouse_families = [...(p.spouse_families || []), fh];
+    }
+    keptFamilies.push(fh);
+    degradedLandings.push({ family: fh, landing, registration_handles: keptRegs });
   }
   // 残留引用清理（配偶家族 / 子女槽位）
   for (const p of Object.values(tree.people)) {
@@ -291,12 +330,21 @@ export function clearClanTopMirror(tree, upperTreeId = '') {
     p.spouse_families = (p.spouse_families || []).filter((fh) => !removedFamilies.includes(fh));
   }
   for (const h of rm) delete tree.people[h];
-  return { removed_handles: [...rm], removed_families: removedFamilies };
+  return {
+    removed_handles: [...rm],
+    removed_families: removedFamilies,
+    kept_families: keptFamilies,
+    degraded_landings: degradedLandings,
+  };
 }
 
 /**
- * 取一个未被占用的 gramps_id：prefer（如始祖位 000000001）可用则用，否则取下一个未用 I 号。
+ * 取一个未被占用的 gramps_id：prefer 可用则用，否则取下一个未用 I 号。
  * 避免重复认祖时与自有段节点抢号。
+ *
+ * ⚠️ 2026-10-16（A-2）：**顶端镜像段不再走本函数**（镜像号取自上层真身，见 `planClanTopMirrorIds`）。
+ * 现存唯一调用点 = 新建祖谱的自有段支系入口在**铸号失败**时的兜底（`createClanTree`），
+ * 与镜像无关；本函数与其树内序号兜底行为一字未改（A-4：计数器行为不变）。
  */
 export function freeGrampsId(tree, prefer = '') {
   const used = new Set();
@@ -308,9 +356,38 @@ export function freeGrampsId(tree, prefer = '') {
 }
 
 /**
+ * A-2（**镜像不铸号**）· 祖谱顶端世本镜像段的**编号计划**（纯函数）：段内每个镜像节点
+ * （`founder` / `chain`）的 `gramps_id` **一律逐字取自其上层真身** —— 即 `planClanTopMirrors`
+ * 里 `master_handle` 指向的那条**上层树记录**，经全站单点 `mirrorGrampsIdOfTrueBody` 取号。
+ *
+ * 口径（docs/id-system.spec.md §2 表 · 「编号标识**人**」）：
+ * - `gramps_id` 标识**人** ⇒ 跨树同人同号：同一个人 = **1 个编号 + N 个 handle**（handle 仍是记录级，A-1）；
+ * - 因此本段**绝不**从 `jiapu_id_seq` 取号（旧口径：预留全局号）、**绝不**退树内序号
+ *   —— 实测旧口径病征：中华世本「季行父」`000000100` ↔ 季氏祖谱顶端镜像 `000000162`（同一人两号）；
+ * - 真身编号取不到（空）⇒ 抛 **400** 拒绝创建，**不得兜底铸号**（兜底 = 把记录级编号的旧口径偷偷带回来）。
+ *
+ * 调用方（`createClanTree` / `attachClanToMaster`）用本函数做**校验先于任何 IO**：
+ * 任一真身无号 ⇒ 400，此时人号计数器零消耗、两棵树零写入。
+ * @param {Array} masters `planClanTopMirrors` 的输出（含 `person` = 上层真身记录）
+ * @param {string} [masterTreeId] 上层树 id（仅用于报错定位）
+ * @returns {string[]} 与 masters 一一对应的编号（逐字沿用真身，不做任何加工）
+ */
+export function planClanTopMirrorIds(masters, masterTreeId = '') {
+  return (masters || []).map((m) =>
+    mirrorGrampsIdOfTrueBody(
+      m.person,
+      `祖谱顶端世本镜像段的上层真身（${masterTreeId || '?'}:${m.master_handle || m.handle || '?'}）`,
+    ),
+  );
+}
+
+/**
  * 在祖谱树上应用顶端镜像段（纯函数，供 store.updateTrees 事务内调用）
  * - 幂等：先清空既有镜像段再重建（重复认祖不产生孤儿节点）
  * - ownRootHandle：祖谱自有段的支系入口节点，挂到最深镜像之下（链路下端点）
+ * - 编号（A-2，2026-10-16）：段内镜像的 `gramps_id` **一律取自上层真身**（`planClanTopMirrorIds`）；
+ *   **本函数没有人物铸号器**（参数已删）—— 镜像路径零铸号，静态即可证；
+ *   真身无号 ⇒ 400 且**校验先于任何改动**（先算号再清段，任一条无号时本树一个字节都没动）。
  */
 export function applyClanTopMirror({
   tree,
@@ -321,23 +398,52 @@ export function applyClanTopMirror({
   ownRootHandle = '',
   requestedBy = '',
   layerLabel = KIND_LABEL.master,
-  // 铸号器（全站唯一编号；缺省退回树内序号兜底 → 纯函数单测不受影响）
-  allocPersonId = null,
+  // 家族号铸号器（`cfam_*` 是本树**新记录**，家族编号 = 记录级，不在本单口径内）
   allocFamilyId = null,
 }) {
   if (!tree?.people) throw badRequest('祖谱树数据不可用');
   const masters = planClanTopMirrors({ masterTree, masterHandle, depth });
+  // ★ A-2：编号全部取自上层真身，**先取号再改动** —— 任一真身无号 ⇒ 400（本树零改动）
+  const mirrorIds = planClanTopMirrorIds(masters, masterTreeId);
   clearClanTopMirror(tree, masterTreeId);
 
-  const newPersonId = typeof allocPersonId === 'function' ? allocPersonId : null;
   const newFamilyId = (typeof allocFamilyId === 'function' && allocFamilyId) || (() => '');
+  /**
+   * 家族「取或建」（A-7 连带）：`cfam_*` 家族 handle 是**确定性**的，而 `clearClanTopMirror`
+   * 现在会**保留**挂着自有段登记镜像的家族（不再一律拆掉）⇒ 重认祖重建镜像段时同一个 handle
+   * 可能仍在表里。此时**复用**它（保编号、并入子女、家长改指新镜像），**绝不覆盖式重建** ——
+   * 覆盖会把登记镜像的父边挤出 `child_handles`（家族还在、子女槽位里却没有它 = 隐性断链）。
+   */
+  const useFamily = (famHandle, parentHandle, childHandle) => {
+    let fam = tree.families[famHandle];
+    if (!fam) {
+      fam = {
+        handle: famHandle,
+        gramps_id: newFamilyId() || nextGrampsId(tree, 'F'),
+        father_handle: '',
+        mother_handle: '',
+        child_handles: [],
+      };
+      tree.families[famHandle] = fam;
+    }
+    fam.father_handle = parentHandle;
+    fam.mother_handle = '';
+    if (childHandle && !(fam.child_handles || []).includes(childHandle)) {
+      fam.child_handles = [...(fam.child_handles || []), childHandle];
+    }
+    const par = tree.people[parentHandle];
+    if (par && !(par.spouse_families || []).includes(famHandle)) {
+      par.spouse_families = [...(par.spouse_families || []), famHandle];
+    }
+    return fam;
+  };
   let prevHandle = '';
   let founderMirror = '';
   let index = 0;
   for (const m of masters) {
-    // 镜像节点是全站节点（人读编号全站唯一）→ 有铸号器时用全局号，没有才退回树内序号
-    // 始祖位偏好编号 = 新口径人编号 1（`000000001`；docs/id-system.spec.md §9）
-    const grampsId = newPersonId ? newPersonId() : freeGrampsId(tree, index === 0 ? formatPersonId(1) : '');
+    // ★ A-2：镜像号 = 上层真身号（跨树同人同号）；**绝不**调用铸号器 / 树内序号
+    // （旧注释：始祖位偏好编号 000000001 → 已废；docs/id-system.spec.md §9 的「人级」口径）
+    const grampsId = mirrorIds[index];
     const mirror = planClanMirrorPerson({
       handle: m.handle,
       grampsId,
@@ -350,16 +456,8 @@ export function applyClanTopMirror({
     });
     tree.people[m.handle] = mirror;
     if (prevHandle) {
-      const famHandle = `cfam_${m.handle}`;
-      tree.families[famHandle] = {
-        handle: famHandle,
-        gramps_id: newFamilyId() || nextGrampsId(tree, 'F'),
-        father_handle: prevHandle,
-        mother_handle: '',
-        child_handles: [m.handle],
-      };
-      mirror.parent_family = famHandle;
-      tree.people[prevHandle].spouse_families = [...(tree.people[prevHandle].spouse_families || []), famHandle];
+      const fam = useFamily(`cfam_${m.handle}`, prevHandle, m.handle);
+      mirror.parent_family = fam.handle;
     } else {
       founderMirror = m.handle;
     }
@@ -369,16 +467,8 @@ export function applyClanTopMirror({
 
   // 自有段支系入口：挂到最深镜像之下（其下即祖谱自有真实数据）
   if (ownRootHandle && tree.people[ownRootHandle] && prevHandle) {
-    const famHandle = `cfam_own_${tree.tree_id || ''}`;
-    tree.families[famHandle] = {
-      handle: famHandle,
-      gramps_id: newFamilyId() || nextGrampsId(tree, 'F'),
-      father_handle: prevHandle,
-      mother_handle: '',
-      child_handles: [ownRootHandle],
-    };
-    tree.people[ownRootHandle].parent_family = famHandle;
-    tree.people[prevHandle].spouse_families = [...(tree.people[prevHandle].spouse_families || []), famHandle];
+    const fam = useFamily(`cfam_own_${tree.tree_id || ''}`, prevHandle, ownRootHandle);
+    tree.people[ownRootHandle].parent_family = fam.handle;
   }
 
   // 始祖位编号 = 顶端镜像节点的实际编号（全站唯一；无铸号器时的旧数据仍为 I0001）
@@ -695,9 +785,14 @@ export async function createClanTree({
     };
   }
 
-  // 铸号：镜像段人数 = 计划镜像数；自有支系入口 +1（全站唯一编号，docs/id-system.spec.md §3）
+  // 铸号（★ A-2，2026-10-16）：**顶端镜像段零铸号**（段内编号一律取自上层世本真身，见
+  // applyClanTopMirror / planClanTopMirrorIds）⇒ 本函数只为**自有段支系入口**这 1 个真人
+  // 预留全局号（docs/id-system.spec.md §3）；无自有段时不预留（人号计数器零消耗）。
+  // 家族号仍照旧预留（`cfam_*` 是本树**新记录**，家族编号 = 记录级，不在本单口径内）。
   const mirrorPlan = planClanTopMirrors({ masterTree, masterHandle, depth: chainDepth });
-  const personIds = await reservePersonIds(mirrorPlan.length + (ownRootHandle ? 1 : 0));
+  // 校验先于任何 IO：上层真身无号 ⇒ 400，此时未预留任何号、未建任何文件（A-2 拒绝创建）
+  planClanTopMirrorIds(mirrorPlan, masterTreeId);
+  const personIds = ownRootHandle ? await reservePersonIds(1) : [];
   const familyIds = await reserveFamilyIds(mirrorPlan.length + 1);
   const allocPersonId = idAllocator(personIds);
   const allocFamilyId = idAllocator(familyIds);
@@ -709,7 +804,6 @@ export async function createClanTree({
     depth: chainDepth,
     ownRootHandle,
     requestedBy: initiatorPhone,
-    allocPersonId,
     allocFamilyId,
   });
   // 自有支系入口的执行号在镜像段之后分配
@@ -812,7 +906,10 @@ export async function attachClanToMaster({
   // 无始祖态（重置后）的祖谱：认祖 = 指定始祖 → 成功后要把被指定节点回写为 meta 的始祖
   const founderMissing = isFounderMissing(clanEntry);
   const mirrorPlan = planClanTopMirrors({ masterTree, masterHandle, depth: chainDepth });
-  const personIds = await reservePersonIds(mirrorPlan.length);
+  // ★ A-2（2026-10-16）：顶端镜像段**零铸号**（编号取自上层世本真身）⇒ 本路径不再预留人号
+  // （人号计数器零消耗）；校验先于任何 IO：真身无号 ⇒ 400，两棵树零写入。
+  // 家族号仍照旧预留（`cfam_*` 是新记录，家族编号为记录级，不在本单口径内）。
+  planClanTopMirrorIds(mirrorPlan, masterTreeId);
   const familyIds = await reserveFamilyIds(mirrorPlan.length + 1);
   const applied = await updateTrees([treeId], (trees) =>
     applyClanTopMirror({
@@ -823,15 +920,31 @@ export async function attachClanToMaster({
       depth: chainDepth,
       ownRootHandle: rootHandle,
       requestedBy,
-      allocPersonId: idAllocator(personIds),
       allocFamilyId: idAllocator(familyIds),
     }),
   );
 
   let registered = null;
-  if (founderMissing) {
-    const node = (await getTree(treeId))?.people?.[rootHandle] || null;
-    registered = planFounderRegister(clanEntry, node || { handle: rootHandle });
+  let founderSync = null;
+  {
+    const fresh = (await getTree(treeId))?.people || {};
+    if (founderMissing) {
+      // 无始祖态：本次把被指定节点登记为 meta 始祖（该节点可能就是顶端镜像段节点 → 编号即真身号）
+      registered = planFounderRegister(clanEntry, fresh[rootHandle] || { handle: rootHandle });
+    } else {
+      /**
+       * ★ A-7（2026-10-16）：祖谱 `tree-meta.founder_gramps_id` 须与**树内始祖节点的现值**同步。
+       * 动机：祖谱 meta 的始祖登记可以正指向**顶端镜像段节点**（`founder_handle = mir_<上层 handle>`；
+       * 真源 季氏/顾氏祖谱的登记镜像即此形）—— 本单起镜像编号改取**上层真身号**（旧数据是自铸铁号）
+       * ⇒ 重建后 meta 里那个陈旧编号与树内该镜像对不上（编号标识「人」：镜像换号 = 那个人换号）。
+       * 纯读：在 mutator 外算好现值（编号 / 姓名），mutator 内只按当前 `founder_handle` 落值（CAS 重放安全）。
+       */
+      const fh = String(rootHandle || clanEntry.founder_handle || '');
+      const node = fresh[fh];
+      if (node && String(node.gramps_id || '')) {
+        founderSync = { handle: fh, gramps_id: String(node.gramps_id), name: String(node.name || '') };
+      }
+    }
   }
   // 定向写：只写本树档（不再整份 saveMeta）；registered 在 mutator 外算好（纯 mutator 供 CAS 重放）
   await mutateTreeMeta(treeId, (entry) => {
@@ -845,6 +958,15 @@ export async function attachClanToMaster({
       entry.founder_handle = registered.founder_handle;
       entry.founder_gramps_id = registered.founder_gramps_id;
       entry.founder_name = registered.founder_name;
+    } else if (
+      founderSync &&
+      String(entry.founder_handle || '') === founderSync.handle &&
+      String(entry.founder_gramps_id || '') !== founderSync.gramps_id
+    ) {
+      // ★ A-7：始祖登记指向的节点（含顶端镜像段节点）换了号 ⇒ meta 跟现值同步
+      // （`founder_handle` 口径一字不改；只补编号 / 姓名，不动树 JSON）
+      entry.founder_gramps_id = founderSync.gramps_id;
+      entry.founder_name = founderSync.name;
     }
     return entry;
   });

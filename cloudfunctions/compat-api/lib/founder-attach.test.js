@@ -73,6 +73,29 @@ metaFixture.trees.mc_chain = {
   display_title: '季氏祖谱（顶端链镜像）', founder_handle: 'own_ji',
   master_tree_id: 'zhonghua', master_handle: 'mX', master_name: '季始祖公', enable_custom_domain: false,
 };
+// ---- A-2 清尾（2026-10-16）夹具 ----
+// ① mc_noid：祖谱（自有段 own_noid）；`founder_gramps_id` 故意写成陈旧值 → 认祖世本后须随树内始祖
+//    节点现值同步（A-7）。姓氏取「聂」：异姓不撞「世本节点 × 姓」唯一性（mc_clan/mc_list/mc_chain 已占 季×mX）
+metaFixture.trees.mc_noid = {
+  tree_id: 'mc_noid', kind: 'clan', path_alias: '/z/mc_noid', surname: '聂', surname_char: '聂',
+  display_title: '聂氏祖谱（顶端镜像不铸号）', founder_handle: 'own_noid',
+  founder_gramps_id: '000000099', founder_name: '聂花',
+  master_tree_id: 'zhonghua', master_handle: 'mX', master_name: '季始祖公', enable_custom_domain: false,
+};
+// ② mc_yu：祖谱**始祖登记正指向顶端镜像段节点**（founder_handle = mir_mX，无自有段）——
+//    A-7：镜像改取真身号后，meta.founder_gramps_id 必须跟着镜像新号（旧值 000000162 = 旧口径自铸号）
+metaFixture.trees.mc_yu = {
+  tree_id: 'mc_yu', kind: 'clan', path_alias: '/z/mc_yu', surname: '鱼', surname_char: '鱼',
+  display_title: '鱼氏祖谱（始祖=顶端镜像）', founder_handle: 'mir_mX',
+  founder_gramps_id: '000000162', founder_name: '季始祖公',
+  master_tree_id: 'zhonghua', master_handle: 'mX', master_name: '季始祖公', enable_custom_domain: false,
+};
+// ③ zhonghua_noid：世本副本，其节点 mNoid **没有全站编号** → A-2 判负夹具（真身无号 ⇒ 400 拒绝镜像）
+metaFixture.trees.zhonghua_noid = {
+  tree_id: 'zhonghua_noid', kind: 'master', is_master: true, path_alias: '/zhonghua_noid',
+  surname_char: '华', display_title: '中华世本（真身无号夹具）', genealogy_name: '中华世本',
+  origin: '中华', description: '总谱（判负夹具）', enable_custom_domain: true,
+};
 fs.writeFileSync(META_FILE, JSON.stringify(metaFixture, null, 2));
 
 const fa = await import('./founder-attach.js');
@@ -142,6 +165,21 @@ writeTree({
 });
 writeDetail({ _id: 'zhonghua:mRoot', tree_id: 'zhonghua', handle: 'mRoot', name: '风伏羲', events: [], attributes: [{ key: 'external_chain_gen', value: '0', type: 'external_chain_gen' }] });
 writeDetail({ _id: 'zhonghua:mX', tree_id: 'zhonghua', handle: 'mX', name: '季始祖公', events: [], attributes: [{ key: 'external_chain_gen', value: '12', type: 'external_chain_gen' }] });
+
+/** A-2 判负夹具：世本副本，唯一节点 mNoid **无全站编号**（gramps_id=''）→ 真身无号 */
+writeTree({
+  _schema: '1.0',
+  tree_id: 'zhonghua_noid',
+  founder_gramps_id: '',
+  version: 1,
+  people: {
+    mNoid: {
+      handle: 'mNoid', gramps_id: '', name: '无号始祖', surname: '无', given: '号始祖', gender: 'M',
+      birth_date: '', death_date: '', birth_place: '', death_place: '', parent_family: '', spouse_families: [],
+    },
+  },
+  families: {},
+});
 
 /** 普通家族树副本：始祖 f（I0001）+ 子 kid；用于挂载/解除/只读测试 */
 function seedTree(tag) {
@@ -511,7 +549,10 @@ test('只读 403（祖谱顶端链镜像）：chain 镜像整节点只读，文�
   writeTree(tree);
   const after = readTree(clanId);
   assert.equal(after.people[mirrorHandleOf('mX')].external_link_type, 'founder');
-  assert.equal(after.people[mirrorHandleOf('mX')].gramps_id, '000000001', '始祖位 = 顶端镜像');
+  // ⚠️ 改锚（2026-10-16 · 甲口径清尾单）：原断言 `gramps_id === '000000001'` 编码的是**旧口径**
+  // （编号 = **记录级**自铸号 / 始祖位偏好号 000000001）；口径自 2026-10-16 起改为**「编号标识人」**
+  // （A-2 镜像不铸号）⇒ 顶端镜像号 = 其**上层真身号**。此处上层真身 = 世本 zhonghua 的 mX（真身号 000000100）。
+  assert.equal(after.people[mirrorHandleOf('mX')].gramps_id, '000000100', '改锚：始祖位 = 顶端镜像，编号逐字取自上层真身 mX（A-2）');
   assert.equal(after.people[mirrorHandleOf('mChild')].external_link_type, 'chain');
   assert.equal(after.people[mirrorHandleOf('mChild')].external_mirror, 'true');
   assert.equal(after.people[mirrorHandleOf('mGrand')].external_link_type, 'chain');
@@ -868,6 +909,649 @@ test('路由 POST /admin/detach-founder：普通树侧 steward 立即生效；�
   assert.equal((await post('/admin/detach-founder', { master_handle: 'mX' }, stewardToken, 'zhonghua')).statusCode, 403);
   // 缺 X-Tree-Id → 400
   assert.equal((await post('/admin/detach-founder', { person_handle: 'f' }, stewardToken, '')).statusCode, 400);
+});
+
+// ============ E-1 ~ E-7：登记镜像的父子边（写入面统一 · 改挂 · 解绑 · 口径零回归）============
+
+test('E-1/E-2 认祖：登记镜像必须建立父子边（父 = 认祖所选落点节点），落点缺失/不在目标祖谱 → 400 且两侧都不写', async () => {
+  const clanId = seedClan('clan');
+  const a = seedTree('edge_a');
+  const b = seedTree('edge_b');
+  const c = seedTree('edge_c');
+
+  // ① 落点 = 祖谱自有段支系入口节点（own_ji）→ 登记镜像有父，父家族的父亲 = 落点
+  const r = await fa.attachFounder({ treeId: a, founderHandle: 'f', masterTreeId: clanId, masterHandle: 'own_ji' });
+  const clan = readTree(clanId);
+  const reg = clan.people[r.clan_registration_handle];
+  assert.ok(reg, '登记镜像落库');
+  assert.notEqual(reg.parent_family, '', 'E-1：登记镜像不得再落成「独立根」（旧行为 parent_family:""）');
+  const fam = clan.families[reg.parent_family];
+  assert.ok(fam, 'E-1：父家族必须存在于祖谱家族表内');
+  assert.equal(fam.father_handle, 'own_ji', 'E-1：父家族的父亲 = 认祖所选落点节点');
+  assert.ok(fam.child_handles.includes(reg.handle), 'E-1：父家族子女槽位含登记镜像');
+  assert.ok((clan.people.own_ji.spouse_families || []).includes(fam.handle), 'E-1：落点节点的配偶家族槽位已接入');
+  assert.equal(r.clan_registration_parent_handle, 'own_ji');
+  assert.equal(r.clan_registration_parent_family, fam.handle);
+  assert.equal(r.clan_registration_parent_family_created, true, '落点无可用家族 → 新建（走 nextFamilyId 铸号）');
+
+  // ② 落点 = 祖谱顶端镜像段始祖节点 → 同一写法；家族复用顺序 = 立支同款（复用落点既有「对槽位空着」家族）
+  const r2 = await fa.attachFounder({ treeId: b, founderHandle: 'f', masterTreeId: clanId, masterHandle: 'mir_mX' });
+  const clan2 = readTree(clanId);
+  const reg2 = clan2.people[r2.clan_registration_handle];
+  const fam2 = clan2.families[reg2.parent_family];
+  assert.equal(fam2.father_handle, 'mir_mX', '落点为顶端镜像段节点时父家族父亲 = 该节点');
+  assert.equal(fam2.handle, `cfam_own_${clanId}`, 'E-1：与立支同款家族复用（mir_mX 的既有无配偶家族被复用，不另建）');
+  assert.equal(r2.clan_registration_parent_family_created, false, '复用既有家族时不铸新家族号');
+  assert.ok(fam2.child_handles.includes(reg2.handle));
+
+  // ③ E-2 判负：落点缺失 / 不在目标祖谱 → 400，且**两侧一个字节都不写**（登记镜像绝不退回独立根）
+  const famBefore = treeFileMd5(c);
+  const clanBefore = treeFileMd5(clanId);
+  const clanPeopleBefore = Object.keys(clan2.people).length;
+  await assert.rejects(
+    () => fa.attachFounder({ treeId: c, founderHandle: 'f', masterTreeId: clanId, masterHandle: 'mNobody' }),
+    (e) => e.status === 400 && /落点节点不在目标祖谱内/.test(e.message),
+  );
+  await assert.rejects(
+    () => fa.attachFounder({ treeId: c, founderHandle: 'f', masterTreeId: clanId, masterHandle: '' }),
+    (e) => e.status === 400,
+  );
+  await assert.rejects(
+    () => fa.attachFounder({ treeId: c, founderHandle: 'f', masterTreeId: clanId }),
+    (e) => e.status === 400 && /缺少中华世本节点/.test(e.message),
+  );
+  assert.equal(treeFileMd5(c), famBefore, '400 不得写家族树');
+  assert.equal(treeFileMd5(clanId), clanBefore, '400 不得写祖谱');
+  assert.equal(Object.keys(readTree(clanId).people).length, clanPeopleBefore, '400 不得留下任何登记镜像');
+  assert.equal(fa.clanRegistrationOf(readTree(clanId), c, clanId), null, '判负后本祖谱内没有该家族树的登记');
+  // 纯函数直测（落点闸门判据）
+  assert.equal(fa.assertRegistrationLanding({ clan: clan2, parentHandle: 'own_ji' }), 'own_ji');
+  assert.throws(() => fa.assertRegistrationLanding({ clan: clan2, parentHandle: '' }), (e) => e.status === 400);
+  assert.throws(() => fa.assertRegistrationLanding({ clan: clan2, parentHandle: 'nope' }), (e) => e.status === 400 && /不得退回独立根/.test(e.message));
+  assert.throws(
+    () => fa.assertRegistrationLanding({ clan: clan2, parentHandle: 'own_ji', registrationHandle: 'own_ji' }),
+    (e) => e.status === 400 && /不能是登记镜像自身/.test(e.message),
+  );
+});
+
+test('E-3/E-4 改挂：旧父家族摘除 + 新父家族接入 + 家族侧落点指针同步 + 审计留痕（编号不变、登记仍恰好 1 条）', async () => {
+  const clanId = seedClan('clan');
+  const treeId = seedTree('remount');
+  const r0 = await fa.attachFounder({ treeId, founderHandle: 'f', masterTreeId: clanId, masterHandle: 'own_ji', requestedBy: CHIEF });
+  const regHandle = r0.clan_registration_handle;
+  const attached = readTree(clanId);
+  const oldFam = attached.people[regHandle].parent_family;
+  const regGrampsId = attached.people[regHandle].gramps_id;
+  const regName = attached.people[regHandle].name;
+  assert.ok(oldFam, '认祖后已有父边');
+  const countRegs = (tree) => Object.values(tree.people || {}).filter((p) => String(p.external_mirror || '') === 'true' && String(p.external_tree || '') === treeId).length;
+  assert.equal(countRegs(attached), 1, '一树一登记');
+
+  const r = await fa.remountClanRegistration({
+    treeId,
+    masterTreeId: clanId,
+    newMasterHandle: 'mir_mX',
+    operator: CHIEF,
+    now: '2026-10-16T00:00:00.000Z',
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.previous_parent_family, oldFam);
+  assert.equal(r.previous_parent_handle, 'own_ji', '旧落点 = 原父家族家长（own_ji）');
+  assert.equal(r.removed_family, oldFam, '旧父家族因无子女被一并摘除');
+  assert.equal(r.master_handle, 'mir_mX');
+  assert.equal(r.registration_handle, regHandle, '登记镜像不新建、不删除');
+
+  const after = readTree(clanId);
+  // ① 旧父摘除：节点侧与家族侧双向摘净
+  assert.notEqual(after.people[regHandle].parent_family, oldFam);
+  assert.equal(after.families[oldFam], undefined, '旧父家族已摘除（不留空家族）');
+  assert.equal((after.people.own_ji.spouse_families || []).includes(oldFam), false, '旧家长槽位不再引用被摘除的家族');
+  // ② 新父接入
+  const newFam = after.families[after.people[regHandle].parent_family];
+  assert.equal(newFam.father_handle, 'mir_mX', '新父家族的父亲 = 新落点');
+  assert.ok(newFam.child_handles.includes(regHandle), '登记镜像已接入新父家族');
+  // ③ 家族侧落点指针同步（真身身份字段一字不动）
+  const famTree = readTree(treeId);
+  assert.equal(famTree.people.f.external_person_handle, 'mir_mX', '家族侧登记指针改指新落点');
+  assert.equal(famTree.people.f.external_tree, clanId);
+  assert.equal(famTree.people.f.external_link_type, 'founder');
+  assert.equal(famTree.people.f.external_mirror, '', '真身不写镜像标记');
+  assert.equal(famTree.people.f.name, '季某', '真身身份字段不动');
+  assert.equal(famTree.people.f.gramps_id, '000000001', '始祖位置不变');
+  // ④ 不重铸编号 + 审计留痕（操作人 ＋ 时间 ＋ 旧落点 ＋ 新落点）
+  const reg = after.people[regHandle];
+  assert.equal(reg.gramps_id, regGrampsId, '不重铸编号');
+  assert.equal(reg.name, regName, '内容仍为只读展示副本（不因改挂被重写）');
+  assert.equal(reg.external_reanchor_by, CHIEF);
+  assert.equal(reg.external_reanchor_at, '2026-10-16T00:00:00.000Z');
+  assert.equal(reg.external_reanchor_from, 'own_ji');
+  assert.equal(reg.external_reanchor_to, 'mir_mX');
+  assert.equal(reg.external_reanchor_count, 1);
+  assert.deepEqual(reg.external_reanchor_log, [{ by: CHIEF, at: '2026-10-16T00:00:00.000Z', from: 'own_ji', to: 'mir_mX' }]);
+  // ⑤ 基数不变量：改挂不新增登记
+  assert.equal(countRegs(after), 1, '改挂后同家族树在本祖谱内仍至多 1 条登记');
+  // ⑥ 再改挂回原落点 → 幂等可重放；历史留痕滚动保留；旧父家族同样摘净
+  const back = await fa.remountClanRegistration({
+    treeId,
+    masterTreeId: clanId,
+    newMasterHandle: 'own_ji',
+    operator: CHIEF,
+    now: '2026-10-16T01:00:00.000Z',
+  });
+  assert.equal(back.previous_parent_handle, 'mir_mX');
+  assert.equal(back.removed_family, '', 'mir_mX 的家族仍有自有段子女 own_ji → 只摘登记者、不摘家族');
+  const clan3 = readTree(clanId);
+  assert.equal(clan3.people[regHandle].external_reanchor_count, 2);
+  assert.equal(clan3.people[regHandle].external_reanchor_from, 'mir_mX');
+  assert.equal(clan3.people[regHandle].external_reanchor_to, 'own_ji');
+  assert.equal(clan3.people[regHandle].external_reanchor_log.length, 2, '留痕逐条累积');
+  assert.equal(countRegs(clan3), 1);
+  assert.equal((clan3.families[newFam.handle].child_handles || []).includes(regHandle), false, '登记者已摘出旧父家族');
+  assert.ok(clan3.families[newFam.handle].child_handles.includes('own_ji'), '非登记子女原地保留（不误摘活家族）');
+  assert.ok((clan3.people.mir_mX.spouse_families || []).includes(newFam.handle), '保留的家族其家长槽位不动');
+});
+
+test('E-2/E-4 判负：改挂落点缺失 / 不在本祖谱 / 指向登记镜像自身 → 400；非祖谱目标 → 400；拒绝时两棵树都不写', async () => {
+  const clanId = seedClan('clan');
+  const treeId = seedTree('remount_neg');
+  const r = await fa.attachFounder({ treeId, founderHandle: 'f', masterTreeId: clanId, masterHandle: 'own_ji' });
+  const famBefore = treeFileMd5(treeId);
+  const clanBefore = treeFileMd5(clanId);
+  const base = { treeId, masterTreeId: clanId };
+  await assert.rejects(() => fa.remountClanRegistration({ ...base, newMasterHandle: '' }), (e) => e.status === 400 && /不得退回独立根/.test(e.message));
+  await assert.rejects(
+    () => fa.remountClanRegistration({ ...base, newMasterHandle: 'nope' }),
+    (e) => e.status === 400 && /落点节点不在目标祖谱内/.test(e.message),
+  );
+  await assert.rejects(
+    () => fa.remountClanRegistration({ ...base, newMasterHandle: r.clan_registration_handle }),
+    (e) => e.status === 400 && /不能是登记镜像自身/.test(e.message),
+  );
+  // 目标不是祖谱（世本）→ 400
+  await assert.rejects(
+    () => fa.remountClanRegistration({ treeId, masterTreeId: 'zhonghua', newMasterHandle: 'mX' }),
+    (e) => e.status === 400 && /改挂目标只能是祖谱/.test(e.message),
+  );
+  // 未登记的家族树 → 404（没有登记可改挂）
+  const other = seedTree('remount_neg2');
+  await assert.rejects(
+    () => fa.remountClanRegistration({ treeId: other, masterTreeId: clanId, newMasterHandle: 'own_ji' }),
+    (e) => e.status === 404 && /没有该家族树的始祖登记/.test(e.message),
+  );
+  assert.equal(treeFileMd5(treeId), famBefore, '判负不得写家族树');
+  assert.equal(treeFileMd5(clanId), clanBefore, '判负不得写祖谱');
+});
+
+test('E-5 解绑：父子边一并拆净（登记镜像 / 父家族 / 家长槽位），祖谱结构零悬空引用', async () => {
+  const clanId = seedClan('clan');
+  const treeId = seedTree('edge_det');
+  const r = await fa.attachFounder({ treeId, founderHandle: 'f', masterTreeId: clanId, masterHandle: 'own_ji' });
+  const attached = readTree(clanId);
+  const regHandle = r.clan_registration_handle;
+  const famHandle = attached.people[regHandle].parent_family;
+  assert.ok(famHandle);
+
+  const det = await fa.detachFounder({ treeId, founderHandle: 'f' });
+  assert.equal(det.clan_registration_removed, true);
+  assert.equal(det.founder_data_kept, true);
+  const clanAfter = readTree(clanId);
+  assert.equal(clanAfter.people[regHandle], undefined, '登记镜像已移除');
+  assert.equal(clanAfter.families[famHandle], undefined, '父家族随解绑摘除（不留空家族）');
+  for (const fam of Object.values(clanAfter.families)) {
+    assert.equal((fam.child_handles || []).includes(regHandle), false, `家族 ${fam.handle} 仍引用已删除的登记镜像`);
+    assert.equal(fam.father_handle === regHandle || fam.mother_handle === regHandle, false, `家族 ${fam.handle} 仍以已删除的登记镜像为家长`);
+  }
+  assert.equal((clanAfter.people.own_ji.spouse_families || []).includes(famHandle), false, '家长槽位不残留被摘除的家族');
+  const { checkTreeIntegrity } = await import('./tree-write.js');
+  assert.deepEqual(checkTreeIntegrity(clanAfter), [], 'E-5：解绑后祖谱结构零悬空引用');
+  const f = readTree(treeId).people.f;
+  assert.equal(f.external_tree, '', '家族侧指针已清');
+  assert.equal(f.external_person_handle, '');
+  assert.equal(f.external_link_type, '');
+  assert.equal(f.name, '季某', 'R2：真身数据保留');
+  // 解绑后本树可再次认祖（父子边重新建立）
+  const again = await fa.attachFounder({ treeId, founderHandle: 'f', masterTreeId: clanId, masterHandle: 'own_ji' });
+  const clanAgain = readTree(clanId);
+  assert.equal(clanAgain.people[again.clan_registration_handle].parent_family, again.clan_registration_parent_family);
+  assert.ok(clanAgain.families[again.clan_registration_parent_family].child_handles.includes(again.clan_registration_handle));
+});
+
+test('E-7 口径零回归：登记镜像不计入祖谱自有段人数；支系入口推导（按其 external_tree）改挂前后不变', async () => {
+  const clanId = seedClan('clan');
+  const treeId = seedTree('edge_stat');
+  const metaOf = { trees: { [treeId]: { tree_id: treeId, kind: 'family', display_title: '季氏统计家族', surname_char: '季' } } };
+  const before = readTree(clanId);
+  const stats0 = clanLib.clanStats(before, 'zhonghua');
+
+  const r = await fa.attachFounder({ treeId, founderHandle: 'f', masterTreeId: clanId, masterHandle: 'own_ji' });
+  const clan2 = readTree(clanId);
+  const stats1 = clanLib.clanStats(clan2, 'zhonghua');
+  assert.equal(stats1.own_count, stats0.own_count, '登记镜像不得计入祖谱自有段人数');
+  assert.equal(stats1.own_count, 1, '自有段仍只有支系入口 1 人（own_ji）');
+  assert.equal(stats1.mirror_count, stats0.mirror_count, '登记镜像也不计入顶端世本镜像段');
+  assert.deepEqual(
+    clanLib.clanOwnNodes(clan2).map((p) => p.handle),
+    clanLib.clanOwnNodes(before).map((p) => p.handle),
+    '自有段节点集合不变',
+  );
+  // 支系入口推导：登记镜像按其 external_tree 计入（一条登记 = 一个入口）
+  const entries1 = clanLib.clanBranchRegistrations(clan2, clanId, metaOf);
+  assert.deepEqual(entries1.map((e) => e.tree_id), [treeId]);
+  assert.equal(entries1[0].handle, r.clan_registration_handle);
+
+  // 改挂（父边换落点）→ 入口推导与统计口径一字不变
+  const rm = await fa.remountClanRegistration({ treeId, masterTreeId: clanId, newMasterHandle: 'mir_mX', operator: CHIEF });
+  const clan3 = readTree(clanId);
+  assert.notEqual(rm.parent_family, r.clan_registration_parent_family);
+  assert.deepEqual(clanLib.clanStats(clan3, 'zhonghua'), stats1, '改挂不改变自有段 / 镜像段统计');
+  const entries2 = clanLib.clanBranchRegistrations(clan3, clanId, metaOf);
+  assert.deepEqual(entries2.map((e) => e.tree_id), [treeId], '支系入口推导不因父边改挂而变');
+  assert.equal(entries2[0].handle, r.clan_registration_handle);
+});
+
+test('路由 POST /admin/remount-founder：祖谱写权 + 新落点必选；缺失/不在祖谱/非祖谱目标 一律拒', async () => {
+  const clanId = seedClan('clan');
+  const treeId = seedTree('remount_route');
+  const r0 = await fa.attachFounder({ treeId, founderHandle: 'f', masterTreeId: clanId, masterHandle: 'own_ji' });
+  const regHandle = r0.clan_registration_handle;
+  // 未登录 → 401
+  assert.equal((await post('/admin/remount-founder', { tree_id: treeId, target_tree_id: clanId, target_handle: 'mir_mX' }, '')).statusCode, 401);
+  // 缺参 → 400
+  assert.equal((await post('/admin/remount-founder', { target_tree_id: clanId, target_handle: 'mir_mX' }, chiefToken, clanId)).statusCode, 400);
+  assert.equal((await post('/admin/remount-founder', { tree_id: treeId, target_tree_id: clanId }, chiefToken, clanId)).statusCode, 400);
+  // 落点不在祖谱 → 404（体例照同文件既有认祖/解绑路由：编号/句柄解析不到 → 404）
+  assert.equal((await post('/admin/remount-founder', { tree_id: treeId, target_tree_id: clanId, target_handle: 'mNobody' }, chiefToken, clanId)).statusCode, 404);
+  // 目标不是祖谱（世本）→ 400
+  assert.equal((await post('/admin/remount-founder', { tree_id: treeId, target_tree_id: 'zhonghua', target_handle: 'mX' }, chiefToken, 'zhonghua')).statusCode, 400);
+  // 成功：新落点 = 顶端镜像段节点；X-Tree-Id 即祖谱（target_tree_id 可省）
+  const ok = await post('/admin/remount-founder', { tree_id: treeId, target_handle: 'mir_mX' }, chiefToken, clanId);
+  assert.equal(ok.statusCode, 200);
+  const body = json(ok);
+  assert.equal(body.ok, true);
+  assert.equal(body.master_handle, 'mir_mX');
+  assert.equal(body.tree_id, treeId);
+  assert.equal(body.clan_tree_id, clanId);
+  assert.equal(body.registration_handle, regHandle);
+  assert.equal(body.previous_parent_handle, 'own_ji');
+  assert.equal(body.audit.by, CHIEF, '审计留痕带操作人（取自登录用户）');
+  const clanAfter = readTree(clanId);
+  assert.equal(clanAfter.people[regHandle].external_reanchor_by, CHIEF);
+  assert.equal(clanAfter.people[regHandle].external_reanchor_to, 'mir_mX');
+  assert.equal(clanAfter.families[clanAfter.people[regHandle].parent_family].father_handle, 'mir_mX');
+  assert.equal(readTree(treeId).people.f.external_person_handle, 'mir_mX', '家族侧落点指针同步');
+  // 登记镜像 handle 入口（不传 tree_id，由 external_tree 推导）
+  const viaReg = await post('/admin/remount-founder', { registration_handle: regHandle, target_handle: 'own_ji' }, chiefToken, clanId);
+  assert.equal(viaReg.statusCode, 200);
+  assert.equal(json(viaReg).tree_id, treeId);
+  assert.equal(json(viaReg).previous_parent_handle, 'mir_mX');
+  // 不存在的登记镜像 handle → 404
+  assert.equal((await post('/admin/remount-founder', { registration_handle: 'nope', target_handle: 'own_ji' }, chiefToken, clanId)).statusCode, 404);
+  // 普通用户对祖谱自有段落点无写权 → 403
+  assert.equal((await post('/admin/remount-founder', { tree_id: treeId, target_handle: 'own_ji' }, plainToken, clanId)).statusCode, 403);
+});
+
+// ============ A-1 ~ A-3（2026-10-16）编号标识「人」：镜像不铸号 ============
+
+const idSeq = await import('./id-seq.js');
+const { checkTreeIntegrity } = await import('./tree-write.js');
+
+/**
+ * 把家族树始祖的编号改成**真身编号**（与真源 ji_23395_01 的季花 000000209 同形），
+ * 并清掉跨树登记指针（= 「解除登记」形状，供本文件后续段落复用同一个夹具树）。
+ */
+function setIdSourceFounder(treeId, grampsId) {
+  const t = readTree(treeId);
+  t.people.f.gramps_id = grampsId;
+  t.founder_gramps_id = grampsId;
+  Object.assign(t.people.f, {
+    external_tree: '',
+    external_person_handle: '',
+    external_link_type: '',
+    external_mirror: '',
+    external_relation_note: '',
+    external_founder_created_by: '',
+    external_prev_clan_founder_handle: '',
+  });
+  writeTree(t);
+  return t;
+}
+
+test('A-2 镜像不铸号：宗谱登记镜像的编号逐字取真身 gramps_id（不再 nextPersonId）；真身无号 → 400 且两侧零写入', async () => {
+  // ── ① 真身编号 000000209 的家族树认祖：登记镜像编号 = 真身编号（同一人两记录一号）──
+  const treeId = seedTree('det_b');
+  setIdSourceFounder(treeId, '000000209');
+  const clanId = seedClan('clan');
+  const seqBefore = await idSeq.readSeq(idSeq.SEQ_PERSON);
+
+  const r = await fa.attachFounder({
+    treeId,
+    founderHandle: 'f',
+    masterTreeId: clanId,
+    masterHandle: 'own_ji',
+    requestedBy: CHIEF,
+  });
+  const clan = readTree(clanId);
+  const famTree = readTree(treeId);
+  const reg = clan.people[r.clan_registration_handle];
+
+  assert.ok(reg, '登记镜像落库');
+  assert.equal(reg.gramps_id, '000000209', '★ A-2：镜像编号 = 真身编号（不铸新号）');
+  assert.equal(reg.gramps_id, famTree.people.f.gramps_id, 'A-1：一个人 N 棵树 = 1 个编号 + N 个 handle');
+  assert.notEqual(reg.handle, famTree.people.f.handle, 'A-1：handle 是**记录级**（同一人两条记录 = 两个 handle）');
+  assert.equal(famTree.people.f.gramps_id, '000000209', '真身编号一字不动');
+  assert.equal(famTree.people.f.external_mirror, '', 'R2：家族树始祖仍是真身（不写镜像标记）');
+  assert.equal(reg.external_mirror, 'true');
+  assert.equal(reg.external_link_type, 'founder');
+  assert.equal(reg.external_tree, treeId);
+  assert.equal(reg.external_person_handle, 'f');
+
+  // ── ② A-3 双向可校验：沿 external_tree + external_person_handle 指回真身，编号逐字相同 ──
+  const trueBody = readTree(reg.external_tree).people[reg.external_person_handle];
+  assert.equal(trueBody.handle, 'f', 'A-3：镜像指回真身（外树指针 + 树内 handle）');
+  assert.equal(trueBody.gramps_id, reg.gramps_id, 'A-3：指回的那条记录的编号与镜像逐字一致');
+  assert.equal(String(trueBody.external_mirror || ''), '', 'A-3：真身唯一（非镜像；恰有 1 条真身）');
+  assert.equal(fa.clanRegistrationOf(clan, treeId, clanId).handle, reg.handle, 'R4：一树一登记仍成立');
+
+  // ── ③ 镜像创建路径**零铸号**（运行期读数：全站人号计数器零增长）──
+  const seqAfter = await idSeq.readSeq(idSeq.SEQ_PERSON);
+  assert.equal(seqAfter, seqBefore, `★ A-2：镜像创建路径不得调用 nextPersonId()（人号计数器 ${seqBefore} → ${seqAfter}）`);
+
+  // ── ④ A-3 补充不变式：同一棵树内编号仍唯一（去重计数 = 人数）──
+  for (const [tid, tree] of [
+    [clanId, clan],
+    [treeId, famTree],
+  ]) {
+    const list = Object.values(tree.people);
+    assert.equal(
+      new Set(list.map((p) => String(p.gramps_id || ''))).size,
+      list.length,
+      `A-3：${tid} 同树内 gramps_id 去重计数 = 人数（镜像真身恒在别树 ⇒ 同树不出现同号两条）`,
+    );
+  }
+  assert.equal(Object.keys(clan.people).length, 3, '祖谱 = 顶端世本镜像 1 + 自有段 1 + 登记镜像 1');
+  // ⚠️ 改锚（2026-10-16）：原断言 `=== '000000001'` + 备注「顶端镜像段编号口径本单不动」编码旧口径
+  // （顶端镜像段从全局计数器预留号 / 树内自铸号）；本单（甲口径清尾）把**顶端镜像段一并**改为
+  // 「取上层真身号」⇒ 权威值 = 世本 zhonghua 的 mX 真身号 000000100。
+  assert.equal(clan.people[mirrorHandleOf('mX')].gramps_id, '000000100', '改锚：顶端镜像段号 = 上层真身号（A-2「镜像不铸号」）');
+  assert.deepEqual(
+    clanLib.clanOwnNodes(clan).map((p) => p.handle),
+    ['own_ji'],
+    '登记镜像不计入自有段（统计口径零回归）',
+  );
+
+  // ── ⑤ 真身编号取不到 ⇒ 400 拒绝创建（**绝不兜底铸号**），且两侧一个字节都不写 ──
+  setIdSourceFounder(treeId, '');
+  const clan2 = seedClan('ji2', { masterHandle: 'mRoot', ownHandle: 'own_ji2' });
+  const famBefore = treeFileMd5(treeId);
+  const clanBefore = treeFileMd5(clan2);
+  const peopleBefore = Object.keys(readTree(clan2).people).length;
+  await assert.rejects(
+    () => fa.attachFounder({ treeId, founderHandle: 'f', masterTreeId: clan2, masterHandle: 'own_ji2', requestedBy: CHIEF }),
+    (e) => e.status === 400 && /没有全站编号/.test(e.message) && /A-2：镜像不铸号/.test(e.message),
+    '真身无号 → 400（文案点明「镜像不铸号」）',
+  );
+  assert.equal(treeFileMd5(treeId), famBefore, '400 不得写家族树');
+  assert.equal(treeFileMd5(clan2), clanBefore, '400 不得写祖谱');
+  assert.equal(Object.keys(readTree(clan2).people).length, peopleBefore, '400 不得留下任何登记镜像');
+  assert.equal(fa.clanRegistrationOf(readTree(clan2), treeId, clan2), null, '判负后本祖谱内没有该树的登记');
+
+  // 纯函数直测（编号来源单点）
+  assert.equal(fa.mirrorGrampsIdOfTrueBody({ gramps_id: '000000209' }), '000000209', '真身编号逐字沿用（不加工）');
+  assert.equal(fa.mirrorGrampsIdOfTrueBody({ gramps_id: ' 000000209 ' }), '000000209', '去空白');
+  for (const bad of [{}, { gramps_id: '' }, { gramps_id: null }, null, undefined]) {
+    assert.throws(
+      () => fa.mirrorGrampsIdOfTrueBody(bad, '测试真身'),
+      (e) => e.status === 400 && /测试真身没有全站编号/.test(e.message),
+      '真身无号一律 400（绝不兜底铸号）',
+    );
+  }
+});
+
+test('A-7 解除世本挂载不得打断登记镜像的父边：家族「退化落点」升为家长，登记镜像绝不退回独立根', async () => {
+  // 夹具：认祖落点选在**顶端世本镜像段节点**（mir_mX）⇒ 登记镜像与自有段入口同属 cfam_own_<祖谱>
+  const clanId = seedClan('clan');
+  const treeId = seedTree('det_b');
+  const regFamily = `cfam_own_${clanId}`;
+  const r = await fa.attachFounder({ treeId, founderHandle: 'f', masterTreeId: clanId, masterHandle: 'mir_mX' });
+  const attached = readTree(clanId);
+  const regHandle = r.clan_registration_handle;
+  const before = attached.families[regFamily];
+  assert.equal(attached.people[regHandle].parent_family, regFamily, 'E-1：登记镜像挂在落点所在的家族');
+  assert.equal(before.father_handle, 'mir_mX');
+  assert.deepEqual(before.child_handles.slice().sort(), [regHandle, 'own_ji'].sort(), '同族：自有段入口 + 登记镜像');
+
+  // ── ① 纯函数：clearClanTopMirror（解除世本挂载的落库动作）──
+  const copy = readTree(clanId);
+  const removed = clanLib.clearClanTopMirror(copy, 'zhonghua');
+  assert.deepEqual(removed.removed_handles, [mirrorHandleOf('mX')], '顶端镜像段被清空');
+  assert.equal(removed.removed_families.includes(regFamily), false, '★ A-7：挂着登记镜像的家族不得被拆掉');
+  assert.deepEqual(removed.kept_families, [regFamily], '家族被保留');
+  assert.deepEqual(removed.degraded_landings, [{ family: regFamily, landing: 'own_ji', registration_handles: [regHandle] }], '退化落点 = 自有段入口 own_ji');
+  assert.equal(copy.people[regHandle] === undefined, false, '登记镜像保留（支系入口不丢）');
+  assert.equal(copy.people[regHandle].parent_family, regFamily, '★ A-7：登记镜像的父边一字不动（旧行为 = 置空 ⇒ 退回独立根）');
+  assert.equal(copy.people[regHandle].external_tree, treeId, '登记指针不变');
+  const kept = copy.families[regFamily];
+  assert.ok(kept, '家族仍在家族表内（不留悬空 parent_family）');
+  assert.equal(kept.father_handle, 'own_ji', '★ 退化落点升为该家族家长（链不断）');
+  assert.equal(kept.mother_handle, '');
+  assert.deepEqual(kept.child_handles, [regHandle], '家族子女槽位只留登记镜像');
+  assert.equal(copy.people.own_ji.parent_family, '', '自有段入口仍按原口径解挂为根');
+  assert.ok((copy.people.own_ji.spouse_families || []).includes(regFamily), '家长槽位已接入保留的家族');
+  assert.equal(copy.people[mirrorHandleOf('mX')], undefined, '顶端镜像节点已删');
+  assert.deepEqual(checkTreeIntegrity(copy), [], 'A-7：解除后祖谱零悬空引用');
+  assert.deepEqual(clanLib.clanOwnNodes(copy).map((p) => p.handle), ['own_ji'], '自有段节点不变');
+  const metaOf = { trees: { [treeId]: { tree_id: treeId, kind: 'family', display_title: '季氏 A-7 家族', surname_char: '季' } } };
+  assert.deepEqual(clanLib.clanBranchRegistrations(copy, clanId, metaOf).map((x) => x.tree_id), [treeId], '★ A-7：支系入口推导不因解除挂载而丢');
+
+  // ── ② 端到端：detachClanFromMaster（「解除世本挂载」正式路径）──
+  const clanB = seedClan('clan');
+  const rB = await fa.attachFounder({ treeId: seedTree('det_a'), founderHandle: 'f', masterTreeId: clanB, masterHandle: 'mir_mX' });
+  const det = await clanLib.detachClanFromMaster({ treeId: clanB });
+  assert.equal(det.removed_mirrors, 1, '顶端镜像段已清空');
+  assert.equal(det.kept_own, 1, '自有段保留');
+  const afterDetach = readTree(clanB);
+  assert.equal(afterDetach.people[mirrorHandleOf('mX')], undefined);
+  assert.ok(afterDetach.people[rB.clan_registration_handle], '登记镜像仍在（旧行为：与家族一起被解挂成独立根）');
+  assert.equal(afterDetach.people[rB.clan_registration_handle].parent_family, `cfam_own_${clanB}`, '★ A-7：父边不断');
+  assert.equal(afterDetach.families[`cfam_own_${clanB}`].father_handle, 'own_ji', '退化落点 = 自有段入口');
+  assert.deepEqual(checkTreeIntegrity(afterDetach), [], '端到端：零悬空引用');
+  const metaAfter = JSON.parse(fs.readFileSync(META_FILE, 'utf8'));
+  assert.equal(metaAfter.trees[clanB].master_tree_id, '', '解除后祖谱 meta 上层指针清空');
+  assert.deepEqual(
+    clanLib.clanBranchRegistrations(afterDetach, clanB, { trees: { mt_det_a: { tree_id: 'mt_det_a', kind: 'family' } } }).map((x) => x.tree_id),
+    ['mt_det_a'],
+    '★ A-7：解除世本挂载后支系入口仍在',
+  );
+
+  // ── ③ 兜底：祖谱自有段为空（真源 ji_23395 即此形）⇒ 家族保留、家长清空，父边同样不打断 ──
+  const treeIdC = seedTree('det_b');
+  const clanC = seedClan('xu', { ownHandle: 'own_xu', ownName: '徐花' });
+  const treeC = readTree(clanC);
+  delete treeC.people.own_xu;
+  delete treeC.families[`cfam_own_${clanC}`];
+  treeC.people[mirrorHandleOf('mX')].spouse_families = [];
+  writeTree(treeC);
+  const rC = await fa.attachFounder({ treeId: treeIdC, founderHandle: 'f', masterTreeId: clanC, masterHandle: 'mir_mX' });
+  assert.equal(rC.clan_registration_parent_family_created, true, '落点无可用家族 → 新建（落点之下唯一的家族）');
+  const famC = rC.clan_registration_parent_family;
+  const copyC = readTree(clanC);
+  const removedC = clanLib.clearClanTopMirror(copyC, 'zhonghua');
+  const afterC = copyC;
+  assert.deepEqual(removedC.kept_families, [famC], '无自有段子女 ⇒ 家族仍保留（绝不打断登记边）');
+  assert.deepEqual(removedC.degraded_landings, [{ family: famC, landing: '', registration_handles: [rC.clan_registration_handle] }]);
+  assert.equal(afterC.people[rC.clan_registration_handle].parent_family, famC, '★ A-7：父边保留');
+  assert.equal(afterC.families[famC].father_handle, '', '无自有段子女 ⇒ 家长清空（不留悬空家长）');
+  assert.deepEqual(afterC.families[famC].child_handles, [rC.clan_registration_handle]);
+  assert.deepEqual(checkTreeIntegrity(afterC), [], '兜底路径零悬空引用');
+});
+
+// ============ A-2 清尾（2026-10-16）· 祖谱顶端世本镜像段不铸号 ============
+
+test('A-2 顶端世本镜像段不铸号（纯函数）：founder / chain 号逐字取自各节上层真身；真身无号 → 400 且本树零改动', () => {
+  // ── ① depth=2 链：世本 mX(000000100) → mChild(000000101) → mGrand(000000102) ──
+  const tree = { _schema: '1.0', tree_id: 'mc_pure', kind: 'clan', founder_gramps_id: '', version: 1, people: {}, families: {} };
+  const applied = clanLib.applyClanTopMirror({
+    tree,
+    masterTree: readTree('zhonghua'),
+    masterTreeId: 'zhonghua',
+    masterHandle: 'mX',
+    depth: 2,
+  });
+  assert.equal(applied.mirror_count, 3);
+  assert.equal(tree.people[mirrorHandleOf('mX')].gramps_id, '000000100', '★ A-2：founder 镜像号 = 上层真身 mX 号');
+  assert.equal(tree.people[mirrorHandleOf('mChild')].gramps_id, '000000101', '★ A-2：chain 镜像号 = 其上层真身 mChild 号');
+  assert.equal(tree.people[mirrorHandleOf('mGrand')].gramps_id, '000000102', '★ A-2：chain 镜像号 = 其上层真身 mGrand 号');
+  assert.equal(tree.founder_gramps_id, '000000100', 'A-7：祖谱树 JSON founder_gramps_id = 顶端镜像（真身）号');
+  // A-3：同树内编号仍唯一（去重计数 = 人数）
+  const list = Object.values(tree.people);
+  assert.equal(new Set(list.map((p) => p.gramps_id)).size, list.length, 'A-3：同树内 gramps_id 去重计数 = 人数');
+  // A-7 不变项：handle 口径与 `mir_<上层 handle>` 派生规则一字不改
+  assert.deepEqual(
+    list.map((p) => p.handle).sort(),
+    [mirrorHandleOf('mChild'), mirrorHandleOf('mGrand'), mirrorHandleOf('mX')].sort(),
+    '镜像 handle = mir_<上层 handle>（确定性）',
+  );
+  assert.deepEqual(
+    list.map((p) => p.external_person_handle).sort(),
+    ['mChild', 'mGrand', 'mX'].sort(),
+    '镜像仍指回真身 handle（记录级指针不变）',
+  );
+
+  // ── ② 编号来源单点：planClanTopMirrorIds 与落库值逐字一致 ──
+  const plan = clanLib.planClanTopMirrors({ masterTree: readTree('zhonghua'), masterHandle: 'mX', depth: 2 });
+  assert.deepEqual(clanLib.planClanTopMirrorIds(plan, 'zhonghua'), ['000000100', '000000101', '000000102']);
+
+  // ── ③ 真身无号 ⇒ 400，且**校验先于任何改动**（既有镜像段一字不动）──
+  const noId = readTree('zhonghua');
+  noId.people.mX.gramps_id = '';
+  const snapshot = JSON.stringify(tree);
+  assert.throws(
+    () => clanLib.applyClanTopMirror({ tree, masterTree: noId, masterTreeId: 'zhonghua', masterHandle: 'mX', depth: 2 }),
+    (e) => e.status === 400 && /没有全站编号/.test(e.message) && /A-2：镜像不铸号/.test(e.message) && /zhonghua:mX/.test(e.message),
+    '真身无号 → 400（文案点名真身位置；绝不兜底铸号）',
+  );
+  assert.equal(JSON.stringify(tree), snapshot, '400 时本树零改动（先算号、后清段重建）');
+
+  // ── ④ 静态自证（源码级）：祖谱镜像段代码体内**没有任何人物铸号入口** ──
+  const src = fs.readFileSync(path.join(HERE, 'clan.js'), 'utf8');
+  const mirrorStart = src.indexOf('export function planClanTopMirrorIds(');
+  const mirrorEnd = src.indexOf('// ---- 申请单（纯函数） ----');
+  const mirrorSrc = src.slice(mirrorStart, mirrorEnd);
+  assert.ok(mirrorSrc.length > 1200, '切片须覆盖 planClanTopMirrorIds + applyClanTopMirror 两段（防切片失效导致假绿）');
+  for (const banned of [/\ballocPersonId\b/, /\bnewPersonId\b/, /nextPersonId/, /\bfreeGrampsId\(/, /reservePersonIds\(/]) {
+    assert.equal(banned.test(mirrorSrc), false, `镜像段代码体内不得出现铸号入口 ${banned}（A-2「镜像不铸号」）`);
+  }
+  // 全模块只剩 1 处 freeGrampsId 调用（createClanTree 的**自有段真人**兜底，与镜像无关）
+  const freeGrampsCallSites = src
+    .split('\n')
+    .filter((l) => /\bfreeGrampsId\(/.test(l) && !/^\s*export\s+function\s+freeGrampsId\(/.test(l));
+  assert.equal(freeGrampsCallSites.length, 1, 'freeGrampsId 调用点全模块仅剩 1 处 —— 镜像段零树内铸号');
+  assert.match(
+    freeGrampsCallSites[0],
+    /ownRootHandle\]\.gramps_id = allocPersonId\(\) \|\| freeGrampsId\(tree, ''\)/,
+    '唯一调用点 = createClanTree 的**自有段真人**兜底（与镜像无关）',
+  );
+  assert.equal(/nextPersonId/.test(src), false, 'clan.js 不导入也不调用 nextPersonId');
+  assert.equal(/reservePersonIds\(\s*mirrorPlan\.length/.test(src), false, '不再按镜像段人数预留人号');
+  assert.equal(/reservePersonIds\(\s*mirrorPlan\.length \+ \(ownRootHandle/.test(src), false, '旧写法（镜像数 + 自有段）已删');
+  assert.equal(/reservePersonIds\(ownRootHandle \? 1 : 0\)/.test(src), false, '人号预留只认自有段：`ownRootHandle ? 1 : 0` 写法已删');
+});
+
+test('A-2 顶端世本镜像段不铸号（写路径）：createClanTree / attachClanToMaster 落真身号、人号计数器零消耗、A-7 meta 同步与 A-3 同树唯一', async () => {
+  // ── ① attachClanToMaster：聂氏祖谱（自有段 own_noid）认祖世本 mX ──
+  const clanId = seedClan('noid', { masterHandle: 'mX', ownHandle: 'own_noid', ownName: '聂花' });
+  assert.equal(clanId, 'mc_noid');
+  const seqBefore = await idSeq.readSeq(idSeq.SEQ_PERSON);
+  const r = await clanLib.attachClanToMaster({
+    treeId: clanId, masterTreeId: 'zhonghua', masterHandle: 'mX', ownRootHandle: 'own_noid', requestedBy: CHIEF,
+  });
+  assert.equal(r.founder_mirror_handle, mirrorHandleOf('mX'));
+  const clan = readTree(clanId);
+  const mirror = clan.people[mirrorHandleOf('mX')];
+  assert.equal(mirror.gramps_id, '000000100', '★ A-2：写路径顶端镜像号 = 上层真身号（mX）');
+  assert.equal(clan.founder_gramps_id, '000000100', 'A-7：祖谱树 JSON founder_gramps_id = 顶端镜像新号');
+  assert.equal(clan.people.own_noid.gramps_id, '000000002', '自有段真人编号一字不动');
+  // A-3：同树内 gramps_id 去重计数 = 人数（镜像真身恒在别树 ⇒ 同树不出现同号两条）
+  const list = Object.values(clan.people);
+  assert.equal(new Set(list.map((p) => p.gramps_id)).size, list.length, 'A-3：mc_noid 同树去重计数 = 人数');
+  // A-3 双向：沿 external_tree + external_person_handle 指回真身，编号逐字一致
+  assert.equal(readTree(mirror.external_tree).people[mirror.external_person_handle].gramps_id, mirror.gramps_id);
+  // ★ 人号计数器零消耗（镜像路径不铸号、不预留）
+  const seqAfter = await idSeq.readSeq(idSeq.SEQ_PERSON);
+  assert.equal(seqAfter, seqBefore, `★ A-2：认祖世本的镜像路径不得消耗人号计数器（${seqBefore} → ${seqAfter}）`);
+  // ★ A-7：meta 始祖登记（handle 口径不变）+ 编号跟树内始祖节点现值同步（夹具旧值 000000099 已过期）
+  const meta1 = JSON.parse(fs.readFileSync(META_FILE, 'utf8'));
+  assert.equal(meta1.trees[clanId].founder_handle, 'own_noid', 'founder_handle 口径一字不改');
+  assert.equal(meta1.trees[clanId].founder_gramps_id, '000000002', '★ A-7：meta.founder_gramps_id 同步为树内始祖节点现值（000000099 → 000000002）');
+  assert.equal(meta1.trees[clanId].founder_name, '聂花');
+  assert.equal(meta1.trees[clanId].master_handle, 'mX', '上层指针照旧回写');
+
+  // ── ② createClanTree：岑氏祖谱（无自有段）⇒ 镜像段零铸号、人号计数器零消耗 ──
+  const seq2 = await idSeq.readSeq(idSeq.SEQ_PERSON);
+  const created = await clanLib.createClanTree({
+    surname: '岑', masterTreeId: 'zhonghua', masterHandle: 'mX', clanTitle: '岑氏祖谱（镜像不铸号）', chainDepth: 1,
+  });
+  const newClan = readTree(created.tree_id);
+  assert.equal(newClan.people[mirrorHandleOf('mX')].gramps_id, '000000100', '★ A-2：新建祖谱 founder 镜像号 = 真身号');
+  assert.equal(newClan.people[mirrorHandleOf('mChild')].gramps_id, '000000101', '★ A-2：新建祖谱 chain 镜像号 = 真身号');
+  assert.equal(newClan.founder_gramps_id, '000000100', 'A-7：新建祖谱树 founder_gramps_id = 顶端镜像新号');
+  assert.equal(created.mirror_count, 2);
+  const seq3 = await idSeq.readSeq(idSeq.SEQ_PERSON);
+  assert.equal(seq3, seq2, `★ A-2：createClanTree（无自有段）不消耗人号计数器（${seq2} → ${seq3}）`);
+  const gids2 = Object.values(newClan.people).map((p) => p.gramps_id);
+  assert.equal(new Set(gids2).size, gids2.length, 'A-3：同树去重计数 = 人数');
+  // A-7 不变项：详情文档键仍是 `tree_id:handle`
+  assert.ok(readDetailDoc(created.tree_id, mirrorHandleOf('mX')), '详情文档键 tree_id:handle 不变');
+});
+
+test('A-2 顶端镜像真身无号 ⇒ 400 拒绝创建：createClanTree 与 attachClanToMaster 两侧零写入、零预留', async () => {
+  // 先落夹具树（`mc_yu`），再取基线快照 —— 否则「零新增文件」断言会被夹具自身写入扰乱
+  const yuClan = seedClan('yu', { masterHandle: 'mX', ownHandle: 'own_ji', ownName: '季花' });
+  const yuBefore = treeFileMd5(yuClan);
+  const treesDir = path.join(TMP, 'trees');
+  const beforeList = fs.readdirSync(treesDir).sort();
+  const metaBefore = md5(META_FILE);
+
+  // ── ① createClanTree：真身（zhonghua_noid:mNoid）无号 ⇒ 400 ──
+  const seqBefore = await idSeq.readSeq(idSeq.SEQ_PERSON);
+  await assert.rejects(
+    () => clanLib.createClanTree({ surname: '岑', masterTreeId: 'zhonghua_noid', masterHandle: 'mNoid', clanTitle: '岑氏祖谱（判负）' }),
+    (e) => e.status === 400 && /没有全站编号/.test(e.message) && /A-2：镜像不铸号/.test(e.message) && /zhonghua_noid:mNoid/.test(e.message),
+    '真身无号 → 400（文案点名真身位置）',
+  );
+  assert.equal(await idSeq.readSeq(idSeq.SEQ_PERSON), seqBefore, '400 时人号计数器零消耗（校验先于预留）');
+
+  // ── ② attachClanToMaster：鱼氏祖谱认祖到「真身无号」的世本副本 ⇒ 400 ──
+  await assert.rejects(
+    () => clanLib.attachClanToMaster({ treeId: yuClan, masterTreeId: 'zhonghua_noid', masterHandle: 'mNoid', ownRootHandle: 'own_ji', requestedBy: CHIEF }),
+    (e) => e.status === 400 && /没有全站编号/.test(e.message) && /A-2：镜像不铸号/.test(e.message),
+    '真身无号 → 400（认祖路径同样拒绝）',
+  );
+  assert.equal(treeFileMd5(yuClan), yuBefore, '400 不得写祖谱（镜像段一个节点都不落）');
+
+  // ── ③ 两条路径合起来：树目录零新增、meta 逐字节不变 ──
+  assert.deepEqual(fs.readdirSync(treesDir).sort(), beforeList, '400 不得新建/删除任何树文件');
+  assert.equal(md5(META_FILE), metaBefore, '400 不得写 tree-meta');
+});
+
+test('A-7 祖谱 meta 的始祖登记指向顶端镜像段节点 ⇒ 重建后 founder_gramps_id 跟镜像新号同步（handle 口径不变）', async () => {
+  // 夹具：mc_yu 的 meta.founder_handle = mir_mX（始祖登记就是顶端镜像那条）；树内无自有段
+  writeTree({ _schema: '1.0', tree_id: 'mc_yu', kind: 'clan', founder_gramps_id: '000000162', version: 1, updated_at: '', people: {}, families: {} });
+  const r = await clanLib.attachClanToMaster({ treeId: 'mc_yu', masterTreeId: 'zhonghua', masterHandle: 'mX', chainDepth: 0, requestedBy: CHIEF });
+  assert.equal(r.founder_mirror_handle, mirrorHandleOf('mX'));
+  assert.equal(r.founder_registered, false, '已有始祖登记 ⇒ 不改「已登记」语义（不走 registered 分支）');
+  const tree = readTree('mc_yu');
+  assert.equal(tree.people[mirrorHandleOf('mX')].gramps_id, '000000100', '★ A-2：镜像号 = 真身号 000000100（旧数据 000000162）');
+  assert.equal(tree.founder_gramps_id, '000000100');
+  const gids = Object.values(tree.people).map((p) => p.gramps_id);
+  assert.equal(new Set(gids).size, gids.length, 'A-3：同树去重计数 = 人数');
+  const entry = JSON.parse(fs.readFileSync(META_FILE, 'utf8')).trees.mc_yu;
+  assert.equal(entry.founder_handle, 'mir_mX', '★ A-7：founder_handle 口径一字不改（仍指顶端镜像节点）');
+  assert.equal(entry.founder_gramps_id, '000000100', '★ A-7：meta.founder_gramps_id 跟镜像新号同步（000000162 → 000000100）');
+  assert.equal(entry.founder_name, '季始祖公');
+  // 注：本夹具「始祖登记 = 顶端镜像 + 未显式指定自有段落点」时 `ownRootHandle` 落到镜像自身
+  // ⇒ `cfam_own_<祖谱>` 的家长与子女同为该镜像（**旧口径既有形态**，本单只改编号来源，不动该结构）。
+  assert.equal(tree.families[`cfam_own_mc_yu`].father_handle, mirrorHandleOf('mX'));
 });
 
 // ============ 真实数据保护 ============

@@ -87,6 +87,17 @@
       </view>
     </view>
 
+    <!-- 祖谱图谱节点菜单（右键 / 长按「下游支系登记镜像」节点弹出）：菜单头 = 挂靠落点，
+         菜单项 = 打开支系家族树首页 / 打开真身档案。主点击行为不变（镜像 → 真身档案） -->
+    <view v-if="nodeMenu" class="node-menu-mask" @click="nodeMenu = null">
+      <view class="node-menu" :style="nodeMenuStyle" @click.stop>
+        <text v-if="nodeMenu.anchorText" class="node-menu-note">{{ nodeMenu.anchorText }}</text>
+        <text class="node-menu-item" @click="openMenuArchive">📄 打开真身档案</text>
+        <text class="node-menu-item" @click="openMenuBranchTree">📂 打开「{{ nodeMenu.label }}」首页</text>
+        <text class="node-menu-cancel" @click="nodeMenu = null">取消</text>
+      </view>
+    </view>
+
     <!-- 唯一人物弹窗（点击节点/支始祖直达；档案内可内联编辑 + 谱系管理，不叠弹窗） -->
     <PersonDetailModal ref="archiveModal" :tree-manage="treeManage" @tree-changed="onTreeChanged" />
   </view>
@@ -96,10 +107,10 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { fetchPersonList, fetchFamilyList, fetchTreeMetaRemote } from '@/business/api';
 import type { FamilySummary } from '@/business/api';
-import { buildPedigreeForest } from '@/business/pedigree';
+import { buildPedigreeForest, cardChipHit } from '@/business/pedigree';
+import type { PedigreeTreeKind, TreePersonNode, PedigreeNodeAnnotation } from '@/business/pedigree';
 import { personIdDisplay, nameWithTitles } from '@/business/format';
 import { openTreeHome, mirrorLabelOf, mirrorTargetOf, treeKindOf } from '@/business';
-import type { TreePersonNode } from '@/business/pedigree';
 import * as echarts from 'echarts';
 import PersonDetailModal from '@/components/person-detail-modal/person-detail-modal.vue';
 
@@ -158,6 +169,22 @@ const props = withDefaults(
      * 一起发出 ⇒ 服务端放行**整棵树**（不裁剪）。缺省空串 ⇒ 两个请求都不带该头，其它宿主逐字回落既有行为。
      */
     inviteCode?: string;
+    /**
+     * **祖谱图谱节点注记**（handle → 注记；**缺省空对象 = 其它宿主逐字不变**）。
+     * 祖谱档把上游世本镜像段 + 本宗自有世代 + 下游支系登记镜像画进同一张图后，用本注记让三类节点
+     * 视觉可辨并给下游登记镜像补「次级入口」——**全部落在卡面上、渲染期即画**（见 `annotationCardLines`）：
+     * - `badge`：卡面次级行角标（弱化 11px，同「外树 x」角标一行）——上游镜像形如「中华世本 · 只读」，
+     *   下游登记镜像形如「季氏费县白露家族 · 59 人 · 只读」；自有真实节点无 badge（= 可编辑那类）。
+     * - `anchorText`：挂靠落点文案（形如「挂于 季行父（000000162）之下」）——卡面上逐行可见，不只藏在菜单里。
+     * - `founderText`：**支系始祖姓名行**（形如「始祖：季花」）——支系始祖姓名在卡面上的可见落点。
+     * - `chipLabel` / `openTreeId` / `openTreeLabel`：仅下游支系登记镜像填。卡面画**可见入口**
+     *   chip（形如「📂 打开〈季氏费县白露家族〉」），**点它即打开该支系家族树首页**（命中判据
+     *   `cardChipHit`，按 chip **实际行下标**算命中带 —— 注记行排在配偶行之前，chip 不必是末行；
+     *   命中时不再下沉主点击行为）——入口**不依赖右键 / 长按**，iOS Safari H5 等无右键
+     *   手势的环境同样可达。同一入口另在**节点右键 / 长按菜单**保留一份（双路径，菜单头 = 挂靠落点）。
+     *   **主点击行为不变**（点卡面其余处，镜像节点仍走「打开真身档案」，见 renderChart 的 click）。
+     */
+    nodeAnnotations?: Record<string, PedigreeNodeAnnotation>;
   }>(),
   {
     defaultLayout: 'vertical',
@@ -170,6 +197,7 @@ const props = withDefaults(
     focusHandle: '',
     focusLabel: FOCUS_MARKER,
     inviteCode: '',
+    nodeAnnotations: () => ({}),
   },
 );
 
@@ -189,6 +217,12 @@ function onTreeChanged() {
 
 // 指定始祖 gramps_id（来自 tree-meta.json）：以始祖为根构建世系
 const founderGrampsId = ref('');
+/**
+ * 本树种类（**单点判定**；口径 = 后端 `compat-api/lib/family-population.js` 的 `treeKind()`，
+ * 经 `treeKindOf(tree-meta entry)` 取）。祖谱档（`'clan'`）在图示上**不做 founder 截断**
+ * ⇒ 上游世本镜像段 / 本宗自有世代 / 下游支系登记镜像同一张图；世本档、家族树档逐字不变。
+ */
+const treeKind = ref<PedigreeTreeKind>('family');
 const loading = ref(true);
 const error = ref('');
 const forest = ref<TreePersonNode[]>([]);
@@ -319,11 +353,139 @@ function goRootPerson(node: TreePersonNode) {
   archiveModal.value?.open(props.treeId, node.handle, node);
 }
 
+/* ---- 祖谱图谱：镜像节点的次级入口菜单（右键 / 长按；**主点击行为不变**）
+ * ⚠️ 本菜单**不是**支系首页入口的唯一路径：同一入口在渲染期就画在卡面上（`annotationCardLines` 的
+ * 可见入口 chip「📂 打开〈树名〉」，点击路由 = `chipTreeIdOfNode`）。菜单是**第二条路径**，供桌面右键 /
+ * Android 长按顺手使用；缺了它 iOS Safari H5 等无右键手势的环境才是不可达（旧口径的缺陷）。
+ * 祖谱页原「③ 支系入口列表」的**打开支系家族树首页**入口（与「挂于 …之下」落点提示）落到本菜单：
+ * 主点击仍走上面的 click（镜像 → 打开真身档案），本菜单只承载次级动作，二者不冲突。
+ * 仅当宿主传入 `nodeAnnotations` 且注记带 `openTreeId` 的节点才弹；其它宿主 / 其它节点一律无菜单。 */
+
+/** 菜单状态（null = 关闭） */
+const nodeMenu = ref<{ x: number; y: number; label: string; anchorText: string; node: TreePersonNode } | null>(
+  null,
+);
+
+/** 菜单定位（fixed；贴鼠标点，右/下越界时退回安全边距内） */
+const nodeMenuStyle = computed(() => {
+  const m = nodeMenu.value;
+  if (!m) return {};
+  const MENU_W = 232;
+  const MENU_H = 128;
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
+  const left = vw ? Math.min(m.x, Math.max(8, vw - MENU_W - 8)) : m.x;
+  const top = vh ? Math.min(m.y, Math.max(8, vh - MENU_H - 8)) : m.y;
+  return { left: `${left}px`, top: `${top}px` };
+});
+
+/** 右键 / 长按命中「带次级入口的注记节点」→ 弹菜单 */
+function onChartContextMenu(params: any) {
+  const d = params?.data as TreePersonNode | undefined;
+  const note = annotationOf(d);
+  if (!d || !note?.openTreeId) return;
+  const native = params?.event?.event as MouseEvent | undefined;
+  nodeMenu.value = {
+    x: native?.clientX ?? 0,
+    y: native?.clientY ?? 0,
+    label: note.openTreeLabel || note.openTreeId,
+    anchorText: note.anchorText || '',
+    node: d,
+  };
+}
+
+/** 菜单项：打开真身档案（与主点击同口径 —— 本层只读镜像，内容一律取真身） */
+function openMenuArchive() {
+  const m = nodeMenu.value;
+  nodeMenu.value = null;
+  if (!m?.node?.handle) return;
+  archiveModal.value?.open(props.treeId, m.node.handle, m.node);
+}
+
+/** 菜单项：打开该支系家族树首页（原祖谱③段支系入口的图上落点） */
+function openMenuBranchTree() {
+  const m = nodeMenu.value;
+  const tid = annotationOf(m?.node)?.openTreeId;
+  nodeMenu.value = null;
+  if (tid) openTreeHome(tid);
+}
+
+/** 拦截浏览器右键菜单的元素（**仅**宿主传了节点注记的祖谱图绑；其它宿主零变化） */
+let ctxEl: HTMLElement | null = null;
+function blockNativeContextMenu(e: Event) {
+  e.preventDefault();
+}
+function bindNativeContextMenuBlock(el: HTMLElement) {
+  if (!Object.keys(props.nodeAnnotations || {}).length) return;
+  if (ctxEl === el) return;
+  unbindNativeContextMenuBlock();
+  el.addEventListener('contextmenu', blockNativeContextMenu);
+  ctxEl = el;
+}
+function unbindNativeContextMenuBlock() {
+  if (ctxEl) {
+    ctxEl.removeEventListener('contextmenu', blockNativeContextMenu);
+    ctxEl = null;
+  }
+}
+
+/* ---- 祖谱图谱：**卡面可见入口 chip** 的点击路由（与上面的右键/长按菜单构成双路径） ----
+ * chip 在渲染期就画在卡面上（`annotationCardLines` → 最后一行），**不需要右键 / 长按**即可看见并点到
+ * ⇒ iOS Safari H5 等无右键手势的环境同样可打开支系家族树首页（旧口径只有 `contextmenu`，不可达）。
+ * 判定命中后**不再下沉**主点击行为（等价 `stopPropagation`：本次点击不打开真身档案、不冒泡到宿主容器）。 */
+
+/**
+ * 本次点击是否命中该节点的**卡面可见入口 chip**；命中 ⇒ 返回目标支系 tree_id（否则空串）。
+ * 判据 = ① 该节点注记带可见入口（`openTreeId` + `chipLabel`）；② 点击纵向落点在该节点卡面上
+ * **chip 实际所在行**的条带内（`cardChipHit`；行下标与行数由 `decorateTree` 渲染期烘入
+ * `_chipLineIndex` / `_lineCount`，卡面以节点布局点为心）。取不到节点像素 / 指针坐标 / 行序
+ * ⇒ 不命中（回落到主点击行为）。
+ */
+function chipTreeIdOfNode(node: TreePersonNode, params: any): string {
+  const note = annotationOf(node);
+  if (!note?.openTreeId || !note.chipLabel) return '';
+  const chipLine = node._chipLineIndex;
+  const lineCount = node._lineCount;
+  if (typeof chipLine !== 'number' || typeof lineCount !== 'number') return '';
+  const idx = typeof params?.dataIndex === 'number' ? params.dataIndex : -1;
+  const center = nodePixelOfIndex(idx);
+  const y = pointerYOf(params);
+  if (!center || y === null) return '';
+  return cardChipHit(y - center.y, lineCount, chipLine) ? note.openTreeId : '';
+}
+
+/**
+ * 本次点击的指针纵坐标（canvas 局部像素 = 与 `nodePixelOfIndex` 同一坐标系）。
+ * 依次试 zrender 级 `zrY` → 事件级 `offsetY` → 原生事件 `offsetY`（鼠标 / 触摸都取得到）。
+ */
+function pointerYOf(params: any): number | null {
+  const ev = params?.event;
+  const y = ev?.zrY ?? ev?.offsetY ?? ev?.event?.offsetY;
+  return typeof y === 'number' && Number.isFinite(y) ? y : null;
+}
+
 let chart: echarts.ECharts | null = null;
 let renderTimer: ReturnType<typeof setTimeout> | null = null;
 
-// 统计栏：指定始祖时显示始祖姓名，否则显示支数（按当前可见森林计算）
+/**
+ * 统计栏「始祖」= **数据口径**（不是图上顶端节点）：`tree-meta` 的 `founder_gramps_id` 指针所指节点，
+ * 在本树 people 里现取姓名（读失败 / 指针缺省 / 本树无该节点 ⇒ 空串）。loadData 里一次性算好。
+ *
+ * ⚠️ **不得用图上顶端冒充始祖**：祖谱档（kind='clan'）图以全树根构图、不按 founder 截断，图上顶端
+ * 可能是上游世本镜像段（如「季行父」），它**不等于**始祖（图上顶端是否 = 始祖属另一回事，统计栏不断言）。
+ * 数据真源仍是 tree-meta 的 founder 指针（`founder_handle` / `founder_gramps_id`，本处**只读不改**）。
+ */
+const founderNameByData = ref('');
+
+/** 统计栏文案：祖谱档按**数据口径**显示始祖；家族树 / 世本档沿用既有口径（逐字不变） */
 const founderLabel = computed(() => {
+  if (treeKind.value === 'clan') {
+    // 祖谱档：数据口径姓名取不到（founder 指针缺省 / 本树 people 无该节点）⇒ 回落支数，不臆断姓名
+    return founderNameByData.value
+      ? `始祖：${founderNameByData.value}`
+      : `${visibleForest.value.length} 支始祖`;
+  }
+  // 家族树 / 世本档：founder 截断后唯一根即数据 founder（同名同人）⇒ 与改造前逐字一致
   if (founderGrampsId.value && visibleForest.value.length === 1) {
     return `始祖：${visibleForest.value[0]?.name || ''}`;
   }
@@ -343,18 +505,27 @@ async function loadData() {
     ]);
     // tree-meta 仅用于 founder_gramps_id（不单独缓存）
     founderGrampsId.value = meta?.trees?.[props.treeId]?.founder_gramps_id || '';
+    // 统计栏「始祖」的**数据口径**姓名（tree-meta founder 指针 → 本树 people 现取；只在统计栏文案里用，
+    // 不参与任何展示数据的改写。祖谱档因此不再拿图上顶端当始祖 —— 见 founderLabel）
+    founderNameByData.value = founderGrampsId.value
+      ? people.data.find((p) => p.gramps_id === founderGrampsId.value)?.name || ''
+      : '';
     totalPeople.value = people.data.length;
     // 家族关系（用于「孤立占位」判定：仅无任何家族关系的外树登记才隐藏）
     familyList.value = families;
-    // 本树是否家族树（单一判定点）：口径 = 后端 compat-api lib/family-population.js treeKind()
+    // 本树是否家族树 / 祖谱（**单点判定**）：口径 = 后端 compat-api lib/family-population.js treeKind()
     // —— is_master===true || kind==='master' → 世本；kind==='clan' → 祖谱；其余含 kind 缺省 → 家族树。
-    // 只有家族树的树图不绘制「外树子女镜像」（该节点连同其子树整支不入图）；世本 / 祖谱照旧绘制
-    // （顶端链镜像 chain、始祖镜像 founder、祖谱登记镜像不动）。meta 取不到 → treeKindOf 返 family，
-    // 即按家族树处理（与后端 kind 缺省口径一致）。
-    const isFamilyTree = treeKindOf(meta?.trees?.[props.treeId]) === 'family';
+    // meta 取不到 → treeKindOf 返 family，即按家族树处理（与后端 kind 缺省口径一致）。
+    // 分面一：**只有家族树**的树图不绘制「外树子女镜像」（该节点连同其子树整支不入图）；
+    //   世本 / 祖谱照旧绘制（顶端链镜像 chain、始祖镜像 founder、祖谱登记镜像不动）。
+    // 分面二：**只有祖谱档**在图示上关闭 founder 截断（全树根构图），使上游世本镜像段 + 本宗自有
+    //   世代 + 下游支系登记镜像进同一张图并连成一条链（P-1）；世本 / 家族树保持 founder 截断。
+    const kind = treeKindOf(meta?.trees?.[props.treeId]);
+    treeKind.value = kind;
     forest.value = buildPedigreeForest(people.data, families, {
       founderGrampsId: founderGrampsId.value || undefined,
-      excludeChildMirrors: isFamilyTree,
+      excludeChildMirrors: kind === 'family',
+      treeKind: kind,
     });
     if (chart) {
       chart.dispose();
@@ -393,6 +564,7 @@ onUnmounted(() => {
     renderTimer = null;
   }
   unbindWheel();
+  unbindNativeContextMenuBlock();
   if (chart) {
     chart.dispose();
     chart = null;
@@ -432,6 +604,22 @@ const WEAK_FONT = 11;
 const WEAK_COLOR = '#9E8F80';
 /** 次级行 rich 样式（配偶行 / 第N世 / 外树镜像角标）：视觉上弱于姓名（14px / #3E2723） */
 const WEAK_RICH = { w: { fontSize: WEAK_FONT, color: WEAK_COLOR } };
+/**
+ * **卡面可见入口 chip** 的 rich 样式（祖谱图谱：下游支系登记镜像的「📂 打开〈树名〉」）：
+ * 弱化行内画成一个圆角小按钮（米底 + 浅棕边），触屏与桌面都能一眼看出「这里可点」。
+ * 卡面其余宿主不产生 chip 行 ⇒ 该样式块不被使用，观感零影响。
+ */
+const CHIP_RICH = {
+  fontSize: WEAK_FONT,
+  color: '#8B4513',
+  backgroundColor: '#FBF6EF',
+  borderColor: '#E0D5C8',
+  borderWidth: 1,
+  borderRadius: 8,
+  padding: [2, 6] as [number, number],
+};
+/** 卡面 label 的 rich 样式集合（`w` 次级行 + `chip` 可见入口；系列默认与 per-node 覆盖共用） */
+const CARD_RICH = { ...WEAK_RICH, chip: CHIP_RICH };
 
 /** 近似测量字符串渲染宽度（全角≈fontSize，半角≈0.62em，空格≈0.5em） */
 function estimateTextWidth(text: string, fontSize: number): number {
@@ -469,14 +657,15 @@ function genderFillColor(g: string | undefined): string {
  * 夫妇卡：节点有配偶（嫁入成员）时卡体加高，第二行起每行一个「娶 XX / 嫁 XX」（性别未知仍「配XX」），
  * 子女连线仍挂在整卡下方 —— 谱式“夫 + 配某氏”一格并列。
  * 次级行（配偶行/第N世/外树镜像角标）弱化 = 11px/#9E8F80，弱于姓名行（14px/#3E2723）。 */
-const CARD_LINE_STEP = 22; // 每增一行的卡高增量（单行 CARD_H=28）
+const CARD_LINE_STEP = 22; // 每增一行的卡高增量（单行 CARD_H=28）；**与 business/pedigree.ts 的 CARD_CHIP_LINE_STEP 同值**（chip 命中判据按它算）
 const CARD_GAP = 12; // 世代行距：卡高之外每层再留的间距（整树展开时按卡高铺开）
-/** 卡片行数（与 decorateTree 的行构成一致）：姓名 / 关键节点标签 / 第N世 / 每位配偶各一行 */
+/** 卡片行数（与 decorateTree 的行构成一致）：姓名 / 关键节点标签 / 第N世 / 每位配偶各一行 / 祖谱节点注记行 */
 function cardLines(node: TreePersonNode, artifact = false): number {
   let n = 1;
   if (!artifact && keyMarkerOf(node)) n++;
   if (!artifact && props.genMap?.[node.handle] !== undefined) n++;
   if (isMirrorNode(node) && !artifact) n++;
+  if (!artifact) n += annotationCardLines(node).length;
   n += (node.spouseNames || []).filter(Boolean).length;
   return n;
 }
@@ -493,6 +682,36 @@ function isMirrorNode(node: TreePersonNode): boolean {
 function mirrorTierOf(node: TreePersonNode): string | null {
   const t = mirrorTargetOf(node);
   return t ? mirrorLabelOf(t.linkType) : null;
+}
+
+/**
+ * 宿主传入的节点注记（祖谱图谱：三类节点视觉可辨 + 下游登记镜像的次级入口）。
+ * 缺省空对象 ⇒ 家族树 / 世本 / 总谱等宿主取不到任何注记，卡面与点击行为逐字不变。
+ */
+function annotationOf(node: TreePersonNode | undefined | null) {
+  if (!node?.handle) return undefined;
+  return props.nodeAnnotations?.[node.handle];
+}
+
+/**
+ * 宿主注记在卡面上的次级行（祖谱图谱）——**渲染期现算、与任何事件无关**：
+ * 角标（`badge`）→ **支系始祖姓名行**（`founderText`）→ 挂靠落点文案（`anchorText`）→
+ * **卡面可见入口 chip**（`chipLabel`）。
+ * 缺省（其它宿主 / 无注记节点 / 虚拟根与占位卡）⇒ 空数组 ⇒ 卡面与改造前**逐字一致**。
+ * 下游支系登记镜像的「打开支系家族树首页」入口因此**画在卡面上**（不依赖右键 / 长按，iOS 可达），
+ * 点击路由见 `chipTreeIdOfNode`（命中 chip **行**则打开该树，否则维持主点击 = 打开真身档案）。
+ * ⚠️ 本数组整体排在**配偶行之前** ⇒ chip **不是**末行；命中带按 `decorateTree` 烘入的
+ * **实际行下标**算（见 `cardChipHit`），不按「末行」估算。
+ */
+function annotationCardLines(node: TreePersonNode): { text: string; chip?: boolean }[] {
+  const note = annotationOf(node);
+  if (!note) return [];
+  const out: { text: string; chip?: boolean }[] = [];
+  if (note.badge) out.push({ text: note.badge });
+  if (note.founderText) out.push({ text: note.founderText });
+  if (note.anchorText) out.push({ text: note.anchorText });
+  if (note.openTreeId && note.chipLabel) out.push({ text: note.chipLabel, chip: true });
+  return out;
 }
 
 /**
@@ -563,10 +782,15 @@ function decorateTree(node: TreePersonNode, isVirtualRoot = false): TreePersonNo
   const border = artifact ? '#8B4513' : node.is_living === false ? '#000000' : 'transparent';
   const borderWidth = artifact ? 1.5 : node.is_living === false ? 2 : 0;
   const fill = artifact ? '#F7EFE3' : genderFillColor(node.gender);
+  /** 宿主注记（祖谱图谱）：`badge` / `founderText` / `anchorText` / 卡面可见入口 `chipLabel`（见 annotationCardLines） */
+  const note = artifact ? undefined : annotationOf(node);
   const lines: string[] = [];
-  const weak: boolean[] = [];
-  /** 加一行卡面文本；isWeak=true = 次级行（11px/#9E8F80 渲染，且卡宽按其字号计） */
-  const pushLine = (text: string, isWeak = false) => { lines.push(text); weak.push(isWeak); };
+  /** chip 在 `lines` 里的 0 基下标（-1 = 本卡无 chip）；渲染期烘进节点，供 `cardChipHit` 按实际行序算命中带 */
+  let chipLineIndex = -1;
+  /** 每行的卡面样式（与 lines 等长）：'' = 姓名行（14px/#3E2723）；'w' = 次级行（11px 弱化）；'chip' = 可见入口 */
+  const styles: string[] = [];
+  /** 加一行卡面文本；style = ''（姓名行）/ 'w'（次级行）/ 'chip'（卡面可见入口小按钮） */
+  const pushLine = (text: string, style = '') => { lines.push(text); styles.push(style); };
   pushLine(nameWithTitles(node.name, node.titles));
   // 关键节点标注（世本 KEY_NODES：人文始祖 / 五帝 / 元圣 / 得姓始祖 / 宗主）：
   // 姓名下一行加「★标签」角标，卡面文字改主题色（与「外树配偶」「第N世」同款行，不新造图标）
@@ -574,36 +798,58 @@ function decorateTree(node: TreePersonNode, isVirtualRoot = false): TreePersonNo
   if (km) pushLine(`★${km.label}`);
   // 总谱：卡片内显示世数（源流链 external_chain_gen，由宿主传入 genMap）；世数 0 = 原始节点
   const gen = props.genMap?.[node.handle];
-  if (gen !== undefined && !artifact) pushLine(gen === 0 ? '原始' : `第${gen}世`, true);
+  if (gen !== undefined && !artifact) pushLine(gen === 0 ? '原始' : `第${gen}世`, 'w');
   // 外树镜像节点按 external_link_type 分档加角标行（口径 A 第 6 条），与真人区分
-  if (isMirrorNode(node) && !artifact) pushLine(mirrorLabelOf(node.external_link_type), true);
+  if (isMirrorNode(node) && !artifact) pushLine(mirrorLabelOf(node.external_link_type), 'w');
+  // 宿主注记卡面行（祖谱图谱；**渲染期即画在卡面上** ⇒ 不靠右键/长按就能看见）：
+  //   角标「中华世本 · 只读」/「<支系树> · N 人 · 只读」—— 与无角标的「本宗自有世代」真实节点构成三类可辨；
+  //   挂靠落点文案「挂于 X（编号）之下」—— 原「③ 支系入口列表」的落点提示，不得只藏在右键菜单里；
+  //   可见入口 chip「📂 打开〈树名〉」—— 下游支系家族树首页入口（点它 = 打开该树，见 click 内路由）；
+  if (note) {
+    for (const l of annotationCardLines(node)) {
+      // 记录 chip 的**实际行下标**（注记行排在配偶行之前 ⇒ chip 不必是末行；命中带按此下标算）
+      if (l.chip) chipLineIndex = lines.length;
+      pushLine(l.text, l.chip ? 'chip' : 'w');
+    }
+  }
   // 配偶行文案按本节点性别分叉（2026-10 口径）：男「娶 某某」/ 女「嫁 某某」/ 性别未知仍「配某某」。
   // 一对夫妻在各自家族树图上互为「娶」「嫁」（如 季志全「娶 沈伟」↔ 沈伟「嫁 季志全」）。
   const spouseVerb = node.gender === 'M' ? '娶 ' : node.gender === 'F' ? '嫁 ' : '配';
-  for (const s of node.spouseNames || []) if (s) pushLine(`${spouseVerb}${s}`, true);
+  for (const s of node.spouseNames || []) if (s) pushLine(`${spouseVerb}${s}`, 'w');
   const rawW =
-    Math.max(...lines.map((l, i) => estimateTextWidth(l, weak[i] ? WEAK_FONT : CARD_FONT))) + CARD_PAD_X * 2;
-  // 带称号（姓+名+封号+谥号+号）的卡允许更宽，避免称号被截断
-  const maxW = node.titles ? CARD_MAX_W_TITLED : CARD_MAX_W;
+    Math.max(...lines.map((l, i) => estimateTextWidth(l, styles[i] === '' ? CARD_FONT : WEAK_FONT))) +
+    CARD_PAD_X * 2;
+  // 带称号（姓+名+封号+谥号+号）的卡允许更宽，避免称号被截断；带宿主注记角标（祖谱：来源树 · 人数）
+  // 的卡同理放宽，避免「季氏费县白露家族 · 59 人 · 只读」被截成省略号。
+  const maxW = node.titles || note?.badge ? CARD_MAX_W_TITLED : CARD_MAX_W;
   const w = Math.max(34, Math.min(maxW, rawW));
   const h = CARD_H + (cardLines(node, artifact) - 1) * CARD_LINE_STEP;
   const card: TreePersonNode = {
     ...node,
     itemStyle: { color: fill, borderColor: border, borderWidth },
     symbolSize: [w, h],
+    // 卡面行序烘入（`cardChipHit` 的命中带按**实际行序**算：chip 不是末行时旧「末行」阈值会错位）
+    _lineCount: lines.length,
+    ...(chipLineIndex >= 0 ? { _chipLineIndex: chipLineIndex } : {}),
     _cardText: lines
-      .map((l, i) => (weak[i] ? `{w|${cardText(l, w, WEAK_FONT)}}` : cardText(l, w)))
+      .map((l, i) =>
+        styles[i] === ''
+          ? cardText(l, w)
+          : styles[i] === 'chip'
+            ? `{chip|${cardText(l, w, WEAK_FONT)}}`
+            : `{w|${cardText(l, w, WEAK_FONT)}}`,
+      )
       .join('\n'),
   };
   // 关键节点：卡面文字用标注主题色（ECharts per-node label 覆盖；不命中则沿用系列默认深棕）
-  if (km?.color) card.label = { color: km.color, rich: WEAK_RICH };
+  if (km?.color) card.label = { color: km.color, rich: CARD_RICH };
   // 「我」/「建议绑定」标记（宿主传入的 focusHandle 节点）：卡面姓名下追加一行标记 + 卡面文字改高亮色。
   // 标记文案由 `focusLabel` 决定（缺省 ★我 = 批 B 既有行为逐字不变；邀请落地页传 ★建议绑定）。
   // 只写 _cardText（渲染文字），**不进 lines / cardLines**：卡宽、卡高、世代行距一律按未标记时的
   // 原值计算 ⇒ 图元尺寸（symbolSize）与树布局零影响（本仓红线）；占位/虚拟根同 keyMarkers 不标记。
   if (!artifact && props.focusHandle && node.handle === props.focusHandle) {
     card._cardText = `${card._cardText}\n${props.focusLabel}`;
-    card.label = { color: FOCUS_MARKER_COLOR, rich: WEAK_RICH };
+    card.label = { color: FOCUS_MARKER_COLOR, rich: CARD_RICH };
   }
   if (node.children) card.children = node.children.map((c) => decorateTree(c));
   return card;
@@ -675,14 +921,13 @@ function focusDataIndex(): number {
 }
 
 /**
- * 「我」节点当前的画布像素位置（供 treeRoam 求平移量）。口径 = 节点布局点（series 数据 layout）
- * 经 view 坐标系变换（`coordinateSystem.dataToPoint`，已含当前漫游/缩放）+ 正交布局下 _mainGroup
- * 的组偏移 `layoutInfo`（ECharts TreeView.render：`group.x = layoutInfo.x / group.y = layoutInfo.y`
- * —— 该偏移不在 coordinateSystem 内）。**不读图元自身位置**：首屏入场动画期间图元仍在移动，读数会偏。
- * 取不到（未传 handle / 节点不在本图）→ null。
+ * 数据下标 `idx` 的节点当前的画布像素位置（供 treeRoam 求平移量 / 卡面 chip 命中判据）。口径 = 节点布局点
+ * （series 数据 layout）经 view 坐标系变换（`coordinateSystem.dataToPoint`，已含当前漫游/缩放）+ 正交
+ * 布局下 _mainGroup 的组偏移 `layoutInfo`（ECharts TreeView.render：`group.x = layoutInfo.x /
+ * group.y = layoutInfo.y` —— 该偏移不在 coordinateSystem 内）。**不读图元自身位置**：首屏入场动画
+ * 期间图元仍在移动，读数会偏。`idx < 0` 或取不到（未传 handle / 节点不在本图）→ null。
  */
-function focusNodePixel(): { x: number; y: number } | null {
-  const idx = focusDataIndex();
+function nodePixelOfIndex(idx: number): { x: number; y: number } | null {
   if (idx < 0) return null;
   const model = (chart as any)?.getModel?.()?.getSeriesByIndex?.(0);
   const layout = model?.getData?.()?.getItemLayout?.(idx);
@@ -692,6 +937,11 @@ function focusNodePixel(): { x: number; y: number } | null {
   if (!p || !isFinite(p[0]) || !isFinite(p[1])) return null;
   const box = model?.layoutInfo || { x: 0, y: 0 };
   return { x: p[0] + (box.x || 0), y: p[1] + (box.y || 0) };
+}
+
+/** 「我」节点当前的画布像素位置（= `nodePixelOfIndex(focusDataIndex())`，口径同上） */
+function focusNodePixel(): { x: number; y: number } | null {
+  return nodePixelOfIndex(focusDataIndex());
 }
 
 /** 首屏居中是否已执行（**只做一次**：用户后续拖动/缩放不再被夺回；zoomReset 既有语义不变） */
@@ -722,6 +972,18 @@ function centerOnFocusOnce() {
 watch(
   () => props.keyMarkers,
   () => scheduleRender(),
+);
+
+// 宿主按数据现算 nodeAnnotations（祖谱：四类卡片角标 + 下游登记镜像的次级入口）同样可能迟到 ⇒
+// 变化时补绑右键拦截 + 补渲一次（角标走卡面次级行，卡宽/卡高/行距按新行数重算，仍在既有机制内）。
+// 缺省空对象（家族树 / 世本 / 总谱）⇒ 本 watch 触发一次与既有等价的渲染，行为逐字不变。
+watch(
+  () => props.nodeAnnotations,
+  () => {
+    const el = document.getElementById('tree-chart') as HTMLDivElement | null;
+    if (el) bindNativeContextMenuBlock(el);
+    scheduleRender();
+  },
 );
 
 // 宿主可能在本组件渲染之后才拿到锚点（fetchMyAnchor 异步）。
@@ -789,13 +1051,26 @@ function unbindWheel() {
 function renderChart() {
   const el = document.getElementById('tree-chart') as HTMLDivElement | null;
   if (!el) return;
+  // 祖谱图（宿主传节点注记）拦截浏览器右键菜单：右键改为弹节点次级入口菜单
+  bindNativeContextMenuBlock(el);
 
   if (!chart) {
     chart = echarts.init(el);
     bindWheel(el);
+    // 右键 / 长按 → 带次级入口的注记节点弹菜单（其它节点 / 其它宿主无菜单，行为不变）
+    chart.on('contextmenu', onChartContextMenu);
     chart.on('click', (params: any) => {
       const d = params?.data as TreePersonNode | undefined;
       if (!d) return;
+      // 祖谱图谱：命中下游支系登记镜像**卡面可见入口 chip**（📂 打开〈树名〉）⇒ 打开该支系家族树首页，
+      // 且**不再下沉**到主点击行为（等价 stopPropagation）。chip 渲染期即画在卡面上 ⇒ **不依赖右键 /
+      // 长按**即可点到（iOS Safari H5 可点；右键/长按菜单作为同入口的第二条路径保留）。
+      const chipTree = chipTreeIdOfNode(d, params);
+      if (chipTree) {
+        params?.event?.event?.stopPropagation?.();
+        openTreeHome(chipTree);
+        return;
+      }
       // 虚拟根（无 gramps_id）：多支始祖入口 —— 展开支始祖列表
       if (!d.gramps_id) {
         openRootsList();
@@ -934,7 +1209,7 @@ function renderChart() {
           rotate: 0,
           fontSize: CARD_FONT,
           color: '#3E2723',
-          rich: WEAK_RICH,
+          rich: CARD_RICH,
           formatter: labelFmt,
         },
         emphasis: {
@@ -1070,6 +1345,17 @@ function applyZoom(resetCenter = false) {
 .modal-name { font-size: 20px; font-weight: bold; color: #3E2723; display: block; text-align: center; }
 .modal-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
 .btn-close { text-align: center; color: #999; font-size: 14px; padding: 4px 0; }
+
+/* 祖谱图谱节点菜单（右键 / 长按支系登记镜像）：透明遮罩吃外部点击，菜单本体贴鼠标点定位 */
+.node-menu-mask { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 995; }
+.node-menu {
+  position: fixed; min-width: 200px; max-width: 260px;
+  background: #FFFDF7; border: 1px solid #E0D5C8; border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.18); padding: 10px 12px;
+}
+.node-menu-note { font-size: 11px; color: #A1887F; display: block; line-height: 1.5; margin-bottom: 8px; }
+.node-menu-item { font-size: 14px; color: #3E2723; display: block; padding: 8px 0; }
+.node-menu-cancel { font-size: 13px; color: #999; display: block; padding: 6px 0 2px; text-align: center; }
 
 /* 始祖列表 */
 .promote-sub { font-size: 12px; color: #666; line-height: 1.7; display: block; margin: 8px 0 14px; }

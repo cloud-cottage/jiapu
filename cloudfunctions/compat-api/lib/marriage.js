@@ -10,6 +10,9 @@
 import crypto from 'node:crypto';
 import { nextGrampsId, spouseSlots } from './tree-write.js';
 import { idAllocator } from './id-seq.js';
+// A-2（镜像不铸号 · 甲口径 2026-10-16）：婚姻镜像的编号一律取自**对方真身**
+// （共用取号器；真身无号 ⇒ 抛 400）—— 本模块镜像路径不得自铸号。
+import { mirrorGrampsIdOfTrueBody } from './founder-attach.js';
 
 /** 婚姻相关的结构层字段（与 tree-write.EXTERNAL_KEYS 合并使用） */
 export const MARRIAGE_KEYS = [
@@ -133,11 +136,17 @@ function dropFamilyIfChildless(tree, fam) {
   return true;
 }
 
-/** 构造对方树里的「镜像节点」（代表真身 srcPerson，属于 fromTreeId） */
-export function buildMirror(tree, srcPerson, fromTreeId, marriageId, noOfSrc, grampsId = '') {
+/**
+ * 构造对方树里的「镜像节点」（代表真身 srcPerson，属于 fromTreeId）
+ *
+ * ★ A-2（镜像不铸号 · 甲口径 2026-10-16）：`gramps_id` **一律逐字取真身 srcPerson 的编号**，
+ *   不再接受调用方传入的「预留号」（形参已删）、也不退回树内序号自铸（`tree` 参数只保留签名兼容）。
+ *   真身无号 ⇒ `mirrorGrampsIdOfTrueBody` 抛 400，拒绝创建（绝不兜底铸号）。
+ */
+export function buildMirror(tree, srcPerson, fromTreeId, marriageId, noOfSrc) {
   return {
     handle: genHandle(),
-    gramps_id: grampsId || nextGrampsId(tree, 'I'),
+    gramps_id: mirrorGrampsIdOfTrueBody(srcPerson, `婚姻镜像的真身「${srcPerson?.name || ''}」`),
     name: srcPerson.name || '',
     surname: srcPerson.surname || '',
     given: srcPerson.given || '',
@@ -181,11 +190,10 @@ export function applyMarriage({
   marriageDate = '',
   createdBy = '',
   marriageId = '',
-  // 铸号器（全站唯一编号；缺省退回树内序号兜底 → 纯函数单测不受影响）
-  allocPersonId = null,
+  // ★ A-2（甲口径 2026-10-16）：**无人号形参** —— 镜像人号一律取自对方真身（`mirrorGrampsIdOfTrueBody`），
+  //   本函数不再接受、也不消费任何「预留人号」。家族编号仍走 allocFamilyId（家族编号不属镜像人号口径）。
   allocFamilyId = null,
 }) {
-  const nextPid = typeof allocPersonId === 'function' ? allocPersonId : () => '';
   const nextFid = typeof allocFamilyId === 'function' ? allocFamilyId : () => '';
   const A = treeA.people?.[handleA];
   const B = treeB.people?.[handleB];
@@ -205,15 +213,15 @@ export function applyMarriage({
   const noA = nextMarriageNo(A);
   const noB = nextMarriageNo(B);
 
-  // A 侧：镜像（代表 B）+ 家族
-  const mirrorB = buildMirror(treeA, B, treeB.tree_id, mid, noB, nextPid());
+  // A 侧：镜像（代表 B，编号 = B 真身号）+ 家族
+  const mirrorB = buildMirror(treeA, B, treeB.tree_id, mid, noB);
   treeA.people[mirrorB.handle] = mirrorB;
   const slotsA = slotsFor(A.gender, B.gender);
   const famA = ensureFamily(treeA, A, slotsA.selfSlot, mirrorB.handle, nextFid());
   mirrorB.spouse_families = [famA.handle];
 
-  // B 侧：镜像（代表 A）+ 家族
-  const mirrorA = buildMirror(treeB, A, treeA.tree_id, mid, noA, nextPid());
+  // B 侧：镜像（代表 A，编号 = A 真身号）+ 家族
+  const mirrorA = buildMirror(treeB, A, treeA.tree_id, mid, noA);
   treeB.people[mirrorA.handle] = mirrorA;
   const slotsB = slotsFor(B.gender, A.gender);
   const famB = ensureFamily(treeB, B, slotsB.selfSlot, mirrorA.handle, nextFid());

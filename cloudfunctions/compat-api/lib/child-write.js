@@ -22,7 +22,9 @@
  */
 import crypto from 'node:crypto';
 import { getTree, getMeta, updateTrees, saveDetail, getDetail, deleteDetail, nextPersonId, nextFamilyId } from './store.js';
-import { treeKindOf, metaEntryOf, TREE_KIND, FOUNDER_LINK_TYPE } from './founder-attach.js';
+// A-2（镜像不铸号）：镜像记录的编号**一律取自真身** —— 本模块引用共用取号器
+// `mirrorGrampsIdOfTrueBody`（真身无号 ⇒ 抛 400），镜像子女路径不再自铸号。
+import { treeKindOf, metaEntryOf, TREE_KIND, FOUNDER_LINK_TYPE, mirrorGrampsIdOfTrueBody } from './founder-attach.js';
 import { nextGrampsId, inheritedSurname, parentSlot } from './tree-write.js';
 import { findMarriageSide } from './marriage.js';
 import { assertChildWriteAllowed, withMaternalSuccessionAttribute } from './family-write-guard.js';
@@ -235,6 +237,12 @@ export async function addChildNode({
   if (family && attach && (family.child_handles || []).includes(attach)) {
     throw new Error('该子节点已在家族记录中');
   }
+  // ★ A-2（镜像不铸号 · 甲口径 2026-10-16）：跨树镜像子女的 `gramps_id` 一律取**真身号**。
+  //   挂接模式的真身 = 本树待挂接节点（跨树挂接只换 handle/树归属，编号随迁）⇒ 编号在
+  //   **写事务之前**取得：真身无号 → 400，一个字节都不写（绝不兜底铸号）。
+  const attachedTrueId = attach
+    ? mirrorGrampsIdOfTrueBody(tree0.people[attach], `镜像子女的真身「${tree0.people[attach].name || ''}」`)
+    : '';
   const given = String(name || '').trim();
   const surnameClean = String(surname || '').trim();
   const childGender = normalizeGender(gender);
@@ -364,6 +372,8 @@ export async function addChildNode({
     const remote = trees[remoteTreeId];
     const remoteFam = remote.families[remoteFamilyHandle];
     let realKey = '';
+    // A-2：镜像子女的编号 = 真身的编号（挂接模式已在事务前算好 = attachedTrueId）。
+    let realTrueId = attachedTrueId;
     if (attach) {
       const moved = tree.people[attach];
       realKey = genHandle();
@@ -402,6 +412,7 @@ export async function addChildNode({
         isLiving: remoteLocked ? false : undefined,
       });
       remote.people[realKey] = real;
+      realTrueId = mirrorGrampsIdOfTrueBody(real, `镜像子女的真身「${real.name || ''}」`);
       created.name = real.name;
       await saveDetail({
         tree_id: remoteTreeId,
@@ -419,11 +430,13 @@ export async function addChildNode({
     remoteFam.child_handles = [...(remoteFam.child_handles || []), realKey];
 
     // 本树镜像子女：姓名/性别与真身一致，指向真身树节点
+    // ★ A-2（镜像不铸号 · 甲口径 2026-10-16）：`gramps_id` 逐字取**真身号**（不再 nextPersonId）；
+    //   真身号取不到 ⇒ 上面已抛 400（绝不兜底铸号 ⇒ 不出现「同一人两号」）。
     const realPerson = remote.people[realKey];
     const mirrorKey = genHandle();
     tree.people[mirrorKey] = {
       handle: mirrorKey,
-      gramps_id: await nextPersonId(),
+      gramps_id: realTrueId,
       name: realPerson.name,
       surname: realPerson.surname,
       given: realPerson.given,

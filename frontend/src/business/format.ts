@@ -102,3 +102,91 @@ export function treeDisplayLabel(
   return s ? `${s}氏 · ${t}` : t;
 }
 
+// ---- 编号展示：镜像标注（编号口径「甲」A-5 · **展示构造单点**；组件里不得再各写一套）----
+
+/**
+ * 取记录候选 / 节点的编号 + 镜像指针形状。`PersonSummary`（读响应派生）、树图节点、搜索命中均结构兼容。
+ * ⚠️ 真身自身也会带 `external_*`（配偶 / 认祖指针）⇒ 判据只能是 `external_mirror === 'true'`
+ * 且 `external_person_handle` 非空（与后端 `lib/id-resolve.js#isMirrorRecord` 同判据）。
+ */
+export interface PersonIdSourceFields {
+  gramps_id?: string | null;
+  handle?: string | null;
+  external_mirror?: string | null;
+  external_person_handle?: string | null;
+  external_tree?: string | null;
+  external_link_type?: string | null;
+}
+
+/** 是否镜像记录（口径 A-2；与后端 `isMirrorRecord` 同判据） */
+export function isMirrorRecord(f: PersonIdSourceFields | null | undefined): boolean {
+  return String(f?.external_mirror ?? '').trim() === 'true' && !!String(f?.external_person_handle ?? '').trim();
+}
+
+/**
+ * 择一档位（R-1 / R-3，与后端 `mirrorRankOf` 同口径；数值越小越优先）：
+ * `0` 真身（非镜像）/ `1` 登记镜像（`external_link_type === 'founder'`）/ `2` 其它镜像。
+ */
+export function mirrorPriorityOf(f: PersonIdSourceFields | null | undefined): number {
+  if (!isMirrorRecord(f)) return 0;
+  return String(f?.external_link_type ?? '').trim() === 'founder' ? 1 : 2;
+}
+
+/**
+ * 同一编号命中多条记录时的**稳定择一**（R-1 / R-3）：真身 > 登记镜像 > 其它镜像 → `handle` 字典序。
+ * **绝不**依赖数组顺序（`find` / `[0]` 取首条）—— 甲口径下同一编号可对应 1 条真身 + N 条镜像。
+ * 无候选 → `null`（调用方的报错文案口径不变）。
+ */
+export function pickPreferredPerson<T extends PersonIdSourceFields>(items: T[] | null | undefined): T | null {
+  const list = (items || []).filter((x) => !!x);
+  if (!list.length) return null;
+  return list
+    .slice()
+    .sort((a, b) => {
+      const r = mirrorPriorityOf(a) - mirrorPriorityOf(b);
+      if (r !== 0) return r;
+      const ha = String(a?.handle ?? '');
+      const hb = String(b?.handle ?? '');
+      return ha < hb ? -1 : ha > hb ? 1 : 0;
+    })[0];
+}
+
+/**
+ * 镜像标注字面（A-5 / `docs/PENDING_DEPLOY.md` §80-2 判据 3 逐字）：`镜像 · 源自 <来源树名>`。
+ * 来源树名取不到（tree-meta 缺该树 / 云端未重启）→ 退化为「镜像」，绝不拼出半截空树名。
+ */
+export function mirrorSourceLabel(sourceTreeTitle?: string | null): string {
+  const t = (sourceTreeTitle || '').trim();
+  return t ? `镜像 · 源自 ${t}` : '镜像';
+}
+
+/**
+ * 编号展示（含镜像标注 · R-4 显示单点）：
+ * - 真身：`000000100` —— 与 `personIdDisplay` **逐字一致**（宽度 9 位与去前缀口径不变）；
+ * - 镜像：`000000100（镜像 · 源自 中华世本）`（编号 = 镜像自身那一条的编号，即甲口径下的真身号）。
+ */
+export function personIdDisplayWithSource(
+  id?: string | null,
+  opts?: { is_mirror?: boolean; source_tree_title?: string | null } | null,
+): string {
+  const base = personIdDisplay(id);
+  if (!opts?.is_mirror) return base;
+  const note = mirrorSourceLabel(opts.source_tree_title);
+  return base ? `${base}（${note}）` : `（${note}）`;
+}
+
+/**
+ * 由记录形状直接构造编号展示串（列表行 / 确认行共用；镜像自动带来源标注）。
+ * `sourceTreeTitle` 由调用方用 `treeDisplayTitleOf(external_tree)`（cross-tree.ts 模块级缓存）解析后传入
+ * —— 本模块保持纯函数，不做 IO。
+ */
+export function personIdDisplayOf(
+  f: PersonIdSourceFields | null | undefined,
+  sourceTreeTitle?: string | null,
+): string {
+  return personIdDisplayWithSource(f?.gramps_id ?? '', {
+    is_mirror: isMirrorRecord(f),
+    source_tree_title: sourceTreeTitle,
+  });
+}
+

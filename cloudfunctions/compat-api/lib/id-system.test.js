@@ -379,6 +379,121 @@ test('迁移脚本：副本上跑通 → zhonghua 保留原号 / 其余树重编
   fs.rmSync(copy, { recursive: true, force: true });
 });
 
+// ================= P3′：口径「甲」A-5「取记录 = 真身优先 + 镜像标注」 =================
+
+/** 供 A-5 用例的树登记（`tree-meta` 的 `display_title` = 出参 `source_tree_title` 的取值处） */
+function registerMetaTrees(entries) {
+  const meta = JSON.parse(fs.readFileSync(META_FILE, 'utf8'));
+  for (const [id, title] of Object.entries(entries)) {
+    meta.trees[id] = { tree_id: id, kind: 'clan', display_title: title };
+  }
+  fs.writeFileSync(META_FILE, JSON.stringify(meta, null, 2) + '\n');
+}
+
+/** 镜像记录（判据：external_mirror==='true' 且 external_person_handle 非空） */
+const mirrorPerson = (handle, grampsId, externalTree, externalHandle, extra = {}) =>
+  person(handle, grampsId, {
+    external_mirror: 'true',
+    external_tree: externalTree,
+    external_person_handle: externalHandle,
+    external_link_type: 'founder',
+    ...extra,
+  });
+
+test('A-5 取记录：同一编号跨树命中真身 + 镜像 → 取真身（镜像树 id 字典序在前也不得抢先）', async () => {
+  registerMetaTrees({ ah_real: '甲氏本宗', ah_mir: '甲氏支谱' });
+  writeTree({ ...TREE_DEFAULTS, tree_id: 'ah_real', people: { r1: person('r1', '000000880', { name: '甲真身' }) } });
+  // `ah_mir` < `ah_real`（字典序）⇒ 旧实现「命中即锁定」会取到镜像；本用例押住真身优先
+  writeTree({ ...TREE_DEFAULTS, tree_id: 'ah_mir', people: { m1: mirrorPerson('m1', '000000880', 'ah_real', 'r1') } });
+
+  for (const q of ['000000880', '000880', 'I000880', '880']) {
+    const hit = await resolveNode(q);
+    assert.equal(hit.handle, 'r1', `query=${q}：命中多条 ⇒ 取真身`);
+    assert.equal(hit.tree_id, 'ah_real', `query=${q}`);
+    assert.equal(hit.matched, 'global', `query=${q}`);
+    assert.equal(hit.is_mirror, false, `query=${q}：真身不带镜像标注`);
+    assert.equal(hit.source_tree_title, '');
+  }
+});
+
+test('A-5 取记录：本树只有镜像、无真身 ⇒ 取本树那条 + 标注来源树（tree_id + display_title）', async () => {
+  const hit = await resolveNode('000000880', 'ah_mir');
+  assert.equal(hit.tree_id, 'ah_mir', '本树仅镜像 ⇒ 就地收口');
+  assert.equal(hit.handle, 'm1');
+  assert.equal(hit.is_mirror, true);
+  assert.equal(hit.source_tree_id, 'ah_real');
+  assert.equal(hit.source_tree_title, '甲氏本宗', '来源树名取 tree-meta display_title');
+
+  // 显式目标树（「指定 ID」/ 挂接 / 迁移的 targetTreeId 形态）同口径
+  const scoped = await resolveNode('000880', '', { targetTreeId: 'ah_mir' });
+  assert.deepEqual([scoped.tree_id, scoped.handle, scoped.is_mirror, scoped.source_tree_title], [
+    'ah_mir',
+    'm1',
+    true,
+    '甲氏本宗',
+  ]);
+});
+
+test('A-5 取记录：同一棵树内两条记录同号（立支双登记镜像）→ 登记镜像(founder) 优先，与键序无关', async () => {
+  registerMetaTrees({ ah_clan: '甲氏祖谱', ah_top: '甲氏上层' });
+  // 键序故意把「其它镜像（chain）」写在前面：旧实现 `find` 取首条会取到 mb
+  writeTree({
+    ...TREE_DEFAULTS,
+    tree_id: 'ah_clan',
+    people: {
+      mb: mirrorPerson('mb', '000000881', 'ah_top', 'top1', { external_link_type: 'chain' }),
+      ma: mirrorPerson('ma', '000000881', 'ah_top', 'top1'),
+    },
+  });
+  const hit = await resolveNode('000000881', 'ah_clan');
+  assert.equal(hit.handle, 'ma', '登记镜像（founder）优先于其它形态镜像');
+  assert.equal(hit.is_mirror, true);
+  assert.equal(hit.source_tree_title, '甲氏上层');
+});
+
+test('A-5 违规：同一编号命中两条真身 ⇒ 抛 400（跨树 / 同树两形态都判违规，绝不静默取首条）', async () => {
+  registerMetaTrees({ ah_dup_a: '甲氏甲谱', ah_dup_b: '甲氏乙谱' });
+  writeTree({ ...TREE_DEFAULTS, tree_id: 'ah_dup_a', people: { da: person('da', '000000882', { name: '甲一' }) } });
+  writeTree({ ...TREE_DEFAULTS, tree_id: 'ah_dup_b', people: { db: person('db', '000000882', { name: '甲二' }) } });
+  await assert.rejects(
+    () => resolveNode('000000882'),
+    (e) => e.status === 400 && /真身/.test(e.message) && /000000882/.test(e.message),
+  );
+
+  writeTree({
+    ...TREE_DEFAULTS,
+    tree_id: 'ah_dup_c',
+    people: { c1: person('c1', '000000883', { name: '甲三' }), c2: person('c2', '000000883', { name: '甲四' }) },
+  });
+  await assert.rejects(
+    () => resolveNode('000000883', 'ah_dup_c'),
+    (e) => e.status === 400 && /真身/.test(e.message),
+  );
+});
+
+test('A-5 输入宽容度回归：I0052 / 0052 / 000000052 / I000052 / 52 五形态同解析到同一节点', async () => {
+  registerMetaTrees({ ah_form: '甲氏形态谱' });
+  writeTree({
+    ...TREE_DEFAULTS,
+    tree_id: 'ah_form',
+    people: {
+      f1: person('f1', '000000052', { name: '甲52' }),
+      f2: mirrorPerson('f2', '000000052', 'ah_elsewhere', 'o1'),
+    },
+  });
+  const got = [];
+  for (const q of ['I0052', '0052', '000000052', 'I000052', '52']) {
+    const hit = await resolveNode(q, 'ah_form');
+    got.push(`${hit.tree_id}:${hit.handle}:${hit.matched}`);
+  }
+  assert.equal(new Set(got).size, 1, `五形态必须同解析：${JSON.stringify(got)}`);
+  assert.equal(got[0], 'ah_form:f1:global', '本树有真身 ⇒ 取真身（不是同号镜像 f2）');
+
+  // 树内旧号（无树上下文）同样不受新规则影响
+  const legacy = await resolveNode('I9000', 'idr_b');
+  assert.deepEqual([legacy.tree_id, legacy.handle, legacy.matched], ['idr_b', 'hB', 'legacy']);
+});
+
 // ---- 收尾：真源保护 ----
 
 test('本文件全程未写真实数据：config/tree-meta.json 与 migrate-output/ 的 md5 逐字节一致', () => {
