@@ -60,7 +60,7 @@
           placeholder="搜索本家族人物姓名、字号..."
           class="search-input"
           @update:value="(v: any) => searchQuery = v"
-          @confirm="doSearch"
+          @enter="doSearch"
         />
         <t-button size="small" theme="primary" @click="doSearch">搜索</t-button>
       </view>
@@ -161,7 +161,7 @@
             placeholder="搜索公开谱系中您的祖先/亲缘节点"
             class="search-input"
             @update:value="(v: any) => joinQuery = v"
-            @confirm="doSearchJoin"
+            @enter="doSearchJoin"
           />
           <t-button size="small" theme="primary" @click="doSearchJoin">搜索</t-button>
         </view>
@@ -243,7 +243,7 @@
             placeholder="搜索世本中的始祖节点姓名"
             class="search-input"
             @update:value="(v: any) => clanMasterQuery = v"
-            @confirm="doSearchClanMaster"
+            @enter="doSearchClanMaster"
           />
           <t-button size="small" theme="primary" @click="doSearchClanMaster">搜索</t-button>
         </view>

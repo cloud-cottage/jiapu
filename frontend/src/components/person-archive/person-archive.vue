@@ -587,7 +587,7 @@
               placeholder="输入姓名搜索"
               class="search-input"
               @update:value="(v: any) => marryQuery = v"
-              @confirm="doSearchMarry"
+              @enter="doSearchMarry"
             />
             <t-button size="small" theme="primary" @click="doSearchMarry">搜索</t-button>
           </view>
@@ -767,7 +767,7 @@
               placeholder="输入姓名搜索"
               class="search-input"
               @update:value="(v: any) => founderQuery = v"
-              @confirm="doSearchFounderTarget"
+              @enter="doSearchFounderTarget"
             />
             <t-button size="small" theme="primary" @click="doSearchFounderTarget">搜索</t-button>
           </view>

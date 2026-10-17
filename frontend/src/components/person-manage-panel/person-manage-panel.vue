@@ -209,7 +209,7 @@
             :placeholder="PERSON_REF_PLACEHOLDER"
             class="search-input"
             @update:value="onRefInputChange"
-            @confirm="doResolveRef"
+            @enter="doResolveRef"
           />
           <t-button size="small" theme="primary" :loading="addRefResolving" @click="doResolveRef">解析</t-button>
         </view>
@@ -241,7 +241,7 @@
             placeholder="输入姓名搜索"
             class="search-input"
             @update:value="(v: any) => addQuery = v"
-            @confirm="doSearchAddNode"
+            @enter="doSearchAddNode"
           />
           <t-button size="small" theme="primary" @click="doSearchAddNode">搜索</t-button>
         </view>
