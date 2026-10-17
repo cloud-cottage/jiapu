@@ -169,28 +169,44 @@ defineProps<{
   -webkit-user-drag: none;
 }
 
-/* 左层：线装书，贴左缘；右缘向内渐隐进纸面。模糊 6px（中部纸底 8px，留层次） */
+/* 左层：线装书，贴左缘；右缘向内渐隐进纸面。
+   · 模糊 3px（中部纸底 8px ⇒ 仍留层次，但两侧不再糊成一团）；
+   · 遮罩 = **二维**（水平 × 垂直，mask-composite: intersect）：水平朝内渐隐，
+     垂直上下两侧都渐隐 —— banner 上沿贴导航条、下沿接纸面延展层，故**下侧比上侧更深**
+     （顶部 12%、底部 18%），下边缘与纸面无缝融合、不再有一条硬界限。
+     ⚠ 该二维遮罩**全宽度通用**（旧版只在 ≤1100px 生效，>1100px 桌面只有水平一维 ⇒
+     下边缘裸切一刀）。
+     ⚠ mask-image 不支持「部分覆盖」：任何媒体查询里改水平那条，必须把垂直那条一起重写。 */
 .banner__left {
   left: 0;
   width: auto;
   max-width: 44%;
   object-fit: cover;
   object-position: left center;
-  filter: blur(6px);
-  -webkit-mask-image: linear-gradient(to right, #000 58%, transparent 100%);
-  mask-image: linear-gradient(to right, #000 58%, transparent 100%);
+  filter: blur(3px);
+  -webkit-mask-image: linear-gradient(to right, #000 58%, transparent 100%),
+    linear-gradient(to bottom, transparent 0%, #000 12%, #000 82%, transparent 100%);
+  mask-image: linear-gradient(to right, #000 58%, transparent 100%),
+    linear-gradient(to bottom, transparent 0%, #000 12%, #000 82%, transparent 100%);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
 }
 
-/* 右层：石榴树，贴右缘；左缘向内渐隐（树在插画右侧、左半留白，恰好朝中线淡出） */
+/* 右层：石榴树，贴右缘；左缘向内渐隐（树在插画右侧、左半留白，恰好朝中线淡出）。
+   垂直方向与左层同值（顶部 12% / 底部 18% 渐隐），两图下边缘在同一高度同步消隐。 */
 .banner__right {
   right: 0;
   width: auto;
   max-width: 44%;
   object-fit: cover;
   object-position: right center;
-  filter: blur(6px);
-  -webkit-mask-image: linear-gradient(to left, #000 58%, transparent 100%);
-  mask-image: linear-gradient(to left, #000 58%, transparent 100%);
+  filter: blur(3px);
+  -webkit-mask-image: linear-gradient(to left, #000 58%, transparent 100%),
+    linear-gradient(to bottom, transparent 0%, #000 12%, #000 82%, transparent 100%);
+  mask-image: linear-gradient(to left, #000 58%, transparent 100%),
+    linear-gradient(to bottom, transparent 0%, #000 12%, #000 82%, transparent 100%);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
 }
 
 /* 中段柔光：在文字背后铺一层极淡的暖纸径向光，把标题从叠图里“托”出来
@@ -248,34 +264,20 @@ defineProps<{
     0 0 14px rgba(255, 253, 248, 0.6);
 }
 
-/* ---- 窄屏 / 平板（≤1100px）：两侧层 cover 填满盒子 + **二维遮罩**（四边渐隐） ----
+/* ---- 窄屏 / 平板（≤1100px）：两侧层改为 cover 填满盒子 ----
    为什么 cover：`width:auto` 在窄视口会被 max-width 夹紧 ⇒ contain 会缩掉高度、上下露出纸面
-   ⇒ 一条硬水平接缝（已截图复现）。cover 让画幅永远填满 42%×90% 的盒子（无空白边、不降分辨率），
-   再把**四条边都渐隐**：mask-image 两个值（水平 × 垂直）用 mask-composite: intersect 相交 ⇒
-   四边同时淡出纸面，任意宽度都不会出现接缝。
-   >1100px 桌面走 base 的宽度自适应 + 单维水平遮罩（实测成品更好）。 */
+   ⇒ 一条硬水平接缝（已截图复现）。cover 让画幅永远填满 42%×90% 的盒子（无空白边、不降分辨率）。
+   遮罩（水平 × 垂直二维相交）已在 base 里全宽度通用，这里**不再重复声明**。 */
 @media (max-width: 1100px) {
   .banner__left,
   .banner__right {
     width: 42%;
     max-width: 42%;
     object-fit: cover;
-    -webkit-mask-image: linear-gradient(to right, #000 58%, transparent 100%),
-      linear-gradient(to bottom, transparent 0%, #000 22%, #000 78%, transparent 100%);
-    mask-image: linear-gradient(to right, #000 58%, transparent 100%),
-      linear-gradient(to bottom, transparent 0%, #000 22%, #000 78%, transparent 100%);
-    -webkit-mask-composite: source-in;
-    mask-composite: intersect;
   }
   .banner__left { object-position: left center; }
-  .banner__right {
-    object-position: right center;
-    /* 右层水平方向反向：从左缘淡出（树在插画右侧、左半留白） */
-    -webkit-mask-image: linear-gradient(to left, #000 58%, transparent 100%),
-      linear-gradient(to bottom, transparent 0%, #000 22%, #000 78%, transparent 100%);
-    mask-image: linear-gradient(to left, #000 58%, transparent 100%),
-      linear-gradient(to bottom, transparent 0%, #000 22%, #000 78%, transparent 100%);
-  }
+  /* 右层水平方向反向已在 base 声明，此处只调 object-position（树在插画右侧、左半留白） */
+  .banner__right { object-position: right center; }
 }
 
 /* 窄屏（≤520px）：文案几乎占满整宽，两侧叠图横向再让一档（42%）、渐隐提前，并加厚中段柔光，
@@ -286,15 +288,15 @@ defineProps<{
   .banner__right { width: 42%; max-width: 42%; }
   .banner__left {
     -webkit-mask-image: linear-gradient(to right, #000 42%, transparent 100%),
-      linear-gradient(to bottom, transparent 0%, #000 22%, #000 78%, transparent 100%);
+      linear-gradient(to bottom, transparent 0%, #000 12%, #000 82%, transparent 100%);
     mask-image: linear-gradient(to right, #000 42%, transparent 100%),
-      linear-gradient(to bottom, transparent 0%, #000 22%, #000 78%, transparent 100%);
+      linear-gradient(to bottom, transparent 0%, #000 12%, #000 82%, transparent 100%);
   }
   .banner__right {
     -webkit-mask-image: linear-gradient(to left, #000 42%, transparent 100%),
-      linear-gradient(to bottom, transparent 0%, #000 22%, #000 78%, transparent 100%);
+      linear-gradient(to bottom, transparent 0%, #000 12%, #000 82%, transparent 100%);
     mask-image: linear-gradient(to left, #000 42%, transparent 100%),
-      linear-gradient(to bottom, transparent 0%, #000 22%, #000 78%, transparent 100%);
+      linear-gradient(to bottom, transparent 0%, #000 12%, #000 82%, transparent 100%);
   }
   .banner::after {
     width: 94%;
@@ -311,7 +313,7 @@ defineProps<{
 }
 
 /* ---- 夜间模式（html[data-theme='dark']）：三层图统一压暗 ----
-   · 三层各自**保留原模糊值**（纸面 8px / 两侧 6px），只在 filter 链尾叠加 brightness ⇒ 模糊观感不变、
+   · 三层各自**保留原模糊值**（纸面 8px / 两侧 3px），只在 filter 链尾叠加 brightness ⇒ 模糊观感不变、
      只是变暗；saturate 略收，避免压暗后纸纹发花。
    · 纸面层同时换深暖底 #241D16（图片未加载时不露白），末端渐隐改到夜间页面底色 #211A14。
    · 中段柔光（.banner::after）在浅色下是「提亮托字」，夜间**反向**成一层暗纱 ⇒ 文字落在更暗的底上。
@@ -333,7 +335,7 @@ html[data-theme='dark'] .banner__paper-fade {
 }
 html[data-theme='dark'] .banner__left,
 html[data-theme='dark'] .banner__right {
-  filter: blur(6px) brightness(0.5) saturate(0.75);
+  filter: blur(3px) brightness(0.5) saturate(0.75);
 }
 html[data-theme='dark'] .banner::after {
   background: radial-gradient(closest-side, rgba(33, 26, 20, 0.78), rgba(33, 26, 20, 0) 100%);
