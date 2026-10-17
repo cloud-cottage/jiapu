@@ -113,15 +113,19 @@ function pick(value: string) {
   align-items: center;
   flex-wrap: nowrap;
   min-height: 36px;
+  /* 与搜索框同排：胶囊固定宽度、不参与分配输入框剩余宽度（否则输入框会随省名忽宽忽窄） */
+  flex: 0 0 auto;
 }
 
-/* 胶囊：未选中＝暖米底 + 暖棕描边；选中＝实心棕 + 白字（与排序 pill 同族） */
+/* 胶囊：未选中＝暖米底 + 暖棕描边；选中＝实心棕 + 白字（与排序 pill 同族）
+   定宽 78px（含 padding/border，border-box）：省名再长也不会撑开搜索行 */
 .region-pill {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  width: 78px;
   height: 36px;
-  padding: 0 14px;
+  padding: 0 6px;
   background: #FFFDF8;
   border: 1px solid #E0D5C8;
   border-radius: 999px;
@@ -132,13 +136,18 @@ function pick(value: string) {
   background: #8B4513;
   border-color: #8B4513;
 }
+/* 省名占剩余宽度并单行省略（「黑龙江 ▾」等超长不换行、不撑宽） */
 .region-pill-text {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 13px;
   color: #8B4513;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .region-pill-active .region-pill-text { color: #fff; }
-.region-pill-caret { font-size: 11px; line-height: 1; color: #8B4513; }
+.region-pill-caret { flex: 0 0 auto; font-size: 11px; line-height: 1; color: #8B4513; }
 .region-pill-active .region-pill-caret { color: #fff; }
 
 .region-mask {
@@ -148,13 +157,17 @@ function pick(value: string) {
   background: transparent;
 }
 
-/* 下拉：贴在胶囊下方（绝对定位 → 不改变页面高度、不产生横向溢出） */
+/* 下拉：贴在胶囊下方（绝对定位 → 不改变页面高度、不产生横向溢出）
+   锚点 = 胶囊本体的**右缘**（`.region-bar` 现只包裹胶囊、宽度即 78px）：右对齐可保证
+   任何人读宽下都不越出视口右界，也不会横向压住搜索按钮（弹层整体落在本行下方） */
 .region-menu {
   position: absolute;
   top: 40px;
-  left: 0;
+  right: 0;
+  left: auto;
   z-index: 945;
   width: 240px;
+  max-width: calc(100vw - 32px);
   max-height: 56vh;
   overflow-y: auto;
   background: #FFFDF8;

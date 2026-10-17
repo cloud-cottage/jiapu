@@ -9,6 +9,7 @@
     <!-- 视图1：普通家族树列表（不含 zhonghua） -->
     <view v-if="!showMaster" class="hall-list">
       <!-- 全站搜索：人物（姓名 / 编号）+ 家族名 / 堂号；回车或点输入框内嵌「搜索」按钮触发 -->
+      <!-- 同排：输入框（flex:1）→ 内嵌「搜索」按钮 → 地区胶囊（定宽 78px，见 region-filter.vue） -->
       <view class="person-search">
         <t-input
           :value="personQuery"
@@ -24,6 +25,16 @@
             </view>
           </template>
         </t-input>
+
+        <!-- 按地区筛选：与搜索框同排的胶囊（省级下拉；家谱 / 祖谱两档共用同一筛选状态） -->
+        <RegionFilter
+          v-model="regionPrefix"
+          :options="regionOptions"
+          :unregistered-count="regionUnregisteredCount"
+          :loading="regionLoading"
+          :error="regionError"
+          @open="openRegionFilter"
+        />
       </view>
 
       <view v-if="personSearched" class="person-search-panel">
@@ -63,16 +74,6 @@
         <!-- 两段皆空：合并成一行（不再分「未找到匹配人物」两处） -->
         <view v-if="searchAllEmpty" class="ps-tip">{{ UI_TEXT.searchEmpty }}</view>
       </view>
-
-      <!-- 按地区筛选：单行胶囊 + 省级下拉（家谱 / 祖谱两档共用同一筛选状态） -->
-      <RegionFilter
-        v-model="regionPrefix"
-        :options="regionOptions"
-        :unregistered-count="regionUnregisteredCount"
-        :loading="regionLoading"
-        :error="regionError"
-        @open="ensureGeoIndex"
-      />
 
       <!-- 一行两段：左＝排序分段控件（综合 / 人数 / 活跃度，仅「家谱」tab 有）；
            右＝列表切换（家谱 | 祖谱）。只用已加载的等级数据，不新增请求 -->
@@ -257,7 +258,7 @@ import RegionFilter from '@/components/region-filter/region-filter.vue';
  */
 const UI_TEXT = {
   /** 搜索框占位（原「搜索人物（姓名 / 编号）」） */
-  searchPlaceholder: '搜索人物 / 家族 / 堂号',
+  searchPlaceholder: '人物 / 家族 / 堂号',
   /** 搜索按钮（**必须是两个字**，不是「搜」/ 不是图标） */
   searchButton: '搜索',
   /** 结果分区标题前缀（渲染成「家族 · N」/「人物 · M」） */
@@ -466,21 +467,44 @@ const regionUnregisteredCount = computed(() =>
 );
 
 /**
- * 取树索引（首次打开下拉时触发；并发共享 in-flight，成功后由 `fetchGeoTreeIndex()` 的
- * **会话缓存**兜住 ⇒ 之后每次切换筛选都是纯内存过滤，零新增请求）。
+ * 取树索引（失败不阻断：列表照常渲染，错误只在下拉里提示）。
+ * `silent` = 首屏空闲预取：失败**不写 regionError**（不打扰用户），留着打开下拉时的重试路径。
  */
-async function ensureGeoIndex() {
+async function ensureGeoIndex(silent = false) {
   if (regionTreeIndex.value || regionLoading.value) return;
   regionLoading.value = true;
-  regionError.value = '';
+  if (!silent) regionError.value = '';
   try {
     regionTreeIndex.value = await fetchGeoTreeIndex();
   } catch (e: any) {
-    // 不静默吞：失败文案显示在下拉里（不造兜底假数据）
-    regionError.value = e?.message || '地区数据加载失败';
+    // 不静默吞（非预取场景）：失败文案显示在下拉里（不造兜底假数据）
+    if (!silent) regionError.value = e?.message || '地区数据加载失败';
   } finally {
     regionLoading.value = false;
   }
+}
+
+/** 下拉打开：数据已在（预取命中）⇒ 立即渲染、零请求；不在 ⇒ 现取（并给出失败提示） */
+function openRegionFilter() {
+  if (regionTreeIndex.value) return;
+  void ensureGeoIndex();
+}
+
+/**
+ * 首屏空闲时**静默预取**一次地区索引（打开下拉即渲染，不再等网络）。
+ * 调度：优先 `requestIdleCallback`（H5），不支持（小程序 / 旧端）则 `setTimeout 0`；
+ * 纯运行时探测，**不加条件编译**（两端同一份码）。预取失败不弹错、不阻断列表。
+ */
+let geoPrefetchScheduled = false;
+function scheduleGeoIndexPrefetch() {
+  if (geoPrefetchScheduled || regionTreeIndex.value) return;
+  geoPrefetchScheduled = true;
+  const run = () => {
+    void ensureGeoIndex(true);
+  };
+  const idle = (globalThis as any).requestIdleCallback;
+  if (typeof idle === 'function') idle(run, { timeout: 1500 });
+  else setTimeout(run, 0);
 }
 
 /** 某树在当前所选省下的命中（未选地区 / 选「未登记」→ null） */
@@ -561,8 +585,9 @@ onMounted(async () => {
   } catch (e) {
     console.error('加载元数据失败:', e);
   }
-  // 地区筛选索引：非阻塞预取（成功后走会话缓存 ⇒ 切换筛选零请求；失败只在下拉里提示，不影响列表）
-  void ensureGeoIndex();
+  // 地区筛选索引：首屏渲染完成后**空闲静默预取**（打开下拉即渲染、零等待；失败不弹错、不阻断列表；
+  // 打开下拉仍有重试路径 ⇒ 预取不是唯一入口）
+  scheduleGeoIndexPrefetch();
 });
 
 // ---- 新建家族树（仅总编辑） ----
@@ -846,9 +871,10 @@ function goToPage(path: string) {
 /* ---- 家族馆卡片列表 ---- */
 .hall-list { display: flex; flex-direction: column; gap: 12px; }
 
-/* ---- 全站搜索（人物 / 家族 / 堂号；输入框**内嵌**暖棕「搜索」按钮，不单独占一列） ---- */
-.person-search { display: flex; align-items: center; }
-.person-search-input { flex: 1; min-width: 0; }
+/* ---- 全站搜索（人物 / 家族 / 堂号；输入框**内嵌**暖棕「搜索」按钮，地区胶囊同排） ---- */
+/* 同排硬约束：输入框 flex:1（min-width:0 才敢收缩）→ 内嵌按钮 → 定宽胶囊（flex:0 0 auto，见 region-filter.vue） */
+.person-search { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.person-search-input { flex: 1 1 auto; min-width: 0; }
 /* 输入框本体：暖米底 + 暖棕圆角描边（组件自带的下边线隐藏，改整圈描边） */
 .person-search :deep(.t-input) {
   background: #FFFDF8;
