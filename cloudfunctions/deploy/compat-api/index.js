@@ -37543,12 +37543,18 @@ function accessToPayload(access, totalGenerations) {
 // cloudfunctions/compat-api/index.js
 init_geo();
 
-// cloudfunctions/compat-api/lib/geo-hot.js
+// cloudfunctions/compat-api/lib/geo-stats.js
 init_geo();
 init_store();
-var HOT_TTL_MS = 24 * 60 * 60 * 1e3;
-var HOT_VERSION = 1;
-var EMPTY = Object.freeze({ v: HOT_VERSION, generated_at: null, counts: Object.freeze({}), direct: Object.freeze({}) });
+var GEO_STATS_TTL_MS = 24 * 60 * 60 * 1e3;
+var GEO_STATS_VERSION = 1;
+var EMPTY_STATS = Object.freeze({
+  v: GEO_STATS_VERSION,
+  generated_at: null,
+  counts: Object.freeze({}),
+  direct: Object.freeze({}),
+  trees: Object.freeze({})
+});
 function prefixCodes(code) {
   const out = [];
   for (const c of [code, `${code.slice(0, 2)}0000`, `${code.slice(0, 4)}00`]) {
@@ -37569,79 +37575,6 @@ function toCountsObject(map2) {
   for (const [code, n] of rows) out[code] = n;
   return out;
 }
-function createGeoHotReader({ listTreeIds: listIds, getTree: readTree, getMeta: readMeta, now = Date.now } = {}) {
-  let cached = null;
-  let cachedAt = 0;
-  let inflight = null;
-  async function scan() {
-    const counts = /* @__PURE__ */ new Map();
-    const direct = /* @__PURE__ */ new Map();
-    const failed = [];
-    const ids = await listIds();
-    for (const id of ids) {
-      let tree;
-      try {
-        tree = await readTree(id);
-      } catch {
-        failed.push(id);
-        continue;
-      }
-      if (!tree) continue;
-      const people = tree.people || {};
-      for (const handle of Object.keys(people)) {
-        const person = people[handle];
-        if (!person) continue;
-        countTicket(counts, direct, person.birth_place?.origin_code);
-        const residences = person.residence_places;
-        if (!Array.isArray(residences)) continue;
-        for (const item of residences) countTicket(counts, direct, item?.origin_code);
-      }
-    }
-    try {
-      const meta = await readMeta();
-      for (const entry of Object.values(meta?.trees || {})) if (entry) countTicket(counts, direct, entry.origin_code);
-    } catch {
-    }
-    return { counts: toCountsObject(counts), direct: toCountsObject(direct), failed };
-  }
-  return {
-    /** `GET /geo/hot` 取值入口：TTL 内直接返回缓存，过期才重扫（并发单飞） */
-    async getGeoHot() {
-      if (cached && now() - cachedAt < HOT_TTL_MS) return cached;
-      if (inflight) return inflight;
-      inflight = (async () => {
-        try {
-          const r = await scan();
-          cached = {
-            v: HOT_VERSION,
-            generated_at: new Date(now()).toISOString(),
-            counts: r.counts,
-            direct: r.direct,
-            ...r.failed.length ? { failed: r.failed } : {}
-          };
-          cachedAt = now();
-          return cached;
-        } catch {
-          return cached || EMPTY;
-        } finally {
-          inflight = null;
-        }
-      })();
-      return inflight;
-    }
-  };
-}
-var defaultReader = createGeoHotReader({ listTreeIds, getTree, getMeta });
-function getGeoHot() {
-  return defaultReader.getGeoHot();
-}
-
-// cloudfunctions/compat-api/lib/geo-tree-index.js
-init_geo();
-init_store();
-var TREE_INDEX_TTL_MS = 24 * 60 * 60 * 1e3;
-var TREE_INDEX_VERSION = 1;
-var EMPTY2 = Object.freeze({ v: TREE_INDEX_VERSION, generated_at: null, trees: Object.freeze({}) });
 function normCode(raw) {
   return isKnownOriginCode(raw) ? String(raw).trim() : null;
 }
@@ -37651,23 +37584,7 @@ function metaEntryOf2(metaTrees, id) {
   for (const entry of Object.values(metaTrees || {})) if (entry && entry.tree_id === id) return entry;
   return null;
 }
-function residenceCodesOf(tree) {
-  const set = /* @__PURE__ */ new Set();
-  const people = tree?.people || {};
-  for (const handle of Object.keys(people)) {
-    const person = people[handle];
-    if (!person) continue;
-    const residences = person.residence_places;
-    if (!Array.isArray(residences)) continue;
-    for (const item of residences) {
-      if (!item || typeof item !== "object") continue;
-      const code = normCode(item.origin_code);
-      if (code) set.add(code);
-    }
-  }
-  return [...set].sort();
-}
-function createGeoTreeIndexReader({ listTreeIds: listIds, getTree: readTree, getMeta: readMeta, now = Date.now } = {}) {
+function createGeoStatsReader({ listTreeIds: listIds, getTree: readTree, getMeta: readMeta, now = Date.now } = {}) {
   let cached = null;
   let cachedAt = 0;
   let inflight = null;
@@ -37679,6 +37596,8 @@ function createGeoTreeIndexReader({ listTreeIds: listIds, getTree: readTree, get
     } catch {
       metaTrees = null;
     }
+    const counts = /* @__PURE__ */ new Map();
+    const direct = /* @__PURE__ */ new Map();
     const trees = {};
     const failed = [];
     const uniqueIds = [...new Set(ids.map((id) => String(id)))].sort();
@@ -37691,33 +37610,53 @@ function createGeoTreeIndexReader({ listTreeIds: listIds, getTree: readTree, get
         continue;
       }
       if (!tree) continue;
+      const people = tree.people || {};
+      const residenceCodes = /* @__PURE__ */ new Set();
+      for (const handle of Object.keys(people)) {
+        const person = people[handle];
+        if (!person) continue;
+        countTicket(counts, direct, person.birth_place?.origin_code);
+        const residences = person.residence_places;
+        if (!Array.isArray(residences)) continue;
+        for (const item of residences) {
+          countTicket(counts, direct, item?.origin_code);
+          if (!item || typeof item !== "object") continue;
+          const code = normCode(item.origin_code);
+          if (code) residenceCodes.add(code);
+        }
+      }
       const entry = metaTrees ? metaEntryOf2(metaTrees, id) : null;
       const originCode = entry ? normCode(entry.origin_code) : null;
       trees[id] = {
         origin_codes: originCode ? [originCode] : [],
-        residence_codes: residenceCodesOf(tree)
+        residence_codes: [...residenceCodes].sort()
       };
     }
-    return { trees, failed };
+    if (metaTrees) {
+      for (const entry of Object.values(metaTrees)) if (entry) countTicket(counts, direct, entry.origin_code);
+    }
+    return { counts: toCountsObject(counts), direct: toCountsObject(direct), trees, failed };
   }
   return {
-    /** `GET /geo/tree-index` 取值入口：TTL 内直接返回缓存，过期才重扫（并发单飞） */
-    async getTreeIndex() {
-      if (cached && now() - cachedAt < TREE_INDEX_TTL_MS) return cached;
+    /** 取值入口：TTL 内直接返回缓存快照，过期才重扫（并发单飞） */
+    async getStats() {
+      if (cached && now() - cachedAt < GEO_STATS_TTL_MS) return cached;
       if (inflight) return inflight;
       inflight = (async () => {
         try {
           const r = await scan();
           cached = {
-            v: TREE_INDEX_VERSION,
+            v: GEO_STATS_VERSION,
             generated_at: new Date(now()).toISOString(),
+            counts: r.counts,
+            direct: r.direct,
             trees: r.trees,
             ...r.failed.length ? { failed: r.failed } : {}
           };
           cachedAt = now();
           return cached;
         } catch {
-          return cached || EMPTY2;
+          return cached || EMPTY_STATS;
         } finally {
           inflight = null;
         }
@@ -37726,7 +37665,55 @@ function createGeoTreeIndexReader({ listTreeIds: listIds, getTree: readTree, get
     }
   };
 }
-var defaultReader2 = createGeoTreeIndexReader({ listTreeIds, getTree, getMeta });
+function createStatsView(getStats, project) {
+  let lastSnapshot = null;
+  let lastView = null;
+  return async function view() {
+    const snapshot = await getStats();
+    if (snapshot !== lastSnapshot) {
+      lastSnapshot = snapshot;
+      lastView = project(snapshot);
+    }
+    return lastView;
+  };
+}
+function projectGeoHot(snapshot) {
+  return {
+    v: GEO_STATS_VERSION,
+    generated_at: snapshot.generated_at,
+    counts: snapshot.counts,
+    direct: snapshot.direct,
+    ...snapshot.failed ? { failed: snapshot.failed } : {}
+  };
+}
+function projectGeoTreeIndex(snapshot) {
+  return {
+    v: GEO_STATS_VERSION,
+    generated_at: snapshot.generated_at,
+    trees: snapshot.trees,
+    ...snapshot.failed ? { failed: snapshot.failed } : {}
+  };
+}
+var defaultGeoStats = createGeoStatsReader({ listTreeIds, getTree, getMeta });
+
+// cloudfunctions/compat-api/lib/geo-hot.js
+function createGeoHotReader(deps = {}) {
+  const stats = deps.statsReader || createGeoStatsReader(deps);
+  const view = createStatsView(() => stats.getStats(), projectGeoHot);
+  return { getGeoHot: view };
+}
+var defaultReader = createGeoHotReader({ statsReader: defaultGeoStats });
+function getGeoHot() {
+  return defaultReader.getGeoHot();
+}
+
+// cloudfunctions/compat-api/lib/geo-tree-index.js
+function createGeoTreeIndexReader(deps = {}) {
+  const stats = deps.statsReader || createGeoStatsReader(deps);
+  const view = createStatsView(() => stats.getStats(), projectGeoTreeIndex);
+  return { getTreeIndex: view };
+}
+var defaultReader2 = createGeoTreeIndexReader({ statsReader: defaultGeoStats });
 function getTreeIndex() {
   return defaultReader2.getTreeIndex();
 }
