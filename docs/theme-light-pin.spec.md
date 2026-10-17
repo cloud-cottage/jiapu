@@ -103,6 +103,7 @@
 - **本批未缩写、未缩字号**（改字面会与 §17-1 的 L4 逐字判据冲突，须 Kevin 裁）。
 - **候选（未裁 · 本册不预填选择）**：缩字面 / 降字号 / 允许截断。
 - **判据（可判负）**：320 档 `input.scrollWidth <= input.clientWidth` **当前不成立** ⇒ 登记为**已知偏差，不构成 L4 判负**；**但**若后续有人宣称「320 下 placeholder 完整可见」⇒ **必须**给出 320 档子判据与实测，否则判负。375 档必须**不截断**（`scrollWidth <= clientWidth` 为真）。
+- **真源归属（硬）**：本项属**搜索行口径面** ⇒ **明细真源 = `docs/home-sort-search.spec.md` §17-5 ②**；**本节只摘要**（数字 / 判据以该处为准，**两处不得各写一套预算**）。
 
 ### ③ theme.css 里 **6 条只在 dark 块出现、light 块无对应值**的 token（锁定后仍取 dark 值）
 
@@ -137,7 +138,8 @@
 
 ## 7. 边界与登记
 
-- **本册性质**：**纯文档**。落笔时**未改** `frontend/src/styles/td-light-pin.css` / `main.ts` / 任何代码 / 真源；**未跑**构建 / 测试 / 部署；**未** `git add` / `commit` / `push`。
+- **本册性质**：**纯文档**。落笔时**未改** `frontend/src/styles/td-light-pin.css` / `main.ts` / 任何代码 / 真源；**未跑**构建 / 测试 / 部署；**本单作者未执行** `git add` / `commit` / `push`。
+- **版本状态（如实登记 · 重要）**：落笔期间**并发进程推动了 HEAD** ⇒ 本册已被 **`6a055d4`** 收录（同批 `docs/home-sort-search.spec.md` §17）；**本单作者未发起该提交、未 `push`**。复核请以 `git log -1 -- docs/theme-light-pin.spec.md` 为准。
 - **同批兄弟节**：`docs/home-sort-search.spec.md` **§17**（搜索行同排 · 地区索引空闲预取 · placeholder 文案）—— 其中 **§17-3** 只**指向**本册。
 - **与既有册的关系**：本册**不**改 `docs/home-sort-search.spec.md` §15（传输预算 / 页脚）与 §16（搜索行 / 地区筛选）任何旧行；不引 `docs/economy.spec.md` 任何口径。
 - **索引未加**：`AGENTS.md` 的文档索引区**未追加本册行**（本单范围为「只回写规范册」，索引登记留待下一单；**不构成口径冲突**）。
