@@ -126,7 +126,9 @@
     <ShibenTimeline v-else />
 
     <view class="footer">
-      <text class="link" @click="goToPage('/pages/about/about')">关于本站 · 免责声明</text>
+      <text class="footer-copy">© 家谱 100</text>
+      <text class="footer-dot"> · </text>
+      <text class="footer-link" @click="goToPage('/pages/about/about')">关于本站 · 免责声明</text>
     </view>
 
     <!-- 浮动切换按钮（右侧，固定在 tabbar 上方） -->
@@ -193,12 +195,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, defineAsyncComponent } from 'vue';
 import { fetchTreeMetaRemote, buildTreeUrl, fetchTreeRank, openTreeHome, clearMetaCache, createTree, feeText, isAssetInsufficientError, showAssetInsufficientGuide, searchPeopleGlobal, personIdDisplay } from '@/business';
 import { isAuthenticated, authState, getAuthToken } from '@/business/auth';
 import type { DigitalHallCard, TreeMeta } from '@/business/types';
 import type { TreeRankInfo, GlobalPersonHit } from '@/business/api';
-import ShibenTimeline from '@/components/shiben-timeline/shiben-timeline.vue';
+/**
+ * 视图 2（中华世本）**按需加载**：首屏只渲染家谱列表，这条链
+ * （shiben-timeline → tree-pedigree「全量 echarts」+ person-detail-modal → person-archive）
+ * 只在用户点右下浮动钮切到该视图时才拉取。
+ * 实测：静态 import 时首屏要多吃 ~410 KB（tree-pedigree 单块 374 KB gzip）。
+ * 切换行为不变：`<ShibenTimeline v-else />` 照旧，异步加载期间渲染空位（无报错）。
+ */
+const ShibenTimeline = defineAsyncComponent(
+  () => import('@/components/shiben-timeline/shiben-timeline.vue'),
+);
 import GeoCascader from '@/components/geo-cascader/geo-cascader.vue';
 
 /**
@@ -749,12 +760,25 @@ function goToPage(path: string) {
   font-size: 13px; color: #A1887F; line-height: 1.6;
 }
 
-.footer { text-align: center; margin-top: 26px; }
-/* 页脚链接：小圆角胶囊，扩大可点区（原为 20px 高的裸文字） */
-.link {
-  display: inline-block; padding: 9px 18px;
-  font-size: 13px; color: #8B4513;
-  background: #FFFDF8; border: 1px solid #E0D5C8; border-radius: 999px;
+/* 页脚降权（Kevin 拍定 A 版）：一行 11px 极淡文字并与版权合并，
+   去掉底色/描边/大内距（原为 152×38 带描边底色的胶囊）。 */
+.footer {
+  display: flex; align-items: center; justify-content: center;
+  margin-top: 26px;
+  font-size: 11px; line-height: 14px;
+  color: #B5A594;
+}
+.footer-copy { font-size: 11px; line-height: 14px; color: #B5A594; padding: 9px 0; }
+.footer-dot { font-size: 11px; line-height: 14px; color: #B5A594; padding: 9px 0; margin: 0 4px; }
+/* 仍可点、仍跳 /pages/about/about；仅降视觉权重（1px 下边框当链接提示）。
+   可点区靠 padding 撑到 33px（14 行高 + 9×2 + 1px 下边框），不低于 32px。 */
+.footer-link {
+  display: inline-block;
+  font-size: 11px; line-height: 14px;
+  color: #A1887F;
+  padding: 9px 2px;
+  border: none; border-bottom: 1px solid #A1887F;
+  background: transparent;
 }
 
 /* 浮动切换按钮（右侧，固定在 tabbar 上方） */

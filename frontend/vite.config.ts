@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from "vite";
 import uni from "@dcloudio/vite-plugin-uni";
 import fs from "fs";
 import path from "path";
+import tdIconKeep from "./td-icon-keep.json";
 
 /**
  * 修复 @tdesign/uniapp 组件样式在 dev 下失效（白底黑字）的问题。
@@ -54,27 +55,11 @@ function restoreVueSrcScopeId(): Plugin {
  *    实际会渲染的图标只有十来个（组件内部固定值，见白名单）。此处按白名单**逐条**过滤，
  *    `@font-face` 与 `.t-icon` / `.t-icon-base` / `.t-icon--image` / `.t-icon__image` 基础规则原样保留。
  */
-const TD_ICON_KEEP = [
-  // —— 由 @tdesign/uniapp 组件源码实测得出（本项目用到 t-button / t-input / t-cell / t-cell-group /
-  //    t-tag / t-radio / t-radio-group / t-loading / t-dropdown-menu / t-dropdown-item）——
-  "close", // popup 关闭键 / tag closable 默认 / image 失败态默认
-  "close-circle-filled", // input clearable 默认（calcIcon(v,'close-circle-filled')）
-  "check", // checkbox `icon="line"` / radio `icon="line"` 勾选态
-  "check-circle-filled", // radio 默认 icon="circle" 勾选态
-  "check-rectangle-filled", // checkbox 默认 icon="circle"/"rectangle" 勾选态（'check-'+icon+'-filled'）
-  "minus-circle-filled", // checkbox 半选态（'minus-'+icon+'-filled'）
-  "minus-rectangle-filled",
-  "minus-line-filled",
-  "chevron-right", // cell arrow 默认右箭头
-  "caret-down-small", // dropdown-menu arrowIcon 默认
-  // —— 防御性保留（同为上述组件的可配默认值/常见动态取值，单条规则约 60 B）——
-  "chevron-down",
-  "chevron-up",
-  "chevron-left",
-  "check-circle",
-  "close-circle",
-  "loading",
-];
+/**
+ * 图标白名单（唯一真源 = 前端根目录 `td-icon-keep.json`，H5 与小程序共用）。
+ * 字体子集脚本 `scripts/build-td-icon-font.py` 也读同一份文件。
+ */
+const TD_ICON_KEEP: string[] = tdIconKeep.icons;
 
 function mainPackageSlimPlugin(): Plugin {
   let outDir = "";
@@ -180,12 +165,147 @@ function mainPackageSlimPlugin(): Plugin {
   };
 }
 
+/**
+ * H5 图标样式按需 + 图标字体本地化（2026-10-17）。
+ *
+ * 背景（实测）：H5 产物 `assets/button-*.css` 173,515 B，其中 137,642 B（81.5%）是
+ * `@tdesign/uniapp/dist/icon/icon.css` 全量打包的 **2,354 条** `.t-icon-<name>:before` 规则；
+ * 该规则集的 `@font-face` 还外链 `https://tdesign.gtimg.com/.../t.woff`（279,216 B）。
+ *
+ * 处置：构建后（H5 产物，outDir 含 `/h5`）对该 CSS 做两件事——
+ *  ① 按 `td-icon-keep.json` 白名单逐条删掉未使用的 `.t-icon-*:before` 规则
+ *     （`.t-icon` / `.t-icon-base` / `.t-icon--image` / `.t-icon__image` 基础规则不动）；
+ *  ② 把 `@font-face` 的 `src` 改成本地子集字体 `../static/fonts/tdesign-icon-subset.woff2|woff`
+ *     （由 `scripts/build-td-icon-font.py` 生成，15 个字形 / 1.3 KB），**不再依赖 tdesign.gtimg.com**。
+ *
+ * 护栏：图标规则数异常偏小（<1000）则放弃裁剪；字体子集缺字形则打告警（不静默）。
+ */
+function h5IconSlimPlugin(): Plugin {
+  let outDir = "";
+  const FONT_FILES = ["tdesign-icon-subset.woff2", "tdesign-icon-subset.woff"];
+  return {
+    name: "jiapu:h5-icon-slim",
+    apply: "build",
+    configResolved(config) {
+      outDir = config.build.outDir;
+    },
+    closeBundle() {
+      if (!/[\\/]h5([\\/]|$)/.test(outDir) || !fs.existsSync(outDir)) return;
+
+      const keep = new Set(TD_ICON_KEEP);
+
+      // —— 字体子集覆盖校验 + 产物补拷（uni:copy 会拷 src/static，缺失时兜底）——
+      const manifestPath = path.resolve(__dirname, "src/static/fonts/tdesign-icon-subset.json");
+      let fontIcons: Record<string, string> = {};
+      try {
+        fontIcons = JSON.parse(fs.readFileSync(manifestPath, "utf8")).icons ?? {};
+      } catch {
+        console.warn("[h5-icon-slim] ⚠ 读不到 tdesign-icon-subset.json，无法校验字体字形");
+      }
+      const fontMissing = TD_ICON_KEEP.filter((n) => !(n in fontIcons));
+      if (fontMissing.length) {
+        console.warn(
+          `[h5-icon-slim] ⚠ 字体子集缺字形: ${fontMissing.join(", ")}；` +
+            `请重跑 python3 scripts/build-td-icon-font.py（否则这些图标会渲染成空白）`,
+        );
+      }
+      const distFontDir = path.join(outDir, "static/fonts");
+      fs.mkdirSync(distFontDir, { recursive: true });
+      for (const f of FONT_FILES) {
+        const src = path.resolve(__dirname, "src/static/fonts", f);
+        const dst = path.join(distFontDir, f);
+        if (fs.existsSync(src) && !fs.existsSync(dst)) fs.copyFileSync(src, dst);
+      }
+
+      // —— 逐 CSS 资产：图标规则按需 + @font-face 本地化 ——
+      const assetsDir = path.join(outDir, "assets");
+      if (!fs.existsSync(assetsDir)) return;
+      for (const name of fs.readdirSync(assetsDir)) {
+        if (!name.endsWith(".css")) continue;
+        const file = path.join(assetsDir, name);
+        const css = fs.readFileSync(file, "utf8");
+        let out = css;
+        let total = 0;
+        let kept = 0;
+
+        if (css.includes(".t-icon-")) {
+          out = out.replace(
+            /\.t-icon-([a-z0-9][a-z0-9-]*)(?:\[[^\]]*\])?:before\{[^{}]*\}/g,
+            (rule, icon: string) => {
+              total += 1;
+              if (keep.has(icon)) {
+                kept += 1;
+                return rule;
+              }
+              return "";
+            },
+          );
+          if (total < 1000) {
+            // 结构不符预期（例如上游改了规则形态）→ 不动，避免误删
+            out = css;
+            kept = total = 0;
+          }
+        }
+
+        if (out.includes("tdesign.gtimg.com")) {
+          out = out.replace(/@font-face\{[^}]*tdesign\.gtimg\.com[^}]*\}/g, (block) => {
+            const fam = /font-family:([^;]+)/.exec(block)?.[1] ?? "t";
+            const weight = /font-weight:([^;]+)/.exec(block)?.[1] ?? "400";
+            const style = /font-style:([^;]+)/.exec(block)?.[1] ?? "normal";
+            return (
+              `@font-face{font-family:${fam};` +
+              `src:url(../static/fonts/tdesign-icon-subset.woff2) format("woff2"),` +
+              `url(../static/fonts/tdesign-icon-subset.woff) format("woff");` +
+              `font-display:swap;font-weight:${weight};font-style:${style}}`
+            );
+          });
+        }
+
+        if (out !== css) {
+          const before = Buffer.byteLength(css);
+          fs.writeFileSync(file, out);
+          console.log(
+            `[h5-icon-slim] ${name}: ${before} B → ${Buffer.byteLength(out)} B` +
+              (total ? `（图标规则 ${kept}/${total} 条保留）` : "") +
+              (css.includes("tdesign.gtimg.com") ? "；@font-face 已本地化" : ""),
+          );
+        }
+      }
+    },
+  };
+}
+
+/**
+ * dev 下的图标字体本地化（与 H5 构建口径对齐）：vite dev 不做产物后处理，
+ * `@tdesign/uniapp/dist/icon/icon.css` 的 @font-face 仍指向 tdesign.gtimg.com。
+ * 这里把该 CSS 的 src 就地换成 `/static/fonts/tdesign-icon-subset.woff2`
+ * （dev 的 /static 由 vite 直接映射 `src/static`），使本地开发看到的图标字形与生产一致、且不依赖外网。
+ */
+function tdIconFontDevPlugin(): Plugin {
+  return {
+    name: "jiapu:td-icon-font-dev",
+    apply: "serve",
+    transform(code, id) {
+      if (!id.includes("@tdesign/uniapp") || !id.includes("icon.css")) return null;
+      if (!code.includes("tdesign.gtimg.com")) return null;
+      return {
+        code: code.replace(
+          /src: url\('https:\/\/tdesign\.gtimg\.com[^']*'\)[^;]*;/,
+          `src: url('/static/fonts/tdesign-icon-subset.woff2') format('woff2'), ` +
+            `url('/static/fonts/tdesign-icon-subset.woff') format('woff');`,
+        ),
+        map: null,
+      };
+    },
+  };
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
   // 部署基路径：默认 '/'（本地 dev 不受影响），部署到子路径时用 H5_BASE 覆盖，
   // 例：H5_BASE=/jiazu/ npm run build:h5（同时驱动产物资源前缀与 uni 运行时 router.base）
   base: process.env.H5_BASE || '/',
-  plugins: [uni(), restoreVueSrcScopeId(), mainPackageSlimPlugin()],
+  plugins: [uni(), restoreVueSrcScopeId(), mainPackageSlimPlugin(), h5IconSlimPlugin(), tdIconFontDevPlugin()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),

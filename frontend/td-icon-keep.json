@@ -1,0 +1,20 @@
+{
+  "_comment": "TDesign 图标白名单（唯一真源）。构建期按此清单裁剪 .t-icon-* 规则；字体子集脚本 scripts/build-td-icon-font.py 也读此文件。新增/删除图标后必须重跑该脚本，否则构建日志会告警「字体缺字形」。清单依据：本项目实际使用的 @tdesign/uniapp 组件（t-button / t-input / t-cell / t-cell-group / t-tag / t-radio / t-radio-group / t-loading / t-dropdown-menu / t-dropdown-item）源码内的默认图标与可配默认值。",
+  "icons": [
+    "close",
+    "close-circle-filled",
+    "check",
+    "check-circle-filled",
+    "check-rectangle-filled",
+    "minus-circle-filled",
+    "minus-rectangle-filled",
+    "chevron-right",
+    "caret-down-small",
+    "chevron-down",
+    "chevron-up",
+    "chevron-left",
+    "check-circle",
+    "close-circle",
+    "loading"
+  ]
+}

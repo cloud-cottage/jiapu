@@ -1,0 +1,21 @@
+{
+  "_comment": "由 scripts/build-td-icon-font.py 生成，勿手改。build 期用它校验字体是否缺字形。",
+  "source": "https://tdesign.gtimg.com/icon/0.4.3/fonts/t.woff",
+  "icons": {
+    "caret-down-small": "U+E13A",
+    "check": "U+E1BC",
+    "check-circle": "U+E1B8",
+    "check-circle-filled": "U+E1B7",
+    "check-rectangle-filled": "U+E1BA",
+    "chevron-down": "U+E1C8",
+    "chevron-left": "U+E1D0",
+    "chevron-right": "U+E1D8",
+    "chevron-up": "U+E1E0",
+    "close": "U+E224",
+    "close-circle": "U+E21F",
+    "close-circle-filled": "U+E21E",
+    "loading": "U+E4FE",
+    "minus-circle-filled": "U+E5CC",
+    "minus-rectangle-filled": "U+E5CE"
+  }
+}
