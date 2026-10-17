@@ -190,4 +190,36 @@ function confirmPicker() {
 .tp-item-id { font-size: 11px; color: #A1887F; margin-left: 8px; }
 .tp-empty { display: block; text-align: center; color: #A1887F; font-size: 13px; padding: 24px 0; }
 .tp-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   触发条按表单输入框口径（底 #241D16 / 边 #3A3027，与 tree-hall `.input` 同族），
+   覆盖层面板走卡面 #2A2219；选中项 = #C98850 边 + #332A20 底。
+   遮罩 `.tp-mask` 保持半透明黑（rgba(0,0,0,0.55)）不改；只改颜色声明，不含任何布局属性、
+   无 filter / invert；全部 H5 条件编译 ⇒ 小程序零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .tp-trigger { background: #241D16; border-color: #3A3027; }
+html[data-theme='dark'] .tp-trigger:active { background: #332A20; }
+html[data-theme='dark'] .tp-trigger-text { color: #EDE3D6; }
+html[data-theme='dark'] .tp-trigger-empty { color: #8A7A66; }
+html[data-theme='dark'] .tp-trigger-arrow { color: #C98850; }
+html[data-theme='dark'] .tp-panel {
+  background: #2A2219;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+}
+html[data-theme='dark'] .tp-head-title { color: #EDE3D6; }
+html[data-theme='dark'] .tp-head-close { color: #B8A894; }
+html[data-theme='dark'] .tp-head-close:active { background: #332A20; }
+/* 搜索框（t-input 本体）：面板同为 #2A2219，故压深一档到 #241D16 才分得出层次 */
+html[data-theme='dark'] .tp-search :deep(.t-input) {
+  background: #241D16;
+  border-color: #3A3027;
+}
+html[data-theme='dark'] .tp-group-title { color: #8A7A66; }
+html[data-theme='dark'] .tp-item { border-color: #3A3027; }
+html[data-theme='dark'] .tp-item.selected { border-color: #C98850; background: #332A20; }
+html[data-theme='dark'] .tp-item-label { color: #EDE3D6; }
+html[data-theme='dark'] .tp-item-sub { color: #B8A894; }
+html[data-theme='dark'] .tp-item-id { color: #8A7A66; }
+html[data-theme='dark'] .tp-empty { color: #8A7A66; }
+/* #endif */
 </style>

@@ -1390,4 +1390,48 @@ async function confirmEstablishBranch() {
   background: #F4F9F4; border: 1px solid #DCEBDC; border-radius: 8px;
 }
 .batch-preview-line { font-size: 12px; color: #2E5D34; line-height: 1.7; }
+
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   与 styles/td-dark-warm.css 同一套暖调夜间值（底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 /
+   格位·chip #332A20 / 主字 #EDE3D6 / 次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 / 暖棕 #C98850）。
+   风险操作（删除 / 解绑 / 移除并新建树）由 t-button theme="danger" 走 --td-error-color（= #E0675F），
+   此处只补自绘「承母嗣」勾选框与批量预览块；**只改颜色、零几何改动、无 filter / invert**；
+   全部 H5 条件编译 ⇒ 小程序零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .manage-panel { border-top-color: #4A3D31; }
+html[data-theme='dark'] .mp-title { color: #EDE3D6; }
+html[data-theme='dark'] .mp-sub { color: #B8A894; }
+html[data-theme='dark'] .mp-hint { color: #B8A894; }
+html[data-theme='dark'] .mp-error { color: #E0675F; }
+
+/* —— 内联表单面板 —— */
+html[data-theme='dark'] .mp-panel { background: #241D16; }
+html[data-theme='dark'] .mp-panel-title { color: #EDE3D6; }
+html[data-theme='dark'] .mp-panel-close { color: #B8A894; }
+html[data-theme='dark'] .mp-panel-close:active { background: #332A20; }
+
+/* —— 新建 / 挂接 / 指定 ID 三档切换 —— */
+html[data-theme='dark'] .mode-btn { color: #B8A894; border-color: #3A3027; }
+html[data-theme='dark'] .mode-btn.active { color: #E5BE93; border-color: #C98850; background: #332A20; }
+
+/* —— 姓 / 名提示与「改姓」链接 —— */
+html[data-theme='dark'] .sh-text { color: #B8A894; }
+html[data-theme='dark'] .sh-link { color: #C98850; }
+html[data-theme='dark'] .join-tip { color: #B8A894; }
+
+/* —— 「承母嗣」自绘勾选框（品牌蓝 → 暖棕；勾号用深字压亮底）—— */
+html[data-theme='dark'] .ms-box { border-color: #4A3D31; }
+html[data-theme='dark'] .ms-box-on { background: #C98850; border-color: #C98850; }
+html[data-theme='dark'] .ms-tick { color: #211A14; }
+html[data-theme='dark'] .ms-label { color: #EDE3D6; }
+
+/* —— 批量添加子孙：提示 / 文本域 / 解析预览 —— */
+html[data-theme='dark'] .batch-tip { background: #241D16; color: #B8A894; }
+html[data-theme='dark'] .batch-textarea {
+  background: #241D16; border-color: #3A3027; color: #EDE3D6;
+}
+html[data-theme='dark'] .batch-error { color: #E0675F; }
+html[data-theme='dark'] .batch-preview { background: #26301F; border-color: #3E4A33; }
+html[data-theme='dark'] .batch-preview-line { color: #9BD1A4; }
+/* #endif */
 </style>

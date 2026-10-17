@@ -300,4 +300,83 @@ onMounted(() => {
 .tree-host :deep(.stat-hint) { color: #8B4513; }
 .tree-host :deep(.hint) { color: #A1887F; }
 .tree-host :deep(.loading), .tree-host :deep(.empty) { color: #A1887F; }
+
+/* ---- 夜间模式（html[data-theme='dark']）：世本页外壳（轴卡 hero / 版式占位 / 左侧浮动按钮 /
+   世系树宿主卡与卡内统计条）；主色态 #C98850。只改颜色，不改几何（T3：两态 rect 差 ≤0.5px）。
+   注：树图内部的**节点卡底/字/边框、世代连线与「第 N 世」代际文字由 ECharts canvas 绘制**
+   （颜色在 JS option 里，非 CSS）⇒ 已由 `tree-pedigree.vue` 按 `themeRef` 现取色板并在主题切换时
+   就地重建 option（浅/暗同色槽、几何同值）。本文件不再需要碰 canvas。
+   本文件全部 dark 规则都在 H5 条件编译块内 ⇒ 小程序零新增 data-theme 规则。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .hero {
+  background: linear-gradient(135deg, #2A2219, #241D16);
+  color: #EDE3D6;
+}
+html[data-theme='dark'] .hero-sub { color: #B8A894; }
+html[data-theme='dark'] .hero-rank-text { color: #C98850; }
+html[data-theme='dark'] .hero-warn {
+  color: #C98850;
+  background: rgba(201, 136, 80, 0.15);
+}
+html[data-theme='dark'] .center { color: #8A7A66; }
+html[data-theme='dark'] .center.error { color: #E0675F; }
+
+/* 左侧功能按钮（血脉图示 / 版式文档 / 世本消息） */
+html[data-theme='dark'] .view-btn {
+  background: #2A2219;
+  border-color: #3A3027;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+html[data-theme='dark'] .view-text { color: #C98850; }
+html[data-theme='dark'] .view-btn.active {
+  background: #C98850;
+  border-color: #C98850;
+}
+html[data-theme='dark'] .view-btn.active .view-text { color: #211A14; }
+
+/* 版式文档占位（空态） */
+html[data-theme='dark'] .doc-placeholder {
+  background: #2A2219;
+  border-color: #4A3D31;
+}
+html[data-theme='dark'] .doc-ph-title { color: #C98850; }
+html[data-theme='dark'] .doc-ph-text { color: #8A7A66; }
+
+/* 树图宿主卡 + 卡内统计条（统计条由 tree-pedigree 的 .stats 渲染，用 :deep 落色） */
+html[data-theme='dark'] .tree-host {
+  background: #2A2219;
+  border-color: #3A3027;
+}
+html[data-theme='dark'] .tree-host-title { color: #EDE3D6; }
+html[data-theme='dark'] .tree-host-sub { color: #8A7A66; }
+html[data-theme='dark'] .tree-host :deep(.stats) {
+  background: #241D16;
+  border-color: #3A3027;
+  color: #EDE3D6;
+}
+html[data-theme='dark'] .tree-host :deep(.stats .stat) { color: #EDE3D6; }
+/* `.stat-hint` 与 `.stat` 同用（`class="stat stat-hint"`）⇒ 必须抬到同等特异性并排在后面，
+   否则被上面 `.stats .stat`（#EDE3D6）压掉，#C98850 不生效 */
+html[data-theme='dark'] .tree-host :deep(.stat.stat-hint) { color: #C98850; }
+html[data-theme='dark'] .tree-host :deep(.hint) { color: #8A7A66; }
+html[data-theme='dark'] .tree-host :deep(.loading),
+html[data-theme='dark'] .tree-host :deep(.empty) { color: #8A7A66; }
+
+/* 树图浮层（由子组件 tree-pedigree 渲染，故用 :deep 从本宿主落色；**不改该组件文件**）：
+   ＋－⟳ 缩放圆钮 / 右侧「纵向·横向·迁徙地图」图例栏。只改颜色，不改几何。 */
+html[data-theme='dark'] .shiben-view :deep(.zoom-btn),
+html[data-theme='dark'] .shiben-view :deep(.layout-btn) {
+  background: #2A2219;
+  border-color: #3A3027;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+html[data-theme='dark'] .shiben-view :deep(.zoom-icon),
+html[data-theme='dark'] .shiben-view :deep(.layout-name) { color: #C98850; }
+html[data-theme='dark'] .shiben-view :deep(.layout-btn.active) {
+  background: #C98850;
+  border-color: #C98850;
+}
+html[data-theme='dark'] .shiben-view :deep(.layout-btn.active .layout-name) { color: #211A14; }
+html[data-theme='dark'] .shiben-view :deep(.error) { color: #E0675F; }
+/* #endif */
 </style>

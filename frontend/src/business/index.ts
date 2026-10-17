@@ -84,3 +84,6 @@ export type { InviteKind, InviteDecision, InviteCodeResult, InviteResolveResult,
 export { fetchWenpuConfigAdmin, putWenpuConfig } from './api';
 export { DEFAULT_POSTSCRIPT_TEMPLATE } from './wenpu';
 export type { WenpuConfig, WenpuConfigPayload, WenpuConfigSaveResult } from './types';
+// 日夜模式（2026-10-17）：light / dark 两态，默认 light、不跟随系统；值在 styles/td-dark-warm.css
+export { getTheme, setTheme, applyTheme, themeRef } from './theme';
+export type { ThemeMode } from './theme';

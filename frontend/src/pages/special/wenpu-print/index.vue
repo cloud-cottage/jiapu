@@ -65,6 +65,22 @@ function onPrint(): void {
 .print-btn-text { font-size: 14px; color: #fff; }
 .print-hint { font-size: 12px; color: #8B4513; }
 
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   本页 = 「文谱打印纸页」的外壳 + 屏上控制条。**纸页本体（wenpu-sheet 仿真古籍页面 /
+   书口 / 版心 / 纸内文字）保持浅色原样**（它是古籍本体，反色就不是仿真书页了），只暗外壳与控制条：
+   外壳底 #211A14、主按钮 #C98850 + 深字 #211A14、说明文字 #C4B4A0。只改颜色、零几何改动。
+   注：夜间规则的特异性高于下方 `@media print` 里的同名选择器 ⇒ 必须显式钉回白纸，否则
+   夜间模式下「打印 / 另存为 PDF」会打出深色页面。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .wenpu-print { background: #211A14; }
+html[data-theme='dark'] .print-btn { background: #C98850; }
+html[data-theme='dark'] .print-btn-text { color: #211A14; }
+html[data-theme='dark'] .print-hint { color: #C4B4A0; }
+@media print {
+  html[data-theme='dark'] .wenpu-print { background: #fff; }
+}
+/* #endif */
+
 @media print {
   /* 工具条不打印（书页分页由组件内的 `@page` / `.print-sheet` 规则控制） */
   .print-toolbar { display: none !important; }

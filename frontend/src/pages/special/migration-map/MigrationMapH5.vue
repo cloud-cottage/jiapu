@@ -684,4 +684,53 @@ onBeforeUnmount(() => {
   font-size: 13px;
   font-weight: 500;
 }
+
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   只暗「外壳与控制条」：页底 / 标题 / 时间轴 / 控制条 / 进度条 / 状态文字。
+   **地图本体一律不碰**：`.stage` 底（#fffdf8）与全部 SVG `:deep(.face / .hk / .site-dot /
+   .ring / .halo / .arc / .lb / .leader ...)` 的面色、描边、标签底色、标签描边光晕
+   都**保持浅色原样** —— 它是「地图 / 图版」本体（与纸页同类：反色就不是同一张图了），
+   且标签的 `stroke: #fffdf8` 光晕与浅色底图是一套，改暗会立刻露字糊边。
+   暖调夜间值：底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 / 格位 #332A20 / 主字 #EDE3D6 /
+   次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 / 分割 #4A3D31 / 暖棕 #C98850。
+   **只改颜色、不改任何几何、无 filter / invert**。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .mig { background: #211A14; color: #EDE3D6; }
+
+/* —— 状态态（加载 / 空 / 错误 / 未找到 + 重试）—— */
+html[data-theme='dark'] .state-txt { color: #B8A894; }
+html[data-theme='dark'] .spinner { color: #C98850; }
+html[data-theme='dark'] .retry { background: #332A20; border-color: #4A3D31; }
+html[data-theme='dark'] .retry-hover { background: #3A3027; }
+html[data-theme='dark'] .retry-txt { color: #C98850; }
+
+/* —— HUD（步标题 / 说明 / 文字记载提示）—— */
+html[data-theme='dark'] .hud-title { color: #C98850; }
+html[data-theme='dark'] .hud-desc { color: #B8A894; }
+html[data-theme='dark'] .note-main { color: #C98850; }
+html[data-theme='dark'] .note-sub { color: #8A7A66; }
+
+/* —— 时间轴：容器 #241D16，节点格位 #2A2219；当前步暖棕底 + 深字 —— */
+html[data-theme='dark'] .timeline { background: #241D16; border-color: #3A3027; }
+html[data-theme='dark'] .tl-node { background: #2A2219; border-color: #3A3027; }
+html[data-theme='dark'] .tl-node.origin { border-color: #C98850; }
+html[data-theme='dark'] .tl-node.act { background: #C98850; border-color: #C98850; }
+html[data-theme='dark'] .tl-node.act.origin { background: #D6A46A; border-color: #C98850; }
+html[data-theme='dark'] .tl-node.act .tl-txt { color: #211A14; }
+html[data-theme='dark'] .tl-node.act.origin .tl-txt { color: #211A14; }
+html[data-theme='dark'] .tl-hover { background: #3A3027; }
+html[data-theme='dark'] .tl-txt { color: #EDE3D6; }
+
+/* —— 控制条（播放 / 上一步 / 下一步 / 重播 + 进度 + 计数）—— */
+html[data-theme='dark'] .controls { background: #241D16; border-color: #3A3027; }
+html[data-theme='dark'] .ctrl { background: #332A20; border-color: #4A3D31; }
+html[data-theme='dark'] .ctrl-txt { color: #EDE3D6; }
+html[data-theme='dark'] .ctrl.primary { background: #C98850; border-color: #C98850; }
+html[data-theme='dark'] .ctrl.primary .ctrl-txt { color: #211A14; }
+html[data-theme='dark'] .ctrl-hover { background: #3A3027; }
+html[data-theme='dark'] .progress { background: #3A3027; }
+html[data-theme='dark'] .bar { background: #C98850; }
+html[data-theme='dark'] .ind { color: #B8A894; }
+html[data-theme='dark'] .footnote { color: #8A7A66; }
+/* #endif */
 </style>

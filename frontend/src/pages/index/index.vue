@@ -1,9 +1,7 @@
 <template>
   <view class="container">
-    <view class="header">
-      <text class="title">千秋祖脉绵世泽，万卷家乘振宗风</text>
-      <text class="subtitle">家谱 100 · 多姓氏家谱数字化珍藏平台</text>
-    </view>
+    <!-- 页头：H5 = 三层古风 banner（宣纸底 + 线装书 + 石榴树）；小程序 = 原文字 hero（组件内分端） -->
+    <HomeBanner :title="UI_TEXT.heroTitle" :subtitle="UI_TEXT.heroSubtitle" />
 
     <!-- 双视图：家谱列表 / 中华世本（浮动按钮切换，无 t-tabs） -->
     <!-- 视图1：普通家族树列表（不含 zhonghua） -->
@@ -251,12 +249,17 @@ const ShibenTimeline = defineAsyncComponent(
 );
 import GeoCascader from '@/components/geo-cascader/geo-cascader.vue';
 import RegionFilter from '@/components/region-filter/region-filter.vue';
+import HomeBanner from '@/components/home-banner/home-banner.vue';
 
 /**
  * 首页新增 / 改版文案（**唯一来源**，便于 Jing 统一入册；模板里不得再散写这些字面）。
  * 地区筛选的文案在 `business/region-filter.ts` 的 `REGION_TEXT`（组件与页面共用同一份）。
  */
 const UI_TEXT = {
+  /** 页头主标题（对句；H5 banner 与小程文字 hero 共用同一字串，**一个字都不得改**） */
+  heroTitle: '千秋祖脉绵世泽，万卷家乘振宗风',
+  /** 页头副标题（同上，两端共用） */
+  heroSubtitle: '家谱 100 · 多姓氏家谱数字化珍藏平台',
   /** 搜索框占位（原「搜索人物（姓名 / 编号）」） */
   searchPlaceholder: '人物 / 家族 / 堂号',
   /** 搜索按钮（**必须是两个字**，不是「搜」/ 不是图标） */
@@ -855,18 +858,18 @@ function goToPage(path: string) {
 
 <style scoped>
 /* ---- 页面骨架（暖棕主题：主色 #8B4513 / 深棕字 #3E2723 / 暖米底 #FFFDF8 / 辅助 #A1887F·#795548） ---- */
+/* 注意：**不得**给 .container 加 overflow:hidden —— H5 三层 banner 靠 100vw 负 margin 出血到视口两边 */
 .container { padding: 20px; padding-bottom: 90px; }
 
-/* 页头：名称（主）22/700 深棕 → 副标题（次）13 辅助棕，拉开字号与字重层级 */
-.header { text-align: center; margin-bottom: 22px; }
-.title {
-  font-size: 19px; font-weight: 700; color: #3E2723;
-  letter-spacing: 1px; line-height: 1.5; display: block;
-}
-.subtitle {
-  font-size: 13px; color: #A1887F;
-  line-height: 1.5; margin-top: 8px; display: block;
-}
+/* H5：页头是出血 banner，页面顶部内距归零（banner 直接顶在导航条下沿） */
+/* #ifdef H5 */
+.container { padding-top: 0; }
+/* 列表区（搜索框 / 排序条 / 卡片）必须**压在 banner 纸面延展层之上**：
+   纸面层 `.banner__paper` 从 banner 顶边一直铺到 banner 下方 260px（搜索框、排序条、
+   首张卡片上半部都在它上面），它是 positioned + z-index:0，会盖住未定位的流内内容 ⇒
+   这里给列表区一个更高的 z-index；纸面层自身 pointer-events:none，故点击不受影响。 */
+.hall-list { position: relative; z-index: 1; }
+/* #endif */
 
 /* ---- 家族馆卡片列表 ---- */
 .hall-list { display: flex; flex-direction: column; gap: 12px; }
@@ -1089,6 +1092,13 @@ function goToPage(path: string) {
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   -webkit-tap-highlight-color: transparent;
 }
+/* H5 窄栏：浮动按钮 fixed 相对视口定位，宽屏时按 --jiapu-column 回收进列内
+   （视口 ≤ 列宽时 max() 取 14px，即原来的贴边值，行为不变） */
+/* #ifdef H5 */
+.floating-switch {
+  right: max(14px, calc((100% - var(--jiapu-column)) / 2 + 14px));
+}
+/* #endif */
 /* 按压反馈（视觉，无新增交互逻辑） */
 .floating-switch:active {
   transform: scale(0.94);
@@ -1136,4 +1146,106 @@ function goToPage(path: string) {
 .ct-fee-text { display: block; font-size: 13px; color: #3E2723; }
 .ct-fee-sub { display: block; font-size: 11px; color: #999; margin-top: 4px; line-height: 1.5; }
 .ct-error { display: block; text-align: center; color: #C62828; font-size: 13px; margin-bottom: 8px; }
+
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   本页**没有**任何容器级深色兜底，所有色都是逐元素硬编码喰色，故夜间必须逐元素给对偶值。
+   口径（与 styles/td-dark-warm.css 同族，不另发明色）：
+     卡面 #2A2219 · 按下/浅底 #332A20 · 底 #211A14 · 边框/分割 #3A3027
+     主字 #EDE3D6 · 次字 #B8A894 · 更淡 #8A7A66 · 暖棕主色 #C98850（字压主色时用 #211A14）
+   **不用 invert / filter 反色 hack**：反色会把 emoji、图标、阴影一起翻掉，且与 T3 几何口径冲突。
+   全部 H5 条件编译 ⇒ 小程序零改动。 */
+/* #ifdef H5 */
+/* —— 搜索框（输入框本体：米白底 → 卡面底；描边 → 夜间分割色）—— */
+html[data-theme='dark'] .person-search :deep(.t-input) {
+  background: #2A2219;
+  border-color: #3A3027;
+}
+/* 内嵌搜索按钮：暖棕主色一档（#C98850），字取深色（对比 6.4:1，白字只有 2.1:1） */
+html[data-theme='dark'] .search-btn { background: #C98850; }
+html[data-theme='dark'] .search-btn:active { background: #B47844; }
+html[data-theme='dark'] .search-btn-text { color: #211A14; }
+
+/* —— 搜索结果面板 —— */
+html[data-theme='dark'] .person-search-panel {
+  background: #2A2219; border-color: #3A3027;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+html[data-theme='dark'] .ps-section + .ps-section { border-top-color: #3A3027; }
+html[data-theme='dark'] .ps-result { border-bottom-color: #3A3027; }
+html[data-theme='dark'] .ps-section-title { color: #B8A894; }
+html[data-theme='dark'] .ps-name { color: #EDE3D6; }
+html[data-theme='dark'] .ps-id,
+html[data-theme='dark'] .ps-tree,
+html[data-theme='dark'] .ps-tip { color: #B8A894; }
+html[data-theme='dark'] .ps-restricted { color: #8A7A66; }
+html[data-theme='dark'] .ps-error { color: #E0675F; }
+
+/* —— 排序条 / 家谱·祖谱切换 —— */
+html[data-theme='dark'] .sort-btn { background: #2A2219; border-color: #3A3027; }
+html[data-theme='dark'] .sort-text { color: #C98850; }
+html[data-theme='dark'] .sort-btn.active { background: #C98850; border-color: #C98850; }
+html[data-theme='dark'] .sort-btn.active .sort-text { color: #211A14; }
+html[data-theme='dark'] .tab-switch { background: #2A2219; border-color: #3A3027; }
+html[data-theme='dark'] .tab-text { color: #C98850; }
+html[data-theme='dark'] .tab-btn.active { background: #C98850; }
+html[data-theme='dark'] .tab-btn.active .tab-text { color: #211A14; }
+
+/* —— 列表卡片（t-cell-group + t-cell 的 token 也在这里收口，避免只改外壳）—— */
+html[data-theme='dark'] .hall-list :deep(.t-cell-group) {
+  background: #2A2219;
+  border-color: #3A3027;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+html[data-theme='dark'] .hall-list :deep(.t-cell) {
+  --td-cell-hover-color: #332A20;
+  --td-cell-border-color: #3A3027;
+  --td-cell-right-icon-color: #8A7A66;
+  --td-cell-title-color: #EDE3D6;
+  --td-cell-description-color: #B8A894;
+}
+html[data-theme='dark'] .hall-list :deep(.t-cell__title-text) { color: #EDE3D6; }
+html[data-theme='dark'] .hall-list :deep(.t-cell__description) { color: #B8A894; }
+html[data-theme='dark'] .hall-list :deep(.t-cell__note) { color: #C4B4A0; }
+html[data-theme='dark'] .note-text { color: #C4B4A0; }
+html[data-theme='dark'] .hall-list :deep(.rank-tag) {
+  --td-tag-default-color: #C4B4A0;
+  --td-tag-default-font-color: #C4B4A0;
+  --td-tag-default-light-color: #332A20;
+}
+html[data-theme='dark'] .people-tag { background: #332A20; color: #C4B4A0; }
+html[data-theme='dark'] .live-tag { background: #26301F; color: #A6C79A; }
+
+/* —— 加载态 / 空态 —— */
+html[data-theme='dark'] .loading { background: #2A2219; border-color: #3A3027; }
+html[data-theme='dark'] .empty { background: #2A2219; border-color: #5E5142; color: #B8A894; }
+
+/* —— 页脚（含「关于本站 · 免责声明」链接）—— */
+html[data-theme='dark'] .footer,
+html[data-theme='dark'] .footer-copy,
+html[data-theme='dark'] .footer-dot { color: #8A7A66; }
+html[data-theme='dark'] .footer-link { color: #B8A894; border-bottom-color: #8A7A66; }
+
+/* —— 浮动切换按钮（右侧圆形）—— */
+html[data-theme='dark'] .floating-switch {
+  background: #C98850;
+  border-color: rgba(33, 26, 20, 0.35);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+html[data-theme='dark'] .floating-text { color: #211A14; }
+
+/* —— 新建家族树入口 + 表单弹层（入口与弹层都在本页，漏了会露白）—— */
+html[data-theme='dark'] .create-entry { background: #332A20; border-color: #5E5142; }
+html[data-theme='dark'] .create-icon { color: #C98850; }
+html[data-theme='dark'] .create-text { color: #EDE3D6; }
+html[data-theme='dark'] .create-hint { color: #8A7A66; }
+html[data-theme='dark'] .ct-modal { background: #2A2219; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6); }
+html[data-theme='dark'] .ct-head { border-bottom-color: #3A3027; }
+html[data-theme='dark'] .ct-title { color: #EDE3D6; }
+html[data-theme='dark'] .ct-close { color: #B8A894; }
+html[data-theme='dark'] .ct-label { color: #C98850; }
+html[data-theme='dark'] .ct-fee { background: #332A20; }
+html[data-theme='dark'] .ct-fee-text { color: #EDE3D6; }
+html[data-theme='dark'] .ct-fee-sub { color: #8A7A66; }
+html[data-theme='dark'] .ct-error { color: #E0675F; }
+/* #endif */
 </style>

@@ -216,6 +216,18 @@
           arrow
           @click="openLeaveModal"
         />
+        <!-- 夜间模式开关（Kevin 2026-10-17「日夜模式」）：整行可点，右侧胶囊回显当前状态。
+             文案仅此一行；逻辑见 business/theme.ts（默认日间、持久化、不跟随系统）。 -->
+        <t-cell title="🌙 夜间模式" class="theme-cell" @click="toggleTheme">
+          <template #note>
+            <view class="theme-row">
+              <text class="theme-state">{{ isDark ? '已开启' : '已关闭' }}</text>
+              <view class="theme-pill" :class="{ 'theme-pill-on': isDark }">
+                <view class="theme-knob" />
+              </view>
+            </view>
+          </template>
+        </t-cell>
       </t-cell-group>
     </view>
 
@@ -284,6 +296,18 @@ import {
   inviteExpiryLine,
 } from '@/business/asset-text';
 import AssetInventory from '@/components/asset-inventory/asset-inventory.vue';
+// 日夜模式（business/theme.ts 单点）：默认日间、持久化在 uni storage，不跟随系统
+import { getTheme, setTheme } from '@/business';
+import type { ThemeMode } from '@/business';
+
+// ---- 夜间模式开关（本页唯一新增交互；只改 <html data-theme>，不动任何布局）----
+const themeMode = ref<ThemeMode>(getTheme());
+const isDark = computed(() => themeMode.value === 'dark');
+/** 切换并即时应用 + 持久：setTheme 内部写 storage 后立刻给 <html> 打 data-theme，无需刷新 */
+function toggleTheme() {
+  themeMode.value = themeMode.value === 'dark' ? 'light' : 'dark';
+  setTheme(themeMode.value);
+}
 
 const anchor = ref<{ tree_id: string; person_handle: string; updated_at: string } | null>(null);
 const anchorPersonName = ref('');
@@ -955,4 +979,117 @@ onMounted(() => {
 .danger-error { padding: 10px 16px; font-size: 12px; color: #C62828; line-height: 1.5; }
 .footer { text-align: center; margin-top: 30px; }
 .version { font-size: 12px; color: #B5A594; }
+
+/* ---- 夜间模式开关行（本页唯一新增控件；胶囊只回显状态，点整行切换）----
+   胶囊几何：42 = 1 边 + 2 内距 + 18 钮 + 18 行程 + 2 内距 + 1 边 ⇒ 开态钮正好贴右内缘。 */
+.theme-row { display: flex; align-items: center; gap: 8px; }
+.theme-state { font-size: 12px; color: #A1887F; }
+.theme-pill {
+  position: relative; width: 42px; height: 24px; box-sizing: border-box;
+  border-radius: 999px; background: #E0D5C8; border: 1px solid #D3C6B6;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+.theme-knob {
+  position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+  background: #FFFDF8; box-shadow: 0 1px 2px rgba(62, 39, 35, 0.3);
+  transition: transform 0.18s ease, background-color 0.18s ease;
+}
+.theme-pill-on { background: #8B4513; border-color: #8B4513; }
+.theme-pill-on .theme-knob { transform: translateX(18px); background: #FFF6EA; }
+
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   与 styles/td-dark-warm.css 同一套喰色对偶值（卡面 #2A2219 / 底 #211A14 / 边框 #3A3027 /
+   主字 #EDE3D6 / 次字 #B8A894 / 暖棕 #C98850）。**只改颜色，不改任何几何**（不加边框、不动内距）——
+   T3 判据要求切主题前后 rect 差 ≤0.5px。不用 invert 类滤镜。全部 H5 条件编译 ⇒ 小程序零改动。 */
+/* #ifdef H5 */
+/* —— 用户卡（暖棕渐变 → 深暖渐变；仍是全页唯一「有色」卡，保持身份识别）—— */
+html[data-theme='dark'] .user-card {
+  background: linear-gradient(135deg, #3F2E1E, #2A2219);
+  color: #EDE3D6;
+}
+html[data-theme='dark'] .user-phone,
+html[data-theme='dark'] .bind-line { color: #C4B4A0; }
+html[data-theme='dark'] .bind-line-link { color: #E8C9A6; }
+html[data-theme='dark'] .avatar { background: rgba(237, 227, 214, 0.14); }
+
+/* —— 每日签到卡 —— */
+html[data-theme='dark'] .sign-card {
+  background: linear-gradient(180deg, #2A2219, #241D16);
+  border-color: #3A3027;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+html[data-theme='dark'] .sign-title { color: #EDE3D6; }
+html[data-theme='dark'] .sign-hint { color: #C4B4A0; }
+html[data-theme='dark'] .sign-streak { color: #E0675F; }
+html[data-theme='dark'] .sign-seal-done {
+  background: linear-gradient(160deg, #5E5142, #4A3D31);
+  box-shadow: inset 0 0 0 2px rgba(237, 227, 214, 0.28);
+  color: #EDE3D6;
+}
+/* 七格日历：格位比卡片亮一档（原浅色下也是格比卡亮） */
+html[data-theme='dark'] .cal-cell { background: #332A20; border-color: #3A3027; }
+html[data-theme='dark'] .cal-day { color: #B8A894; }
+html[data-theme='dark'] .cal-qty { color: #C4B4A0; }
+html[data-theme='dark'] .cal-chip {
+  background: #2A2219; border-color: #4A3D31; color: #C4B4A0;
+}
+html[data-theme='dark'] .cal-check { color: #7FC08A; }
+html[data-theme='dark'] .cal-today {
+  background: #33231D; border-color: #E0675F;
+  box-shadow: 0 0 0 2px rgba(224, 103, 95, 0.18);
+}
+html[data-theme='dark'] .cal-missed { background: #2E251C; border-color: #C98850; }
+html[data-theme='dark'] .cal-future { background: #241D16; border-color: #3A3027; }
+html[data-theme='dark'] .sign-reward { color: #C98850; }
+html[data-theme='dark'] .sign-error { color: #E0675F; }
+
+/* —— 家族互动卡 —— */
+html[data-theme='dark'] .interact-card {
+  background: #2A2219; border-color: #3A3027;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+html[data-theme='dark'] .interact-title { color: #EDE3D6; }
+html[data-theme='dark'] .fe-item {
+  background: linear-gradient(180deg, #332A20, #241D16);
+  border-color: #3A3027;
+  box-shadow: none;
+}
+html[data-theme='dark'] .fe-text { color: #C98850; }
+
+/* —— 功能菜单行（t-cell-group 走 token，这里显式收口一层，避免主题混用）—— */
+html[data-theme='dark'] .menu-card :deep(.t-cell-group) {
+  background: #2A2219;
+  border: 1px solid #3A3027;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+html[data-theme='dark'] .menu-card :deep(.t-cell) {
+  --td-cell-hover-color: #332A20;
+  --td-cell-border-color: #3A3027;
+  --td-cell-right-icon-color: #8A7A66;
+  background: transparent;
+}
+html[data-theme='dark'] .theme-pill { background: #3A3027; border-color: #4A3D31; }
+html[data-theme='dark'] .theme-pill-on { background: #C98850; border-color: #C98850; }
+html[data-theme='dark'] .theme-knob { background: #EDE3D6; }
+html[data-theme='dark'] .theme-pill-on .theme-knob { background: #211A14; }
+html[data-theme='dark'] .theme-state { color: #B8A894; }
+
+/* —— 弹窗（邀请短链 / 申请解绑）—— */
+html[data-theme='dark'] .modal {
+  background: #2A2219;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+}
+html[data-theme='dark'] .modal-title { color: #EDE3D6; }
+html[data-theme='dark'] .modal-sub { color: #B8A894; }
+html[data-theme='dark'] .invite-label { color: #C98850; }
+html[data-theme='dark'] .invite-link { color: #C4B4A0; }
+html[data-theme='dark'] .invite-copy { background: #332A20; border-color: #4A3D31; }
+html[data-theme='dark'] .invite-copy-text { color: #C4B4A0; }
+html[data-theme='dark'] .invite-expiry { color: #B8A894; }
+html[data-theme='dark'] .bind-error,
+html[data-theme='dark'] .danger-error { color: #E0675F; }
+
+/* —— 页脚 —— */
+html[data-theme='dark'] .version { color: #8A7A66; }
+/* #endif */
 </style>

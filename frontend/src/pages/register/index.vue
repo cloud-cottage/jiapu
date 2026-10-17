@@ -182,4 +182,28 @@ function goLogin() {
 .tip-text { font-size: 12px; color: #8A7A6A; line-height: 1.6; display: block; }
 .switch { text-align: center; margin-top: 16px; }
 .switch-text { color: #8B4513; font-size: 14px; }
+
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   与 login 页同一套：页底暖底渐变、表单卡 #2A2219、标题 #EDE3D6、副题 #B8A894、
+   协议说明块 #241D16（正文 #B8A894）、错误 #E0675F、切换/协议链接 #C4B4A0。
+   输入框描边 #3A3027 / 底色 #2A2219 由 td-dark-warm.css 的 --td-component-stroke /
+   --td-bg-color-container 提供。**验证码倒计时**（disabled 态）在卡片作用域内把
+   --td-button-primary-outline-disabled-color 抬到 #B8A894（默认 brand-4 #88562A 压 #2A2219 不可读）。
+   主按钮（注 册）由 --td-brand-color #C98850 + 深字 #211A14 自动达成。
+   只改颜色、零几何改动、无 filter / invert；全部 H5 条件编译 ⇒ 小程序零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .container { background: linear-gradient(160deg, #171210 0%, #241D16 100%); }
+html[data-theme='dark'] .card {
+  background: #2A2219;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  --td-button-primary-outline-disabled-color: #B8A894;
+}
+html[data-theme='dark'] .title { color: #EDE3D6; }
+html[data-theme='dark'] .subtitle { color: #B8A894; }
+html[data-theme='dark'] .error { color: #E0675F; }
+html[data-theme='dark'] .tip { background: #241D16; }
+html[data-theme='dark'] .tip-text { color: #B8A894; }
+html[data-theme='dark'] .switch-text { color: #C4B4A0; }
+html[data-theme='dark'] .send-btn { --td-button-primary-outline-color: #C98850; }
+/* #endif */
 </style>

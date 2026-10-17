@@ -211,4 +211,26 @@ function pick(value: string) {
 @media (max-width: 370px) {
   .region-menu { width: 220px; }
 }
+
+/* ---- 夜间模式（html[data-theme='dark']）：胶囊与下拉同口径换深暖底 ----
+   与首页搜索框同排，故底色 / 描边 / 主色都必须与首页 .person-search 对齐（同一套喰色对偶值）。
+   全部 H5 条件编译 ⇒ 小程序零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .region-pill { background: #2A2219; border-color: #3A3027; }
+html[data-theme='dark'] .region-pill-text,
+html[data-theme='dark'] .region-pill-caret { color: #C98850; }
+html[data-theme='dark'] .region-pill-active { background: #C98850; border-color: #C98850; }
+html[data-theme='dark'] .region-pill-active .region-pill-text,
+html[data-theme='dark'] .region-pill-active .region-pill-caret { color: #211A14; }
+html[data-theme='dark'] .region-menu {
+  background: #2A2219; border-color: #3A3027;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+html[data-theme='dark'] .region-item-current { background: #332A20; }
+html[data-theme='dark'] .region-item-last { border-top-color: #3A3027; }
+html[data-theme='dark'] .region-item-name { color: #EDE3D6; }
+html[data-theme='dark'] .region-count { color: #B8A894; }
+html[data-theme='dark'] .region-tip { color: #B8A894; }
+html[data-theme='dark'] .region-tip-error { color: #E0675F; }
+/* #endif */
 </style>

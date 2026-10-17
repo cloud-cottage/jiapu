@@ -442,6 +442,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown));
 .book-tip { padding: 16px 0; text-align: center; color: #999; font-size: 13px; }
 .book-error { color: #C62828; }
 
+
 /* 外层横向滚动容器：窄屏不压缩书页（纸页恒 960 × 720） */
 .book-scroll { width: 100%; }
 .book-scroll-inner {
@@ -528,4 +529,43 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown));
     -webkit-print-color-adjust: exact;
   }
 }
+/* ---- 夜间模式（html[data-theme='dark']）：**只转「纸张外」的控件** ----
+   仿真古籍书页（wenpu-sheet：纸面 / 书口 / 版心 / 纸内文字）**保持浅色原样，本段一律不碰**
+   —— 它是「古籍本体」，反色就不是仿真书页了。本段只收：工具条（修改谱名 / ✎ 修谱 / ⋯ 更多）、
+   展开的小菜单、纸外提示（加载中 · 读取失败）、翻页按钮与页指示。
+   打印外壳（`.print-book` / `.print-sheet` / `.print-scale` 与 @media print）**不动**：
+   打印必须出白纸黑字，屏上打印预览同样是纸。只改颜色，不改几何；H5 条件编译 ⇒ 小程序零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .toolbar-more,
+html[data-theme='dark'] .toolbar-revision,
+html[data-theme='dark'] .toolbar-rename {
+  background: #2A2219;
+  border-color: #3A3027;
+}
+html[data-theme='dark'] .toolbar-more-text,
+html[data-theme='dark'] .toolbar-revision-text,
+html[data-theme='dark'] .toolbar-rename-text { color: #C98850; }
+html[data-theme='dark'] .more-menu {
+  background: #2A2219;
+  border-color: #3A3027;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+html[data-theme='dark'] .more-item-text { color: #B8A894; }
+html[data-theme='dark'] .book-tip { color: #8A7A66; }
+html[data-theme='dark'] .book-error { color: #E0675F; }
+html[data-theme='dark'] .pager-btn {
+  background: #332A20;
+  border-color: #4A3D31;
+}
+html[data-theme='dark'] .pager-btn-text { color: #EDE3D6; }
+html[data-theme='dark'] .page-indicator { color: #EDE3D6; }
+/* 纸内文字**一律不动**：纸页内多数文字不自带 `color`，靠继承取浅色态下的 `#333`
+   （uni 的 page 默认字色）。夜间若不放回这个继承值，会从 App.vue 的全局
+   `page/uni-page-body { color: #EDE3D6 }` 继承成浅字 ⇒ 米色纸上淡字不可读。
+   这里把**只有继承链**的那一层钉回浅色态取到的同一个值 `#333`（纸内显式设定的字色/书口色
+   全部照旧优先，不受影响）；阅读器与打印预览两条路径都经过 `.book-page`，故同一条覆盖。
+   ⇒ 观感 = 夜间纸页与浅色态**逐像素同款**。 */
+html[data-theme='dark'] .wenpu-book :deep(.sheet-window),
+html[data-theme='dark'] .wenpu-book :deep(.book-page) { color: #333333; }
+/* #endif */
 </style>

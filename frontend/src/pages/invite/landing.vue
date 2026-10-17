@@ -438,4 +438,49 @@ function goFamily(): void {
 .iv-node-name { font-size: 13px; color: #3E2723; }
 .iv-node-id { font-size: 11px; color: #B08D57; }
 .iv-empty { display: block; font-size: 12px; color: #B5A594; padding: 12px; text-align: center; }
+
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   色板同 styles/td-dark-warm.css（底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 /
+   主字 #EDE3D6 / 次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 / 分割 #4A3D31 /
+   暖棕 #C98850 / error #E0675F / success #7FC08A）。
+   **只改颜色**（背景 / 文字 / 边框 / 阴影），零布局属性、零 `filter` / `invert`；
+   输入框与下拉是 `t-input`（走 `--td-*` token）。
+   ⚠️ 页内 `<TreePicker>` / `<TreePedigree>` 属**公共组件**（另有使用方），其暗色不在本单收口
+   （已上报 uncovered），本段只覆盖本页自绘的卡片 / 弹层 / 节点列表。
+   H5 条件编译 ⇒ 小程序端零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .iv-title { color: #EDE3D6; }
+html[data-theme='dark'] .iv-suggest { color: #C98850; }
+html[data-theme='dark'] .iv-hint { color: #8A7A66; }
+html[data-theme='dark'] .iv-card {
+  background: linear-gradient(180deg, #2A2219, #241D16);
+  border-color: #3A3027;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+html[data-theme='dark'] .iv-card-title { color: #EDE3D6; }
+html[data-theme='dark'] .iv-card-hint { color: #8A7A66; }
+html[data-theme='dark'] .iv-btn { background: #332A20; border-color: #3A3027; }
+html[data-theme='dark'] .iv-btn-text { color: #B8A894; }
+html[data-theme='dark'] .iv-btn-primary { background: linear-gradient(180deg, #D6A57A, #C98850); border-color: #C98850; }
+html[data-theme='dark'] .iv-btn-primary .iv-btn-text { color: #211A14; }
+html[data-theme='dark'] .iv-reason { color: #8A7A66; }
+html[data-theme='dark'] .iv-err { color: #E0675F; }
+html[data-theme='dark'] .iv-done { color: #7FC08A; }
+
+/* 更换节点覆盖层（遮罩 1010 / 面板 1011） */
+html[data-theme='dark'] .iv-mask { background: rgba(0, 0, 0, 0.66); }
+html[data-theme='dark'] .iv-modal {
+  background: linear-gradient(180deg, #2A2219, #241D16);
+  border-color: #3A3027;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(237, 227, 214, 0.06);
+}
+html[data-theme='dark'] .iv-modal-title { color: #EDE3D6; }
+html[data-theme='dark'] .iv-field-label { color: #C98850; }
+html[data-theme='dark'] .iv-node-list { background: #241D16; border-color: #3A3027; }
+html[data-theme='dark'] .iv-node { border-bottom-color: #3A3027; }
+html[data-theme='dark'] .iv-node.selected { background: #332A20; }
+html[data-theme='dark'] .iv-node-name { color: #EDE3D6; }
+html[data-theme='dark'] .iv-node-id { color: #8A7A66; }
+html[data-theme='dark'] .iv-empty { color: #8A7A66; }
+/* #endif */
 </style>

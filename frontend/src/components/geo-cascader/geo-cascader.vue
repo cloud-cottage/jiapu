@@ -301,4 +301,36 @@ function clearAll() {
 .gc-btn-off { opacity: 0.5; }
 .gc-btn-text { font-size: 14px; color: #8B4513; }
 .gc-btn-text-main { color: #fff; }
+
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   触发条同表单输入框口径（底 #241D16 / 边 #3A3027）；面板卡面 #2A2219；
+   三列容器 #241D16、选中项 #C98850 边（inset 影子，不占布局）+ #332A20 底。
+   遮罩 `.gc-mask` 保持半透明黑（rgba(0,0,0,0.55)）不改；只改颜色声明、无 filter / invert；
+   全部 H5 条件编译 ⇒ 小程序零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .gc-trigger { background: #241D16; border-color: #3A3027; }
+html[data-theme='dark'] .gc-trigger-text { color: #EDE3D6; }
+html[data-theme='dark'] .gc-trigger-empty { color: #8A7A66; }
+html[data-theme='dark'] .gc-trigger-arrow { color: #C98850; }
+html[data-theme='dark'] .gc-panel {
+  background: #2A2219;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+}
+html[data-theme='dark'] .gc-head-title { color: #EDE3D6; }
+html[data-theme='dark'] .gc-head-close { color: #B8A894; }
+html[data-theme='dark'] .gc-col { background: #241D16; border-color: #3A3027; }
+html[data-theme='dark'] .gc-item { border-bottom-color: #4A3D31; }
+html[data-theme='dark'] .gc-item-on {
+  background: #332A20;
+  box-shadow: inset 0 0 0 1px #C98850;
+}
+html[data-theme='dark'] .gc-item-text { color: #B8A894; }
+html[data-theme='dark'] .gc-item-on .gc-item-text { color: #C98850; }
+html[data-theme='dark'] .gc-hint { color: #8A7A66; }
+html[data-theme='dark'] .gc-preview { color: #C98850; }
+html[data-theme='dark'] .gc-btn-ghost { background: #241D16; border-color: #3A3027; }
+html[data-theme='dark'] .gc-btn-main { background: #C98850; }
+html[data-theme='dark'] .gc-btn-text { color: #C98850; }
+html[data-theme='dark'] .gc-btn-text-main { color: #211A14; }
+/* #endif */
 </style>

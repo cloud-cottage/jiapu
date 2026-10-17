@@ -1221,4 +1221,70 @@ function goLogin() {
 .log-delta.minus { color: #C62828; }
 .log-sub { font-size: 11px; color: #B5A594; display: block; margin-top: 2px; }
 .log-reason { font-size: 12px; color: #777; display: block; margin-top: 2px; }
+
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   色板同 styles/td-dark-warm.css（底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 /
+   主字 #EDE3D6 / 次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 / 分割 #4A3D31 /
+   暖棕 #C98850 / error #E0675F / success #7FC08A / warning #D9973F）。
+   **只改颜色**（背景 / 文字 / 边框 / 阴影），零布局属性、零 `filter` / `invert`。
+   `t-input` / `t-tag` / `t-dropdown-menu` / `t-button` 走 `--td-*` token（td-dark-warm.css 的
+   136 条已把 brand / success / warning / danger 的 1–10 阶全部夜间化，语义色即上面给定值）；
+   本段只收口页面自绘的卡片 / 列表行 / 审批面板 / 快照 / 原生 `textarea`。
+   H5 条件编译 ⇒ 小程序端零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .not-logged { color: #8A7A66; }
+html[data-theme='dark'] .header-card {
+  background: linear-gradient(135deg, #6E4420, #8A5A2B);
+  color: #EDE3D6;
+}
+html[data-theme='dark'] .header-sub { color: #D6A57A; }
+html[data-theme='dark'] .section {
+  background: linear-gradient(180deg, #2A2219, #241D16);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+html[data-theme='dark'] .section-title { color: #EDE3D6; }
+html[data-theme='dark'] .empty { color: #8A7A66; }
+
+/* 用户列表 / 退族申请列表（表格行的自绘部分） */
+html[data-theme='dark'] .user-item { border-bottom-color: #3A3027; }
+html[data-theme='dark'] .user-name { color: #EDE3D6; }
+html[data-theme='dark'] .user-phone { color: #8A7A66; }
+html[data-theme='dark'] .leave-item { border-bottom-color: #3A3027; }
+html[data-theme='dark'] .leave-name { color: #EDE3D6; }
+html[data-theme='dark'] .leave-desc { color: #8A7A66; }
+html[data-theme='dark'] .error { color: #E0675F; }
+
+/* 加入申请审批面板（筛选 / 搜索结果） */
+html[data-theme='dark'] .approve-box { background: #241D16; border-color: #3A3027; }
+html[data-theme='dark'] .approve-tip { color: #8A7A66; }
+html[data-theme='dark'] .approve-result { background: #2A2219; border-color: #3A3027; }
+html[data-theme='dark'] .approve-result.selected { background: #2E251C; border-color: #C98850; }
+html[data-theme='dark'] .approve-result-name { color: #EDE3D6; }
+html[data-theme='dark'] .approve-result-id { color: #8A7A66; }
+html[data-theme='dark'] .approve-error { color: #E0675F; }
+
+/* 家谱内容设定（原生 textarea 不吃 token，单独收口） */
+html[data-theme='dark'] .wenpu-textarea {
+  background: #332A20;
+  border-color: #3A3027;
+  color: #EDE3D6;
+}
+html[data-theme='dark'] .wenpu-hint { color: #8A7A66; }
+
+/* 资产运维（发放 / 快照 / 变动日志） */
+html[data-theme='dark'] .field-label { color: #EDE3D6; }
+html[data-theme='dark'] .delta-name { color: #8A7A66; }
+html[data-theme='dark'] .grant-error { color: #E0675F; }
+html[data-theme='dark'] .grant-sub { border-top-color: #3A3027; }
+html[data-theme='dark'] .snap { background: #241D16; border-color: #3A3027; }
+html[data-theme='dark'] .snap-label { color: #8A7A66; }
+html[data-theme='dark'] .snap-value { color: #EDE3D6; }
+html[data-theme='dark'] .snap-lot { color: #8A7A66; }
+html[data-theme='dark'] .log-item { border-bottom-color: #3A3027; }
+html[data-theme='dark'] .log-target { color: #EDE3D6; }
+html[data-theme='dark'] .log-delta { color: #7FC08A; }
+html[data-theme='dark'] .log-delta.minus { color: #E0675F; }
+html[data-theme='dark'] .log-sub { color: #8A7A66; }
+html[data-theme='dark'] .log-reason { color: #B8A894; }
+/* #endif */
 </style>

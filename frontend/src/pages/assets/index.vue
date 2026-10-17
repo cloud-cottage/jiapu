@@ -447,4 +447,45 @@ function goLogin() {
 .row-right { font-size: 14px; font-weight: bold; color: #2E7D32; }
 .row-right.minus { color: #C62828; }
 .error { text-align: center; color: #C62828; font-size: 13px; margin-top: 12px; }
+
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   色板同 styles/td-dark-warm.css：底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 /
+   主字 #EDE3D6 / 次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 / 分割 #4A3D31 /
+   暖棕 #C98850 / error #E0675F / success #7FC08A。
+   **只改颜色**（背景 / 文字 / 边框 / 阴影），零布局属性、零 `filter` / `invert`；
+   页内 `.ico-card`（碎片 / 石榴籽 / 竹简 / 玉 实物图）**一律不碰 ⇒ 不反色**。
+   批次行与耐久行同属 `.asset-sub`（「N 个批次 · 耐久文案」），一并收口。
+   H5 条件编译 ⇒ 小程序端零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .not-logged { color: #8A7A66; }
+html[data-theme='dark'] .section {
+  background: linear-gradient(180deg, #2A2219, #241D16);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+html[data-theme='dark'] .section-title { color: #EDE3D6; }
+html[data-theme='dark'] .asset-row { border-bottom-color: #3A3027; }
+html[data-theme='dark'] .asset-name { color: #EDE3D6; }
+html[data-theme='dark'] .asset-value { color: #C98850; }
+/* 批次行 / 耐久行（N 个批次 · 剩余天数） */
+html[data-theme='dark'] .asset-sub { color: #8A7A66; }
+html[data-theme='dark'] .empty { color: #8A7A66; }
+html[data-theme='dark'] .section-error { color: #E0675F; }
+
+/* 消息提醒 */
+html[data-theme='dark'] .unread-badge { background: #E0675F; color: #211A14; }
+html[data-theme='dark'] .msg-item { border-bottom-color: #3A3027; }
+html[data-theme='dark'] .msg-item.unread .msg-title { color: #EDE3D6; }
+html[data-theme='dark'] .msg-dot { background: #E0675F; }
+html[data-theme='dark'] .msg-title { color: #B8A894; }
+html[data-theme='dark'] .msg-time { color: #8A7A66; }
+html[data-theme='dark'] .msg-text { color: #B8A894; }
+
+/* 即将过期 / 最近流水 */
+html[data-theme='dark'] .row-item { border-bottom-color: #3A3027; }
+html[data-theme='dark'] .row-main { color: #B8A894; }
+html[data-theme='dark'] .row-sub { color: #8A7A66; }
+html[data-theme='dark'] .row-right { color: #7FC08A; }
+html[data-theme='dark'] .row-right.minus { color: #E0675F; }
+html[data-theme='dark'] .error { color: #E0675F; }
+/* #endif */
 </style>

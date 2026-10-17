@@ -199,4 +199,48 @@ defineExpose({ refresh });
 .tq-feedback-err { color: #A8322D; }
 .tq-bag { display: block; margin-top: 12px; font-size: 11px; color: #9C8C7C; }
 .tq-warn { display: block; margin-top: 12px; font-size: 11px; color: #A8322D; }
+
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   规则写在**组件自身**：本组件是任务卡本体的唯一实现（当前唯一引用方 = `pages/task/index.vue`，
+   该页只是入口壳），暗色跟着实现走 ⇒ 引用方不必再用 `:deep()` 穿透
+   （scoped 的 data-v 只打到子组件根节点，`:deep` 只是权宜手法；组件被多处引用时会在各页堆暗色副本）。
+   色板同 styles/td-dark-warm.css（卡面 #2A2219 / 次容器 #241D16 / 主字 #EDE3D6 / 次字 #B8A894 /
+   更淡 #8A7A66 / 边框 #3A3027 / 格位 #332A20 / 暖棕 #C98850 / error #E0675F / success #7FC08A /
+   warning #D9973F）。领取按钮：**可领 = #C98850（压字 #211A14）/ 不可领·已领 = #3A3027**。
+   **只改颜色**，零布局属性、零 `filter` / `invert`；H5 条件编译 ⇒ 小程序端零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .tq-loading-text { color: #8A7A66; }
+html[data-theme='dark'] .tq-fail-text { color: #E0675F; }
+html[data-theme='dark'] .tq-retry { background: #332A20; border-color: #3A3027; }
+html[data-theme='dark'] .tq-retry-text { color: #C98850; }
+html[data-theme='dark'] .tq-day { color: #8A7A66; }
+html[data-theme='dark'] .tq-refreshing { color: #8A7A66; }
+
+/* 三条任务卡（任务卡本体） */
+html[data-theme='dark'] .tq-card {
+  background: linear-gradient(180deg, #2A2219, #241D16);
+  border-color: #3A3027;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+html[data-theme='dark'] .tq-title { color: #EDE3D6; }
+html[data-theme='dark'] .tq-rule { color: #8A7A66; }
+html[data-theme='dark'] .tq-block { color: #D9973F; }
+
+/* 三态状态标签 */
+html[data-theme='dark'] .tq-state-not_achieved { color: #8A7A66; background: #332A20; }
+html[data-theme='dark'] .tq-state-claimable { color: #211A14; background: #C98850; }
+html[data-theme='dark'] .tq-state-claimed { color: #7FC08A; background: #332A20; }
+
+/* 领取按钮：可领（isHighlighted → tq-btn-on）/ 不可领·已领 */
+html[data-theme='dark'] .tq-btn { background: #3A3027; border-color: #4A3D31; }
+html[data-theme='dark'] .tq-btn-text { color: #B8A894; }
+html[data-theme='dark'] .tq-btn-on { background: #C98850; border-color: #C98850; }
+html[data-theme='dark'] .tq-btn-on .tq-btn-text { color: #211A14; }
+
+/* 三态提示文字 */
+html[data-theme='dark'] .tq-feedback { color: #7FC08A; }
+html[data-theme='dark'] .tq-feedback-err { color: #E0675F; }
+html[data-theme='dark'] .tq-bag { color: #8A7A66; }
+html[data-theme='dark'] .tq-warn { color: #E0675F; }
+/* #endif */
 </style>

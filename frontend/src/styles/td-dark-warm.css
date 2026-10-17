@@ -1,0 +1,167 @@
+/*
+ * 夜间模式（dark）暖调 token 表 — **自动生成，勿手改**。
+ * 生成器：frontend/scripts/gen-td-dark-warm.py（`--write` 落盘，默认 dry-run）
+ * 键集：td-light-pin.css 的 136 条 `--td-*`（light-pin 钉住哪些，夜间就逐条翻回哪些；
+ *       其中 131 条在 @tdesign/uniapp/dist/theme.css 的 dark 块里也有，另 5 条只在 light 块）。
+ *       值**不取** TDesign 蓝调，全部由生成器的暖调角色表推导（brand = #C98850 起算的
+ *       1–10 阶单调 ramp，第 7 阶 = 主色）。
+ *
+ * 与 td-light-pin.css 的关系（顺序有意义）：
+ *   · light-pin 继续在 `@media (prefers-color-scheme: dark)` 下把 token 钉回喰色 ⇒
+ *     默认（无 data-theme / data-theme=light）下两种系统偏好都是喰色观感，**行为不变**；
+ *   · 本文件只在 `html[data-theme='dark']` 下生效，且选择器特异性更高 ⇒ 夜间覆盖。
+ *     特异性对照（必须逐条压过，否则夜间不生效）：
+ *       `:root:root`                        (0,2,0)  ← light-pin 的 html
+ *       `html[data-theme='dark']:root`      (0,2,1)  ✓ 压过
+ *       `uni-page-body:not(#jp-theme-pin)`  (1,0,1)  ← light-pin 的真实落点（spec §3-2）
+ *       `html[data-theme='dark'] uni-page-body:not(#jp-theme-pin)` (1,1,2) ✓ 压过
+ *       `.page.page`                        (0,2,0)
+ *       `html[data-theme='dark'] .page.page` (0,3,1) ✓ 压过
+ *   · **`uni-page-body` 这条不可省**：H5 里 theme.css 的 `page` 被编译成 `uni-page-body`，
+ *     token 的实际翻转点在那里；只在 `:root` 上压压不到它（spec §3-2 的双向现证）。
+ *   · `:not(#jp-theme-pin)` 只是把特异性抬到 (1,x,x) 的手法，不匹配任何元素。
+ *
+ * 引入位置：frontend/src/main.ts，**晚于** `@/styles/td-light-pin.css`。
+ * 只写颜色声明，不含任何布局属性（几何判据 T3 的前提）。
+ */
+html[data-theme='dark']:root,
+html[data-theme='dark'] page:not(#jp-theme-pin),
+html[data-theme='dark'] uni-page-body:not(#jp-theme-pin),
+html[data-theme='dark'] .page.page {
+    --td-brand-color-1: #422a14;
+    --td-brand-color-2: #5a381c;
+    --td-brand-color-3: #714723;
+    --td-brand-color-4: #88562a;
+    --td-brand-color-5: #a46733;
+    --td-brand-color-6: #bd773a;
+    --td-brand-color-7: #C98850;
+    --td-brand-color-8: #d6a57a;
+    --td-brand-color-9: #e1bd9e;
+    --td-brand-color-10: #ecd5c1;
+    --td-primary-color-1: var(--td-brand-color-1);
+    --td-primary-color-2: var(--td-brand-color-2);
+    --td-primary-color-3: var(--td-brand-color-3);
+    --td-primary-color-4: var(--td-brand-color-4);
+    --td-primary-color-5: var(--td-brand-color-5);
+    --td-primary-color-6: var(--td-brand-color-6);
+    --td-primary-color-7: var(--td-brand-color-7);
+    --td-primary-color-8: var(--td-brand-color-8);
+    --td-primary-color-9: var(--td-brand-color-9);
+    --td-primary-color-10: var(--td-brand-color-10);
+    --td-warning-color-1: #482f0e;
+    --td-warning-color-2: #624013;
+    --td-warning-color-3: #7b5118;
+    --td-warning-color-4: #95621d;
+    --td-warning-color-5: #b37523;
+    --td-warning-color-6: #ce8829;
+    --td-warning-color-7: #D9973F;
+    --td-warning-color-8: #e2b16e;
+    --td-warning-color-9: #eac595;
+    --td-warning-color-10: #f2dabb;
+    --td-error-color-1: #461811;
+    --td-error-color-2: #5f2117;
+    --td-error-color-3: #78291c;
+    --td-error-color-4: #903222;
+    --td-error-color-5: #ad3b29;
+    --td-error-color-6: #c8452f;
+    --td-error-color-7: #D9705F;
+    --td-error-color-8: #de8273;
+    --td-error-color-9: #e7a398;
+    --td-error-color-10: #efc4bd;
+    --td-success-color-1: #21371f;
+    --td-success-color-2: #2d4b2a;
+    --td-success-color-3: #395f35;
+    --td-success-color-4: #447240;
+    --td-success-color-5: #52894d;
+    --td-success-color-6: #5f9e59;
+    --td-success-color-7: #6FA96A;
+    --td-success-color-8: #94c190;
+    --td-success-color-9: #b0d1ad;
+    --td-success-color-10: #cde2cb;
+    --td-gray-color-1: #EDE3D6;
+    --td-gray-color-2: #E0D5C4;
+    --td-gray-color-3: #D2C3AE;
+    --td-gray-color-4: #B8A894;
+    --td-gray-color-5: #A38F75;
+    --td-gray-color-6: #8A7A66;
+    --td-gray-color-7: #75664F;
+    --td-gray-color-8: #5E5142;
+    --td-gray-color-9: #4A3D31;
+    --td-gray-color-10: #3A3027;
+    --td-gray-color-11: #332A20;
+    --td-gray-color-12: #2E251C;
+    --td-gray-color-13: #2A2219;
+    --td-gray-color-14: #211A14;
+    --td-font-white-1: rgba(255, 246, 234, 0.92);
+    --td-font-white-2: rgba(255, 246, 234, 0.55);
+    --td-font-white-3: rgba(255, 246, 234, 0.35);
+    --td-font-white-4: rgba(255, 246, 234, 0.22);
+    --td-font-gray-1: #EDE3D6;
+    --td-font-gray-2: #B8A894;
+    --td-font-gray-3: #8A7A66;
+    --td-font-gray-4: #6E5F4D;
+    --td-brand-color: var(--td-brand-color-7);
+    --td-warning-color: var(--td-warning-color-6);
+    --td-error-color: var(--td-error-color-6);
+    --td-success-color: var(--td-success-color-6);
+    --td-brand-color-focus: var(--td-brand-color-8);
+    --td-brand-color-active: var(--td-brand-color-9);
+    --td-brand-color-disabled: var(--td-brand-color-4);
+    --td-brand-color-light: var(--td-brand-color-2);
+    --td-brand-color-light-active: var(--td-brand-color-3);
+    --td-warning-color-active: var(--td-warning-color-8);
+    --td-warning-color-disabled: var(--td-warning-color-4);
+    --td-warning-color-focus: var(--td-warning-color-8);
+    --td-warning-color-light: var(--td-warning-color-2);
+    --td-warning-color-light-active: var(--td-warning-color-3);
+    --td-error-color-focus: var(--td-error-color-8);
+    --td-error-color-active: var(--td-error-color-9);
+    --td-error-color-disabled: var(--td-error-color-4);
+    --td-error-color-light: var(--td-error-color-2);
+    --td-error-color-light-active: var(--td-error-color-3);
+    --td-success-color-focus: var(--td-success-color-8);
+    --td-success-color-active: var(--td-success-color-9);
+    --td-success-color-disabled: var(--td-success-color-4);
+    --td-success-color-light: var(--td-success-color-2);
+    --td-success-color-light-active: var(--td-success-color-3);
+    --td-mask-active: rgba(0, 0, 0, 60%);
+    --td-mask-disabled: rgba(33, 26, 20, 60%);
+    --td-mask-background: rgba(36, 29, 22, 96%);
+    --td-bg-color-page: #211A14;
+    --td-bg-color-container: #2A2219;
+    --td-bg-color-container-active: #332A20;
+    --td-bg-color-secondarycontainer: #241D16;
+    --td-bg-color-secondarycontainer-active: #2E251C;
+    --td-bg-color-component: #332A20;
+    --td-bg-color-component-active: #3A3027;
+    --td-bg-color-component-disabled: #2E251C;
+    --td-bg-color-secondarycomponent: #241D16;
+    --td-bg-color-secondarycomponent-active: #2E251C;
+    --td-bg-color-specialcomponent: #2A2219;
+    --td-text-color-primary: #EDE3D6;
+    --td-text-color-secondary: #B8A894;
+    --td-text-color-placeholder: #8A7A66;
+    --td-text-color-disabled: #6E5F4D;
+    --td-text-color-anti: #211A14;
+    --td-text-color-brand: #C98850;
+    --td-text-color-link: #d6a57a;
+    --td-border-level-1-color: #3A3027;
+    --td-component-stroke: #3A3027;
+    --td-border-level-2-color: #4A3D31;
+    --td-component-border: #4A3D31;
+    --td-shadow-1: 0 4px 6px rgba(0, 0, 0, 35%), 0 1px 10px rgba(0, 0, 0, 30%), 0 2px 4px rgba(0, 0, 0, 40%);
+    --td-shadow-2: 0 8px 10px rgba(0, 0, 0, 40%), 0 3px 14px rgba(0, 0, 0, 34%), 0 5px 5px rgba(0, 0, 0, 44%);
+    --td-shadow-3: 0 16px 24px rgba(0, 0, 0, 44%), 0 6px 30px rgba(0, 0, 0, 38%), 0 8px 10px rgba(0, 0, 0, 48%);
+    --td-shadow-4: 0 2px 8px 0 rgba(0, 0, 0, 45%);
+    --td-shadow-inset-top: inset 0 0.5px 0 #4A3D31;
+    --td-shadow-inset-right: inset 0.5px 0 0 #4A3D31;
+    --td-shadow-inset-bottom: inset 0 -0.5px 0 #4A3D31;
+    --td-shadow-inset-left: inset -0.5px 0 0 #4A3D31;
+    --td-table-shadow-color: rgba(0, 0, 0, 55%);
+    --td-scrollbar-color: rgba(237, 227, 214, 15%);
+    --td-scrollbar-hover-color: rgba(237, 227, 214, 30%);
+    --td-scroll-track-color: #241D16;
+    --td-picker-transparent-color: rgba(42, 34, 25, 0);
+    --td-switch-dot-disabled-color: #B8A894;
+    --td-switch-loading-color: #C98850;
+}

@@ -1038,6 +1038,12 @@ async function saveEdit() {
   gap: 10px;
   z-index: 950;
 }
+/* H5 窄栏：fixed 浮层按 --jiapu-column 回收进列内（宽屏时贴列左缘内 10px，窄屏仍是原 10px） */
+/* #ifdef H5 */
+.view-toggle {
+  left: max(10px, calc((100% - var(--jiapu-column)) / 2 + 10px));
+}
+/* #endif */
 .view-btn {
   width: 56px;
   height: 56px;
@@ -1149,4 +1155,147 @@ async function saveEdit() {
   margin-top: 12px; padding: 12px; background: #FFF8E1; border-radius: 8px;
 }
 .identity-text { font-size: 13px; color: #5D4037; line-height: 1.6; }
+
+/* ---- 夜间模式（html[data-theme='dark']）：家族树首页外壳（卡片 / 工具条 / 浮动按钮 /
+   搜索面板 / 空态 / 三个弹窗）；选中与主色态一律 #C98850。
+   只改颜色 —— 不写 border/width/padding/font/display 等几何属性（几何判据 T3：两态 rect 差 ≤0.5px）。
+   色族：底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 / 格位·chip #332A20 / 主字 #EDE3D6 /
+   次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 / 分割 #4A3D31 / 暖棕 #C98850（字压暖棕用 #211A14）。
+   H5 条件编译 ⇒ 小程序零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .title { color: #EDE3D6; }
+html[data-theme='dark'] .genealogy,
+html[data-theme='dark'] .hall-name { color: #C98850; }
+html[data-theme='dark'] .origin { color: #B8A894; }
+html[data-theme='dark'] .desc { color: #B8A894; }
+html[data-theme='dark'] .edit-entry {
+  background: #332A20;
+  border-color: #7A6234;
+}
+html[data-theme='dark'] .edit-btn-text { color: #C98850; }
+html[data-theme='dark'] .join-entry { background: #C98850; }
+html[data-theme='dark'] .join-btn-text { color: #211A14; }
+
+/* 节点级可见分层提示条 */
+html[data-theme='dark'] .access-bar {
+  background: #332A20;
+  border-color: #4A3D31;
+}
+html[data-theme='dark'] .access-text { color: #B8A894; }
+html[data-theme='dark'] .access-cta {
+  color: #C98850;
+  border-color: #7A6234;
+}
+
+/* 已绑定祖谱提示 */
+html[data-theme='dark'] .clan-bound-hint {
+  background: #2A2219;
+  border-color: #4A3D31;
+}
+html[data-theme='dark'] .clan-bound-text { color: #C98850; }
+
+/* 树内搜索框 / 结果面板 */
+html[data-theme='dark'] .search-panel {
+  background: #2A2219;
+  border-color: #3A3027;
+}
+html[data-theme='dark'] .search-result { border-bottom-color: #3A3027; }
+html[data-theme='dark'] .result-name { color: #EDE3D6; }
+html[data-theme='dark'] .result-id { color: #8A7A66; }
+html[data-theme='dark'] .result-birth { color: #8A7A66; }
+html[data-theme='dark'] .search-tip { color: #8A7A66; }
+html[data-theme='dark'] .search-clear { color: #C98850; }
+
+/* 左侧视图切换（在线文谱 / 血脉图示 ...） */
+html[data-theme='dark'] .view-btn {
+  background: #2A2219;
+  border-color: #3A3027;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+html[data-theme='dark'] .view-text { color: #C98850; }
+html[data-theme='dark'] .view-btn.active {
+  background: #C98850;
+  border-color: #C98850;
+}
+html[data-theme='dark'] .view-btn.active .view-text { color: #211A14; }
+
+/* 文献地址入口（在线文谱视图底部） */
+html[data-theme='dark'] .archive-section {
+  background: #2A2219;
+  border-color: #3A3027;
+}
+html[data-theme='dark'] .archive-title { color: #EDE3D6; }
+html[data-theme='dark'] .archive-value { color: #C98850; }
+html[data-theme='dark'] .archive-arrow { color: #8A7A66; }
+html[data-theme='dark'] .archive-note { background: #332A20; }
+html[data-theme='dark'] .note-zh { color: #B8A894; }
+html[data-theme='dark'] .note-en { color: #8A7A66; }
+html[data-theme='dark'] .archive-link { background: #241D16; }
+html[data-theme='dark'] .link-label { color: #C98850; }
+html[data-theme='dark'] .link-value { color: #D6A57A; }
+
+/* 时流子域入口 */
+html[data-theme='dark'] .spirit-entry { background: #2A2219; }
+html[data-theme='dark'] .spirit-entry.off { background: #241D16; }
+html[data-theme='dark'] .spirit-entry-title { color: #C98850; }
+html[data-theme='dark'] .spirit-entry-sub { color: #8A7A66; }
+html[data-theme='dark'] .spirit-entry-arrow { color: #8A7A66; }
+
+/* 弹层（编辑家族信息 / 申请加入 / 申请建谱） */
+html[data-theme='dark'] .modal {
+  background: #2A2219;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+}
+html[data-theme='dark'] .modal-title { color: #EDE3D6; }
+html[data-theme='dark'] .label { color: #C98850; }
+html[data-theme='dark'] .input,
+html[data-theme='dark'] .textarea {
+  background: #241D16;
+  border-color: #3A3027;
+  color: #EDE3D6;
+}
+html[data-theme='dark'] .edit-error { color: #E0675F; }
+html[data-theme='dark'] .btn-save {
+  background: #C98850;
+  color: #211A14;
+}
+html[data-theme='dark'] .btn-cancel { color: #8A7A66; }
+html[data-theme='dark'] .modal-sub { color: #8A7A66; }
+html[data-theme='dark'] .join-tip { color: #8A7A66; }
+html[data-theme='dark'] .join-result { border-color: #3A3027; }
+html[data-theme='dark'] .join-result.selected {
+  border-color: #C98850;
+  background: #332A20;
+}
+html[data-theme='dark'] .identity-confirm { background: #332A20; }
+html[data-theme='dark'] .identity-text { color: #B8A894; }
+
+/* 树图浮层（由子组件 tree-pedigree 渲染，故用 :deep 从本宿主落色；**不改该组件文件**）：
+   统计条 / ＋－⟳ 缩放圆钮 / 右侧「纵向·横向·迁徙地图·外树」图例栏 / 图下提示 / 加载空态。
+   只改颜色，不改几何。 */
+html[data-theme='dark'] .container :deep(.stats) {
+  background: #241D16;
+  border-color: #3A3027;
+  color: #EDE3D6;
+}
+html[data-theme='dark'] .container :deep(.stats .stat) { color: #EDE3D6; }
+html[data-theme='dark'] .container :deep(.stat.stat-hint) { color: #C98850; }
+html[data-theme='dark'] .container :deep(.hint) { color: #8A7A66; }
+html[data-theme='dark'] .container :deep(.loading),
+html[data-theme='dark'] .container :deep(.empty) { color: #8A7A66; }
+html[data-theme='dark'] .container :deep(.error) { color: #E0675F; }
+html[data-theme='dark'] .container :deep(.zoom-btn),
+html[data-theme='dark'] .container :deep(.layout-btn) {
+  background: #2A2219;
+  border-color: #3A3027;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+html[data-theme='dark'] .container :deep(.zoom-icon),
+html[data-theme='dark'] .container :deep(.layout-name) { color: #C98850; }
+html[data-theme='dark'] .container :deep(.layout-btn.active) {
+  background: #C98850;
+  border-color: #C98850;
+}
+html[data-theme='dark'] .container :deep(.layout-btn.active .layout-name) { color: #211A14; }
+/* #endif */
 </style>

@@ -111,4 +111,11 @@ function openTreePage(treeId: string) {
 <style scoped>
 .page { min-height: 100vh; }
 .page-loading { padding: 80px 0; text-align: center; color: #999; }
+
+/* 夜间模式（html[data-theme='dark']）：本页是薄壳，内容全在 PersonArchive
+   （其夜间配色见 components/person-archive）⇒ 这里只补加载态文字色。
+   只改颜色、零几何改动；H5 条件编译 ⇒ 小程序零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .page-loading { color: #B8A894; }
+/* #endif */
 </style>

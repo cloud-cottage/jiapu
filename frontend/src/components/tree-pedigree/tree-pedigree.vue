@@ -110,7 +110,7 @@ import type { FamilySummary } from '@/business/api';
 import { buildPedigreeForest, cardChipHit } from '@/business/pedigree';
 import type { PedigreeTreeKind, TreePersonNode, PedigreeNodeAnnotation } from '@/business/pedigree';
 import { personIdDisplay, nameWithTitles } from '@/business/format';
-import { openTreeHome, mirrorLabelOf, mirrorTargetOf, treeKindOf } from '@/business';
+import { openTreeHome, mirrorLabelOf, mirrorTargetOf, treeKindOf, themeRef } from '@/business';
 import * as echarts from 'echarts';
 import PersonDetailModal from '@/components/person-detail-modal/person-detail-modal.vue';
 
@@ -121,8 +121,7 @@ import PersonDetailModal from '@/components/person-detail-modal/person-detail-mo
  * 邀请落地页（批 C-2）传 `focusLabel="★建议绑定"` —— 那里被邀请人尚未绑定，标「我」会误读。
  */
 const FOCUS_MARKER = '★我';
-/** 「我」标记的高亮色（卡面文字改色，与关键节点标注同一套呈现方式） */
-const FOCUS_MARKER_COLOR = '#C62828';
+/** 「我」标记的高亮色（卡面文字改色，与关键节点标注同一套呈现方式）——两态色值见下方 `buildPalette.focusColor` */
 
 const props = withDefaults(
   defineProps<{
@@ -466,6 +465,11 @@ function pointerYOf(params: any): number | null {
 
 let chart: echarts.ECharts | null = null;
 let renderTimer: ReturnType<typeof setTimeout> | null = null;
+/**
+ * 下一次 renderChart 是否抑制补间（主题切换专用）：切主题只换颜色、坐标系与节点位置逐值不变，
+ * 再播一遍入场/更新动画等于无端闪一下 ⇒ 这一次 setOption 用 animationDuration 0，渲完立刻复位。
+ */
+let suppressThemeAnim = false;
 
 /**
  * 统计栏「始祖」= **数据口径**（不是图上顶端节点）：`tree-meta` 的 `founder_gramps_id` 指针所指节点，
@@ -613,25 +617,68 @@ const CARD_H = 28;
 const CARD_MAX_W = 128; // 含 padding，约 8 个汉字 / 17 个拉丁字符
 const CARD_MAX_W_TITLED = 216; // 带称号卡（姓+名+封号+谥号+号）放宽上限，避免称号被截断
 const WEAK_FONT = 11;
-const WEAK_COLOR = '#9E8F80';
-/** 次级行 rich 样式（配偶行 / 第N世 / 外树镜像角标）：视觉上弱于姓名（14px / #3E2723） */
-const WEAK_RICH = { w: { fontSize: WEAK_FONT, color: WEAK_COLOR } };
+
 /**
- * **卡面可见入口 chip** 的 rich 样式（祖谱图谱：下游支系登记镜像的「📂 打开〈树名〉」）：
- * 弱化行内画成一个圆角小按钮（米底 + 浅棕边），触屏与桌面都能一眼看出「这里可点」。
- * 卡面其余宿主不产生 chip 行 ⇒ 该样式块不被使用，观感零影响。
+ * **名卡配色槽位（夜间模式补丁）**：ECharts 的颜色写在 JS option / series data 里，读不到 CSS 变量
+ * ⇒ 由 `themeRef` 现取值（见 `palette`）。**浅色列 = 改造前逐字原值**（浅色观感零变化）；
+ * 暗色列取暖调 token：底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 / 主字 #EDE3D6 / 次字 #B8A894 /
+ * 边框·连线 #3A3027–#4A3D31 / 强调 #C98850。
+ * ⚠️ 只换颜色：卡宽/卡高/行距/symbolSize/盒子尺寸/布局参数一律与浅色同值 ⇒ 两态节点数与坐标逐值一致。
  */
-const CHIP_RICH = {
-  fontSize: WEAK_FONT,
-  color: '#8B4513',
-  backgroundColor: '#FBF6EF',
-  borderColor: '#E0D5C8',
-  borderWidth: 1,
-  borderRadius: 8,
-  padding: [2, 6] as [number, number],
-};
-/** 卡面 label 的 rich 样式集合（`w` 次级行 + `chip` 可见入口；系列默认与 per-node 覆盖共用） */
-const CARD_RICH = { ...WEAK_RICH, chip: CHIP_RICH };
+function buildPalette(dark: boolean) {
+  const nameColor = dark ? '#EDE3D6' : '#3E2723';
+  const weakColor = dark ? '#B8A894' : '#9E8F80';
+  /** 主色（浅色 #8B4513 棕 / 暗色 #C98850 暖棕）：虚拟根、占位卡边框、hover 边框、chip 文字 */
+  const accent = dark ? '#C98850' : '#8B4513';
+  /** 次级行 rich 样式（配偶行 / 第N世 / 外树镜像角标）：视觉上弱于姓名（14px / 主字） */
+  const weakRich = { w: { fontSize: WEAK_FONT, color: weakColor } };
+  /**
+   * 卡面可见入口 chip 的 rich 样式（祖谱图谱：下游支系登记镜像的「📂 打开〈树名〉」）：
+   * 弱化行内画成一个圆角小按钮（米底 + 浅棕边，暗色 = 次容器底 + 暗边框）。尺寸/内边距两态同值。
+   */
+  const chipRich = {
+    fontSize: WEAK_FONT,
+    color: accent,
+    backgroundColor: dark ? '#241D16' : '#FBF6EF',
+    borderColor: dark ? '#3A3027' : '#E0D5C8',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: [2, 6] as [number, number],
+  };
+  return {
+    nameColor,
+    weakColor,
+    /** 卡面 label 的 rich 样式集合（`w` 次级行 + `chip` 可见入口；系列默认与 per-node 覆盖共用） */
+    cardRich: { ...weakRich, chip: chipRich },
+    /**
+     * 卡面底色：按性别区分（男冷 / 女暖 / 未知中性）。暗色不是把浅色变暗（那样会亮成一块白卡），
+     * 而是「同一色相压到卡面色阶」：男 #232B31 / 女 #2E242A / 未知 #2A2219 —— 性别一眼可辨且整体偏暗。
+     */
+    cardFill: (g: string | undefined): string =>
+      dark
+        ? g === 'M' ? '#232B31' : g === 'F' ? '#2E242A' : '#2A2219'
+        : g === 'M' ? '#EDF3F8' : g === 'F' ? '#FCEFF1' : '#F2F2F2',
+    /** 已故者「明显边框」：浅色 = 黑；暗色 = 次字色（黑边在暗底上看不见） */
+    deceasedBorder: dark ? '#B8A894' : '#000000',
+    /** 虚拟根 / 占位卡（非人物卡）底色 */
+    artifactFill: dark ? '#241D16' : '#F7EFE3',
+    artifactBorder: accent,
+    /** 世代连线（ECharts lineStyle） */
+    lineColor: dark ? '#4A3D31' : '#A1887F',
+    tooltipBg: dark ? '#2A2219' : '#FFFDF7',
+    tooltipBorder: dark ? '#4A3D31' : '#8B4513',
+    tooltipTextColor: nameColor,
+    /** hover 强调边框 + 虚拟根卡面 */
+    emphasisBorder: accent,
+    rootFill: accent,
+    /** 「我 / 建议绑定」标记色：浅色 #C62828 → 暗色 #E0675F（暗底可读的红） */
+    focusColor: dark ? '#E0675F' : '#C62828',
+  };
+}
+
+/** 当前主题的名卡色板（`themeRef` 变化 → 自动重算；纯色值，不含任何几何参数） */
+const palette = computed(() => buildPalette(themeRef.value === 'dark'));
+
 
 /** 近似测量字符串渲染宽度（全角≈fontSize，半角≈0.62em，空格≈0.5em） */
 function estimateTextWidth(text: string, fontSize: number): number {
@@ -660,9 +707,9 @@ function cardText(name: string, cardW: number, fontSize = CARD_FONT): string {
   return t === name ? name : `${t}…`;
 }
 
-/** 性别 → 卡面浅色底（保证与深棕字的对比度） */
+/** 性别 → 卡面底色（两态色值见 `buildPalette.cardFill`：浅色浅蓝/浅粉，暗色同色相压暗） */
 function genderFillColor(g: string | undefined): string {
-  return g === 'M' ? '#EDF3F8' : g === 'F' ? '#FCEFF1' : '#F2F2F2';
+  return palette.value.cardFill(g);
 }
 
 /** 递归生成名卡节点树（返回克隆，不改业务数据）：写入自适应卡宽/卡高 + 名卡样式。
@@ -788,12 +835,14 @@ function stretchAxis(): 'height' | 'width' {
 }
 
 function decorateTree(node: TreePersonNode, isVirtualRoot = false): TreePersonNode {
+  const pal = palette.value;
   const artifact = isVirtualRoot || !node.gramps_id; // 虚拟根/占位节点（可点入口），非人物卡
-  // 边框严格约定：人物卡默认 0 宽；仅已故（is_living===false = 有死亡记录）→ 明显黑色
-  // 边框；性别只由卡面底色区分（男浅蓝/女浅粉）。占位/虚拟根保留棕色细框以示可点。
-  const border = artifact ? '#8B4513' : node.is_living === false ? '#000000' : 'transparent';
+  // 边框严格约定：人物卡默认 0 宽；仅已故（is_living===false = 有死亡记录）→ 明显边框
+  // （浅色黑框 / 暗色次字色）；性别只由卡面底色区分。占位/虚拟根保留主色细框以示可点。
+  // ⚠️ 只换颜色：borderWidth 与卡宽高两态同值（几何红线）。
+  const border = artifact ? pal.artifactBorder : node.is_living === false ? pal.deceasedBorder : 'transparent';
   const borderWidth = artifact ? 1.5 : node.is_living === false ? 2 : 0;
-  const fill = artifact ? '#F7EFE3' : genderFillColor(node.gender);
+  const fill = artifact ? pal.artifactFill : genderFillColor(node.gender);
   /** 宿主注记（祖谱图谱）：`badge` / `founderText` / `anchorText` / 卡面可见入口 `chipLabel`（见 annotationCardLines） */
   const note = artifact ? undefined : annotationOf(node);
   const lines: string[] = [];
@@ -854,14 +903,14 @@ function decorateTree(node: TreePersonNode, isVirtualRoot = false): TreePersonNo
       .join('\n'),
   };
   // 关键节点：卡面文字用标注主题色（ECharts per-node label 覆盖；不命中则沿用系列默认深棕）
-  if (km?.color) card.label = { color: km.color, rich: CARD_RICH };
+  if (km?.color) card.label = { color: km.color, rich: pal.cardRich };
   // 「我」/「建议绑定」标记（宿主传入的 focusHandle 节点）：卡面姓名下追加一行标记 + 卡面文字改高亮色。
   // 标记文案由 `focusLabel` 决定（缺省 ★我 = 批 B 既有行为逐字不变；邀请落地页传 ★建议绑定）。
   // 只写 _cardText（渲染文字），**不进 lines / cardLines**：卡宽、卡高、世代行距一律按未标记时的
   // 原值计算 ⇒ 图元尺寸（symbolSize）与树布局零影响（本仓红线）；占位/虚拟根同 keyMarkers 不标记。
   if (!artifact && props.focusHandle && node.handle === props.focusHandle) {
     card._cardText = `${card._cardText}\n${props.focusLabel}`;
-    card.label = { color: FOCUS_MARKER_COLOR, rich: CARD_RICH };
+    card.label = { color: pal.focusColor, rich: pal.cardRich };
   }
   if (node.children) card.children = node.children.map((c) => decorateTree(c));
   return card;
@@ -1106,13 +1155,26 @@ function patchFocusMarker(): boolean {
   const node = findDecoratedNode(lastChartRoot, handle);
   if (!node) return false;
   node._cardText = `${node._cardText ?? ''}\n${props.focusLabel}`;
-  node.label = { color: FOCUS_MARKER_COLOR, rich: CARD_RICH };
+  node.label = { color: palette.value.focusColor, rich: palette.value.cardRich };
   markedHandle = handle;
   // 只更新 series 数据（卡面文本/颜色）：本次更新动画置 0 ⇒ 不重放入场动画，再恢复默认更新时长
   chart.setOption({ series: [{ data: [lastChartRoot], animationDurationUpdate: 0 }] });
   chart.setOption({ series: [{ animationDurationUpdate: 750 }] });
   return true;
 }
+
+/**
+ * 夜间模式（补丁 §canvas 配色）：CSS 面由 `<html data-theme>` 自动翻转，但树图的节点卡底/字/边框、
+ * 连线、tooltip、hover 边框全在 ECharts option / series data 里（canvas 读不到 CSS 变量）⇒
+ * **主题一变就地重建 option**（`renderChart`：decorateTree 用新色板 → setOption），不整页刷新。
+ * 几何红线：色板只含颜色，卡宽/卡高/行距/symbolSize/盒子尺寸/布局参数两态同值 ⇒ 节点数与坐标逐值不变。
+ * 首屏/无图时直接返回（下一次 renderChart 自然用新色板）。
+ */
+watch(themeRef, () => {
+  if (!chart || !visibleForest.value.length) return;
+  suppressThemeAnim = true;
+  renderChart();
+});
 
 // 宿主按数据现算 keyMarkers（带色称号；契约 docs/person-badge.spec.md §4-1），可能在组件**首次渲染之后**
 // 才到（宿主异步取数）⇒ 变化时补渲一次（同下方 focusHandle 的「迟到补渲」理由；只重算 series 数据，
@@ -1243,6 +1305,8 @@ function unbindWheel() {
 function renderChart() {
   const el = document.getElementById('tree-chart') as HTMLDivElement | null;
   if (!el) return;
+  /** 本次渲染的色板快照（与 decorateTree 同一份；切主题时 palette 先更新再走到这里） */
+  const layoutPalette = palette.value;
   // 重渲/切布局会重建图元：先把可能还在跑的首屏居中补间停掉（避免对旧坐标系继续发位移）
   cancelCenterTween();
   // 祖谱图（宿主传节点注记）拦截浏览器右键菜单：右键改为弹节点次级入口菜单
@@ -1294,7 +1358,7 @@ function renderChart() {
           gramps_id: '',
           gender: 'U',
           is_living: false,
-          itemStyle: { color: '#8B4513' },
+          itemStyle: { color: layoutPalette.rootFill },
           children: roots,
         };
 
@@ -1358,12 +1422,12 @@ function renderChart() {
       trigger: 'item' as const,
       triggerOn: 'mousemove' as const,
       formatter: tooltipFmt,
-      // richText 模式同样吃这些视觉配置：米色卡 + 棕边 + 深棕字，呼应名卡配色
-      backgroundColor: '#FFFDF7',
-      borderColor: '#8B4513',
+      // richText 模式同样吃这些视觉配置：卡面底 + 主色边 + 主字，呼应名卡配色（两态取 layoutPalette）
+      backgroundColor: layoutPalette.tooltipBg,
+      borderColor: layoutPalette.tooltipBorder,
       borderWidth: 1,
       padding: [8, 10],
-      textStyle: { color: '#3E2723', fontSize: 13 },
+      textStyle: { color: layoutPalette.tooltipTextColor, fontSize: 13 },
     },
   };
 
@@ -1395,24 +1459,26 @@ function renderChart() {
         // roam:'move' = 只允许平移（缩放锁死，走 ＋/－ 按钮；滚轮改为平移视野）
         roam: 'move',
         zoom: zoomLevel.value,
-        animationDuration: 550,
-        animationDurationUpdate: 750,
-        lineStyle: { color: '#A1887F', width: 1.2, curveness: 0.5 },
+        // 主题切换触发的那次重建：同坐标系里只换颜色 ⇒ 不重播补间（suppressThemeAnim 用完即复位）
+        animationDuration: suppressThemeAnim ? 0 : 550,
+        animationDurationUpdate: suppressThemeAnim ? 0 : 750,
+        lineStyle: { color: layoutPalette.lineColor, width: 1.2, curveness: 0.5 },
         label: {
           position: 'inside',
           rotate: 0,
           fontSize: CARD_FONT,
-          color: '#3E2723',
-          rich: CARD_RICH,
+          color: layoutPalette.nameColor,
+          rich: layoutPalette.cardRich,
           formatter: labelFmt,
         },
         emphasis: {
           focus: 'descendant',
-          itemStyle: { borderColor: '#8B4513', borderWidth: 2 },
+          itemStyle: { borderColor: layoutPalette.emphasisBorder, borderWidth: 2 },
         },
       },
     ],
   });
+  suppressThemeAnim = false;
 
   lastChartRoot = chartRoot;
   // decorateTree 已按当前 props.focusHandle 烘入标记（节点不在本图 ⇒ 不记）

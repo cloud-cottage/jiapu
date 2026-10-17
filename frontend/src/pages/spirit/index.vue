@@ -665,4 +665,86 @@ function goInjectorProfile() {
 .fatal-box { text-align: center; }
 .fatal-text { font-size: 13px; color: #C62828; }
 .error { text-align: center; color: #C62828; font-size: 13px; margin-top: 12px; }
+
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   色板同 styles/td-dark-warm.css（底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 /
+   主字 #EDE3D6 / 次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 / 暖棕 #C98850 /
+   error #E0675F / success #7FC08A / warning #D9973F）。
+   **只改颜色**（背景 / 文字 / 边框 / 阴影），零布局属性、零 `filter` / `invert`。
+   玉（`ICON.JADE`）与石榴籽（`ICON.SEED`）图标**一律不碰 ⇒ 不反色**。
+   已镶嵌玉的视觉强调继续用暖棕（#C98850）：含凹槽内「已镶玉」行、注入者主文案与侧边条、
+   `status-none` 左条 —— 不改成中性灰，避免丢掉「这棵树已有玉」的辨识。
+   H5 条件编译 ⇒ 小程序端零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .section {
+  background: linear-gradient(180deg, #2A2219, #241D16);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+html[data-theme='dark'] .section-title { color: #EDE3D6; }
+html[data-theme='dark'] .section-extra { color: #C98850; }
+html[data-theme='dark'] .section-hint { color: #8A7A66; }
+
+/* ① 状态区四态：左条语义色 + 文案 */
+html[data-theme='dark'] .status { border-left-color: #8A7A66; }
+html[data-theme='dark'] .status-active { border-left-color: #7FC08A; }
+html[data-theme='dark'] .status-buffer { border-left-color: #D9973F; }
+html[data-theme='dark'] .status-expired { border-left-color: #E0675F; }
+html[data-theme='dark'] .status-none { border-left-color: #C98850; }
+html[data-theme='dark'] .status-main { color: #EDE3D6; }
+html[data-theme='dark'] .status-sub { color: #C98850; }
+html[data-theme='dark'] .status-line { color: #B8A894; }
+html[data-theme='dark'] .status-tree { color: #8A7A66; }
+html[data-theme='dark'] .guide { background: #241D16; }
+html[data-theme='dark'] .guide-text { color: #C98850; }
+html[data-theme='dark'] .banner { background: #33231D; }
+html[data-theme='dark'] .banner-text { color: #E0675F; }
+
+/* ② 镶玉区 */
+html[data-theme='dark'] .jade-line { color: #EDE3D6; }
+/* 已镶嵌玉的强调句（凹槽内首行）保持暖棕 */
+html[data-theme='dark'] .jade-mounted .ico-line .jade-line { color: #C98850; }
+html[data-theme='dark'] .jade-warn { color: #E0675F; }
+html[data-theme='dark'] .jade-note { color: #8A7A66; }
+html[data-theme='dark'] .injector-box { background: #241D16; border-left-color: #C98850; }
+html[data-theme='dark'] .injector-main { color: #C98850; }
+html[data-theme='dark'] .injector-card { background: #2A2219; border-color: #3A3027; }
+html[data-theme='dark'] .injector-card-name { color: #EDE3D6; }
+html[data-theme='dark'] .injector-card-link { color: #D6A57A; }
+html[data-theme='dark'] .injector-note { color: #8A7A66; }
+
+/* ③ 蓄能区五档位 */
+html[data-theme='dark'] .plan-card { background: #241D16; border-color: #3A3027; }
+html[data-theme='dark'] .plan-card.on { background: #2E251C; border-color: #C98850; }
+html[data-theme='dark'] .plan-name { color: #EDE3D6; }
+html[data-theme='dark'] .plan-seeds { color: #C98850; }
+html[data-theme='dark'] .plan-days { color: #B8A894; }
+html[data-theme='dark'] .plan-gift { color: #7FC08A; }
+html[data-theme='dark'] .plan-short { color: #E0675F; }
+html[data-theme='dark'] .plan-activity { background: #D9973F; color: #211A14; }
+
+/* ④ 流水 / 空态 / 链接 / 错误 */
+html[data-theme='dark'] .empty { color: #8A7A66; }
+html[data-theme='dark'] .link { color: #D6A57A; }
+html[data-theme='dark'] .row-item { border-bottom-color: #3A3027; }
+html[data-theme='dark'] .row-main { color: #B8A894; }
+html[data-theme='dark'] .row-sub { color: #8A7A66; }
+html[data-theme='dark'] .row-right { color: #7FC08A; }
+html[data-theme='dark'] .fatal-text,
+html[data-theme='dark'] .error { color: #E0675F; }
+
+/* 镶嵌 / 灌注确认走 `uni.showModal`：`.uni-modal*` 由 uni-h5 渲染在页面根之外（body 级），
+   scoped 选择器够不着 ⇒ 整条选择器（含 `html[data-theme='dark']` 前缀）一起放进 `:global()`，
+   编译产物即为裸 `html[data-theme='dark'] .uni-modal` ⇒ 只在夜间生效、浅色零影响。
+   （写法注意：前缀若留在 `:global()` 之外会被编译丢弃 —— 实测产物曾退化成裸 `.uni-modal`。）
+   只改颜色，不改任何几何，不用 invert。 */
+:global(html[data-theme='dark'] .uni-modal) { background: #2A2219; }
+:global(html[data-theme='dark'] .uni-modal__hd),
+:global(html[data-theme='dark'] .uni-modal__ft),
+:global(html[data-theme='dark'] .uni-modal__bd) { background: transparent; }
+:global(html[data-theme='dark'] .uni-modal__title) { color: #EDE3D6; }
+:global(html[data-theme='dark'] .uni-modal__bd) { color: #B8A894; }
+:global(html[data-theme='dark'] .uni-modal__btn) { color: #B8A894; background: transparent; }
+:global(html[data-theme='dark'] .uni-modal__btn_primary) { color: #C98850; }
+:global(html[data-theme='dark'] .uni-modal__textarea) { color: #EDE3D6; background: #332A20; }
+/* #endif */
 </style>

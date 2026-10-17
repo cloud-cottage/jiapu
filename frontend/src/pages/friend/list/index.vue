@@ -413,4 +413,59 @@ onUnmounted(stopNowTimer);
 /* 破坏性操作：确认键用朱红（与「解除」语义一致） */
 .fd-cfm-btn.ok { background: linear-gradient(180deg, #C4747F, #A8322D); border-color: #A8322D; }
 .fd-cfm-btn.ok .fd-cfm-btn-text { color: #FFF6F8; }
+
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   色板同 styles/td-dark-warm.css（底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 /
+   主字 #EDE3D6 / 次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 / 分割 #4A3D31 /
+   暖棕 #C98850 / error #E0675F / success #7FC08A）。
+   **只改颜色**（背景 / 文字 / 边框 / 阴影），零布局属性、零 `filter` / `invert`。
+   `.fd-title-mark`（朱红→暖棕竖条）保留渐变本身，只把两端换成夜间可见的朱红 / 暖棕。
+   H5 条件编译 ⇒ 小程序端零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .fd-title-mark { background: linear-gradient(180deg, #E0675F, #C98850); }
+html[data-theme='dark'] .fd-title { color: #EDE3D6; }
+html[data-theme='dark'] .fd-hint { color: #8A7A66; }
+html[data-theme='dark'] .fd-group-title { color: #C98850; }
+html[data-theme='dark'] .fd-group-count { color: #8A7A66; }
+
+html[data-theme='dark'] .fd-card {
+  background: linear-gradient(180deg, #2A2219, #241D16);
+  border-color: #3A3027;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+html[data-theme='dark'] .fd-name { color: #EDE3D6; }
+html[data-theme='dark'] .fd-status { color: #C98850; background: #332A20; }
+html[data-theme='dark'] .fd-status-grace { color: #E0675F; background: #33231D; }
+html[data-theme='dark'] .fd-status-pending { color: #D6A57A; background: #2E251C; }
+html[data-theme='dark'] .fd-line { color: #B8A894; }
+html[data-theme='dark'] .fd-line-sub { color: #8A7A66; }
+html[data-theme='dark'] .fd-line-wait { color: #C98850; }
+html[data-theme='dark'] .fd-line-lock { color: #E0675F; }
+
+html[data-theme='dark'] .fd-btn { background: #332A20; border-color: #3A3027; }
+html[data-theme='dark'] .fd-btn-text { color: #B8A894; }
+html[data-theme='dark'] .fd-btn-primary { background: linear-gradient(180deg, #D6A57A, #C98850); border-color: #C98850; }
+html[data-theme='dark'] .fd-btn-primary .fd-btn-text { color: #211A14; }
+html[data-theme='dark'] .fd-btn-off { background: #241D16; border-color: #3A3027; }
+html[data-theme='dark'] .fd-btn-off .fd-btn-text { color: #8A7A66; }
+html[data-theme='dark'] .fd-reason { color: #8A7A66; }
+html[data-theme='dark'] .fd-done { color: #7FC08A; }
+html[data-theme='dark'] .fd-err { color: #E0675F; }
+html[data-theme='dark'] .fd-empty-text { color: #8A7A66; }
+
+/* 解除好友自绘确认层（1010 / 1011） */
+html[data-theme='dark'] .fd-cfm-mask { background: rgba(0, 0, 0, 0.66); }
+html[data-theme='dark'] .fd-cfm {
+  background: linear-gradient(180deg, #2A2219, #241D16);
+  border-color: #3A3027;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(237, 227, 214, 0.06);
+}
+html[data-theme='dark'] .fd-cfm-title { color: #EDE3D6; }
+html[data-theme='dark'] .fd-cfm-peer { color: #C98850; }
+html[data-theme='dark'] .fd-cfm-body { color: #B8A894; }
+html[data-theme='dark'] .fd-cfm-btn { background: #332A20; border-color: #3A3027; }
+html[data-theme='dark'] .fd-cfm-btn-text { color: #B8A894; }
+html[data-theme='dark'] .fd-cfm-btn.ok { background: linear-gradient(180deg, #E0675F, #A8322D); border-color: #A8322D; }
+html[data-theme='dark'] .fd-cfm-btn.ok .fd-cfm-btn-text { color: #211A14; }
+/* #endif */
 </style>

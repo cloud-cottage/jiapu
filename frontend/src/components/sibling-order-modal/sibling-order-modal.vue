@@ -502,4 +502,45 @@ onMounted(measureRowHeight);
   font-size: 14px; color: #5D4037; background: #FBF8F5; border: 1px solid #E0D6CB;
 }
 .som-confirm-ok { color: #fff; background: #8B4513; border-color: #8B4513; }
+
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   面板 / 二次确认层走卡面 #2A2219，分段胶囊 #241D16、选中 #C98850 边 + #332A20 底，
+   列表行 #2A2219 + #4A3D31 分隔，序号徽记 #C98850 底压深字（#211A14，对比 6.4:1；白字仅 2.1:1）。
+   两层遮罩（.som-mask / .som-confirm-mask）保持半透明黑不改；只改颜色声明、无 filter / invert；
+   全部 H5 条件编译 ⇒ 小程序零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .som-panel {
+  background: #2A2219;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+}
+html[data-theme='dark'] .som-title { color: #EDE3D6; }
+html[data-theme='dark'] .som-close { color: #B8A894; }
+html[data-theme='dark'] .som-sub { color: #B8A894; }
+html[data-theme='dark'] .som-hint { color: #C98850; }
+html[data-theme='dark'] .som-seg-tab { background: #241D16; border-color: #3A3027; }
+html[data-theme='dark'] .som-seg-tab.active { background: #332A20; border-color: #C98850; }
+html[data-theme='dark'] .som-seg-text { color: #EDE3D6; }
+html[data-theme='dark'] .som-seg-tab.active .som-seg-text { color: #C98850; }
+html[data-theme='dark'] .som-row { background: #2A2219; border-bottom-color: #4A3D31; }
+html[data-theme='dark'] .som-row-dragging {
+  background: #332A20;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+html[data-theme='dark'] .som-seq { background: #C98850; color: #211A14; }
+html[data-theme='dark'] .som-name { color: #EDE3D6; }
+html[data-theme='dark'] .som-arrow { color: #C98850; }
+html[data-theme='dark'] .som-arrow-off { color: #5E5142; }
+html[data-theme='dark'] .som-empty { color: #8A7A66; }
+html[data-theme='dark'] .som-error { color: #E0675F; }
+html[data-theme='dark'] .som-note-text { color: #8A7A66; }
+/* 自绘计费确认层 */
+html[data-theme='dark'] .som-confirm {
+  background: #2A2219;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+}
+html[data-theme='dark'] .som-confirm-title { color: #EDE3D6; }
+html[data-theme='dark'] .som-confirm-body { color: #B8A894; }
+html[data-theme='dark'] .som-confirm-btn { background: #241D16; border-color: #3A3027; color: #EDE3D6; }
+html[data-theme='dark'] .som-confirm-ok { background: #C98850; border-color: #C98850; color: #211A14; }
+/* #endif */
 </style>

@@ -2334,4 +2334,118 @@ onUnmounted(() => {
 
 .inv-notice { margin-top: 10px; font-size: 12px; color: #999; text-align: center; }
 .inv-error { margin-top: 10px; font-size: 12px; color: #C62828; line-height: 1.6; }
+
+/* ---- 夜间模式（html[data-theme='dark']）：只收口卡面 / 底板 / 格位这几个大面 ----
+   为什么写在本组件、不写在父页 `pages/mine`：Vue scoped 的 data-v 只会打到子组件**根节点**，
+   父页里写 `.inv-card` 之类内部类选择器命中不了。值与 pages/mine 的暗色段同族
+   （卡面 #2A2219 / 底 #211A14 / 边框 #3A3027 / 主字 #EDE3D6 / 暖棕 #C98850）。
+   **只改颜色，不改任何几何**；H5 条件编译 ⇒ 小程序零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .inv-card {
+  background: linear-gradient(180deg, #2A2219, #241D16);
+  border-color: #3A3027;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+html[data-theme='dark'] .inv-title { color: #EDE3D6; }
+html[data-theme='dark'] .inv-count { color: #C4B4A0; }
+html[data-theme='dark'] .inv-hint { color: #8A7A66; }
+html[data-theme='dark'] .inv-grid {
+  background: linear-gradient(180deg, #241D16, #1C1610);
+  border-color: #3A3027;
+}
+html[data-theme='dark'] .inv-slot-box {
+  background: rgba(237, 227, 214, 0.06);
+  box-shadow: inset 0 0 0 1px #3A3027, inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+html[data-theme='dark'] .inv-slot-filled .inv-slot-box {
+  background: linear-gradient(160deg, #332A20, #2A2219);
+  box-shadow: inset 0 0 0 1px #7A6234, inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+html[data-theme='dark'] .inv-slot-active .inv-slot-box,
+html[data-theme='dark'] .inv-slot-drop .inv-slot-box {
+  background: #3A3027;
+  box-shadow: inset 0 0 0 2px #C98850;
+}
+
+/* 第二阶段补：属性提示层（自绘 tip · z-index 1010）/ 二次确认框 / 结果浮字 / 角标。
+   提示层浅色态本就是深棕浮层，夜间改为同族更暗的底 + 暖棕描边 ⇒ 与卡片底（#2A2219）分层可见；
+   **不改尺寸**（padding / border-width / font-size 一行未动），`.inv-ico` 实物图不碰 ⇒ 不反色。 */
+html[data-theme='dark'] .inv-tip {
+  background: rgba(42, 34, 25, 0.97);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), inset 0 0 0 1px #3A3027;
+}
+html[data-theme='dark'] .inv-tip.is-fail {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(224, 103, 95, 0.8);
+}
+html[data-theme='dark'] .inv-tip-title { color: #EDE3D6; }
+html[data-theme='dark'] .inv-tip-line { color: #B8A894; }
+html[data-theme='dark'] .inv-tip-lock { color: #E0675F; }
+html[data-theme='dark'] .inv-tip-note { color: #8A7A66; }
+html[data-theme='dark'] .inv-tip-poem {
+  color: #C98850;
+  border-top-color: rgba(201, 136, 80, 0.4);
+}
+html[data-theme='dark'] .inv-tip-btn {
+  background: linear-gradient(180deg, #D6A57A, #C98850);
+  box-shadow: inset 0 1px 0 rgba(237, 227, 214, 0.5), inset 0 -2px 4px rgba(70, 44, 22, 0.5),
+              inset 0 0 0 1px rgba(237, 227, 214, 0.35), 0 0 9px rgba(201, 136, 80, 0.35);
+}
+html[data-theme='dark'] .inv-tip-btn-text { color: #211A14; text-shadow: none; }
+html[data-theme='dark'] .inv-tip-btn.inv-tip-btn-off {
+  background: rgba(237, 227, 214, 0.10);
+  box-shadow: inset 0 0 0 1px #3A3027;
+}
+html[data-theme='dark'] .inv-tip-btn.inv-tip-btn-off .inv-tip-btn-text { color: #8A7A66; }
+html[data-theme='dark'] .inv-lock { color: #E0675F; }
+html[data-theme='dark'] .fx-float {
+  background: rgba(42, 34, 25, 0.94);
+  box-shadow: inset 0 0 0 1px #4A3D31;
+}
+html[data-theme='dark'] .fx-float.fail {
+  background: rgba(58, 26, 24, 0.95);
+  color: #E0675F;
+  box-shadow: inset 0 0 0 1px rgba(224, 103, 95, 0.55);
+}
+html[data-theme='dark'] .inv-confirm {
+  background: linear-gradient(180deg, #2A2219, #241D16);
+  border-color: #3A3027;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(237, 227, 214, 0.06);
+}
+html[data-theme='dark'] .inv-confirm-title,
+html[data-theme='dark'] .inv-confirm-body { color: #EDE3D6; }
+html[data-theme='dark'] .inv-confirm-btn { background: #332A20; border-color: #3A3027; }
+html[data-theme='dark'] .inv-confirm-btn-text { color: #B8A894; }
+html[data-theme='dark'] .inv-confirm-btn.ok {
+  background: linear-gradient(180deg, #D6A57A, #C98850); border-color: #C98850;
+}
+html[data-theme='dark'] .inv-confirm-btn.ok .inv-confirm-btn-text { color: #211A14; }
+html[data-theme='dark'] .inv-notice { color: #8A7A66; }
+html[data-theme='dark'] .inv-error,
+html[data-theme='dark'] .inv-overflow-label,
+html[data-theme='dark'] .inv-overflow-text { color: #E0675F; }
+
+/* 第三阶段补：夜间仍靠**自绘色**的两处（角标字 / 提示层按钮高光）。只改颜色与投影，
+   `padding` / `border-width` / `font-size` / `transition` / `@keyframes` 一行未动。 */
+/* 格内角标：`inv-badge` 的白字压在**实物图**（`static/icons/*.png` 不反色，卷轴 / 碎简均亮 ≈ 89 / 62）
+   与夜间深格位（`#332A20`）交界处 —— 改暖白 #EDE3D6 并加深投影，亮纸面与深格位两侧都分得开。 */
+html[data-theme='dark'] .inv-badge {
+  color: #EDE3D6;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 4px rgba(0, 0, 0, 0.75);
+}
+/* 悬停高光（真 bug，非观感）：基础态 `html[...] .inv-tip-btn` 特异性 (0,2,1) 高于
+   `.inv-tip-btn.is-hover` 的 (0,2,0) ⇒ 夜间那条外发光被整条顶掉（指针/手指在按钮上毫无反馈）。
+   此处按夜间底色重写同一条 `box-shadow`（暖金），`.btn-fx` 叠加层与 `transition` 不动。 */
+html[data-theme='dark'] .inv-tip-btn.is-hover {
+  box-shadow: inset 0 1px 0 rgba(237, 227, 214, 0.9), inset 0 -2px 4px rgba(70, 44, 22, 0.55),
+              inset 0 0 0 1px rgba(237, 227, 214, 0.7), 0 0 16px rgba(201, 136, 80, 0.6),
+              0 0 24px rgba(214, 165, 122, 0.38);
+}
+/* 扫光带（一次性 `.btn-sheen` / H5 循环 `.btn-vein`）：夜间按钮是暖棕，粉白扫光偏灰 ⇒ 换暖白。
+   只换渐变里的色值；起始 `transform: translateX(-180%)`、一次性 `transition`、循环 `@keyframes` 全沿用。 */
+html[data-theme='dark'] .btn-sheen,
+html[data-theme='dark'] .btn-vein {
+  background: linear-gradient(100deg, rgba(237, 227, 214, 0), rgba(237, 227, 214, 0.92) 45%, rgba(237, 227, 214, 0));
+}
+/* #endif */
+
 </style>

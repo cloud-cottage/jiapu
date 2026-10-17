@@ -205,4 +205,16 @@ defineExpose({ open });
 .detail-close:active { background: #F5F0EA; }
 .detail-body { flex: 1; height: 100%; min-height: 0; }
 .detail-foot { padding: 10px 14px 14px; flex-shrink: 0; }
+
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   弹窗遮罩保持半透明黑（rgba(0,0,0,0.55)，与浅色一致 —— 只压暗底下的页面，不换观感）；
+   面板转暖调夜间卡面 #2A2219、标题 #EDE3D6、分割线 #3A3027。
+   只改颜色、不动任何几何；无 filter / invert；全部 H5 条件编译 ⇒ 小程序零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .detail-modal { background: #2A2219; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55); }
+html[data-theme='dark'] .detail-head { border-bottom-color: #3A3027; }
+html[data-theme='dark'] .detail-title { color: #EDE3D6; }
+html[data-theme='dark'] .detail-close { color: #B8A894; }
+html[data-theme='dark'] .detail-close:active { background: #332A20; }
+/* #endif */
 </style>

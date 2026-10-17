@@ -40,7 +40,10 @@ function restoreVueSrcScopeId(): Plugin {
  * 两处：
  *
  * ① 主包静态死重（20,476 B）：`src/static/**` 被 uni-app 的 `uni:copy` 插件**原样整目录拷贝**
- *    进小程序产物（不做引用分析），但其中 5 个文件在**小程序产物内零引用**：
+ *    进小程序产物（不做引用分析），但其中 8 个文件在**小程序产物内零引用**：
+ *      · static/images/home/banner-{paper,book,tree}.jpg（2026-10-17 首页 H5 三层 banner 素材，
+ *        合计约 400 KB）：只在 `components/home-banner/home-banner.vue` 的 `#ifdef H5` 分支引用，
+ *        小程序编译时整段移除 ⇒ 产物内零引用。**必须进本清单**，否则主包直接超 2 MiB。
  *      · static/icons/favicon.svg / favicon-32.png / favicon-180.png（H5 `index.html` head 三条
  *        `link` 专用；小程序无浏览器 chrome，不存在 favicon 概念）——**源码落点保持
  *        `frontend/src/static/icons/` 不变**（`docs/seo.spec.md` §7 H 登记项），故不搬家、只不随
@@ -75,11 +78,19 @@ function mainPackageSlimPlugin(): Plugin {
 
       // ---------- ① 主包静态死重 ----------
       const deadStatic = [
+        // H5 `<link rel>` favicon 专用（小程序无浏览器 chrome 概念）
         "static/icons/favicon.svg",
         "static/icons/favicon-32.png",
         "static/icons/favicon-180.png",
+        // 陈旧数据 + 全仓零调用点（详见上方注释）
         "static/tree-meta.json",
         "static/tree-api.json",
+        // 首页 H5 三层 banner 素材（2026-10-17）：三张 jpg 只在
+        // `components/home-banner/home-banner.vue` 的 `#ifdef H5` 分支里被引用，
+        // 小程序编译时该分支整段移除 ⇒ 产物内零字符串引用，纯属 uni:copy 整目录拷贝的死重。
+        "static/images/home/banner-paper.jpg",
+        "static/images/home/banner-book.jpg",
+        "static/images/home/banner-tree.jpg",
       ];
       // 产物全文（排除待删文件自身）拼一份引用文本，逐个复核「零引用」后才删
       const texts: string[] = [];
@@ -118,6 +129,15 @@ function mainPackageSlimPlugin(): Plugin {
           (removed.length ? `（已删）: ${removed.join(", ")}` : "") +
           (skipped.length ? `；跳过（产物内仍有引用）: ${skipped.join(", ")}` : ""),
       );
+      // 删完只剩空壳的目录一并收掉（例如 static/images/home：三张 H5 banner 素材删完后整目录为空）
+      for (const rel of ["static/images/home", "static/images"]) {
+        const abs = path.join(outDir, rel);
+        try {
+          if (fs.existsSync(abs) && fs.readdirSync(abs).length === 0) fs.rmdirSync(abs);
+        } catch {
+          /* 非空或权限不足：保持原样，不算失败 */
+        }
+      }
 
       // ---------- ② TDesign 图标样式按需 ----------
       const iconWxss = path.join(outDir, "node-modules/@tdesign/uniapp/dist/icon/icon.wxss");

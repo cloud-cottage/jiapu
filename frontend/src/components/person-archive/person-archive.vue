@@ -3218,4 +3218,99 @@ async function doEndMarriage() {
 .invite-copy-text { font-size: 12px; color: #5D4037; }
 .invite-expiry { display: block; font-size: 11px; color: #B08D57; margin-top: 8px; }
 .invite-err { display: block; font-size: 12px; color: #C62828; line-height: 1.6; margin-top: 8px; }
+
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   与 styles/td-dark-warm.css 同一套暖调夜间值（底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 /
+   格位·chip #332A20 / 主字 #EDE3D6 / 次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 /
+   分割 #4A3D31 / 暖棕 #C98850 / error #E0675F）。
+   **只改颜色，不改任何几何**（不加边框、不动内距、不动字号）—— T3 判据要求切主题前后 rect 差 ≤0.5px。
+   无 invert / filter：印章 / 人像 / 正文类图片与带色称号色板（语义色，色值即数据）一律不反色。
+   TDesign 单元格（t-cell / t-cell-group / t-tag / t-button）由 --td-* 暖调 token 自动夜间化，此处不重复。
+   全部 H5 条件编译 ⇒ 小程序产物零改动。 */
+/* #ifdef H5 */
+/* —— 头部姓名行 —— */
+html[data-theme='dark'] .name { color: #EDE3D6; }
+html[data-theme='dark'] .name-title { color: #E5BE93; background: #332A20; }
+
+/* —— 镜像提示 / 只读锁定提示 —— */
+html[data-theme='dark'] .mirror-note { background: #332A20; border-color: #4A3D31; }
+html[data-theme='dark'] .mirror-note-text { color: #E8C9A6; }
+html[data-theme='dark'] .founder-hint { color: #B8A894; }
+
+/* —— 分区标题 / 家族块 —— */
+html[data-theme='dark'] .section-title { color: #C98850; }
+html[data-theme='dark'] .fam-block { border-bottom-color: #3A3027; }
+html[data-theme='dark'] .fam-label { color: #8A7A66; }
+html[data-theme='dark'] .fam-link { color: #EDE3D6; }
+html[data-theme='dark'] .fam-link:active { color: #C98850; }
+html[data-theme='dark'] .fam-none { color: #6E5F4D; }
+html[data-theme='dark'] .marriage-hint { color: #B8A894; }
+
+/* —— 加载 / 错误态 —— */
+html[data-theme='dark'] .loading { color: #B8A894; }
+html[data-theme='dark'] .loading .error-text { color: #E0675F; }
+
+/* —— 危险操作区（删除 / 解绑）—— */
+html[data-theme='dark'] .danger-zone { border-top-color: #4A3D31; }
+html[data-theme='dark'] .danger-hint { color: #B8A894; }
+html[data-theme='dark'] .clan-danger-hint { color: #E0675F; }
+html[data-theme='dark'] .del-mode { background: #2A2219; border-color: #3A3027; }
+html[data-theme='dark'] .del-mode.selected { background: #33231D; border-color: #E0675F; }
+html[data-theme='dark'] .del-mode-name { color: #EDE3D6; }
+html[data-theme='dark'] .del-mode-hint { color: #B8A894; }
+html[data-theme='dark'] .del-stat { background: #241D16; border-color: #3A3027; }
+html[data-theme='dark'] .del-stat-line { color: #EDE3D6; }
+html[data-theme='dark'] .del-stat-msg { color: #D8A171; }
+html[data-theme='dark'] .del-warn { color: #E0675F; }
+
+/* —— 编辑弹窗（遮罩保持半透明黑；面板 #2A2219）—— */
+html[data-theme='dark'] .modal { background: #2A2219; }
+html[data-theme='dark'] .modal-title { color: #EDE3D6; }
+html[data-theme='dark'] .modal-sub { color: #8A7A66; }
+html[data-theme='dark'] .field-label { color: #C98850; }
+html[data-theme='dark'] .field-hint { color: #B8A894; }
+html[data-theme='dark'] .event-edit-row,
+html[data-theme='dark'] .place-edit-row { background: #241D16; }
+html[data-theme='dark'] .date-pick-btn { color: #C98850; background: #332A20; border-color: #3A3027; }
+html[data-theme='dark'] .date-pick-btn:active { background: #3A3027; }
+html[data-theme='dark'] .edit-error { color: #E0675F; }
+html[data-theme='dark'] .badge-color-dot { border-color: #4A3D31; }
+html[data-theme='dark'] .badge-color-dot.active { border-color: #EDE3D6; box-shadow: 0 0 0 2px rgba(237, 227, 214, 0.22); }
+
+/* —— 内嵌编辑面板 —— */
+html[data-theme='dark'] .edit-inline-head { border-bottom-color: #3A3027; }
+html[data-theme='dark'] .edit-inline-title { color: #EDE3D6; }
+html[data-theme='dark'] .edit-inline-close { color: #B8A894; }
+html[data-theme='dark'] .edit-inline-close:active { background: #332A20; }
+
+/* —— 出嫁 / 认祖 / 挂载弹窗内的搜索结果 —— */
+html[data-theme='dark'] .join-tip { color: #B8A894; }
+html[data-theme='dark'] .join-result { border-color: #3A3027; }
+html[data-theme='dark'] .join-result.selected { border-color: #C98850; background: #332A20; }
+html[data-theme='dark'] .result-name { color: #EDE3D6; }
+html[data-theme='dark'] .result-id { color: #8A7A66; }
+html[data-theme='dark'] .result-gender { color: #C98850; }
+html[data-theme='dark'] .identity-confirm { background: #332A20; }
+html[data-theme='dark'] .identity-text { color: #B8A894; }
+
+/* —— 邀请入族 —— */
+html[data-theme='dark'] .invite-entry { background: linear-gradient(180deg, #332A20, #241D16); border-color: #3A3027; }
+html[data-theme='dark'] .invite-entry-text { color: #C98850; }
+html[data-theme='dark'] .invite-panel { background: #241D16; border-color: #3A3027; }
+html[data-theme='dark'] .invite-hint { color: #8A7A66; }
+html[data-theme='dark'] .invite-tip { color: #C98850; }
+html[data-theme='dark'] .invite-label { color: #C98850; }
+html[data-theme='dark'] .invite-link { color: #B8A894; }
+html[data-theme='dark'] .invite-copy { background: #332A20; border-color: #3A3027; }
+html[data-theme='dark'] .invite-copy-text { color: #EDE3D6; }
+html[data-theme='dark'] .invite-expiry { color: #8A7A66; }
+html[data-theme='dark'] .invite-err { color: #E0675F; }
+
+/* —— 直建祖谱（方式 C）—— */
+html[data-theme='dark'] .clan-create-entry { background: linear-gradient(180deg, #332A20, #241D16); border-color: #4A3D31; }
+html[data-theme='dark'] .clan-create-entry-text { color: #C98850; }
+html[data-theme='dark'] .clan-create-entry-fee { color: #B8A894; }
+html[data-theme='dark'] .clan-create-form { background: #241D16; border-color: #3A3027; }
+html[data-theme='dark'] .clan-create-note { color: #8A7A66; }
+/* #endif */
 </style>

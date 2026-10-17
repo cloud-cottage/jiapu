@@ -653,4 +653,54 @@ function goWallet() {
 .modal-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
 
 .error { text-align: center; color: #C62828; font-size: 13px; margin-top: 12px; }
+
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   色板同 styles/td-dark-warm.css（底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 /
+   主字 #EDE3D6 / 次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 / 暖棕 #C98850 /
+   error #E0675F / success #7FC08A）。
+   **只改颜色**（背景 / 文字 / 边框 / 阴影），零布局属性、零 `filter` / `invert`；
+   `t-input` 等控件走 `--td-*` token（td-dark-warm.css 已覆盖），此处只收口页面自绘部分。
+   商品 / 石榴籽图标（`.ico-sm`）**不碰 ⇒ 不反色**（市集挂单行的图片不进本段任何选择器）。
+   H5 条件编译 ⇒ 小程序端零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .section {
+  background: linear-gradient(180deg, #2A2219, #241D16);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+html[data-theme='dark'] .section-title { color: #EDE3D6; }
+html[data-theme='dark'] .section-extra { color: #8A7A66; }
+html[data-theme='dark'] .section-hint { color: #8A7A66; }
+html[data-theme='dark'] .section-error { color: #E0675F; }
+
+/* 官方发售 */
+html[data-theme='dark'] .official-price { color: #C98850; }
+html[data-theme='dark'] .official-stock { color: #7FC08A; }
+
+/* 我的资产行 / 挂单列表行 */
+html[data-theme='dark'] .asset-row { border-bottom-color: #3A3027; }
+html[data-theme='dark'] .asset-name { color: #EDE3D6; }
+html[data-theme='dark'] .asset-value { color: #C98850; }
+html[data-theme='dark'] .row-item { border-bottom-color: #3A3027; }
+html[data-theme='dark'] .row-main { color: #B8A894; }
+html[data-theme='dark'] .row-sub { color: #8A7A66; }
+html[data-theme='dark'] .own-tag { color: #8A7A66; }
+html[data-theme='dark'] .compliance { color: #8A7A66; }
+html[data-theme='dark'] .empty { color: #8A7A66; }
+html[data-theme='dark'] .link { color: #D6A57A; }
+html[data-theme='dark'] .form-label { color: #EDE3D6; }
+
+/* 挂单确认弹层（自绘 .modal-mask 999 / .modal） */
+html[data-theme='dark'] .modal-mask { background: rgba(0, 0, 0, 0.66); }
+html[data-theme='dark'] .modal {
+  background: linear-gradient(180deg, #2A2219, #241D16);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+}
+html[data-theme='dark'] .modal-title { color: #EDE3D6; }
+html[data-theme='dark'] .modal-sub { color: #8A7A66; }
+html[data-theme='dark'] .modal-row { border-bottom-color: #3A3027; }
+html[data-theme='dark'] .modal-label { color: #8A7A66; }
+html[data-theme='dark'] .modal-value { color: #EDE3D6; }
+html[data-theme='dark'] .modal-hint { color: #8A7A66; }
+html[data-theme='dark'] .error { color: #E0675F; }
+/* #endif */
 </style>

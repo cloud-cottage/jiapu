@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onLaunch, onShow, onHide } from '@dcloudio/uni-app';
-import { resolveTreeIdByHost } from '@/business';
+import { resolveTreeIdByHost, applyTheme } from '@/business';
+// 日夜模式（2026-10-17）：onLaunch 里把持久化的模式打到 <html data-theme>；
+// 默认 light（不跟随系统），故首屏观感与本批之前完全一致。
 
 // #ifdef H5
 /** 首页入口别名路径：history 模式下被导航到该路径时收敛回裸域 */
@@ -225,6 +227,9 @@ function keepAliasUrl(alias: string, treeId: string, readablePath: string, tries
 
 onLaunch(() => {
   console.log('家族历史数字馆 App Launch');
+  // 必须在任何页面渲染前打标记：App.onLaunch 先于首屏页面 mount。
+  // H5 才写 <html data-theme>（函数体内 #ifdef H5），小程序零改动。
+  applyTheme();
   // #ifdef H5
   resolveTreeAlias();
   resolveHostTree();
@@ -249,6 +254,35 @@ onHide(() => {
 </script>
 
 <style>
+/* ---- H5 全站内容窄栏（唯一宽度真源：--jiapu-column · Kevin 2026-10-17） ----
+   只在 H5 生效（条件编译），小程序版式一字不动。改列宽**只改这一处**变量：
+   页面主体列 / 底部 tabBar / 页面内 fixed 浮层（如首页浮动切换按钮）全部引用它。
+   母容器（uni-page-body / 各页 .container）**一律不设 overflow:hidden**，
+   首页三层 banner 才能用 `width:100vw; margin-left:calc(50% - 50vw)` 出血到视口两边。 */
+/* #ifdef H5 */
+:root {
+  --jiapu-column: 480px;
+}
+
+/* 页面主体列：居中收窄，两侧露出页面底色 */
+uni-page-body {
+  max-width: var(--jiapu-column);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* 底部 tabBar：uni-app H5 里**可见条是内层 `.uni-tabbar`**（它自己 `position:fixed;
+   left/right: var(--window-*)` + `bottom:0`），外层 `uni-tabbar` 只是个 0 内容的壳
+   ⇒ 列宽必须打在**内层**上，否则条子仍铺满整视口。
+   ⚠ 绝不能用 `transform: translateX(-50%)` 居中外层：transform 会让外层成为内层 fixed 元素的
+   **包含块** ⇒ 内层被定位到外层盒子的底部（实测视口 844 时整条 tabBar 落到 y=844，完全看不见）。
+   这里只用 left/right 内缩，不产生新的包含块。 */
+uni-tabbar.uni-tabbar-bottom .uni-tabbar {
+  left: max(0px, calc((100vw - var(--jiapu-column)) / 2));
+  right: max(0px, calc((100vw - var(--jiapu-column)) / 2));
+}
+/* #endif */
+
 /* 全局样式 */
 page {
   background-color: #f8f8f8;
@@ -257,6 +291,21 @@ page {
   color: #333;
   font-size: 14px;
 }
+
+/* ---- H5 页面底色：暖纸色（Kevin 2026-10-17 视觉修正单「背景图片的范围扩大」）----
+   窄栏两侧原先露纯 #f8f8f8 灰白、显空；改成与首页 banner 宣纸同族的暖纸 #F6F0E4，
+   让三层 banner 自然「渗」到页面上。**只在 H5 生效（条件编译），小程序版式零改动**。
+   ① html / body 管 480px 列**之外**的两侧；② uni-page-body（= H5 里的 page）管列内。
+   注意：`page` 选择器会被 uni-app 的 postcss 重写成 `uni-page-body`，两条都留以对齐。
+   **必须写在上面的 `page` 基础规则之后**（同特异性，靠顺序覆盖）。 */
+/* #ifdef H5 */
+html,
+body,
+page,
+uni-page-body {
+  background-color: #F6F0E4;
+}
+/* #endif */
 
 /* ---- TDesign 主题覆盖：古籍棕 ---- */
 /* #ifdef H5 */
@@ -291,6 +340,65 @@ page,
   --td-warning-color: #e65100;
   --td-error-color: #c62828;
 }
+
+/* ---- 夜间模式（html[data-theme='dark']）全局落点 ----
+   这里只放**不读 `--td-*` token 的硬编码色**：页面底色 / H5 页头 / 底部 tabBar / 滚动条。
+   组件 token 在 `styles/td-dark-warm.css`（生成物）；页内硬编码色在各页 scoped <style> 的
+   `html[data-theme='dark']` 段。全部 H5 条件编译 ⇒ 小程序零改动。
+   tabBar / 页头的颜色是 uni-h5 用**内联 style** 打上去的（取自 pages.json 的 #ffffff / #F8F8F8），
+   故这里的覆盖必须带 `!important`，否则被内联样式压住。 */
+/* #ifdef H5 */
+html[data-theme='dark'],
+html[data-theme='dark'] body,
+html[data-theme='dark'] page,
+html[data-theme='dark'] uni-page-body {
+  background-color: #211A14 !important;
+}
+html[data-theme='dark'] page,
+html[data-theme='dark'] uni-page-body { color: #EDE3D6 !important; }
+
+/* H5 页头（导航条）：亮条 → 深暖底，标题/返回键转浅字 */
+html[data-theme='dark'] uni-page-head .uni-page-head { background-color: #241D16 !important; }
+html[data-theme='dark'] uni-page-head .uni-page-head__title { color: #EDE3D6 !important; }
+html[data-theme='dark'] uni-page-head .uni-page-head-btn { color: #EDE3D6 !important; }
+
+/* 底部 tabBar：白底 → 深暖底；未选中 #B8A894、选中暖棕 #C98850（与夜间主色同族） */
+html[data-theme='dark'] .uni-tabbar { background-color: #241D16 !important; }
+html[data-theme='dark'] .uni-tabbar-border { background-color: #3A3027 !important; }
+html[data-theme='dark'] .uni-tabbar__label { color: #B8A894 !important; }
+html[data-theme='dark'] .uni-tabbar__item--active .uni-tabbar__label,
+html[data-theme='dark'] .uni-tabbar__item-active .uni-tabbar__label { color: #C98850 !important; }
+
+/* 滚动条：只改颜色、**不改宽度**（改宽度会动几何，违反 T3 口径） */
+html[data-theme='dark'] ::-webkit-scrollbar-thumb { background: rgba(237, 227, 214, 0.18); border-radius: 6px; }
+html[data-theme='dark'] ::-webkit-scrollbar-thumb:hover { background: rgba(237, 227, 214, 0.32); }
+html[data-theme='dark'] ::-webkit-scrollbar-track { background: #241D16; }
+/* #endif */
+
+/* ---- 浅色（html[data-theme='light']）显式钉底 ----
+   修 2026-10-17 实测 bug：日间模式（html[data-theme='light']）下 `body` 被涂成夜间底色 #211A14，
+   窄栏两侧/底部露出黑块（html 与 uni-page-body 均为 #F6F0E4，只有 body 错）。
+   根因（产物取证）：uni-app H5 的 postcss 插件
+   `@dcloudio/uni-cli-shared/dist/postcss/plugins/uniapp.js` → createBodyBackgroundRule()
+   会把**任何含 `page` 选择器的规则**里的 background-* 声明克隆成一条**裸 `body{...}` 规则**
+   （克隆时丢掉原选择器的全部前缀）。上面暗色块的 `html[data-theme='dark'] page` 因此被克隆成
+   无条件的 `body{background-color:#211a14}`，在产物里排在浅色 `body{#f6f0e4}` 之后
+   ⇒ 与 data-theme 无关，body 恒为夜间色。
+   对策（不改依赖）：① 浅色侧加 html[data-theme='light'] 前缀 + !important 显式钉住
+   html / body / page / uni-page-body；② 暗色侧同法加 !important。两侧前缀选择器特异性
+   (0,1,2) 都高于克隆出来的裸 `body`(0,0,1)，两态各自压得住那条泄漏规则。
+   无 data-theme 的短暂首屏窗口：本块在暗色块之后，其克隆出的裸 `body` 也带 !important 且更晚
+   ⇒ 落在暖纸色，与 theme.ts 的默认 light 一致。
+   只写颜色、不动几何；整段 H5 条件编译 ⇒ 小程序零改动。 */
+/* #ifdef H5 */
+html[data-theme='light'],
+html[data-theme='light'] body,
+html[data-theme='light'] page,
+html[data-theme='light'] uni-page-body {
+  background-color: #F6F0E4 !important;
+  color: #333 !important;
+}
+/* #endif */
 
 /* 声明文本样式 */
 .disclaimer {

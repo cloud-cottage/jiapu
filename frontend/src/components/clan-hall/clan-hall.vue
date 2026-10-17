@@ -618,6 +618,12 @@ watch(
   position: fixed; left: 10px; top: 50%; transform: translateY(-50%);
   display: flex; flex-direction: column; gap: 10px; z-index: 950;
 }
+/* H5 窄栏：同 tree-hall，fixed 浮层按 --jiapu-column 回收进列内 */
+/* #ifdef H5 */
+.view-toggle {
+  left: max(10px, calc((100% - var(--jiapu-column)) / 2 + 10px));
+}
+/* #endif */
 .view-btn {
   width: 56px; height: 56px; background: #fff; border: 1px solid #E0D5C8;
   border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.12);
@@ -722,4 +728,111 @@ watch(
 .branch-founder { font-size: 12px; color: #8B4513; display: block; margin-top: 4px; }
 .branch-sub { font-size: 11px; color: #A1887F; display: block; margin-top: 4px; }
 .branch-arrow { font-size: 16px; color: #C7B299; }
+
+/* ---- 夜间模式（html[data-theme='dark']）：祖谱页外壳（页头卡 / 三段 segment / 图例 /
+   版式文档占位 / 左侧浮动按钮 / 编辑弹窗）；选中与主色态一律 #C98850。
+   只改颜色，不改几何（T3：两态 rect 差 ≤0.5px）。H5 条件编译 ⇒ 小程序零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .clan-edit-entry {
+  background: #332A20;
+  border-color: #7A6234;
+}
+html[data-theme='dark'] .clan-edit-text { color: #C98850; }
+
+/* 左侧功能按钮（血脉图示 / 版式文档 / 祖谱消息） */
+html[data-theme='dark'] .view-btn {
+  background: #2A2219;
+  border-color: #3A3027;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+html[data-theme='dark'] .view-text { color: #C98850; }
+html[data-theme='dark'] .view-btn.active {
+  background: #C98850;
+  border-color: #C98850;
+}
+html[data-theme='dark'] .view-btn.active .view-text { color: #211A14; }
+
+/* 版式文档占位（空态） */
+html[data-theme='dark'] .doc-placeholder {
+  background: #2A2219;
+  border-color: #4A3D31;
+}
+html[data-theme='dark'] .doc-ph-title { color: #C98850; }
+html[data-theme='dark'] .doc-ph-text { color: #8A7A66; }
+
+/* 页头卡 */
+html[data-theme='dark'] .clan-hero {
+  background: #2A2219;
+  border-color: #3A3027;
+}
+html[data-theme='dark'] .clan-title { color: #EDE3D6; }
+html[data-theme='dark'] .clan-surname { color: #C98850; }
+html[data-theme='dark'] .clan-genealogy { color: #8A7A66; }
+html[data-theme='dark'] .clan-notice { color: #E0675F; }
+html[data-theme='dark'] .clan-error { color: #E0675F; }
+
+/* 三段 segment 卡 */
+html[data-theme='dark'] .segment {
+  background: #2A2219;
+  border-color: #3A3027;
+}
+html[data-theme='dark'] .seg-title { color: #C98850; }
+html[data-theme='dark'] .seg-count { color: #8A7A66; }
+html[data-theme='dark'] .seg-hint { color: #8A7A66; }
+html[data-theme='dark'] .legend-item {
+  color: #C98850;
+  background: #332A20;
+  border-color: #4A3D31;
+}
+html[data-theme='dark'] .foot-line { color: #8A7A66; }
+html[data-theme='dark'] .off-graph { border-top-color: #4A3D31; }
+html[data-theme='dark'] .off-graph-title { color: #8A7A66; }
+html[data-theme='dark'] .branch-row { border-bottom-color: #3A3027; }
+html[data-theme='dark'] .branch-name { color: #EDE3D6; }
+html[data-theme='dark'] .branch-founder { color: #C98850; }
+html[data-theme='dark'] .branch-sub { color: #8A7A66; }
+html[data-theme='dark'] .branch-arrow { color: #8A7A66; }
+
+/* 编辑祖谱信息弹窗 */
+html[data-theme='dark'] .modal {
+  background: #2A2219;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+}
+html[data-theme='dark'] .modal-title { color: #EDE3D6; }
+html[data-theme='dark'] .label { color: #C98850; }
+html[data-theme='dark'] .input,
+html[data-theme='dark'] .textarea {
+  background: #241D16;
+  border-color: #3A3027;
+  color: #EDE3D6;
+}
+html[data-theme='dark'] .edit-error { color: #E0675F; }
+
+/* 树图浮层（由子组件 tree-pedigree 渲染，故用 :deep 从本宿主落色；**不改该组件文件**）：
+   统计条 / ＋－⟳ 缩放圆钮 / 右侧「纵向·横向·迁徙地图」图例栏 / 图下提示 / 加载空态。只改颜色。 */
+html[data-theme='dark'] .clan-hall :deep(.stats) {
+  background: #241D16;
+  border-color: #3A3027;
+  color: #EDE3D6;
+}
+html[data-theme='dark'] .clan-hall :deep(.stats .stat) { color: #EDE3D6; }
+html[data-theme='dark'] .clan-hall :deep(.stat.stat-hint) { color: #C98850; }
+html[data-theme='dark'] .clan-hall :deep(.hint) { color: #8A7A66; }
+html[data-theme='dark'] .clan-hall :deep(.loading),
+html[data-theme='dark'] .clan-hall :deep(.empty) { color: #8A7A66; }
+html[data-theme='dark'] .clan-hall :deep(.error) { color: #E0675F; }
+html[data-theme='dark'] .clan-hall :deep(.zoom-btn),
+html[data-theme='dark'] .clan-hall :deep(.layout-btn) {
+  background: #2A2219;
+  border-color: #3A3027;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+html[data-theme='dark'] .clan-hall :deep(.zoom-icon),
+html[data-theme='dark'] .clan-hall :deep(.layout-name) { color: #C98850; }
+html[data-theme='dark'] .clan-hall :deep(.layout-btn.active) {
+  background: #C98850;
+  border-color: #C98850;
+}
+html[data-theme='dark'] .clan-hall :deep(.layout-btn.active .layout-name) { color: #211A14; }
+/* #endif */
 </style>

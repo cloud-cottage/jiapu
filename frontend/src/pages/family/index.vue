@@ -88,4 +88,12 @@ onShow(() => {
 .empty-icon { font-size: 48px; display: block; }
 .empty-text { font-size: 16px; color: #3E2723; display: block; margin: 14px 0 6px; }
 .empty-sub { font-size: 12px; color: #999; display: block; margin-bottom: 18px; }
+
+/* ---- 夜间模式（html[data-theme='dark']）：本页两组空态文案 ----
+   已绑定态整页由 tree-hall 渲染，暗色落在组件内；本页只管未登录 / 未加入两组空态。
+   只改颜色；H5 条件编译 ⇒ 小程序零改动。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .empty-text { color: #EDE3D6; }
+html[data-theme='dark'] .empty-sub { color: #8A7A66; }
+/* #endif */
 </style>

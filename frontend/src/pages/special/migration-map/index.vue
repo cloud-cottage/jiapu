@@ -42,4 +42,12 @@ onLoad((options): void => {
   font-size: 15px;
   color: #6d6055;
 }
+
+/* ================= 夜间模式（html[data-theme='dark']）=================
+   迁徙地图页外壳（地图底图/面/标签 = 图像本体，由 MigrationMapH5 内部 :deep 规则维持浅色，
+   本页不碰）：外壳底 #211A14、占位文字 #B8A894。只改颜色、零几何改动；H5 条件编译。 */
+/* #ifdef H5 */
+html[data-theme='dark'] .mig-page { background: #211A14; }
+html[data-theme='dark'] .center-txt { color: #B8A894; }
+/* #endif */
 </style>
