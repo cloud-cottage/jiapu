@@ -8,21 +8,44 @@
     <!-- 双视图：家谱列表 / 中华世本（浮动按钮切换，无 t-tabs） -->
     <!-- 视图1：普通家族树列表（不含 zhonghua） -->
     <view v-if="!showMaster" class="hall-list">
-      <!-- 全站人物搜索（跨家族树：姓名 / 编号；回车或点「搜索」触发） -->
+      <!-- 全站搜索：人物（姓名 / 编号）+ 家族名 / 堂号；回车或点输入框内嵌「搜索」按钮触发 -->
       <view class="person-search">
         <t-input
           :value="personQuery"
-          placeholder="搜索人物（姓名 / 编号）"
+          :placeholder="UI_TEXT.searchPlaceholder"
           class="person-search-input"
           @update:value="onPersonQueryChange"
-          @confirm="doSearchPeople"
-        />
-        <t-button size="small" theme="primary" @click="doSearchPeople">搜索</t-button>
+          @enter="doSearchPeople"
+        >
+          <!-- 按钮内嵌在输入框右侧内部（不单独占一列；暖棕，不用 TDesign 蓝色主题） -->
+          <template #suffix>
+            <view class="search-btn" @click.stop="doSearchPeople">
+              <text class="search-btn-text">{{ UI_TEXT.searchButton }}</text>
+            </view>
+          </template>
+        </t-input>
       </view>
+
       <view v-if="personSearched" class="person-search-panel">
-        <view v-if="personSearching" class="ps-tip">搜索中…</view>
+        <!-- 段一：家族（纯客户端过滤已加载 tree-meta，零请求，点按即出） -->
+        <view v-if="familyHits.length > 0" class="ps-section">
+          <text class="ps-section-title">{{ UI_TEXT.sectionFamily }} · {{ familyHits.length }}</text>
+          <view
+            v-for="hit in familyHits"
+            :key="hit.tree_id"
+            class="ps-result"
+            @click="goFamilyHit(hit)"
+          >
+            <text class="ps-name">{{ hit.title }}</text>
+            <text v-if="familyHitSub(hit)" class="ps-tree">{{ familyHitSub(hit) }}</text>
+          </view>
+        </view>
+
+        <!-- 段二：人物（既有 /search/global 异步结果） -->
+        <view v-if="personSearching" class="ps-tip">{{ UI_TEXT.searching }}</view>
         <view v-else-if="personSearchError" class="ps-tip ps-error">{{ personSearchError }}</view>
-        <template v-else>
+        <view v-else-if="personHits.length > 0" class="ps-section">
+          <text class="ps-section-title">{{ UI_TEXT.sectionPerson }} · {{ personHits.length }}</text>
           <view
             v-for="hit in personHits"
             :key="`${hit.tree_id}:${hit.handle}`"
@@ -35,9 +58,21 @@
             <text class="ps-tree">{{ hit.tree_title }}</text>
             <text v-if="hit.restricted" class="ps-restricted">权限受限，不可见详情</text>
           </view>
-          <view v-if="personHits.length === 0" class="ps-tip">未找到匹配人物</view>
-        </template>
+        </view>
+
+        <!-- 两段皆空：合并成一行（不再分「未找到匹配人物」两处） -->
+        <view v-if="searchAllEmpty" class="ps-tip">{{ UI_TEXT.searchEmpty }}</view>
       </view>
+
+      <!-- 按地区筛选：单行胶囊 + 省级下拉（家谱 / 祖谱两档共用同一筛选状态） -->
+      <RegionFilter
+        v-model="regionPrefix"
+        :options="regionOptions"
+        :unregistered-count="regionUnregisteredCount"
+        :loading="regionLoading"
+        :error="regionError"
+        @open="ensureGeoIndex"
+      />
 
       <!-- 一行两段：左＝排序分段控件（综合 / 人数 / 活跃度，仅「家谱」tab 有）；
            右＝列表切换（家谱 | 祖谱）。只用已加载的等级数据，不新增请求 -->
@@ -93,7 +128,7 @@
           v-for="card in visibleHalls"
           :key="card.tree_id"
           :title="card.title"
-          :description="`发源地：${card.origin || '待完善'}`"
+          :description="placeTextOf(card)"
           :border="true"
           arrow
           @click="goToHall(card)"
@@ -102,6 +137,8 @@
             <view class="note-line">
               <text class="note-text">{{ card.description }}</text>
               <text class="people-tag">{{ peopleText(card.tree_id) }}</text>
+              <!-- 仅因居住地命中（籍贯未命中）时的绿色小标记：居 <市名> -->
+              <text v-if="residenceOnlyLabel(card.tree_id)" class="live-tag">{{ residenceOnlyLabel(card.tree_id) }}</text>
               <t-tag v-if="rankLabel(card.tree_id)" :theme="rankTheme(card.tree_id)" variant="light" size="small" class="rank-tag">
                 {{ rankLabel(card.tree_id) }}
               </t-tag>
@@ -111,7 +148,7 @@
       </t-cell-group>
 
       <view v-else class="empty">
-        <text>{{ listTab === 'clan' ? '暂无祖谱' : '暂无已上线的家族数字馆' }}</text>
+        <text>{{ emptyText }}</text>
       </view>
 
       <!-- 新建家族树（仅总编辑；只在「家谱」tab 显示 —— 它是建家族树的入口） -->
@@ -173,7 +210,7 @@
             placeholder="选填"
             @update:value="(v: any) => (form.display_title = v)"
           />
-          <text class="ct-label">发源地（选填）</text>
+          <text class="ct-label">籍贯（选填）</text>
           <!-- 结构化三级行政区划（省 / 市 / 县）；只提交 origin_code，展示串由后端写路径生成 -->
           <GeoCascader v-model="form.origin_code" />
           <view class="ct-fee">
@@ -196,9 +233,10 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, defineAsyncComponent } from 'vue';
-import { fetchTreeMetaRemote, buildTreeUrl, fetchTreeRank, openTreeHome, clearMetaCache, createTree, feeText, isAssetInsufficientError, showAssetInsufficientGuide, searchPeopleGlobal, personIdDisplay } from '@/business';
+import { fetchTreeMetaRemote, buildTreeUrl, fetchTreeRank, openTreeHome, clearMetaCache, createTree, feeText, isAssetInsufficientError, showAssetInsufficientGuide, searchPeopleGlobal, personIdDisplay, fetchGeoTreeIndex, REGION_UNREGISTERED, REGION_TEXT, hitOfEntry, isUnregisteredEntry, regionCityLabelOf, regionProvinceOptions, regionUnregisteredCountOf } from '@/business';
 import { isAuthenticated, authState, getAuthToken } from '@/business/auth';
-import type { DigitalHallCard, TreeMeta } from '@/business/types';
+import type { DigitalHallCard, TreeMeta, TreeEntry, GeoTreeIndex } from '@/business/types';
+import type { RegionHit } from '@/business';
 import type { TreeRankInfo, GlobalPersonHit } from '@/business/api';
 /**
  * 视图 2（中华世本）**按需加载**：首屏只渲染家谱列表，这条链
@@ -211,6 +249,30 @@ const ShibenTimeline = defineAsyncComponent(
   () => import('@/components/shiben-timeline/shiben-timeline.vue'),
 );
 import GeoCascader from '@/components/geo-cascader/geo-cascader.vue';
+import RegionFilter from '@/components/region-filter/region-filter.vue';
+
+/**
+ * 首页新增 / 改版文案（**唯一来源**，便于 Jing 统一入册；模板里不得再散写这些字面）。
+ * 地区筛选的文案在 `business/region-filter.ts` 的 `REGION_TEXT`（组件与页面共用同一份）。
+ */
+const UI_TEXT = {
+  /** 搜索框占位（原「搜索人物（姓名 / 编号）」） */
+  searchPlaceholder: '搜索人物 / 家族 / 堂号',
+  /** 搜索按钮（**必须是两个字**，不是「搜」/ 不是图标） */
+  searchButton: '搜索',
+  /** 结果分区标题前缀（渲染成「家族 · N」/「人物 · M」） */
+  sectionFamily: '家族',
+  sectionPerson: '人物',
+  /** 两段皆空时的单行空态（待入册） */
+  searchEmpty: '未找到匹配人物或家族',
+  /** 人物段异步加载中 */
+  searching: '搜索中…',
+  /** 卡片副行无地名时的占位 */
+  placeFallback: '待完善',
+  /** 既有两档空态（一个字都不得改） */
+  emptyFamily: '暂无已上线的家族数字馆',
+  emptyClan: '暂无祖谱',
+} as const;
 
 /**
  * 建树确认弹窗文案（docs/economy-ops.spec.md §6.1 第 8.4 条 · 定稿文案，
@@ -375,10 +437,97 @@ const sortedClanHalls = computed(() =>
   clanHalls.value.slice().sort((a, b) => compareByScore(a, b, clanScoreMap.value)),
 );
 
-/** 当前 tab 实际渲染的列表 */
-const visibleHalls = computed(() =>
-  listTab.value === 'clan' ? sortedClanHalls.value : sortedHalls.value,
+// ---- 按地区筛选（单胶囊 + 省级下拉；数据源 = GET /geo/tree-index，会话内缓存） ----
+
+/**
+ * 选中值：``''`` ＝全部地区 / 2 位省前缀（如 `'37'`）/ `REGION_UNREGISTERED` ＝未登记。
+ * 两档（家谱 / 祖谱）**共用同一筛选状态**：切 tab 不清空、两档同一套命中口径。
+ */
+const regionPrefix = ref('');
+const regionTreeIndex = ref<GeoTreeIndex | null>(null);
+const regionLoading = ref(false);
+const regionError = ref('');
+
+const regionFilterActive = computed(() => !!regionPrefix.value);
+
+/** 可筛选范围 = **当前档位**的列表（家谱档 = normalHalls 14 棵 / 祖谱档 = clanHalls 5 棵）——
+ *  与 `visibleHalls` 渲染的档位、下拉里省级计数与「未登记」计数同口径（两档共用筛选状态）。 */
+const regionScopedTreeIds = computed(() =>
+  listTab.value === 'clan'
+    ? clanHalls.value.map((h) => h.tree_id)
+    : normalHalls.value.map((h) => h.tree_id),
 );
+
+const regionOptions = computed(() =>
+  regionProvinceOptions(regionTreeIndex.value, regionScopedTreeIds.value),
+);
+const regionUnregisteredCount = computed(() =>
+  regionUnregisteredCountOf(regionTreeIndex.value, regionScopedTreeIds.value),
+);
+
+/**
+ * 取树索引（首次打开下拉时触发；并发共享 in-flight，成功后由 `fetchGeoTreeIndex()` 的
+ * **会话缓存**兜住 ⇒ 之后每次切换筛选都是纯内存过滤，零新增请求）。
+ */
+async function ensureGeoIndex() {
+  if (regionTreeIndex.value || regionLoading.value) return;
+  regionLoading.value = true;
+  regionError.value = '';
+  try {
+    regionTreeIndex.value = await fetchGeoTreeIndex();
+  } catch (e: any) {
+    // 不静默吞：失败文案显示在下拉里（不造兜底假数据）
+    regionError.value = e?.message || '地区数据加载失败';
+  } finally {
+    regionLoading.value = false;
+  }
+}
+
+/** 某树在当前所选省下的命中（未选地区 / 选「未登记」→ null） */
+function regionHitOf(treeId: string): RegionHit | null {
+  const prefix = regionPrefix.value;
+  if (!prefix || prefix === REGION_UNREGISTERED) return null;
+  return hitOfEntry(regionTreeIndex.value?.trees?.[treeId], prefix);
+}
+
+/** 是否进列表：省份命中取并集（籍 ∪ 居）；「未登记」= 两码数组皆空的树（与省份集合互斥） */
+function matchesRegionFilter(treeId: string): boolean {
+  const prefix = regionPrefix.value;
+  if (!prefix) return true;
+  const entry = regionTreeIndex.value?.trees?.[treeId];
+  if (prefix === REGION_UNREGISTERED) return isUnregisteredEntry(entry);
+  return !!hitOfEntry(entry, prefix);
+}
+
+/** 仅因居住地命中（籍贯未命中）时的绿色标记文案：`居 <市名>`；其余情况空串 */
+function residenceOnlyLabel(treeId: string): string {
+  const hit = regionHitOf(treeId);
+  if (!hit || hit.origin || !hit.residence) return '';
+  const city = regionCityLabelOf(hit.residenceCityCode);
+  return city ? `${REGION_TEXT.residencePrefix} ${city}` : '';
+}
+
+/**
+ * 当前 tab 实际渲染的列表：**先按既有三档排序、再按地区筛选**（筛选只是排序结果上的后置过滤，
+ * 故既有 `sortMode` / tie-break / 归一化范围一字未动）。
+ */
+const visibleHalls = computed(() => {
+  const base = listTab.value === 'clan' ? sortedClanHalls.value : sortedHalls.value;
+  if (!regionFilterActive.value) return base;
+  return base.filter((h) => matchesRegionFilter(h.tree_id));
+});
+
+/** 空态文案：仅在「无地区筛选」时用既有两档文案（一个字不改）；有筛选时给地区空态 */
+const emptyText = computed(() => {
+  if (regionFilterActive.value) return REGION_TEXT.emptyList;
+  return listTab.value === 'clan' ? UI_TEXT.emptyClan : UI_TEXT.emptyFamily;
+});
+
+/** 卡片副行：只显示地名（无地名 → 「待完善」） */
+function placeTextOf(card: DigitalHallCard): string {
+  const place = String(card.origin ?? '').trim();
+  return place || UI_TEXT.placeFallback;
+}
 
 function toggleView() {
   showMaster.value = !showMaster.value;
@@ -412,6 +561,8 @@ onMounted(async () => {
   } catch (e) {
     console.error('加载元数据失败:', e);
   }
+  // 地区筛选索引：非阻塞预取（成功后走会话缓存 ⇒ 切换筛选零请求；失败只在下拉里提示，不影响列表）
+  void ensureGeoIndex();
 });
 
 // ---- 新建家族树（仅总编辑） ----
@@ -463,7 +614,7 @@ async function doCreateTree() {
         founder_name: form.value.founder_name.trim(),
         founder_gender: form.value.gender,
         display_title: form.value.display_title.trim(),
-        // 发源地：只提交结构化码；origin 保留字段仅为 legacy 原样透传（有码时后端以码反查结果覆盖）
+        // 籍贯地：只提交结构化码；origin 保留字段仅为 legacy 原样透传（有码时后端以码反查结果覆盖）
         // `origin_code` 归一空串：真源 `tree-meta` 老树该字段可能缺失（undefined），不得把它发给后端
         origin_code: form.value.origin_code || '',
         origin: form.value.origin.trim(),
@@ -536,19 +687,94 @@ function rankTheme(treeId: string): string {
   }
 }
 
-// ---- 全站人物搜索（跨家族树；GET /search/global，limit 30） ----
+// ---- 全站搜索（人物：跨家族树 GET /search/global；家族：纯客户端过滤已加载 tree-meta，零请求） ----
 
 const personQuery = ref('');
+/**
+ * 最近一次**已提交**的查询（点按钮 / 回车时快照）：
+ * 两段结果同源同快照 ⇒ 未提交的输入不会让「家族」段先动、与「人物」段错位。
+ */
+const searchedQuery = ref('');
 const personHits = ref<GlobalPersonHit[]>([]);
 const personSearching = ref(false);
 /** 结果区开关：输入清空即收起 */
 const personSearched = ref(false);
 const personSearchError = ref('');
 
+/**
+ * 谱名 / 堂号的字面空值：**「暂无」与空串一律当没有**（现盘 19 棵里 1 棵写「暂无」、4 棵为空）。
+ * 口径断言：搜「暂无」时家族命中必须为 0。
+ */
+const EMPTY_LABELS = new Set(['', '暂无']);
+
+/** 归一：去首尾空格 + 小写（中文天然大小写不敏感，英文 / 数字仍需） */
+function normText(v?: string | null): string {
+  return String(v ?? '').trim().toLowerCase();
+}
+
+/** 字面空值 → `''`（「暂无」/ 空串 / 纯空白） */
+function nonEmptyLabel(v?: string | null): string {
+  const t = String(v ?? '').trim();
+  return EMPTY_LABELS.has(t) ? '' : t;
+}
+
+/** tree_id → tree-meta 条目（谱名 / 堂号不在 DigitalHallCard 上，从这里读，零新增请求） */
+const treeEntryByTreeId = computed<Record<string, TreeEntry>>(() => {
+  const map: Record<string, TreeEntry> = {};
+  const trees = meta.value?.trees || {};
+  for (const key of Object.keys(trees)) {
+    const entry = trees[key];
+    if (!entry) continue;
+    map[entry.tree_id || key] = entry;
+  }
+  return map;
+});
+
+/**
+ * 「家族 · N」段命中：**纯客户端过滤已加载的 tree-meta**（零新增请求），
+ * 匹配 `display_title` / `genealogy_name` / `surname_char` / `hall_name`（均 trim + 大小写不敏感）。
+ * 范围与 `normalHalls` 同口径：排除中华世本（`isMaster`）**且**排除祖谱（`kind==='clan'`）——
+ * 家族段只装家族树，与首页 tab 语义一致（祖谱不另设命中段）。
+ */
+const familyHits = computed<DigitalHallCard[]>(() => {
+  const q = normText(searchedQuery.value);
+  if (!q) return [];
+  return halls.value.filter((h) => {
+    if (h.isMaster || h.kind === 'clan') return false;
+    const entry = treeEntryByTreeId.value[h.tree_id];
+    const fields = [
+      h.title,
+      nonEmptyLabel(entry?.genealogy_name),
+      entry?.surname_char ?? h.surname,
+      nonEmptyLabel(entry?.hall_name),
+    ];
+    return fields.some((f) => {
+      const t = normText(f);
+      return !!t && t.includes(q);
+    });
+  });
+});
+
+/** 家族命中行右侧小字：堂号优先、其次谱名（两者皆空 → 不显示） */
+function familyHitSub(card: DigitalHallCard): string {
+  const entry = treeEntryByTreeId.value[card.tree_id];
+  return nonEmptyLabel(entry?.hall_name) || nonEmptyLabel(entry?.genealogy_name);
+}
+
+/** 两段皆空（且不在搜索中 / 无错误）→ 只显示一行合并空态 */
+const searchAllEmpty = computed(
+  () =>
+    !personSearching.value &&
+    !personSearchError.value &&
+    familyHits.value.length === 0 &&
+    personHits.value.length === 0,
+);
+
 /** 输入变化：清空 → 清结果并收起结果区 */
 function onPersonQueryChange(v: string) {
   personQuery.value = v;
   if (!v.trim()) {
+    searchedQuery.value = '';
     personHits.value = [];
     personSearchError.value = '';
     personSearched.value = false;
@@ -561,6 +787,8 @@ async function doSearchPeople() {
     onPersonQueryChange('');
     return;
   }
+  // 快照已提交查询：家族段据它即时渲染（点按钮 / 回车是同一条路径）
+  searchedQuery.value = q;
   personSearching.value = true;
   personSearched.value = true;
   personSearchError.value = '';
@@ -573,6 +801,11 @@ async function doSearchPeople() {
   } finally {
     personSearching.value = false;
   }
+}
+
+/** 点家族命中行 → 既有家族树首页跳转 */
+function goFamilyHit(card: DigitalHallCard) {
+  openTreeHome(card.tree_id);
 }
 
 /** 点结果 → 既有薄壳人物详情页；受限条（真身不可见）只提示、不跳转 */
@@ -613,18 +846,44 @@ function goToPage(path: string) {
 /* ---- 家族馆卡片列表 ---- */
 .hall-list { display: flex; flex-direction: column; gap: 12px; }
 
-/* ---- 全站人物搜索（跨家族树；暖棕同族样式） ---- */
-.person-search { display: flex; gap: 8px; align-items: center; }
-.person-search-input { flex: 1; }
+/* ---- 全站搜索（人物 / 家族 / 堂号；输入框**内嵌**暖棕「搜索」按钮，不单独占一列） ---- */
+.person-search { display: flex; align-items: center; }
+.person-search-input { flex: 1; min-width: 0; }
+/* 输入框本体：暖米底 + 暖棕圆角描边（组件自带的下边线隐藏，改整圈描边） */
+.person-search :deep(.t-input) {
+  background: #FFFDF8;
+  border: 1px solid #E0D5C8;
+  border-radius: 12px;
+  padding: 5px 5px 5px 14px;
+  height: 44px;
+  box-sizing: border-box;
+}
+.person-search :deep(.t-input--border)::after { display: none; }
+/* 内嵌按钮与文字之间留 8px，按钮贴输入框右内缘 */
+.person-search :deep(.t-input__wrap--suffix) { padding-left: 8px; }
+.search-btn {
+  display: flex; align-items: center; justify-content: center;
+  height: 34px; min-width: 64px; padding: 0 16px;
+  background: #8B4513; border-radius: 8px; box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+.search-btn:active { background: #7A3C10; }
+.search-btn-text { font-size: 13px; color: #fff; line-height: 1; letter-spacing: 0.5px; }
 .person-search-panel {
   background: #FFFDF8; border: 1px solid #E0D5C8; border-radius: 14px;
   padding: 6px 14px; box-shadow: 0 2px 10px rgba(62, 39, 35, 0.05);
+}
+/* 分区（家族在上 / 人物在下）：段标题小字，两段之间一条分割线 */
+.ps-section + .ps-section { border-top: 1px solid #F0E8DE; }
+.ps-section-title {
+  display: block; padding: 8px 2px 2px;
+  font-size: 11px; color: #A1887F; letter-spacing: 0.5px;
 }
 .ps-result {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 2px; border-bottom: 1px solid #F0E8DE;
 }
-.ps-result:last-of-type { border-bottom: none; }
+.ps-result:last-child { border-bottom: none; }
 /* 受限条：追加一行中性辅助色小字（仅该类生效，不影响其它结果行） */
 .ps-result-restricted { flex-wrap: wrap; }
 .ps-restricted { flex-basis: 100%; font-size: 11px; color: #A1887F; line-height: 1.4; }
@@ -685,7 +944,7 @@ function goToPage(path: string) {
   box-shadow: 0 2px 10px rgba(62, 39, 35, 0.05);
 }
 
-/* 卡片内节奏：名称 → 发源地 → 简介 纵向堆叠（不再左右分栏与简介抢宽，
+/* 卡片内节奏：名称 → 地名 → 简介 纵向堆叠（不再左右分栏与简介抢宽，
    卡片高度只由内容行数决定，节奏稳定） */
 .hall-list :deep(.t-cell) {
   flex-direction: column;
@@ -715,7 +974,7 @@ function goToPage(path: string) {
   font-size: 17px; font-weight: 700; color: #3E2723; line-height: 1.35;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
-/* 发源地（二/三级信息）：12 辅助棕，单行截断 */
+/* 地名（二/三级信息）：12 辅助棕，单行截断 */
 .hall-list :deep(.t-cell__description) { font-size: 12px; color: #A1887F; line-height: 1.5; }
 .hall-list :deep(.t-cell__description-text) {
   margin-top: 2px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
@@ -746,6 +1005,13 @@ function goToPage(path: string) {
   flex: 0 0 auto; margin-top: 1px;
   padding: 0 6px; height: 18px; line-height: 18px; font-size: 11px;
   border-radius: 4px; background: #F3EAE0; color: #795548;
+}
+/* 仅居住地命中（籍贯未命中）的绿色小标记：与人数标签同排、同尺寸（18/11/4） */
+.live-tag {
+  flex: 0 0 auto; margin-top: 1px;
+  padding: 0 6px; height: 18px; line-height: 18px; font-size: 11px;
+  border-radius: 4px; background: #EDF4EC; color: #4B6B47;
+  white-space: nowrap;
 }
 
 /* 加载态（与卡片同形同宽，避免首屏空态闪烁与布局跳动） */

@@ -277,6 +277,24 @@ export interface DigitalHallCard {
   cover_url?: string;
 }
 
+/**
+ * `GET /geo/tree-index` 的单树条目（契约逐字 = 后端 `lib/geo-tree-index.js` 文件头）：
+ * - `origin_codes`：该树 tree-meta 的 `origin_code`（合法至多 1 项）；无码 / 非法 ⇒ `[]`
+ * - `residence_codes`：该树**任一人物** `residence_places[].origin_code` 去重升序
+ */
+export interface GeoTreeIndexEntry {
+  origin_codes: string[];
+  residence_codes: string[];
+}
+
+/** `GET /geo/tree-index` 响应（服务端 24h 缓存；`failed` 仅「树清单里有、但读取抛错」时出现） */
+export interface GeoTreeIndex {
+  v: number;
+  generated_at: string | null;
+  trees: Record<string, GeoTreeIndexEntry>;
+  failed?: string[];
+}
+
 // ---- 立支 / 汇宗（结构操作；docs/branch-clan-ops.spec.md §8 接口契约） ----
 
 /**

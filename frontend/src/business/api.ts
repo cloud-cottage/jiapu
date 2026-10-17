@@ -42,6 +42,7 @@ import type {
   WenpuConfig,
   WenpuConfigPayload,
   WenpuConfigSaveResult,
+  GeoTreeIndex,
 } from './types';
 import type { RevisionSaveItem, RevisionView } from './revision';
 
@@ -2217,6 +2218,43 @@ export async function fetchGeoHot(): Promise<GeoHot | null> {
   } catch {
     return null;
   }
+}
+
+// ---- 按地区筛选索引（只读、无需鉴权、无需 X-Tree-Id；服务端 24h 缓存） ----
+
+/**
+ * 按地区筛选索引（`GET /geo/tree-index` → `{ v, generated_at, trees[, failed] }`）。
+ *
+ * 每树给 `origin_codes`（tree-meta 籍贯地码）+ `residence_codes`（任一人物居住地码）。
+ * 前端**再做一层会话内缓存**（写法同本文件的 `metaCache`）：
+ *   · 打开下拉 / 切换筛选一律复用缓存，**绝不再发请求**；
+ *   · 并发调用共享同一个 in-flight Promise（不重复打）；
+ *   · **失败不缓存**（下次打开下拉自动重试），且不静默吞错（调用方决定是否提示）。
+ */
+let geoTreeIndexCache: GeoTreeIndex | null = null;
+let geoTreeIndexInflight: Promise<GeoTreeIndex> | null = null;
+
+export async function fetchGeoTreeIndex(): Promise<GeoTreeIndex> {
+  if (geoTreeIndexCache) return geoTreeIndexCache;
+  if (geoTreeIndexInflight) return geoTreeIndexInflight;
+  geoTreeIndexInflight = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/geo/tree-index`);
+      if (!res.ok) throw new Error(`读取地区索引失败 (${res.status})`);
+      const body = (await res.json()) as GeoTreeIndex;
+      const trees = body && body.trees && typeof body.trees === 'object' ? body.trees : {};
+      geoTreeIndexCache = { v: body?.v ?? 1, generated_at: body?.generated_at ?? null, trees };
+      return geoTreeIndexCache;
+    } finally {
+      geoTreeIndexInflight = null;
+    }
+  })();
+  return geoTreeIndexInflight;
+}
+
+/** 作废会话内缓存（数据源变更后需要重取时调用；筛选切换不调用） */
+export function clearGeoTreeIndexCache(): void {
+  geoTreeIndexCache = null;
 }
 
 // ---- 统计 ----

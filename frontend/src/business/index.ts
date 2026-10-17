@@ -1,6 +1,20 @@
 export { buildTreeUrl, treePathAlias, openTreeHome, buildCrossTreePersonUrl, validateExternalRefs, resolveTreeIdByHost, mirrorTargetOf, mirrorLabelOf, mirrorNoteText, treeDisplayTitleOf, MIRROR_UNAVAILABLE_NOTE, treeKindOf, treeLayerOf, isReadonlyMirror, isOrphanMirror, hasFounderRegistrationPointer, mirrorReadonlyViewOf, isAncestorMirrorLink, clanFounderOfMasterNode, clanFounderChildBlockMessage } from './cross-tree';
 export type { MirrorFields, MirrorTarget, MirrorReadonlyView, MasterClanFounder } from './cross-tree';
 export { fetchPerson, fetchPersonForEdit, savePerson, savePersonPlaces, API_BASE, fetchPersonList, fetchFamilyList, searchPeople, searchPeopleGlobal, searchMarriageCandidates, fetchTreeMeta, fetchTreeMetaRemote, updateTreeMeta, fetchOriginCandidates, setTreeOrigin, splitTree, createTree, fetchWallet, rechargeWallet, setTreeCreateFee, fetchMasterTree, fetchTreeStats, fetchTreeRank, clearMetaCache, sendSmsCode, registerByPhone, loginByPhone, fetchMe, submitJoinRequest, fetchJoinRequests, approveJoinRequest, rejectJoinRequest, fetchMyAnchor, requestLeave, fetchLeaveRequests, approveLeave, removeBranchLink, addParentNode, addChildNode, appendChainNode, addSpouseNode, reparentNode, siblingReorder, deleteNode, marriageRequest, fetchMarriageRequests, decideMarriageRequest, marryEnd, founderRequest, fetchFounderRequests, decideFounderRequest, attachFounder, detachFounder, resetFounder, createClan, FOUNDER_LOCK_MESSAGE, CLAN_FOUNDER_LOCK_MESSAGE, CHAIN_MIRROR_LOCK_MESSAGE, ORPHAN_MIRROR_LOCK_MESSAGE, familyMirrorLockMessage, treeKindLabel, fetchClans, fetchClanInfo, submitClanRequest, fetchClanRequests, decideClanRequest } from './api';
+// 按地区筛选索引（`GET /geo/tree-index`；会话内缓存，切换筛选不再请求）
+export { fetchGeoTreeIndex, clearGeoTreeIndexCache } from './api';
+export {
+  REGION_UNREGISTERED,
+  REGION_TEXT,
+  regionPrefixOf,
+  isUnregisteredEntry,
+  hitOfEntry,
+  regionCityLabelOf,
+  regionProvinceOptions,
+  regionUnregisteredCountOf,
+  regionOptionOf,
+} from './region-filter';
+export type { RegionHit, RegionProvinceOption } from './region-filter';
 export type { TreeKind, ClanSummary, ClanCreateResult, ClanInfo, ClanMirrorNode, ClanOwnNode, ClanBranch, ClanRequestItem, FounderAttachment, FounderRequestItem, NodeDeleteMode, NodeDeleteResult, FeeInfo, GlobalPersonHit, MarriageCandidate, PersonPlaceSavePayload } from './api';
 export type { TreeOriginCandidate, TreeOriginCandidates, SetTreeOriginResult, SiblingReorderPayload, SiblingReorderResult, SiblingReorderFee, SiblingReorderSegment } from './types';
 export { ApiStatusError } from './api';
@@ -50,7 +64,7 @@ export { MAX_RESIDENCE_PLACES, emptyPlaceInput, normalizePlace, prunePlaces, pla
 export type { PersonPlaceInput, PersonPlaceView, ProfileLifespanView } from './types';
 export { ICON, genderIconSrc, assetKindIconSrc } from './icons';
 export type { TreePersonNode } from './pedigree';
-export type { TreeMeta, TreeEntry, PersonSummary, PersonDetail, PersonProfile, FamilyRef, EventRef, MediaRef, CitationRef, NoteRef, CustomAttribute, SearchParams, SearchResult, DigitalHallCard } from './types';
+export type { TreeMeta, TreeEntry, PersonSummary, PersonDetail, PersonProfile, FamilyRef, EventRef, MediaRef, CitationRef, NoteRef, CustomAttribute, SearchParams, SearchResult, DigitalHallCard, GeoTreeIndex, GeoTreeIndexEntry } from './types';
 // 签到 7 天日历（2026-09-28）：补签接口 + 后台签到设置（**沿用既有治理路由** `PUT /admin/wallet-fee`，不新增路由）
 export { postSigninMakeup, putSigninFeeSettings } from './api';
 export type { SigninItem, SigninCalendarState, SigninCalendarDay, SigninMakeupResult, SigninPoolEntry, SigninFeeSettingsPayload } from './types';
