@@ -328,7 +328,7 @@ test('H9 failed 值形态 = 树 id 字符串数组（含且仅含 getTree 抛错
   });
   const r = await reader.getGeoHot();
   assert.equal(Array.isArray(r.failed), true, 'failed 必须是数组');
-  assert.deepEqual(r.failed, ['boom1', 'boom2'], '恰含两棵读取抛错的树，顺序 = 清单顺序');
+  assert.deepEqual(r.failed, ['boom1', 'boom2'], '恰含两棵读取抛错的树，顺序 = 树 id 升序（共享扫描按去重升序遍历）');
   assert.equal(r.failed.every((x) => typeof x === 'string'), true, '元素形态 = 树 id 字符串（不是对象/错误）');
   assert.equal(r.failed.includes('gone'), false, '返回 null（不存在 / 已删）不得进 failed');
   assert.equal(r.failed.includes('ok'), false);

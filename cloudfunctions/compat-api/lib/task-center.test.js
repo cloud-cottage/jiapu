@@ -794,11 +794,13 @@ test('⑬ TOCTOU：锁定读与兰帖扣减同锁（持锁期间读不得返回�
 //   + saveTree/createTreeFile 版本化写与读路径零改动静态锚）⇒ 定额同步为实得真值 49。
 // 按地区筛选聚合口批新增 geo-tree-index.test.js（50，每树发源地码 + 居住地码 / 24h 缓存 / 单飞 /
 //   清单失败降级 / 单树失败只降该树）⇒ 定额同步为实得真值 50。
-test('⑩ 注册数 50 = 磁盘 *.test.js 数；「已注册但磁盘缺失」0 条；磁盘未注册 0 条', () => {
+// 地区统计合并批新增 geo-stats.test.js（51，/geo/hot 与 /geo/tree-index 合并为一趟扫描 + 一份缓存 +
+//   一个 generated_at：两路同快照 / 全量扫描次数 = 1 / 降级语义共享）⇒ 定额同步为实得真值 51。
+test('⑩ 注册数 51 = 磁盘 *.test.js 数；「已注册但磁盘缺失」0 条；磁盘未注册 0 条', () => {
   const pkg = JSON.parse(fs.readFileSync(PKG_FILE, 'utf8'));
   const registered = (pkg.scripts.test.match(/[\w./-]+\.test\.js/g) || []).map((p) => p.replace(/^.*lib\//, ''));
   const onDisk = fs.readdirSync(HERE).filter((f) => f.endsWith('.test.js'));
-  assert.equal(registered.length, 50, `注册数应为 50，实得 ${registered.length}`);
+  assert.equal(registered.length, 51, `注册数应为 51，实得 ${registered.length}`);
   assert.equal(onDisk.length, registered.length, `磁盘 *.test.js 数 ${onDisk.length} 应等于注册数 ${registered.length}`);
   assert.equal(new Set(registered).size, registered.length, '注册项不得重复');
   const missing = registered.filter((f) => !fs.existsSync(path.join(HERE, f)));
