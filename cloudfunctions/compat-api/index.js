@@ -102,6 +102,9 @@ import { isKnownOriginCode, resolveOrigin } from './lib/geo.js';
 // 行政区划热度排序（裁定 R1–R8 / 冻结口径 D1–D3）：路由层只做「取聚合值 → 200」一件事，
 // 计票 / 前缀级联 / 24h 缓存 / 降级一律在 lib/geo-hot.js（真源派生 · 纯读 · 零写入）。
 import { getGeoHot } from './lib/geo-hot.js';
+// 按地区筛选：每树「发源地码 + 居住地码」只读聚合（同族口径 = lib/geo-tree-index.js 文件头）。
+// 路由层只做「取聚合值 → 200」一件事；24h 缓存 / 单飞 / 降级 / 零写入全在 lib 层。
+import { getTreeIndex } from './lib/geo-tree-index.js';
 // 出生地 / 居住地（契约 v2）：路由层只做「上限 400（C10）」「读响应形状（C7）」「始祖放行（C6）」
 // 「tree-meta 镜像回写（C8）」四件事，形状归一 / 展示串一律复用 lib/person-places.js（不另写一套）。
 import {
@@ -880,6 +883,13 @@ async function handleRequest(event) {
     // **必须注册在树编辑闸门之前**（闸门 = 下方 `缺少 X-Tree-Id`；同段先例 = /search/global / /assets/*）。
     if (pathname === '/geo/hot' && method === 'GET') {
       return send(200, await getGeoHot());
+    }
+
+    // `GET /geo/tree-index` → 200 `{ v, generated_at, trees[, failed] }`（契约 = lib/geo-tree-index.js 文件头）。
+    // 首页「按地区筛选」用：每树给发源地码 + 居住地码，**只读 · 无需鉴权 · 无需 X-Tree-Id**；
+    // 与 /geo/hot 同族降级口径：整体失败返上一次成功值 / 空表，恒 200、绝不 5xx。
+    if (pathname === '/geo/tree-index' && method === 'GET') {
+      return send(200, await getTreeIndex());
     }
 
     // ================= 等级 =================
