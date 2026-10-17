@@ -16,7 +16,7 @@
         placeholder="请输入 11 位手机号"
         class="fi-input"
         @update:value="onToChange"
-        @confirm="submit"
+        @enter="submit"
       />
       <view
         class="fi-btn"

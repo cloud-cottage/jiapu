@@ -150,7 +150,7 @@
               placeholder="按姓名搜索本家族节点"
               class="search-input"
               @update:value="(v: string) => approveQuery = v"
-              @confirm="searchApproveCandidates"
+              @enter="searchApproveCandidates"
             />
             <t-button size="small" theme="primary" @click="searchApproveCandidates">搜索</t-button>
           </view>
@@ -243,7 +243,7 @@
                 placeholder="11 位手机号"
                 class="query-input"
                 @update:value="(v: string) => queryPhone = v"
-                @confirm="queryUserAssets()"
+                @enter="queryUserAssets()"
               />
               <t-button size="small" variant="outline" :loading="querying" @click="queryUserAssets()">
                 查询
