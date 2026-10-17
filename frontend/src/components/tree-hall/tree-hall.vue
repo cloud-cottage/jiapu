@@ -711,83 +711,116 @@ function openArchive() {
   // #endif
 }
 
+/**
+ * 首屏取数：**锚点只请求一次**，与 tree-meta / spirit / rank / keyMarkers 按依赖关系分组并行。
+ *
+ * 依赖图（改动前是一串串行 await：逐项耗时累加，且 `/admin/get-anchor` 被请求两次）：
+ *   ① 立即并行：锚点（→ canManageTree / joined / focusHandle）、tree-meta（→ hallInfo / isMaster /
+ *      isClan，并串它自己的下游 detectClanBound）。锚点**不等**任何其它请求。
+ *   ② meta 到达后并行：spirit / tree/rank / keyMarkers —— 三者的门控（isMaster / isClan）都要等 meta，
+ *      但彼此**互不依赖** ⇒ 同一批同时发出。
+ * 任何一项失败仍走它**原来**的降级分支（canManageTree=false / hallInfo 不变 / spiritInfo=null /
+ * accessInfo 不变 / keyMarkers={}），互不牵连、一律不抛。
+ *
+ * 锚点**提前赋值**是首屏居中的关键：树组件在首次 renderChart 之前就拿到 focusHandle，卡面「★我」与
+ * 首屏居中在同一次渲染里完成；否则树先画一遍 → 锚点迟到 → 整树二次重渲 → 视野瞬移
+ * （见 docs/permission-tier.spec.md §12-3）。
+ */
 async function loadAll() {
   if (!treeId.value) return;
 
-  // 「家族消息」入口可见性：chief_editor 全局；tree_steward 仅本树（锚点树 == 当前树）
-  if (isAuthenticated()) {
-    if (authState.role === 'chief_editor') {
-      canManageTree.value = true;
-    } else {
-      try {
-        const anchor = await fetchMyAnchor(getAuthToken());
-        canManageTree.value = !!anchor && anchor.tree_id === treeId.value;
-      } catch {
-        canManageTree.value = false;
-      }
+  const tk = getAuthToken();
+  // 「家族消息」入口可见性：chief_editor 全局可见（同步判定，不需要请求）；其余角色走锚点判定
+  if (isAuthenticated() && authState.role === 'chief_editor') {
+    canManageTree.value = true;
+  }
+  /** 锚点（**全流程仅此一次**）：失败 ⇒ null，与既有 `catch { … }` 的降级结果相同 */
+  const anchorTask = tk ? fetchMyAnchor(tk).catch(() => null) : Promise.resolve(null);
+
+  // 锚点一到就下传（不等其它链）：决定「家族消息」入口可见性、已加入状态、树图首屏居中的锚点节点
+  const anchorApplied = anchorTask.then((anchor) => {
+    if (!tk) return;
+    joined.value = !!anchor;
+    // isMaster（世本总谱）此刻可能还没从 meta 拿到 ⇒ 先按「非世本」处理，meta 到达后按原口径回滚
+    focusHandle.value =
+      anchor && anchor.tree_id === treeId.value && !isMaster.value ? anchor.person_handle : '';
+    // chief_editor 全局可见（不需要锚点）；tree_steward 仅本树（锚点树 == 当前树）
+    if (isAuthenticated() && authState.role !== 'chief_editor') {
+      canManageTree.value = !!anchor && anchor.tree_id === treeId.value;
     }
+  });
+
+  // tree-meta（→ hallInfo / 导航栏标题 / 已绑定祖谱判定）；detectClanBound 依赖 meta，串在本分支内即可
+  const metaTask = (async () => {
+    try {
+      const meta = await fetchTreeMetaRemote();
+      for (const [, entry] of Object.entries(meta.trees)) {
+        if (entry.tree_id === treeId.value) {
+          hallInfo.value = entry;
+          break;
+        }
+      }
+      // 导航栏标题 = 家族名称（家谱 tab 需保持「我的家族」→ 传 syncNavTitle=false 时不写）
+      if (props.syncNavTitle && hallInfo.value?.display_title) {
+        uni.setNavigationBarTitle({ title: hallInfo.value.display_title });
+        // #ifdef H5
+        // 仅 H5：uni.setNavigationBarTitle 会连浏览器标签页一起改写（盖掉 mixin applySeo 的标题），此处补回「树名 + 品牌后缀」
+        // 用 setDynamicTitle 三连写（立即 + nextTick + setTimeout 0）跑赢 uni-h5 同 tick 后续 flush 的覆盖
+        setDynamicTitle(hallInfo.value.display_title);
+        // #endif
+      }
+      // 已绑定祖谱判定（普通树才需要：总谱/祖谱页面不出现建谱入口）
+      if (!isMaster.value && !isClan.value) {
+        await detectClanBound(meta);
+      }
+    } catch (e) {
+      console.error('加载数字馆信息失败:', e);
+    }
+  })();
+
+  // 下面三项的门控都依赖 meta 的 isMaster / isClan（原逻辑也在 meta 之后）⇒ 先等 meta，再并发发出
+  await metaTask;
+
+  // 世本总谱：原逻辑不下传 joined / focusHandle ⇒ 把提前赋值回滚成原口径（普通树 / 祖谱行为逐字不变）
+  if (isMaster.value) {
+    joined.value = false;
+    focusHandle.value = '';
   }
 
-  try {
-    const meta = await fetchTreeMetaRemote();
-    for (const [, entry] of Object.entries(meta.trees)) {
-      if (entry.tree_id === treeId.value) {
-        hallInfo.value = entry;
-        break;
-      }
-    }
-    // 导航栏标题 = 家族名称（家谱 tab 需保持「我的家族」→ 传 syncNavTitle=false 时不写）
-    if (props.syncNavTitle && hallInfo.value?.display_title) {
-      uni.setNavigationBarTitle({ title: hallInfo.value.display_title });
-      // #ifdef H5
-      // 仅 H5：uni.setNavigationBarTitle 会连浏览器标签页一起改写（盖掉 mixin applySeo 的标题），此处补回「树名 + 品牌后缀」
-      // 用 setDynamicTitle 三连写（立即 + nextTick + setTimeout 0）跑赢 uni-h5 同 tick 后续 flush 的覆盖
-      setDynamicTitle(hallInfo.value.display_title);
-      // #endif
-    }
-    // 已绑定祖谱判定（普通树才需要：总谱/祖谱页面不出现建谱入口）
-    if (!isMaster.value && !isClan.value) {
-      await detectClanBound(meta);
-    }
-  } catch (e) {
-    console.error('加载数字馆信息失败:', e);
-  }
+  const tasks: Promise<unknown>[] = [anchorApplied];
 
   // 时流子域入口状态（guest 亦可读摘要；失败只降级文案，不影响首页渲染）
   if (!isMaster.value) {
-    try {
-      spiritInfo.value = await fetchSpirit(treeId.value);
-    } catch {
-      spiritInfo.value = null;
-    }
+    tasks.push(
+      fetchSpirit(treeId.value)
+        .then((info) => {
+          spiritInfo.value = info;
+        })
+        .catch(() => {
+          spiritInfo.value = null;
+        }),
+    );
   }
 
   // 节点级可见分层 access（普通树才需要；总谱 full 无提示）
   if (!isMaster.value && !isClan.value) {
-    try {
-      const rank = await fetchTreeRank(treeId.value);
-      accessInfo.value = rank.access || null;
-      peopleTotal.value = typeof rank.person_count === 'number' && !Number.isNaN(rank.person_count) ? rank.person_count : 0;
-    } catch (e) {
-      console.error('加载谱系可见范围失败:', e);
-    }
-    // 带色称号标注（数据驱动；契约 docs/person-badge.spec.md §4-1）：仅普通家族树树图需要
-    await loadKeyMarkers();
+    tasks.push(
+      fetchTreeRank(treeId.value)
+        .then((rank) => {
+          accessInfo.value = rank.access || null;
+          peopleTotal.value =
+            typeof rank.person_count === 'number' && !Number.isNaN(rank.person_count) ? rank.person_count : 0;
+        })
+        .catch((e) => {
+          console.error('加载谱系可见范围失败:', e);
+        }),
+    );
+    // 带色称号标注（数据驱动；契约 docs/person-badge.spec.md §4-1）：仅普通家族树树图需要。
+    // 与 /tree/rank **互不依赖**（原来是串在它后面白等一次往返）⇒ 同批并行；失败由 loadKeyMarkers 内部降级为 {}
+    tasks.push(loadKeyMarkers());
   }
 
-  // 绑定状态：member（已加入）隐藏「申请加入」入口
-  const tk = getAuthToken();
-  if (tk && !isMaster.value) {
-    try {
-      const anchor = await fetchMyAnchor(tk);
-      joined.value = !!anchor;
-      // 「我」的节点只在锚点属本树时下传（未绑定 / 锚点属其它树 ⇒ 空串 = 与既有行为一致）
-      focusHandle.value = anchor && anchor.tree_id === treeId.value ? anchor.person_handle : '';
-    } catch {
-      joined.value = false;
-      focusHandle.value = '';
-    }
-  }
+  await Promise.allSettled(tasks);
 }
 
 /** 清空全部取数/交互状态（prop 换树或重载前调用，避免旧树残留） */

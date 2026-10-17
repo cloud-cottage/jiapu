@@ -531,6 +531,11 @@ async function loadData() {
       chart.dispose();
       chart = null;
     }
+    // 换树/重载：图元与装饰树一起重建 ⇒ 清掉补标记与「已居中」闸门（新树允许再首屏居中一次）
+    lastChartRoot = null;
+    markedHandle = '';
+    renderedMarkers = {};
+    focusCentered = false;
     scheduleRender();
   } catch (e: any) {
     error.value = `加载失败: ${e.message || e}`;
@@ -562,6 +567,13 @@ onUnmounted(() => {
   if (renderTimer) {
     clearTimeout(renderTimer);
     renderTimer = null;
+  }
+  // 卸载时停掉可能还在跑的首屏居中补间（不留 rAF 循环）
+  if (centerTween !== null) {
+    // #ifdef H5
+    cancelAnimationFrame(centerTween);
+    // #endif
+    centerTween = null;
   }
   unbindWheel();
   unbindNativeContextMenuBlock();
@@ -946,33 +958,190 @@ function focusNodePixel(): { x: number; y: number } | null {
 
 /** 首屏居中是否已执行（**只做一次**：用户后续拖动/缩放不再被夺回；zoomReset 既有语义不变） */
 let focusCentered = false;
+/** 首屏居中补间的 rAF 句柄（非 null = 补间进行中；仅 H5 赋值） */
+let centerTween: number | null = null;
+/** 被打断后的静默期截止时间戳：2s 内不再发生任何自动位移（防「拽回」） */
+let centerQuietUntil = 0;
+/** 首屏居中补间总时长（ms） */
+const CENTER_TWEEN_MS = 420;
+
+/** 缓动：ease-out cubic（末段减速） */
+function easeOutCubic(t: number): number {
+  const x = Math.min(1, Math.max(0, t));
+  return 1 - Math.pow(1 - x, 3);
+}
+
+/**
+ * 打断首屏居中补间（用户滚轮 / 拖动 / 点缩放按钮时调用）。
+ * 选择**停在中途**（不补到终点）：用户已经接管视野，硬落到终点等于把视野「拽回去」，
+ * 违反 §12-3「不夺回拖动」。随后 2s 内不再有任何自动位移。
+ */
+function cancelCenterTween(): void {
+  if (centerTween === null) return;
+  // #ifdef H5
+  cancelAnimationFrame(centerTween);
+  // #endif
+  centerTween = null;
+  centerQuietUntil = Date.now() + 2000;
+}
+
+// #ifdef H5
+/**
+ * 首屏居中补间（420ms / ease-out cubic）：逐帧 `treeRoam` 增量位移。
+ * 每帧按「目标 - 当前」重算剩余量（实测读数经 `coordinateSystem.dataToPoint`，不累加固定步长 ⇒ 无误差堆积），
+ * 只动画面整体变换，不碰节点尺寸 / 卡宽卡高 / 行距 / 树布局。
+ */
+function startCenterTween(targetX: number, targetY: number): void {
+  if (!chart) return;
+  let startTs = 0;
+  let prevEased = 0;
+  const frame = (ts: number) => {
+    if (!chart) {
+      centerTween = null;
+      return;
+    }
+    if (!startTs) startTs = ts;
+    const raw = Math.min(1, (ts - startTs) / CENTER_TWEEN_MS);
+    const eased = easeOutCubic(raw);
+    const cur = focusNodePixel();
+    if (!cur) {
+      centerTween = null;
+      return;
+    }
+    const remainX = targetX - cur.x;
+    const remainY = targetY - cur.y;
+    // 本帧应走的「剩余比例」：treeRoam 吃的是增量，不能直接写真值
+    const k = raw >= 1 ? 1 : (eased - prevEased) / (1 - prevEased);
+    chart.dispatchAction({ type: 'treeRoam', seriesIndex: 0, dx: remainX * k, dy: remainY * k });
+    prevEased = eased;
+    if (raw >= 1) {
+      // 末帧补齐余量（浮点 / 亚像素取整误差）
+      const fin = focusNodePixel();
+      if (fin && chart) {
+        chart.dispatchAction({
+          type: 'treeRoam',
+          seriesIndex: 0,
+          dx: targetX - fin.x,
+          dy: targetY - fin.y,
+        });
+      }
+      centerTween = null;
+      return;
+    }
+    centerTween = requestAnimationFrame(frame);
+  };
+  centerTween = requestAnimationFrame(frame);
+}
+// #endif
 
 /**
  * 把「我」的节点移到树图容器中心（**仅首屏一次**）。走与滚轮/拖动同一机制
  * （treeRoam 的 dx/dy 是屏幕像素位移，只动「画面整体变换」）⇒ 不触碰节点尺寸与树布局，
  * 且位移会同步回 series 的 center/zoom，后续 setOption 不会把它拽回初始视图。
+ *
+ * 补间（420ms ease-out cubic）可被用户操作打断：滚轮 / 拖动 / 缩放按钮 ⇒ `cancelCenterTween`
+ * （停在中途 + 2s 静默）。`prefers-reduced-motion: reduce` ⇒ 瞬时居中（仅 H5；小程序侧一贯瞬时）。
  */
 function centerOnFocusOnce() {
   if (focusCentered || !props.focusHandle || !chart) return;
+  if (Date.now() < centerQuietUntil) return;
   const el = document.getElementById('tree-chart') as HTMLDivElement | null;
   const p = focusNodePixel();
   if (!el || !p) return;
   focusCentered = true;
-  chart.dispatchAction({
-    type: 'treeRoam',
-    seriesIndex: 0,
-    dx: el.clientWidth / 2 - p.x,
-    dy: el.clientHeight / 2 - p.y,
-  });
+  const targetX = el.clientWidth / 2;
+  const targetY = el.clientHeight / 2;
+  const dx = targetX - p.x;
+  const dy = targetY - p.y;
+  if (!dx && !dy) return;
+  // #ifdef H5
+  const reduceMotion =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!reduceMotion) {
+    startCenterTween(targetX, targetY);
+    return;
+  }
+  // #endif
+  chart.dispatchAction({ type: 'treeRoam', seriesIndex: 0, dx, dy });
+}
+
+/* ---- 锚点迟到：只补卡面标记，不重算布局 ---- */
+
+/** 上次 renderChart 喂给 ECharts 的装饰树（补标记时原地改它的卡面字段） */
+let lastChartRoot: TreePersonNode | null = null;
+/** 已经带上「★我」标记的 handle（空串 = 没有标记任何节点） */
+let markedHandle = '';
+/** 上次渲染时用的 keyMarkers 引用（内容相同 ⇒ 不重复整树重渲） */
+let renderedMarkers: Record<string, { label: string; color?: string }> = {};
+
+/** 在装饰树里按 handle 找节点（补标记用；找不到 ⇒ null = 该节点不在本图） */
+function findDecoratedNode(node: TreePersonNode | null, handle: string): TreePersonNode | null {
+  if (!node) return null;
+  if (node.handle === handle) return node;
+  for (const c of node.children || []) {
+    const hit = findDecoratedNode(c, handle);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * 锚点**迟到**（树已经画出来之后才拿到 focusHandle）的补标记路径。
+ *
+ * 走整树重渲（`scheduleRender`）会把入场动画重放一遍、并在动画中途跳视野（线上「先出树 → 闪一下 → 跳走」）。
+ * 这里只改该节点在 series 数据里的**卡面文本 + 高亮色**，然后抑制本次更新动画的 setOption：
+ * 卡宽 / 卡高 / 行距 / 树布局按未标记时的值算好（见 decorateTree：标记不进 cardLines）⇒ 图元尺寸与
+ * `getItemLayout` 序列逐值不变（§12-3「居中不改变图元尺寸/布局」）。
+ * 返回 true = 已补（或本来就已标记）；false = 走不了补标记路径（宿主按整树重渲兜底）。
+ */
+function patchFocusMarker(): boolean {
+  if (!chart || !lastChartRoot) return false;
+  const handle = props.focusHandle;
+  if (!handle) return false;
+  if (markedHandle === handle) return true;
+  // 换锚点（锚点本身变了）：交给整树重渲（既有路径，一次性）
+  if (markedHandle) return false;
+  const node = findDecoratedNode(lastChartRoot, handle);
+  if (!node) return false;
+  node._cardText = `${node._cardText ?? ''}\n${props.focusLabel}`;
+  node.label = { color: FOCUS_MARKER_COLOR, rich: CARD_RICH };
+  markedHandle = handle;
+  // 只更新 series 数据（卡面文本/颜色）：本次更新动画置 0 ⇒ 不重放入场动画，再恢复默认更新时长
+  chart.setOption({ series: [{ data: [lastChartRoot], animationDurationUpdate: 0 }] });
+  chart.setOption({ series: [{ animationDurationUpdate: 750 }] });
+  return true;
 }
 
 // 宿主按数据现算 keyMarkers（带色称号；契约 docs/person-badge.spec.md §4-1），可能在组件**首次渲染之后**
 // 才到（宿主异步取数）⇒ 变化时补渲一次（同下方 focusHandle 的「迟到补渲」理由；只重算 series 数据，
 // 不触碰图元尺寸/布局红线）。清空（换树 reload）由 loadData 的正常重载路径覆盖。
+// **内容相同就不重渲**：宿主派生的 keyMarkers 恒为新对象，绝大多数树（无 `称号`）空集到空集，
+// 照旧重渲等于在首屏居中前后多一次整树重绘（入场动画重放）。
 watch(
   () => props.keyMarkers,
-  () => scheduleRender(),
+  (val) => {
+    if (sameMarkers(renderedMarkers, val)) return;
+    scheduleRender();
+  },
 );
+
+/** 两组称号标注是否等价（逐节点 label/color 比对；只用于「要不要重渲」，不影响渲染内容） */
+function sameMarkers(
+  a: Record<string, { label: string; color?: string }> | undefined,
+  b: Record<string, { label: string; color?: string }> | undefined,
+): boolean {
+  const ka = Object.keys(a || {});
+  const kb = Object.keys(b || {});
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) {
+    const x = (a as any)[k] || {};
+    const y = (b as any)?.[k];
+    if (!y || x.label !== y.label || (x.color || '') !== (y.color || '')) return false;
+  }
+  return true;
+}
 
 // 宿主按数据现算 nodeAnnotations（祖谱：四类卡片角标 + 下游登记镜像的次级入口）同样可能迟到 ⇒
 // 变化时补绑右键拦截 + 补渲一次（角标走卡面次级行，卡宽/卡高/行距按新行数重算，仍在既有机制内）。
@@ -991,16 +1160,24 @@ watch(
 // 烘进 series 数据的 ⇒ 只在 watch 里 centerOnFocusOnce()（只改画布平移、不重算 series）
 // 会让标记永远缺失（线上就是这条，见 permission-tier.spec.md §12-3）。
 // 反向时序（handle 先到、数据后到）由 renderChart 末尾那次 centerOnFocusOnce 覆盖。
-// ⇒ handle 由空变非空时重渲一次（scheduleRender；renderChart 末尾自会居中本人）。
-// 清空（reload / 换树）交给 loadData 的正常重载路径，这里不触发多余重渲。
+//
+// 迟到路径**不再整树重渲**（重渲会重放入场动画 + 在动画中跳视野 = 「先出树 → 闪一下 → 跳走」）：
+// 只经 `patchFocusMarker()` 补该节点的卡面文本/颜色（尺寸与布局逐值不变），再居中。
+// 宿主侧已把锚点请求提到最前面（tree-hall 的 loadAll），正常时序下这里是「无图表 / 无根」直接返回。
 watch(
   () => props.focusHandle,
   (val) => {
     if (!val) return;
-    // 目标变了 ⇒ 允许重渲后再居中一次（renderChart 末尾调用 centerOnFocusOnce；focusCentered
-    // 是「只居一次」的一次性闸门，此处重置仅针对「锚点本身变化」，用户拖动/缩放不经过这里）
+    // 目标变了 ⇒ 允许居中一次（focusCentered 是「只居一次」的一次性闸门；此处重置仅针对
+    // 「锚点本身变化」或「树还没画出来就拿到锚点」，用户拖动/缩放不经过这里）
     focusCentered = false;
-    scheduleRender();
+    if (!chart || !lastChartRoot) return;
+    if (!patchFocusMarker()) {
+      // 补不上（目标节点不在本图 / 换锚点）⇒ 走既有整树重渲兜底
+      scheduleRender();
+      return;
+    }
+    centerOnFocusOnce();
   },
 );
 
@@ -1014,6 +1191,8 @@ const panHint = computed(() => {
 /** 缩放已锁死（roam:'move'）→ 滚轮改为平移视野：纵向模式上下滑、横向模式左右滑 */
 function onWheel(e: WheelEvent) {
   if (!chart) return;
+  // 用户开始接管视野 ⇒ 立刻停掉首屏居中补间（停在中途 + 2s 静默，不夺回拖动）
+  cancelCenterTween();
   // 触控板横向滑动（deltaX）优先；鼠标滚轮只有 deltaY
   const raw = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
   if (!raw) return;
@@ -1032,11 +1211,22 @@ function onWheel(e: WheelEvent) {
 // 滚轮监听绑定的元素（只绑一次；卸载时解绑）
 let wheelEl: HTMLElement | null = null;
 
+/** 用户按下指针（拖动视野）/ 触摸开始 ⇒ 停掉首屏居中补间（拖拽由 ECharts roam 自己处理，这里只做打断） */
+function onPanStart() {
+  cancelCenterTween();
+}
+
 /** 绑定滚轮平移（passive:false —— 需 preventDefault 阻止页面跟着滚） */
 function bindWheel(el: HTMLElement) {
   if (wheelEl === el) return;
-  if (wheelEl) wheelEl.removeEventListener('wheel', onWheel);
+  if (wheelEl) {
+    wheelEl.removeEventListener('wheel', onWheel);
+    wheelEl.removeEventListener('pointerdown', onPanStart);
+    wheelEl.removeEventListener('touchstart', onPanStart);
+  }
   el.addEventListener('wheel', onWheel, { passive: false });
+  el.addEventListener('pointerdown', onPanStart);
+  el.addEventListener('touchstart', onPanStart, { passive: true });
   wheelEl = el;
 }
 
@@ -1044,6 +1234,8 @@ function bindWheel(el: HTMLElement) {
 function unbindWheel() {
   if (wheelEl) {
     wheelEl.removeEventListener('wheel', onWheel);
+    wheelEl.removeEventListener('pointerdown', onPanStart);
+    wheelEl.removeEventListener('touchstart', onPanStart);
     wheelEl = null;
   }
 }
@@ -1051,6 +1243,8 @@ function unbindWheel() {
 function renderChart() {
   const el = document.getElementById('tree-chart') as HTMLDivElement | null;
   if (!el) return;
+  // 重渲/切布局会重建图元：先把可能还在跑的首屏居中补间停掉（避免对旧坐标系继续发位移）
+  cancelCenterTween();
   // 祖谱图（宿主传节点注记）拦截浏览器右键菜单：右键改为弹节点次级入口菜单
   bindNativeContextMenuBlock(el);
 
@@ -1220,6 +1414,11 @@ function renderChart() {
     ],
   });
 
+  lastChartRoot = chartRoot;
+  // decorateTree 已按当前 props.focusHandle 烘入标记（节点不在本图 ⇒ 不记）
+  markedHandle = props.focusHandle && findDecoratedNode(chartRoot, props.focusHandle) ? props.focusHandle : '';
+  renderedMarkers = props.keyMarkers || {};
+
   // 首屏把视野中心移到「我」的节点（内部只执行一次：用户后续拖动/缩放不被夺回）
   centerOnFocusOnce();
 }
@@ -1237,18 +1436,22 @@ function switchLayout(id: string) {
 
 /** 放大 */
 function zoomIn() {
+  // 用户点缩放 = 接管视野 ⇒ 停掉首屏居中补间（不夺回）
+  cancelCenterTween();
   zoomLevel.value = Math.min(zoomLevel.value * 1.25, 4);
   applyZoom();
 }
 
 /** 缩小 */
 function zoomOut() {
+  cancelCenterTween();
   zoomLevel.value = Math.max(zoomLevel.value / 1.25, 0.2);
   applyZoom();
 }
 
 /** 重置缩放 + 视野复位（回到 100% 且回到树顶） */
 function zoomReset() {
+  cancelCenterTween();
   zoomLevel.value = 1;
   applyZoom(true);
   // setOption 生效后再把漫游平移量归零（否则只复位缩放，平移仍停在原处）
