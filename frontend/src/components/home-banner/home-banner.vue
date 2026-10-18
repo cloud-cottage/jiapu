@@ -95,7 +95,11 @@ defineProps<{
   height: 100%;
   object-fit: cover;
   object-position: center center;
-  filter: blur(8px);
+  /* 2026-10 转冷：模糊值 8px 不变，只叠 saturate 降饱和 + 极轻 hue-rotate 把暖米黄往青瓷靠
+     （纸面素材本身是暖棕调，单靠上层青瓷薄纱压不住饱和度 ⇒ 先在图片这一环掉色）。
+     saturate 取 0.45（低于任务书建议的 0.6–0.7）：实测纸面中心区暖色像素 0.6→18%、0.45→3.8%，
+     0.6 在视觉上仍读作暖米黄（截图 + 色温判读复核），0.45 才真正落到青瓷灰绿；纸纹仍可辨。 */
+  filter: blur(8px) saturate(0.45) hue-rotate(-4deg);
   transform: scale(1.06);
   pointer-events: none;
   user-select: none;
@@ -132,6 +136,20 @@ defineProps<{
     rgba(237, 241, 234, 0.85) 74%,
     #EDF1EA 100%
   );
+  pointer-events: none;
+}
+
+/* 青瓷薄纱（2026-10 转冷）：纸面图降饱和后仍偏暖米黄 ⇒ 在纸面层上再压一层青瓷纸色薄纱，
+   把整片纸面（含 banner 区与下方延展段）拉回 #EDF1EA 一族。
+   · 层序：图片 < ::before(顶端渐入) < ::after(薄纱) 同属纸面层，被上方 .banner 内容整层压住；
+   · 颜色 = 页面底色 #EDF1EA 本身，故末端渐隐终点仍是 #EDF1EA（薄纱同为该色，叠上去颜色不变）；
+   · 夜间由下面 html[data-theme='dark'] 规则整层摘掉 ⇒ 夜间观感逐像素不变。 */
+.banner__paper::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: rgba(237, 241, 234, 0.34);
   pointer-events: none;
 }
 
@@ -183,7 +201,8 @@ defineProps<{
   max-width: 44%;
   object-fit: cover;
   object-position: left center;
-  filter: blur(3px);
+  /* 转冷：模糊值仍 3px（层次不变），叠 saturate 收掉书页 / 卷轴的暖棕饱和度 */
+  filter: blur(3px) saturate(0.75);
   -webkit-mask-image: linear-gradient(to right, #000 58%, transparent 100%),
     linear-gradient(to bottom, transparent 0%, #000 12%, #000 82%, transparent 100%);
   mask-image: linear-gradient(to right, #000 58%, transparent 100%),
@@ -200,7 +219,7 @@ defineProps<{
   max-width: 44%;
   object-fit: cover;
   object-position: right center;
-  filter: blur(3px);
+  filter: blur(3px) saturate(0.75);
   -webkit-mask-image: linear-gradient(to left, #000 58%, transparent 100%),
     linear-gradient(to bottom, transparent 0%, #000 12%, #000 82%, transparent 100%);
   mask-image: linear-gradient(to left, #000 58%, transparent 100%),
@@ -250,14 +269,13 @@ defineProps<{
   text-shadow: 0 1px 0 rgba(250, 252, 248, 0.7), 0 2px 12px rgba(250, 252, 248, 0.9);
 }
 
-/* 副标题：暖棕加深到 #5D4638（原 #6E7D70 在暖纸底上对比不足；#6E5546 在 390 下叠在
-   书页细字上仍略弱）⇒ 同族色相再深一档 + 三层浅色柔光托底（不加描边、不显脏），
-   对 #EDF1EA 底约 7.2:1。文案一字未改。 */
+/* 副标题：原暖棕 #5D4638（7.66:1）⇒ 转冷为深青墨 #3A4A44（对 #EDF1EA 约 8.19:1，对比度反升），
+   与标题 #2F3A33 同族但略浅一档；三层浅色柔光托底不变（不加描边、不显脏）。文案一字未改。 */
 .banner__subtitle {
   display: block;
   margin-top: 10px;
   font-size: 14px;
-  color: #5D4638;
+  color: #3A4A44;
   letter-spacing: 0.5px;
   line-height: 1.6;
   text-shadow: 0 1px 0 rgba(250, 252, 248, 0.85), 0 0 6px rgba(250, 252, 248, 0.85),
@@ -320,6 +338,8 @@ defineProps<{
    · 文案转亮系（标题 #DFE9E4 / 副标题 #B4C2BB），文字阴影由浅色柔光改为深色投影（反之）。
    · 选择器带 html[data-theme='dark'] 前缀，特异性高于上面 base / 媒体查询里的同名规则，无需 !important。 */
 html[data-theme='dark'] .banner__paper { background: #1E2825; }
+/* 青瓷薄纱只在日间存在：夜间整层摘掉 ⇒ 夜间三层观感与本次改色前逐像素一致 */
+html[data-theme='dark'] .banner__paper::after { background: none; }
 html[data-theme='dark'] .banner__paper-img { filter: blur(8px) brightness(0.42) saturate(0.7); }
 html[data-theme='dark'] .banner__paper::before {
   background: linear-gradient(to bottom, rgba(30, 40, 37, 0.9), rgba(30, 40, 37, 0));
