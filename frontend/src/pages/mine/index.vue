@@ -839,6 +839,13 @@ onMounted(() => {
 
 <style scoped>
 .container { padding: 20px; }
+/* 底部安全间距（**仅 H5**）：tabBar 是 `position:fixed` 的 50px 条（+ 刘海屏安全区），
+   页面自身须留「50px + env(safe-area-inset-bottom) + 12px」，否则滚到底时
+   页脚/最后一块卡片下沿压进 tabBar。只改底内距，元素位置/尺寸/间距不动；
+   仅 H5 生效 ⇒ 小程序零改动。 */
+/* #ifdef H5 */
+.container { padding-bottom: max(20px, calc(50px + env(safe-area-inset-bottom, 0px) + 12px)); }
+/* #endif */
 .user-card {
   display: flex; align-items: center; gap: 14px;
   background: linear-gradient(135deg, #4E6B57, #A66B32);

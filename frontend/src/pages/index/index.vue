@@ -869,6 +869,13 @@ function goToPage(path: string) {
    首张卡片上半部都在它上面），它是 positioned + z-index:0，会盖住未定位的流内内容 ⇒
    这里给列表区一个更高的 z-index；纸面层自身 pointer-events:none，故点击不受影响。 */
 .hall-list { position: relative; z-index: 1; }
+/* 底部安全间距（**仅 H5**）：tabBar 是 `position:fixed` 的 50px 条 + 刘海屏安全区
+   ⇒ 页面自身必须留出「50px + env(safe-area-inset-bottom)」再加 12px 余量，
+   否则滚到底时最后一张卡片下沿会压进 tabBar（有安全区的机型会压得更多）。
+   取 max(原 90px, …) ⇒ **只增不减**：常规屏（env=0，算出 62px）仍走原 90px，
+   元素位置/尺寸/间距一字不动；只有安全区大到 40px 以上时才变大。
+   仅 H5 生效（小程序 tabBar 是原生层，不受影响）。 */
+.container { padding-bottom: max(90px, calc(50px + env(safe-area-inset-bottom, 0px) + 12px)); }
 /* #endif */
 
 /* ---- 家族馆卡片列表 ---- */

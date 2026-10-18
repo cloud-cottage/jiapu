@@ -1,5 +1,5 @@
 <template>
-  <view>
+  <view class="page-root">
     <!-- 未登录 -->
     <view v-if="!isAuthenticated()" class="container">
       <view class="empty-state">
@@ -79,6 +79,14 @@ onShow(() => {
 </script>
 
 <style scoped>
+/* 底部安全间距（**仅 H5**）：本页根容器包住三态（未登录空态 / 未加入空态 / TreeHall），
+   tabBar 是 `position:fixed` 的 50px 条（+ 刘海屏安全区）⇒ 根容器自身留
+   「50px + env(safe-area-inset-bottom) + 12px」，滚到底时最后一块内容不会被 tabBar 压住。
+   只加底内距：内容位置/尺寸/间距不动；仅 H5 生效 ⇒ 小程序零改动。 */
+/* #ifdef H5 */
+.page-root { padding-bottom: calc(50px + env(safe-area-inset-bottom, 0px) + 12px); }
+/* #endif */
+
 .container { padding: 20px; padding-bottom: 40px; }
 
 /* 空态 */
