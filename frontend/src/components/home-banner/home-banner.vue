@@ -61,11 +61,13 @@ defineProps<{
 
 /* banner / 纸面层高度真源：--banner-h = banner 高；--extend-h = 纸面向下延展高（260px，
    ⇒ 盖住搜索框 44px + 排序条 + 首张卡片上半部，不再在 banner 下缘切断）。
+   2026-10-19 收高：桌面 520 → 298px（搜索框 top − banner top = 300px 量级）；
+   窄屏按 36vh 收、下限 240px（低于此对句与两侧插画太挤）。
    ⚠ 这段只在 H5 生效：小程序产物里 `.home-banner` 仍只有 `display: block`（版式零改动）。 */
 .home-banner {
   position: relative;
-  --banner-h: min(520px, 48vh);
-  --banner-min-h: 300px;
+  --banner-h: min(298px, 36vh);
+  --banner-min-h: 240px;
   --extend-h: 260px;
 }
 
@@ -159,15 +161,17 @@ defineProps<{
   /* 出血：100vw 铺满视口；负 margin 抵掉父容器的 20px 内距，并让 banner 在窄栏里仍左右顶边 */
   width: 100vw;
   margin-left: calc(50% - 50vw);
-  /* 高：桌面封顶 520px；窄/矮屏按视口高度收（手机约 320–400px），不低于 300px 以免压扁插画 */
+  /* 高：桌面 298px（2026-10-19 由 520 收高）；窄/矮屏按 36vh 收（下限 240px），
+   保证对句仍单行、两侧插画不被压扁 */
   height: var(--banner-h);
   min-height: var(--banner-min-h);
   overflow: hidden;
 }
 
-/* 桌面按参考稿 520px 钉死；窄/矮屏仍按视口高度收（手机约 320–400px） */
+/* 桌面按 298px 钉死（2026-10-19 由 520 收高：搜索框 top − banner top = 300 量级）；
+   窄/矮屏仍按视口高度收（36vh，下限 240px） */
 @media (min-width: 768px) {
-  .home-banner { --banner-h: 520px; }
+  .home-banner { --banner-h: 298px; }
 }
 
 /* 两侧图片：绝对定位、垂直居中、统一高度；纯装饰，不接点击、不可拖选。
