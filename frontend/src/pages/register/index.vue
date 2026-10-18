@@ -160,7 +160,7 @@ function goLogin() {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: linear-gradient(160deg, #3E2723 0%, #6D4C41 100%);
+  background: linear-gradient(160deg, #2F3A33 0%, #6D4C41 100%);
 }
 .card {
   width: 100%;
@@ -171,7 +171,7 @@ function goLogin() {
   box-shadow: 0 8px 24px rgba(0,0,0,0.2);
 }
 .logo { font-size: 44px; display: block; text-align: center; }
-.title { font-size: 20px; font-weight: bold; color: #3E2723; display: block; text-align: center; margin-top: 8px; }
+.title { font-size: 20px; font-weight: bold; color: #2F3A33; display: block; text-align: center; margin-top: 8px; }
 .subtitle { font-size: 13px; color: #999; display: block; text-align: center; margin: 6px 0 20px; }
 .form { display: flex; flex-direction: column; gap: 16px; }
 .code-row { display: flex; gap: 10px; align-items: center; }
@@ -181,29 +181,29 @@ function goLogin() {
 .tip { margin-top: 18px; padding: 12px; background: #FFF8E1; border-radius: 8px; }
 .tip-text { font-size: 12px; color: #8A7A6A; line-height: 1.6; display: block; }
 .switch { text-align: center; margin-top: 16px; }
-.switch-text { color: #8B4513; font-size: 14px; }
+.switch-text { color: #4E6B57; font-size: 14px; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
-   与 login 页同一套：页底暖底渐变、表单卡 #2A2219、标题 #EDE3D6、副题 #B8A894、
-   协议说明块 #241D16（正文 #B8A894）、错误 #E0675F、切换/协议链接 #C4B4A0。
-   输入框描边 #3A3027 / 底色 #2A2219 由 td-dark-warm.css 的 --td-component-stroke /
+   与 login 页同一套：页底暖底渐变、表单卡 #232E2B、标题 #DFE9E4、副题 #A5B6AE、
+   协议说明块 #1E2825（正文 #A5B6AE）、错误 #E0675F、切换/协议链接 #B4C2BB。
+   输入框描边 #36453F / 底色 #232E2B 由 td-dark-warm.css 的 --td-component-stroke /
    --td-bg-color-container 提供。**验证码倒计时**（disabled 态）在卡片作用域内把
-   --td-button-primary-outline-disabled-color 抬到 #B8A894（默认 brand-4 #88562A 压 #2A2219 不可读）。
-   主按钮（注 册）由 --td-brand-color #C98850 + 深字 #211A14 自动达成。
+   --td-button-primary-outline-disabled-color 抬到 #A5B6AE（默认 brand-4 #8C7B4F 压 #232E2B 不可读）。
+   主按钮（注 册）由 --td-brand-color #D9A96B + 深字 #1B2422 自动达成。
    只改颜色、零几何改动、无 filter / invert；全部 H5 条件编译 ⇒ 小程序零改动。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .container { background: linear-gradient(160deg, #171210 0%, #241D16 100%); }
+html[data-theme='dark'] .container { background: linear-gradient(160deg, #141C1A 0%, #1E2825 100%); }
 html[data-theme='dark'] .card {
-  background: #2A2219;
+  background: #232E2B;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
-  --td-button-primary-outline-disabled-color: #B8A894;
+  --td-button-primary-outline-disabled-color: #A5B6AE;
 }
-html[data-theme='dark'] .title { color: #EDE3D6; }
-html[data-theme='dark'] .subtitle { color: #B8A894; }
+html[data-theme='dark'] .title { color: #DFE9E4; }
+html[data-theme='dark'] .subtitle { color: #A5B6AE; }
 html[data-theme='dark'] .error { color: #E0675F; }
-html[data-theme='dark'] .tip { background: #241D16; }
-html[data-theme='dark'] .tip-text { color: #B8A894; }
-html[data-theme='dark'] .switch-text { color: #C4B4A0; }
-html[data-theme='dark'] .send-btn { --td-button-primary-outline-color: #C98850; }
+html[data-theme='dark'] .tip { background: #1E2825; }
+html[data-theme='dark'] .tip-text { color: #A5B6AE; }
+html[data-theme='dark'] .switch-text { color: #B4C2BB; }
+html[data-theme='dark'] .send-btn { --td-button-primary-outline-color: #D9A96B; }
 /* #endif */
 </style>

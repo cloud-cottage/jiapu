@@ -14,8 +14,8 @@ import type { BoundFeature, BoundFeatureCollection } from '@/business/geo/bounds
 
 const NS = 'http://www.w3.org/2000/svg';
 const COL = {
-  face: '#EAE3D6', line: '#C9BFAE', ink: '#3E2723',
-  hl: '#8B4513', gold: '#C9A227', hlEdge: '#5E2F0D', goldEdge: '#8A6C12',
+  face: '#EAE3D6', line: '#C9BFAE', ink: '#2F3A33',
+  hl: '#4E6B57', gold: '#C9A227', hlEdge: '#5E2F0D', goldEdge: '#8A6C12',
 };
 type Tone = 'neutral' | 'brown' | 'gold';
 const TONE: Record<Tone, { fill: string; stroke: string }> = {

@@ -331,8 +331,8 @@ onBeforeUnmount(() => {
   height: 100vh;
   box-sizing: border-box;
   padding: 10px 12px 12px;
-  background: #fffdf8;
-  color: #3e2723;
+  background: #FAFCF8;
+  color: #2F3A33;
   gap: 8px;
 }
 .state {
@@ -349,11 +349,11 @@ onBeforeUnmount(() => {
 }
 .spinner {
   font-size: 26px;
-  color: #8b4513;
+  color: #4E6B57;
 }
 .retry {
   padding: 7px 20px;
-  border: 1px solid #8b4513;
+  border: 1px solid #4E6B57;
   border-radius: 9px;
   background: #fff;
 }
@@ -362,7 +362,7 @@ onBeforeUnmount(() => {
 }
 .retry-txt {
   font-size: 13px;
-  color: #8b4513;
+  color: #4E6B57;
 }
 .ready {
   flex: 1;
@@ -375,7 +375,7 @@ onBeforeUnmount(() => {
   position: relative;
   flex: 1 1 auto;
   min-height: 300px;
-  background: #fffdf8;
+  background: #FAFCF8;
   border: 1px solid #eae3d6;
   border-radius: 14px;
   overflow: hidden;
@@ -388,7 +388,7 @@ onBeforeUnmount(() => {
 .hud-title {
   font-size: 15px;
   font-weight: 600;
-  color: #8b4513;
+  color: #4E6B57;
 }
 .hud-desc {
   font-size: 12px;
@@ -403,7 +403,7 @@ onBeforeUnmount(() => {
 .note-main {
   font-size: 12px;
   font-weight: 500;
-  color: #8b4513;
+  color: #4E6B57;
 }
 .note-sub {
   font-size: 12px;
@@ -424,14 +424,14 @@ onBeforeUnmount(() => {
   border-radius: 9px;
   padding: 6px 4px;
   text-align: center;
-  background: #fffdf8;
+  background: #FAFCF8;
 }
 .tl-node.origin {
   border-color: #c9a227;
 }
 .tl-node.act {
-  background: #8b4513;
-  border-color: #8b4513;
+  background: #4E6B57;
+  border-color: #4E6B57;
 }
 .tl-node.act.origin {
   background: #c9a227;
@@ -449,7 +449,7 @@ onBeforeUnmount(() => {
 .tl-txt {
   font-size: 12px;
   font-weight: 500;
-  color: #3e2723;
+  color: #2F3A33;
   display: block;
   white-space: nowrap;
   overflow: hidden;
@@ -469,11 +469,11 @@ onBeforeUnmount(() => {
   border: 1px solid #c9bfae;
   border-radius: 9px;
   padding: 6px 11px;
-  background: #fffdf8;
+  background: #FAFCF8;
 }
 .ctrl.primary {
-  background: #8b4513;
-  border-color: #8b4513;
+  background: #4E6B57;
+  border-color: #4E6B57;
 }
 .ctrl.primary .ctrl-txt {
   color: #fff;
@@ -484,7 +484,7 @@ onBeforeUnmount(() => {
 }
 .ctrl-txt {
   font-size: 12px;
-  color: #3e2723;
+  color: #2F3A33;
 }
 .progress {
   flex: 1;
@@ -576,7 +576,7 @@ onBeforeUnmount(() => {
   stroke-width: 1.4px;
 }
 .stage :deep(.site-dot.brown) {
-  fill: #8b4513;
+  fill: #4E6B57;
 }
 .stage :deep(.ring) {
   fill: none;
@@ -584,7 +584,7 @@ onBeforeUnmount(() => {
   stroke-width: 1.6px;
 }
 .stage :deep(.ring.brown) {
-  stroke: #8b4513;
+  stroke: #4E6B57;
 }
 /* 小面指示圈（halo）：**固定半径**圆环（不扩散、不变粗），仅透明度呼吸 —— 与扩散环（r 7→41）明确区分 */
 .stage :deep(.halo) {
@@ -597,7 +597,7 @@ onBeforeUnmount(() => {
   stroke: #c9a227;
 }
 .stage :deep(.halo.brown) {
-  stroke: #8b4513;
+  stroke: #4E6B57;
 }
 @keyframes mig-halo {
   0%,
@@ -639,9 +639,9 @@ onBeforeUnmount(() => {
 }
 .stage :deep(.lb .lb-txt) {
   font-size: 13px;
-  fill: #3e2723;
+  fill: #2F3A33;
   paint-order: stroke;
-  stroke: #fffdf8;
+  stroke: #FAFCF8;
   stroke-width: 2px;
   stroke-linejoin: round;
 }
@@ -661,7 +661,7 @@ onBeforeUnmount(() => {
   stroke: none;
 }
 .stage :deep(.lb.brown rect) {
-  fill: #8b4513;
+  fill: #4E6B57;
   stroke: #8a6c12;
 }
 .stage :deep(.lb rect) {
@@ -678,7 +678,7 @@ onBeforeUnmount(() => {
   stroke: #c9a227;
 }
 .stage :deep(.lb.brown .leader) {
-  stroke: #8b4513;
+  stroke: #4E6B57;
 }
 .stage :deep(.lb .badge) {
   font-size: 13px;
@@ -687,50 +687,50 @@ onBeforeUnmount(() => {
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
    只暗「外壳与控制条」：页底 / 标题 / 时间轴 / 控制条 / 进度条 / 状态文字。
-   **地图本体一律不碰**：`.stage` 底（#fffdf8）与全部 SVG `:deep(.face / .hk / .site-dot /
+   **地图本体一律不碰**：`.stage` 底（#FAFCF8）与全部 SVG `:deep(.face / .hk / .site-dot /
    .ring / .halo / .arc / .lb / .leader ...)` 的面色、描边、标签底色、标签描边光晕
    都**保持浅色原样** —— 它是「地图 / 图版」本体（与纸页同类：反色就不是同一张图了），
-   且标签的 `stroke: #fffdf8` 光晕与浅色底图是一套，改暗会立刻露字糊边。
-   暖调夜间值：底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 / 格位 #332A20 / 主字 #EDE3D6 /
-   次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 / 分割 #4A3D31 / 暖棕 #C98850。
+   且标签的 `stroke: #FAFCF8` 光晕与浅色底图是一套，改暗会立刻露字糊边。
+   暖调夜间值：底 #1B2422 / 卡面 #232E2B / 次容器 #1E2825 / 格位 #2A3631 / 主字 #DFE9E4 /
+   次字 #A5B6AE / 更淡 #7A8B83 / 边框 #36453F / 分割 #42524B / 暖棕 #D9A96B。
    **只改颜色、不改任何几何、无 filter / invert**。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .mig { background: #211A14; color: #EDE3D6; }
+html[data-theme='dark'] .mig { background: #1B2422; color: #DFE9E4; }
 
 /* —— 状态态（加载 / 空 / 错误 / 未找到 + 重试）—— */
-html[data-theme='dark'] .state-txt { color: #B8A894; }
-html[data-theme='dark'] .spinner { color: #C98850; }
-html[data-theme='dark'] .retry { background: #332A20; border-color: #4A3D31; }
-html[data-theme='dark'] .retry-hover { background: #3A3027; }
-html[data-theme='dark'] .retry-txt { color: #C98850; }
+html[data-theme='dark'] .state-txt { color: #A5B6AE; }
+html[data-theme='dark'] .spinner { color: #D9A96B; }
+html[data-theme='dark'] .retry { background: #2A3631; border-color: #42524B; }
+html[data-theme='dark'] .retry-hover { background: #36453F; }
+html[data-theme='dark'] .retry-txt { color: #D9A96B; }
 
 /* —— HUD（步标题 / 说明 / 文字记载提示）—— */
-html[data-theme='dark'] .hud-title { color: #C98850; }
-html[data-theme='dark'] .hud-desc { color: #B8A894; }
-html[data-theme='dark'] .note-main { color: #C98850; }
-html[data-theme='dark'] .note-sub { color: #8A7A66; }
+html[data-theme='dark'] .hud-title { color: #D9A96B; }
+html[data-theme='dark'] .hud-desc { color: #A5B6AE; }
+html[data-theme='dark'] .note-main { color: #D9A96B; }
+html[data-theme='dark'] .note-sub { color: #7A8B83; }
 
-/* —— 时间轴：容器 #241D16，节点格位 #2A2219；当前步暖棕底 + 深字 —— */
-html[data-theme='dark'] .timeline { background: #241D16; border-color: #3A3027; }
-html[data-theme='dark'] .tl-node { background: #2A2219; border-color: #3A3027; }
-html[data-theme='dark'] .tl-node.origin { border-color: #C98850; }
-html[data-theme='dark'] .tl-node.act { background: #C98850; border-color: #C98850; }
-html[data-theme='dark'] .tl-node.act.origin { background: #D6A46A; border-color: #C98850; }
-html[data-theme='dark'] .tl-node.act .tl-txt { color: #211A14; }
-html[data-theme='dark'] .tl-node.act.origin .tl-txt { color: #211A14; }
-html[data-theme='dark'] .tl-hover { background: #3A3027; }
-html[data-theme='dark'] .tl-txt { color: #EDE3D6; }
+/* —— 时间轴：容器 #1E2825，节点格位 #232E2B；当前步暖棕底 + 深字 —— */
+html[data-theme='dark'] .timeline { background: #1E2825; border-color: #36453F; }
+html[data-theme='dark'] .tl-node { background: #232E2B; border-color: #36453F; }
+html[data-theme='dark'] .tl-node.origin { border-color: #D9A96B; }
+html[data-theme='dark'] .tl-node.act { background: #D9A96B; border-color: #D9A96B; }
+html[data-theme='dark'] .tl-node.act.origin { background: #D9B07C; border-color: #D9A96B; }
+html[data-theme='dark'] .tl-node.act .tl-txt { color: #1B2422; }
+html[data-theme='dark'] .tl-node.act.origin .tl-txt { color: #1B2422; }
+html[data-theme='dark'] .tl-hover { background: #36453F; }
+html[data-theme='dark'] .tl-txt { color: #DFE9E4; }
 
 /* —— 控制条（播放 / 上一步 / 下一步 / 重播 + 进度 + 计数）—— */
-html[data-theme='dark'] .controls { background: #241D16; border-color: #3A3027; }
-html[data-theme='dark'] .ctrl { background: #332A20; border-color: #4A3D31; }
-html[data-theme='dark'] .ctrl-txt { color: #EDE3D6; }
-html[data-theme='dark'] .ctrl.primary { background: #C98850; border-color: #C98850; }
-html[data-theme='dark'] .ctrl.primary .ctrl-txt { color: #211A14; }
-html[data-theme='dark'] .ctrl-hover { background: #3A3027; }
-html[data-theme='dark'] .progress { background: #3A3027; }
-html[data-theme='dark'] .bar { background: #C98850; }
-html[data-theme='dark'] .ind { color: #B8A894; }
-html[data-theme='dark'] .footnote { color: #8A7A66; }
+html[data-theme='dark'] .controls { background: #1E2825; border-color: #36453F; }
+html[data-theme='dark'] .ctrl { background: #2A3631; border-color: #42524B; }
+html[data-theme='dark'] .ctrl-txt { color: #DFE9E4; }
+html[data-theme='dark'] .ctrl.primary { background: #D9A96B; border-color: #D9A96B; }
+html[data-theme='dark'] .ctrl.primary .ctrl-txt { color: #1B2422; }
+html[data-theme='dark'] .ctrl-hover { background: #36453F; }
+html[data-theme='dark'] .progress { background: #36453F; }
+html[data-theme='dark'] .bar { background: #D9A96B; }
+html[data-theme='dark'] .ind { color: #A5B6AE; }
+html[data-theme='dark'] .footnote { color: #7A8B83; }
 /* #endif */
 </style>

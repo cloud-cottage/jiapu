@@ -841,7 +841,7 @@ onMounted(() => {
 .container { padding: 20px; }
 .user-card {
   display: flex; align-items: center; gap: 14px;
-  background: linear-gradient(135deg, #8B4513, #A66B32);
+  background: linear-gradient(135deg, #4E6B57, #A66B32);
   border-radius: 14px; padding: 20px; color: #fff; margin-bottom: 16px;
 }
 .avatar {
@@ -861,8 +861,8 @@ onMounted(() => {
 /* 每日签到（古风印章式独立卡；位于行囊卡下方；不展示碎片进度） */
 .sign-card {
   display: flex; flex-direction: column; align-items: stretch;
-  background: linear-gradient(180deg, #FFFDF8, #F8F0E5);
-  border: 1px solid #E3D3BE; border-radius: 14px; padding: 16px;
+  background: linear-gradient(180deg, #FAFCF8, #EFF4EE);
+  border: 1px solid #D5DFD4; border-radius: 14px; padding: 16px;
   margin-bottom: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);
 }
 /* 印章 + 文案行（视觉与改动前一致：印章在左、文案在右；整卡改为纵向以容纳日历条横排） */
@@ -872,7 +872,7 @@ onMounted(() => {
   width: 56px; height: 56px; flex-shrink: 0; border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
   background: linear-gradient(160deg, #B2352C, #8C1F18);
-  box-shadow: inset 0 0 0 2px rgba(255, 240, 220, 0.75), 0 2px 6px rgba(139, 69, 19, 0.25);
+  box-shadow: inset 0 0 0 2px rgba(255, 240, 220, 0.75), 0 2px 6px rgba(78, 107, 87, 0.25);
   color: #FFF6EA; font-size: 26px; font-weight: bold; transform: rotate(-4deg);
   user-select: none; -webkit-user-select: none;
   cursor: pointer;
@@ -884,7 +884,7 @@ onMounted(() => {
 }
 .sign-seal-busy { opacity: 0.6; }
 .sign-body { flex: 1; }
-.sign-title { font-size: 16px; font-weight: bold; color: #3E2723; letter-spacing: 2px; display: block; }
+.sign-title { font-size: 16px; font-weight: bold; color: #2F3A33; letter-spacing: 2px; display: block; }
 .sign-hint { font-size: 12px; color: #B08D57; display: block; margin-top: 4px; }
 /* 连签行（streak；0 天 = 今日还未签到） */
 .sign-streak { font-size: 12px; color: #A8322D; display: block; margin-top: 4px; }
@@ -894,7 +894,7 @@ onMounted(() => {
 .cal-cell {
   flex: 1; min-width: 0; padding: 6px 2px 4px; border-radius: 10px;
   display: flex; flex-direction: column; align-items: center; gap: 4px;
-  background: #FFFDF8; border: 1px solid #E3D3BE;
+  background: #FAFCF8; border: 1px solid #D5DFD4;
 }
 /* 图标 + 数量角标 + 打勾的叠放容器（多件基础项 ⇒ `cal-items` 自动换行；角标压在各自图标右下角） */
 .cal-slot { position: relative; width: 100%; min-height: 26px; display: flex; align-items: center; justify-content: center; }
@@ -902,11 +902,11 @@ onMounted(() => {
 .cal-items { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px; }
 .cal-item { position: relative; display: inline-flex; align-items: center; justify-content: center; }
 .cal-ico { width: 15px; height: 15px; }
-.cal-qty { position: absolute; right: -5px; bottom: -3px; font-size: 9px; line-height: 1; color: #8B4513; }
+.cal-qty { position: absolute; right: -5px; bottom: -3px; font-size: 9px; line-height: 1; color: #4E6B57; }
 /* 随机掉落短 chip（格子最底部）：当天还会随机掉一件，**不预标**品种（方案乙口径） */
 .cal-chip {
-  font-size: 9px; line-height: 1.2; color: #8B4513; padding: 0 4px;
-  border: 1px solid #E3D3BE; border-radius: 8px; background: #FFF7EC;
+  font-size: 9px; line-height: 1.2; color: #4E6B57; padding: 0 4px;
+  border: 1px solid #D5DFD4; border-radius: 8px; background: #FFF7EC;
 }
 .cal-day { font-size: 10px; color: #B08D57; text-align: center; line-height: 1.2; word-break: break-all; }
 /* 状态 ①：已签 = 置淡 + 右上打勾叠标 */
@@ -923,37 +923,37 @@ onMounted(() => {
 .cal-bonus { outline: 2px solid #C9A227; outline-offset: 1px; }
 
 /* 今日奖励入口行（不显示 x/3 进度） */
-.sign-reward { font-size: 12px; color: #8B4513; display: block; margin-top: 6px; }
+.sign-reward { font-size: 12px; color: #4E6B57; display: block; margin-top: 6px; }
 .sign-error { font-size: 12px; color: #C62828; display: block; margin-top: 4px; }
 
 /* 家族互动（白底暖描边卡，与 sign-card 同族 14 圆角 / 轻投影；两格入口样式迁自家谱页 .friend-entry / .fe-*） */
 .interact-card {
-  background: #fff; border: 1px solid #E3D3BE; border-radius: 14px; padding: 16px;
+  background: #fff; border: 1px solid #D5DFD4; border-radius: 14px; padding: 16px;
   margin-bottom: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);
 }
-.interact-title { font-size: 16px; font-weight: bold; color: #3E2723; display: block; }
+.interact-title { font-size: 16px; font-weight: bold; color: #2F3A33; display: block; }
 .friend-entry { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .fe-item {
   flex: 1; display: flex; align-items: center; justify-content: center;
   padding: 10px 0; border-radius: 12px;
-  background: linear-gradient(180deg, #FFFDF8, #F8F0E5);
-  border: 1px solid #E3D3BE;
+  background: linear-gradient(180deg, #FAFCF8, #EFF4EE);
+  border: 1px solid #D5DFD4;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
 }
 .fe-icon { font-size: 16px; margin-right: 6px; }
-.fe-text { font-size: 13px; color: #8B4513; }
+.fe-text { font-size: 13px; color: #4E6B57; }
 /* 「邀请族人加入」（普通型）入口条：.friend-entry 是横排 flex，故按 100% 基宽独占一行（另两格仍均分首行） */
 .fe-item-wide { flex: 1 0 100%; }
 
 /* 普通型邀请链接覆盖层（就地展示短链 + 复制；样式与入口一 person-archive 的同名类逐值一致） */
-.invite-label { display: block; font-size: 11px; color: #8B4513; margin-top: 10px; }
+.invite-label { display: block; font-size: 11px; color: #4E6B57; margin-top: 10px; }
 .invite-link {
   display: block; font-size: 11px; color: #5D4037; line-height: 1.6;
   margin-top: 4px; word-break: break-all;
 }
 .invite-copy {
   display: inline-block; margin-top: 6px; padding: 4px 14px; border-radius: 6px;
-  background: #FBF8F5; border: 1px solid #E0D6CB;
+  background: #F6FAF7; border: 1px solid #D2DBD2;
 }
 .invite-copy-text { font-size: 12px; color: #5D4037; }
 .invite-expiry { display: block; font-size: 11px; color: #B08D57; margin-top: 8px; }
@@ -968,7 +968,7 @@ onMounted(() => {
   width: 86%; max-width: 380px; background: #fff; border-radius: 14px;
   padding: 20px; box-shadow: 0 8px 30px rgba(0,0,0,0.3);
 }
-.modal-title { font-size: 17px; font-weight: bold; color: #3E2723; display: block; text-align: center; }
+.modal-title { font-size: 17px; font-weight: bold; color: #2F3A33; display: block; text-align: center; }
 .modal-sub { font-size: 12px; color: #999; display: block; text-align: center; margin: 6px 0 14px; }
 .field { margin-bottom: 10px; }
 .modal-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
@@ -978,118 +978,118 @@ onMounted(() => {
 .danger-card { margin-top: 16px; }
 .danger-error { padding: 10px 16px; font-size: 12px; color: #C62828; line-height: 1.5; }
 .footer { text-align: center; margin-top: 30px; }
-.version { font-size: 12px; color: #B5A594; }
+.version { font-size: 12px; color: #8E9A93; }
 
 /* ---- 夜间模式开关行（本页唯一新增控件；胶囊只回显状态，点整行切换）----
    胶囊几何：42 = 1 边 + 2 内距 + 18 钮 + 18 行程 + 2 内距 + 1 边 ⇒ 开态钮正好贴右内缘。 */
 .theme-row { display: flex; align-items: center; gap: 8px; }
-.theme-state { font-size: 12px; color: #A1887F; }
+.theme-state { font-size: 12px; color: #6E7D70; }
 .theme-pill {
   position: relative; width: 42px; height: 24px; box-sizing: border-box;
-  border-radius: 999px; background: #E0D5C8; border: 1px solid #D3C6B6;
+  border-radius: 999px; background: #CFD8CE; border: 1px solid #D3C6B6;
   transition: background-color 0.18s ease, border-color 0.18s ease;
 }
 .theme-knob {
   position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
-  background: #FFFDF8; box-shadow: 0 1px 2px rgba(62, 39, 35, 0.3);
+  background: #FAFCF8; box-shadow: 0 1px 2px rgba(47, 58, 51, 0.3);
   transition: transform 0.18s ease, background-color 0.18s ease;
 }
-.theme-pill-on { background: #8B4513; border-color: #8B4513; }
+.theme-pill-on { background: #4E6B57; border-color: #4E6B57; }
 .theme-pill-on .theme-knob { transform: translateX(18px); background: #FFF6EA; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
-   与 styles/td-dark-warm.css 同一套喰色对偶值（卡面 #2A2219 / 底 #211A14 / 边框 #3A3027 /
-   主字 #EDE3D6 / 次字 #B8A894 / 暖棕 #C98850）。**只改颜色，不改任何几何**（不加边框、不动内距）——
+   与 styles/td-dark-warm.css 同一套喰色对偶值（卡面 #232E2B / 底 #1B2422 / 边框 #36453F /
+   主字 #DFE9E4 / 次字 #A5B6AE / 暖棕 #D9A96B）。**只改颜色，不改任何几何**（不加边框、不动内距）——
    T3 判据要求切主题前后 rect 差 ≤0.5px。不用 invert 类滤镜。全部 H5 条件编译 ⇒ 小程序零改动。 */
 /* #ifdef H5 */
 /* —— 用户卡（暖棕渐变 → 深暖渐变；仍是全页唯一「有色」卡，保持身份识别）—— */
 html[data-theme='dark'] .user-card {
-  background: linear-gradient(135deg, #3F2E1E, #2A2219);
-  color: #EDE3D6;
+  background: linear-gradient(135deg, #3F2E1E, #232E2B);
+  color: #DFE9E4;
 }
 html[data-theme='dark'] .user-phone,
-html[data-theme='dark'] .bind-line { color: #C4B4A0; }
-html[data-theme='dark'] .bind-line-link { color: #E8C9A6; }
-html[data-theme='dark'] .avatar { background: rgba(237, 227, 214, 0.14); }
+html[data-theme='dark'] .bind-line { color: #B4C2BB; }
+html[data-theme='dark'] .bind-line-link { color: #E3CFA4; }
+html[data-theme='dark'] .avatar { background: rgba(223, 233, 228, 0.14); }
 
 /* —— 每日签到卡 —— */
 html[data-theme='dark'] .sign-card {
-  background: linear-gradient(180deg, #2A2219, #241D16);
-  border-color: #3A3027;
+  background: linear-gradient(180deg, #232E2B, #1E2825);
+  border-color: #36453F;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
-html[data-theme='dark'] .sign-title { color: #EDE3D6; }
-html[data-theme='dark'] .sign-hint { color: #C4B4A0; }
+html[data-theme='dark'] .sign-title { color: #DFE9E4; }
+html[data-theme='dark'] .sign-hint { color: #B4C2BB; }
 html[data-theme='dark'] .sign-streak { color: #E0675F; }
 html[data-theme='dark'] .sign-seal-done {
-  background: linear-gradient(160deg, #5E5142, #4A3D31);
-  box-shadow: inset 0 0 0 2px rgba(237, 227, 214, 0.28);
-  color: #EDE3D6;
+  background: linear-gradient(160deg, #4C5A54, #42524B);
+  box-shadow: inset 0 0 0 2px rgba(223, 233, 228, 0.28);
+  color: #DFE9E4;
 }
 /* 七格日历：格位比卡片亮一档（原浅色下也是格比卡亮） */
-html[data-theme='dark'] .cal-cell { background: #332A20; border-color: #3A3027; }
-html[data-theme='dark'] .cal-day { color: #B8A894; }
-html[data-theme='dark'] .cal-qty { color: #C4B4A0; }
+html[data-theme='dark'] .cal-cell { background: #2A3631; border-color: #36453F; }
+html[data-theme='dark'] .cal-day { color: #A5B6AE; }
+html[data-theme='dark'] .cal-qty { color: #B4C2BB; }
 html[data-theme='dark'] .cal-chip {
-  background: #2A2219; border-color: #4A3D31; color: #C4B4A0;
+  background: #232E2B; border-color: #42524B; color: #B4C2BB;
 }
 html[data-theme='dark'] .cal-check { color: #7FC08A; }
 html[data-theme='dark'] .cal-today {
-  background: #33231D; border-color: #E0675F;
+  background: #242E2A; border-color: #E0675F;
   box-shadow: 0 0 0 2px rgba(224, 103, 95, 0.18);
 }
-html[data-theme='dark'] .cal-missed { background: #2E251C; border-color: #C98850; }
-html[data-theme='dark'] .cal-future { background: #241D16; border-color: #3A3027; }
-html[data-theme='dark'] .sign-reward { color: #C98850; }
+html[data-theme='dark'] .cal-missed { background: #212B27; border-color: #D9A96B; }
+html[data-theme='dark'] .cal-future { background: #1E2825; border-color: #36453F; }
+html[data-theme='dark'] .sign-reward { color: #D9A96B; }
 html[data-theme='dark'] .sign-error { color: #E0675F; }
 
 /* —— 家族互动卡 —— */
 html[data-theme='dark'] .interact-card {
-  background: #2A2219; border-color: #3A3027;
+  background: #232E2B; border-color: #36453F;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
-html[data-theme='dark'] .interact-title { color: #EDE3D6; }
+html[data-theme='dark'] .interact-title { color: #DFE9E4; }
 html[data-theme='dark'] .fe-item {
-  background: linear-gradient(180deg, #332A20, #241D16);
-  border-color: #3A3027;
+  background: linear-gradient(180deg, #2A3631, #1E2825);
+  border-color: #36453F;
   box-shadow: none;
 }
-html[data-theme='dark'] .fe-text { color: #C98850; }
+html[data-theme='dark'] .fe-text { color: #D9A96B; }
 
 /* —— 功能菜单行（t-cell-group 走 token，这里显式收口一层，避免主题混用）—— */
 html[data-theme='dark'] .menu-card :deep(.t-cell-group) {
-  background: #2A2219;
-  border: 1px solid #3A3027;
+  background: #232E2B;
+  border: 1px solid #36453F;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 html[data-theme='dark'] .menu-card :deep(.t-cell) {
-  --td-cell-hover-color: #332A20;
-  --td-cell-border-color: #3A3027;
-  --td-cell-right-icon-color: #8A7A66;
+  --td-cell-hover-color: #2A3631;
+  --td-cell-border-color: #36453F;
+  --td-cell-right-icon-color: #7A8B83;
   background: transparent;
 }
-html[data-theme='dark'] .theme-pill { background: #3A3027; border-color: #4A3D31; }
-html[data-theme='dark'] .theme-pill-on { background: #C98850; border-color: #C98850; }
-html[data-theme='dark'] .theme-knob { background: #EDE3D6; }
-html[data-theme='dark'] .theme-pill-on .theme-knob { background: #211A14; }
-html[data-theme='dark'] .theme-state { color: #B8A894; }
+html[data-theme='dark'] .theme-pill { background: #36453F; border-color: #42524B; }
+html[data-theme='dark'] .theme-pill-on { background: #D9A96B; border-color: #D9A96B; }
+html[data-theme='dark'] .theme-knob { background: #DFE9E4; }
+html[data-theme='dark'] .theme-pill-on .theme-knob { background: #1B2422; }
+html[data-theme='dark'] .theme-state { color: #A5B6AE; }
 
 /* —— 弹窗（邀请短链 / 申请解绑）—— */
 html[data-theme='dark'] .modal {
-  background: #2A2219;
+  background: #232E2B;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
 }
-html[data-theme='dark'] .modal-title { color: #EDE3D6; }
-html[data-theme='dark'] .modal-sub { color: #B8A894; }
-html[data-theme='dark'] .invite-label { color: #C98850; }
-html[data-theme='dark'] .invite-link { color: #C4B4A0; }
-html[data-theme='dark'] .invite-copy { background: #332A20; border-color: #4A3D31; }
-html[data-theme='dark'] .invite-copy-text { color: #C4B4A0; }
-html[data-theme='dark'] .invite-expiry { color: #B8A894; }
+html[data-theme='dark'] .modal-title { color: #DFE9E4; }
+html[data-theme='dark'] .modal-sub { color: #A5B6AE; }
+html[data-theme='dark'] .invite-label { color: #D9A96B; }
+html[data-theme='dark'] .invite-link { color: #B4C2BB; }
+html[data-theme='dark'] .invite-copy { background: #2A3631; border-color: #42524B; }
+html[data-theme='dark'] .invite-copy-text { color: #B4C2BB; }
+html[data-theme='dark'] .invite-expiry { color: #A5B6AE; }
 html[data-theme='dark'] .bind-error,
 html[data-theme='dark'] .danger-error { color: #E0675F; }
 
 /* —— 页脚 —— */
-html[data-theme='dark'] .version { color: #8A7A66; }
+html[data-theme='dark'] .version { color: #7A8B83; }
 /* #endif */
 </style>

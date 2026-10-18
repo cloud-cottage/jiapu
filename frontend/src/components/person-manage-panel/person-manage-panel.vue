@@ -1321,7 +1321,7 @@ async function confirmEstablishBranch() {
   padding-top: 12px;
 }
 .mp-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
-.mp-title { font-size: 15px; font-weight: bold; color: #3E2723; }
+.mp-title { font-size: 15px; font-weight: bold; color: #2F3A33; }
 .mp-sub { font-size: 12px; color: #999; flex: 1; }
 .mp-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .mp-error { display: block; text-align: center; color: #C62828; font-size: 13px; margin: 8px 0; }
@@ -1329,30 +1329,30 @@ async function confirmEstablishBranch() {
 
 .mp-panel {
   margin-top: 12px; padding: 12px;
-  background: #FBF8F4; border-radius: 10px;
+  background: #F6FAF6; border-radius: 10px;
 }
 .mp-panel-head { display: flex; align-items: center; justify-content: space-between; }
-.mp-panel-title { font-size: 14px; font-weight: bold; color: #3E2723; }
+.mp-panel-title { font-size: 14px; font-weight: bold; color: #2F3A33; }
 .mp-panel-close {
   width: 28px; height: 28px; line-height: 28px; text-align: center;
   font-size: 15px; color: #999; border-radius: 50%;
 }
-.mp-panel-close:active { background: #F0E8DE; }
+.mp-panel-close:active { background: #E6EDE7; }
 .mp-panel-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 
 .mode-switch { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
 .mode-btn {
   padding: 6px 14px; border-radius: 8px; font-size: 13px;
-  border: 1px solid #F0E8DE; color: #5D4037;
+  border: 1px solid #E6EDE7; color: #5D4037;
 }
-.mode-btn.active { border-color: #8B4513; background: #FBF6EF; color: #8B4513; }
+.mode-btn.active { border-color: #4E6B57; background: #F1F6F2; color: #4E6B57; }
 .search-row { display: flex; gap: 8px; align-items: center; }
 .search-input { flex: 1; }
 .name-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .surname-input { max-width: 30%; }
 .surname-hint { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .sh-text { font-size: 12px; color: #999; flex: 1; }
-.sh-link { font-size: 12px; color: #8B4513; text-decoration: underline; }
+.sh-link { font-size: 12px; color: #4E6B57; text-decoration: underline; }
 .title-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .gender-row { margin-top: 8px; }
 /* 「承母嗣」勾选框（本族已婚女性的后代挂在本树女性名下；见后端 lib/family-write-guard.js） */
@@ -1376,13 +1376,13 @@ async function confirmEstablishBranch() {
 /* 批量添加子孙：提示 / 文本域 / 解析预览（沿用原生 textarea，与 hall 页 .textarea 同风格，不引新依赖） */
 .batch-tip {
   font-size: 12px; color: #5D4037; line-height: 1.7;
-  background: #FBF6EF; border-radius: 8px; padding: 8px 10px; margin-top: 8px;
+  background: #F1F6F2; border-radius: 8px; padding: 8px 10px; margin-top: 8px;
 }
 .batch-textarea {
   min-height: 88px; width: 100%; box-sizing: border-box;
-  border: 1px solid #E0D5C8; border-radius: 8px;
-  padding: 10px 12px; font-size: 14px; background: #FBF8F4;
-  margin-top: 8px; color: #3E2723;
+  border: 1px solid #CFD8CE; border-radius: 8px;
+  padding: 10px 12px; font-size: 14px; background: #F6FAF6;
+  margin-top: 8px; color: #2F3A33;
 }
 .batch-error { color: #C62828; font-size: 12px; margin-top: 8px; line-height: 1.6; }
 .batch-preview {
@@ -1392,43 +1392,43 @@ async function confirmEstablishBranch() {
 .batch-preview-line { font-size: 12px; color: #2E5D34; line-height: 1.7; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
-   与 styles/td-dark-warm.css 同一套暖调夜间值（底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 /
-   格位·chip #332A20 / 主字 #EDE3D6 / 次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 / 暖棕 #C98850）。
+   与 styles/td-dark-warm.css 同一套暖调夜间值（底 #1B2422 / 卡面 #232E2B / 次容器 #1E2825 /
+   格位·chip #2A3631 / 主字 #DFE9E4 / 次字 #A5B6AE / 更淡 #7A8B83 / 边框 #36453F / 暖棕 #D9A96B）。
    风险操作（删除 / 解绑 / 移除并新建树）由 t-button theme="danger" 走 --td-error-color（= #E0675F），
    此处只补自绘「承母嗣」勾选框与批量预览块；**只改颜色、零几何改动、无 filter / invert**；
    全部 H5 条件编译 ⇒ 小程序零改动。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .manage-panel { border-top-color: #4A3D31; }
-html[data-theme='dark'] .mp-title { color: #EDE3D6; }
-html[data-theme='dark'] .mp-sub { color: #B8A894; }
-html[data-theme='dark'] .mp-hint { color: #B8A894; }
+html[data-theme='dark'] .manage-panel { border-top-color: #42524B; }
+html[data-theme='dark'] .mp-title { color: #DFE9E4; }
+html[data-theme='dark'] .mp-sub { color: #A5B6AE; }
+html[data-theme='dark'] .mp-hint { color: #A5B6AE; }
 html[data-theme='dark'] .mp-error { color: #E0675F; }
 
 /* —— 内联表单面板 —— */
-html[data-theme='dark'] .mp-panel { background: #241D16; }
-html[data-theme='dark'] .mp-panel-title { color: #EDE3D6; }
-html[data-theme='dark'] .mp-panel-close { color: #B8A894; }
-html[data-theme='dark'] .mp-panel-close:active { background: #332A20; }
+html[data-theme='dark'] .mp-panel { background: #1E2825; }
+html[data-theme='dark'] .mp-panel-title { color: #DFE9E4; }
+html[data-theme='dark'] .mp-panel-close { color: #A5B6AE; }
+html[data-theme='dark'] .mp-panel-close:active { background: #2A3631; }
 
 /* —— 新建 / 挂接 / 指定 ID 三档切换 —— */
-html[data-theme='dark'] .mode-btn { color: #B8A894; border-color: #3A3027; }
-html[data-theme='dark'] .mode-btn.active { color: #E5BE93; border-color: #C98850; background: #332A20; }
+html[data-theme='dark'] .mode-btn { color: #A5B6AE; border-color: #36453F; }
+html[data-theme='dark'] .mode-btn.active { color: #E8CFA6; border-color: #D9A96B; background: #2A3631; }
 
 /* —— 姓 / 名提示与「改姓」链接 —— */
-html[data-theme='dark'] .sh-text { color: #B8A894; }
-html[data-theme='dark'] .sh-link { color: #C98850; }
-html[data-theme='dark'] .join-tip { color: #B8A894; }
+html[data-theme='dark'] .sh-text { color: #A5B6AE; }
+html[data-theme='dark'] .sh-link { color: #D9A96B; }
+html[data-theme='dark'] .join-tip { color: #A5B6AE; }
 
 /* —— 「承母嗣」自绘勾选框（品牌蓝 → 暖棕；勾号用深字压亮底）—— */
-html[data-theme='dark'] .ms-box { border-color: #4A3D31; }
-html[data-theme='dark'] .ms-box-on { background: #C98850; border-color: #C98850; }
-html[data-theme='dark'] .ms-tick { color: #211A14; }
-html[data-theme='dark'] .ms-label { color: #EDE3D6; }
+html[data-theme='dark'] .ms-box { border-color: #42524B; }
+html[data-theme='dark'] .ms-box-on { background: #D9A96B; border-color: #D9A96B; }
+html[data-theme='dark'] .ms-tick { color: #1B2422; }
+html[data-theme='dark'] .ms-label { color: #DFE9E4; }
 
 /* —— 批量添加子孙：提示 / 文本域 / 解析预览 —— */
-html[data-theme='dark'] .batch-tip { background: #241D16; color: #B8A894; }
+html[data-theme='dark'] .batch-tip { background: #1E2825; color: #A5B6AE; }
 html[data-theme='dark'] .batch-textarea {
-  background: #241D16; border-color: #3A3027; color: #EDE3D6;
+  background: #1E2825; border-color: #36453F; color: #DFE9E4;
 }
 html[data-theme='dark'] .batch-error { color: #E0675F; }
 html[data-theme='dark'] .batch-preview { background: #26301F; border-color: #3E4A33; }

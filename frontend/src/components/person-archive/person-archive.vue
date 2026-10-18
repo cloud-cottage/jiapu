@@ -3039,7 +3039,7 @@ async function doEndMarriage() {
 
 <style scoped>
 .danger-zone { border-top: 1px dashed #E0C9B0; padding-top: 10px; }
-.danger-hint { font-size: 12px; color: #A1887F; display: block; margin: 8px 2px 0; line-height: 1.5; }
+.danger-hint { font-size: 12px; color: #6E7D70; display: block; margin: 8px 2px 0; line-height: 1.5; }
 /* 祖谱删除风险提示（仅总编可见该危险区时同屏显示） */
 .clan-danger-hint { color: #C62828; }
 .del-mode {
@@ -3047,52 +3047,52 @@ async function doEndMarriage() {
   border-radius: 8px;
   padding: 10px 12px;
   margin-bottom: 8px;
-  background: #FFFDF8;
+  background: #FAFCF8;
 }
 .del-mode.selected { border-color: #C62828; background: #FDF2F2; }
-.del-mode-name { font-size: 13px; color: #3E2723; display: block; }
-.del-mode-hint { font-size: 11px; color: #A1887F; display: block; margin-top: 4px; }
+.del-mode-name { font-size: 13px; color: #2F3A33; display: block; }
+.del-mode-hint { font-size: 11px; color: #6E7D70; display: block; margin-top: 4px; }
 .del-stat {
   border: 1px solid #E0C9B0;
   border-radius: 8px;
   padding: 10px 12px;
   margin: 10px 0;
-  background: #FBF6EF;
+  background: #F1F6F2;
 }
-.del-stat-line { font-size: 12px; color: #3E2723; display: block; margin-bottom: 4px; }
-.del-stat-msg { color: #8B4513; }
+.del-stat-line { font-size: 12px; color: #2F3A33; display: block; margin-bottom: 4px; }
+.del-stat-msg { color: #4E6B57; }
 /* 「不可恢复」提示：用红色文字表达（此前的 **星号** 会被字面显示） */
 .del-warn { font-size: 12px; color: #D93025; font-weight: bold; display: block; text-align: center; margin: -8px 0 10px; }
 .founder-lock { margin: 6px 0 2px; }
-.founder-hint { font-size: 12px; color: #A1887F; display: block; margin: 4px 2px 8px; }
+.founder-hint { font-size: 12px; color: #6E7D70; display: block; margin: 4px 2px 8px; }
 /* 口径 A 第 3/5 条：镜像 → 真身档案的顶部标注 */
 .mirror-note {
   margin: 0 2px 12px; padding: 8px 10px;
   background: #FFF7E6; border: 1px solid #E8C9A0; border-radius: 8px;
 }
-.mirror-note-text { font-size: 12px; color: #8B4513; line-height: 1.5; display: block; }
+.mirror-note-text { font-size: 12px; color: #4E6B57; line-height: 1.5; display: block; }
 .living-locked { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px; }
 .container { padding: 20px; }
 .container.modal { padding: 2px 4px 8px; }
 .name-row { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 16px; }
-.name { font-size: 24px; font-weight: bold; color: #3E2723; }
-.name-title { font-size: 14px; color: #8B4513; background: #FBF6EF; border-radius: 6px; padding: 2px 8px; }
+.name { font-size: 24px; font-weight: bold; color: #2F3A33; }
+.name-title { font-size: 14px; color: #4E6B57; background: #F1F6F2; border-radius: 6px; padding: 2px 8px; }
 .gender-badge { width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%; }
 .edit-btn { flex-shrink: 0; }
 .info-row { display: flex; justify-content: center; margin-bottom: 12px; }
 .info-card :deep(.t-cell-group) { border-radius: 12px; overflow: hidden; }
 .section { margin-top: 20px; }
-.section-title { font-size: 16px; font-weight: bold; color: #8B4513; display: block; margin-bottom: 8px; }
+.section-title { font-size: 16px; font-weight: bold; color: #4E6B57; display: block; margin-bottom: 8px; }
 .marriage-actions { display: flex; gap: 8px; margin-top: 8px; }
-.marriage-hint { font-size: 12px; color: #A1887F; display: block; margin-top: 6px; }
+.marriage-hint { font-size: 12px; color: #6E7D70; display: block; margin-top: 6px; }
 .section :deep(.t-cell-group) { border-radius: 12px; overflow: hidden; }
-.fam-block { padding: 12px 16px; border-bottom: 1px solid #F5F0EA; }
+.fam-block { padding: 12px 16px; border-bottom: 1px solid #EDF2EC; }
 .fam-block:last-child { border-bottom: none; }
 .fam-row { display: flex; align-items: flex-start; margin-bottom: 6px; }
 .fam-row:last-child { margin-bottom: 0; }
 .fam-label { font-size: 13px; color: #999; width: 52px; flex-shrink: 0; margin-top: 2px; }
 .fam-link { font-size: 14px; color: #5D4037; }
-.fam-link:active { color: #8B4513; }
+.fam-link:active { color: #4E6B57; }
 .fam-kids { display: flex; flex-wrap: wrap; gap: 4px 14px; flex: 1; }
 /* 调整排行入口：跟在子女标签行尾（不参与换行挤压） */
 .rank-btn { flex-shrink: 0; margin-left: 8px; }
@@ -3116,28 +3116,28 @@ async function doEndMarriage() {
   /* overflow 兜底：任何内容高度都收在弹窗内部滚动；margin:auto 保证不超高时仍居中 */
   overflow-y: auto; margin: auto;
 }
-.modal-title { font-size: 18px; font-weight: bold; color: #3E2723; text-align: center; margin-bottom: 12px; }
+.modal-title { font-size: 18px; font-weight: bold; color: #2F3A33; text-align: center; margin-bottom: 12px; }
 .modal-body { flex: 1; max-height: 55vh; }
-.field-label { font-size: 13px; color: #8B4513; font-weight: bold; display: block; margin: 12px 0 6px; }
-.field-hint { font-size: 12px; color: #A1887F; display: block; margin: 4px 0 2px; }
+.field-label { font-size: 13px; color: #4E6B57; font-weight: bold; display: block; margin: 12px 0 6px; }
+.field-hint { font-size: 12px; color: #6E7D70; display: block; margin: 4px 0 2px; }
 /* 带色称号色板（契约 docs/person-badge.spec.md §3）：6 色圆点选择器 */
 .badge-colors { display: flex; align-items: center; gap: 10px; margin: 4px 0 2px; }
 .badge-color-dot {
-  width: 28px; height: 28px; border-radius: 50%; border: 2px solid #E0D5C8;
+  width: 28px; height: 28px; border-radius: 50%; border: 2px solid #CFD8CE;
   display: flex; align-items: center; justify-content: center;
 }
-.badge-color-dot.active { border-color: #3E2723; box-shadow: 0 0 0 2px rgba(62,39,35,0.2); }
+.badge-color-dot.active { border-color: #2F3A33; box-shadow: 0 0 0 2px rgba(47, 58, 51,0.2); }
 .badge-color-check { color: #fff; font-size: 14px; line-height: 1; }
 .field { margin-bottom: 8px; }
 .living-block { margin-top: 2px; }
-.event-edit-row { background: #FBF8F4; border-radius: 8px; padding: 8px; margin-bottom: 8px; }
-.place-edit-row { background: #FBF8F4; border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+.event-edit-row { background: #F6FAF6; border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+.place-edit-row { background: #F6FAF6; border-radius: 8px; padding: 8px; margin-bottom: 8px; }
 /* 生卒日期输入规范：自由文本输入框 + 「｜📅」日期选择器并排（选择器只写回、不清空文本框） */
 .date-field-row { display: flex; align-items: flex-start; }
 .date-field-input { flex: 1; min-width: 0; }
 .date-pick-btn {
   flex-shrink: 0; margin: 0 0 8px 8px; padding: 0 10px; height: 40px; line-height: 40px;
-  font-size: 15px; color: #8B4513; background: #FBF6EF; border: 1px solid #E3D3BE;
+  font-size: 15px; color: #4E6B57; background: #F1F6F2; border: 1px solid #D5DFD4;
   border-radius: 8px; text-align: center;
 }
 .date-pick-btn:active { background: #F3E9DB; }
@@ -3149,14 +3149,14 @@ async function doEndMarriage() {
 .edit-inline { padding: 4px 0 8px; }
 .edit-inline-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding-bottom: 10px; border-bottom: 1px solid #F0E8DE; margin-bottom: 4px;
+  padding-bottom: 10px; border-bottom: 1px solid #E6EDE7; margin-bottom: 4px;
 }
-.edit-inline-title { font-size: 17px; font-weight: bold; color: #3E2723; }
+.edit-inline-title { font-size: 17px; font-weight: bold; color: #2F3A33; }
 .edit-inline-close {
   width: 30px; height: 30px; line-height: 30px; text-align: center;
   font-size: 16px; color: #999; border-radius: 50%;
 }
-.edit-inline-close:active { background: #F5F0EA; }
+.edit-inline-close:active { background: #EDF2EC; }
 .edit-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
 
 /* 出嫁/认祖/挂载弹窗（平铺树列表已收进共享 tree-picker：折叠态恒一行 + 展开态限高滚动列表） */
@@ -3166,13 +3166,13 @@ async function doEndMarriage() {
 .join-results { max-height: 30vh; overflow-y: auto; margin-top: 8px; }
 .join-result {
   display: flex; align-items: center; gap: 8px;
-  padding: 10px 12px; border: 1px solid #F0E8DE; border-radius: 8px;
+  padding: 10px 12px; border: 1px solid #E6EDE7; border-radius: 8px;
   margin-bottom: 8px;
 }
-.join-result.selected { border-color: #8B4513; background: #FBF6EF; }
-.result-name { font-size: 14px; color: #3E2723; font-weight: 500; }
+.join-result.selected { border-color: #4E6B57; background: #F1F6F2; }
+.result-name { font-size: 14px; color: #2F3A33; font-weight: 500; }
 .result-id { font-size: 11px; color: #999; }
-.result-gender { font-size: 11px; color: #8B4513; margin-left: auto; }
+.result-gender { font-size: 11px; color: #4E6B57; margin-left: auto; }
 .identity-confirm {
   margin-top: 10px; padding: 12px; background: #FFF8E1; border-radius: 8px;
 }
@@ -3182,135 +3182,135 @@ async function doEndMarriage() {
 .invite-box { margin-bottom: 16px; }
 .invite-entry {
   padding: 9px 0; border-radius: 10px; text-align: center;
-  background: linear-gradient(180deg, #FFFDF8, #F8F0E5);
-  border: 1px solid #E3D3BE;
+  background: linear-gradient(180deg, #FAFCF8, #EFF4EE);
+  border: 1px solid #D5DFD4;
 }
-.invite-entry-text { font-size: 13px; color: #8B4513; }
+.invite-entry-text { font-size: 13px; color: #4E6B57; }
 
 /* 直建祖谱（方式 C）：挂载弹窗内入口行 + 内联迷你表单（TreePicker / 空态之下） */
 .clan-create-entry {
   margin-top: 10px; padding: 9px 12px; border-radius: 10px; text-align: center;
-  background: linear-gradient(180deg, #FFFDF8, #F8F0E5);
+  background: linear-gradient(180deg, #FAFCF8, #EFF4EE);
   border: 1px dashed #B08D57;
 }
-.clan-create-entry-text { font-size: 13px; color: #8B4513; font-weight: bold; }
+.clan-create-entry-text { font-size: 13px; color: #4E6B57; font-weight: bold; }
 .clan-create-entry-fee { display: block; font-size: 11px; color: #B08D57; margin-top: 2px; }
 .clan-create-form {
   margin-top: 10px; padding: 12px;
-  background: #FBF6EF; border: 1px solid #E3D3BE; border-radius: 10px;
+  background: #F1F6F2; border: 1px solid #D5DFD4; border-radius: 10px;
 }
-.clan-create-note { display: block; font-size: 11px; color: #B5A594; margin-top: 4px; line-height: 1.7; }
+.clan-create-note { display: block; font-size: 11px; color: #8E9A93; margin-top: 4px; line-height: 1.7; }
 .invite-panel {
   margin-top: 10px; padding: 12px;
-  background: #FBF6EF; border: 1px dashed #E3D3BE; border-radius: 10px;
+  background: #F1F6F2; border: 1px dashed #D5DFD4; border-radius: 10px;
 }
-.invite-hint { display: block; font-size: 11px; color: #B5A594; line-height: 1.7; }
+.invite-hint { display: block; font-size: 11px; color: #8E9A93; line-height: 1.7; }
 .invite-tip { display: block; font-size: 12px; color: #B08D57; margin-top: 8px; }
-.invite-label { display: block; font-size: 11px; color: #8B4513; margin-top: 10px; }
+.invite-label { display: block; font-size: 11px; color: #4E6B57; margin-top: 10px; }
 .invite-link {
   display: block; font-size: 11px; color: #5D4037; line-height: 1.6;
   margin-top: 4px; word-break: break-all;
 }
 .invite-copy {
   display: inline-block; margin-top: 6px; padding: 4px 14px; border-radius: 6px;
-  background: #FBF8F5; border: 1px solid #E0D6CB;
+  background: #F6FAF7; border: 1px solid #D2DBD2;
 }
 .invite-copy-text { font-size: 12px; color: #5D4037; }
 .invite-expiry { display: block; font-size: 11px; color: #B08D57; margin-top: 8px; }
 .invite-err { display: block; font-size: 12px; color: #C62828; line-height: 1.6; margin-top: 8px; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
-   与 styles/td-dark-warm.css 同一套暖调夜间值（底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 /
-   格位·chip #332A20 / 主字 #EDE3D6 / 次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 /
-   分割 #4A3D31 / 暖棕 #C98850 / error #E0675F）。
+   与 styles/td-dark-warm.css 同一套暖调夜间值（底 #1B2422 / 卡面 #232E2B / 次容器 #1E2825 /
+   格位·chip #2A3631 / 主字 #DFE9E4 / 次字 #A5B6AE / 更淡 #7A8B83 / 边框 #36453F /
+   分割 #42524B / 暖棕 #D9A96B / error #E0675F）。
    **只改颜色，不改任何几何**（不加边框、不动内距、不动字号）—— T3 判据要求切主题前后 rect 差 ≤0.5px。
    无 invert / filter：印章 / 人像 / 正文类图片与带色称号色板（语义色，色值即数据）一律不反色。
    TDesign 单元格（t-cell / t-cell-group / t-tag / t-button）由 --td-* 暖调 token 自动夜间化，此处不重复。
    全部 H5 条件编译 ⇒ 小程序产物零改动。 */
 /* #ifdef H5 */
 /* —— 头部姓名行 —— */
-html[data-theme='dark'] .name { color: #EDE3D6; }
-html[data-theme='dark'] .name-title { color: #E5BE93; background: #332A20; }
+html[data-theme='dark'] .name { color: #DFE9E4; }
+html[data-theme='dark'] .name-title { color: #E8CFA6; background: #2A3631; }
 
 /* —— 镜像提示 / 只读锁定提示 —— */
-html[data-theme='dark'] .mirror-note { background: #332A20; border-color: #4A3D31; }
-html[data-theme='dark'] .mirror-note-text { color: #E8C9A6; }
-html[data-theme='dark'] .founder-hint { color: #B8A894; }
+html[data-theme='dark'] .mirror-note { background: #2A3631; border-color: #42524B; }
+html[data-theme='dark'] .mirror-note-text { color: #E3CFA4; }
+html[data-theme='dark'] .founder-hint { color: #A5B6AE; }
 
 /* —— 分区标题 / 家族块 —— */
-html[data-theme='dark'] .section-title { color: #C98850; }
-html[data-theme='dark'] .fam-block { border-bottom-color: #3A3027; }
-html[data-theme='dark'] .fam-label { color: #8A7A66; }
-html[data-theme='dark'] .fam-link { color: #EDE3D6; }
-html[data-theme='dark'] .fam-link:active { color: #C98850; }
-html[data-theme='dark'] .fam-none { color: #6E5F4D; }
-html[data-theme='dark'] .marriage-hint { color: #B8A894; }
+html[data-theme='dark'] .section-title { color: #D9A96B; }
+html[data-theme='dark'] .fam-block { border-bottom-color: #36453F; }
+html[data-theme='dark'] .fam-label { color: #7A8B83; }
+html[data-theme='dark'] .fam-link { color: #DFE9E4; }
+html[data-theme='dark'] .fam-link:active { color: #D9A96B; }
+html[data-theme='dark'] .fam-none { color: #5F6E67; }
+html[data-theme='dark'] .marriage-hint { color: #A5B6AE; }
 
 /* —— 加载 / 错误态 —— */
-html[data-theme='dark'] .loading { color: #B8A894; }
+html[data-theme='dark'] .loading { color: #A5B6AE; }
 html[data-theme='dark'] .loading .error-text { color: #E0675F; }
 
 /* —— 危险操作区（删除 / 解绑）—— */
-html[data-theme='dark'] .danger-zone { border-top-color: #4A3D31; }
-html[data-theme='dark'] .danger-hint { color: #B8A894; }
+html[data-theme='dark'] .danger-zone { border-top-color: #42524B; }
+html[data-theme='dark'] .danger-hint { color: #A5B6AE; }
 html[data-theme='dark'] .clan-danger-hint { color: #E0675F; }
-html[data-theme='dark'] .del-mode { background: #2A2219; border-color: #3A3027; }
-html[data-theme='dark'] .del-mode.selected { background: #33231D; border-color: #E0675F; }
-html[data-theme='dark'] .del-mode-name { color: #EDE3D6; }
-html[data-theme='dark'] .del-mode-hint { color: #B8A894; }
-html[data-theme='dark'] .del-stat { background: #241D16; border-color: #3A3027; }
-html[data-theme='dark'] .del-stat-line { color: #EDE3D6; }
-html[data-theme='dark'] .del-stat-msg { color: #D8A171; }
+html[data-theme='dark'] .del-mode { background: #232E2B; border-color: #36453F; }
+html[data-theme='dark'] .del-mode.selected { background: #242E2A; border-color: #E0675F; }
+html[data-theme='dark'] .del-mode-name { color: #DFE9E4; }
+html[data-theme='dark'] .del-mode-hint { color: #A5B6AE; }
+html[data-theme='dark'] .del-stat { background: #1E2825; border-color: #36453F; }
+html[data-theme='dark'] .del-stat-line { color: #DFE9E4; }
+html[data-theme='dark'] .del-stat-msg { color: #DDAF7A; }
 html[data-theme='dark'] .del-warn { color: #E0675F; }
 
-/* —— 编辑弹窗（遮罩保持半透明黑；面板 #2A2219）—— */
-html[data-theme='dark'] .modal { background: #2A2219; }
-html[data-theme='dark'] .modal-title { color: #EDE3D6; }
-html[data-theme='dark'] .modal-sub { color: #8A7A66; }
-html[data-theme='dark'] .field-label { color: #C98850; }
-html[data-theme='dark'] .field-hint { color: #B8A894; }
+/* —— 编辑弹窗（遮罩保持半透明黑；面板 #232E2B）—— */
+html[data-theme='dark'] .modal { background: #232E2B; }
+html[data-theme='dark'] .modal-title { color: #DFE9E4; }
+html[data-theme='dark'] .modal-sub { color: #7A8B83; }
+html[data-theme='dark'] .field-label { color: #D9A96B; }
+html[data-theme='dark'] .field-hint { color: #A5B6AE; }
 html[data-theme='dark'] .event-edit-row,
-html[data-theme='dark'] .place-edit-row { background: #241D16; }
-html[data-theme='dark'] .date-pick-btn { color: #C98850; background: #332A20; border-color: #3A3027; }
-html[data-theme='dark'] .date-pick-btn:active { background: #3A3027; }
+html[data-theme='dark'] .place-edit-row { background: #1E2825; }
+html[data-theme='dark'] .date-pick-btn { color: #D9A96B; background: #2A3631; border-color: #36453F; }
+html[data-theme='dark'] .date-pick-btn:active { background: #36453F; }
 html[data-theme='dark'] .edit-error { color: #E0675F; }
-html[data-theme='dark'] .badge-color-dot { border-color: #4A3D31; }
-html[data-theme='dark'] .badge-color-dot.active { border-color: #EDE3D6; box-shadow: 0 0 0 2px rgba(237, 227, 214, 0.22); }
+html[data-theme='dark'] .badge-color-dot { border-color: #42524B; }
+html[data-theme='dark'] .badge-color-dot.active { border-color: #DFE9E4; box-shadow: 0 0 0 2px rgba(223, 233, 228, 0.22); }
 
 /* —— 内嵌编辑面板 —— */
-html[data-theme='dark'] .edit-inline-head { border-bottom-color: #3A3027; }
-html[data-theme='dark'] .edit-inline-title { color: #EDE3D6; }
-html[data-theme='dark'] .edit-inline-close { color: #B8A894; }
-html[data-theme='dark'] .edit-inline-close:active { background: #332A20; }
+html[data-theme='dark'] .edit-inline-head { border-bottom-color: #36453F; }
+html[data-theme='dark'] .edit-inline-title { color: #DFE9E4; }
+html[data-theme='dark'] .edit-inline-close { color: #A5B6AE; }
+html[data-theme='dark'] .edit-inline-close:active { background: #2A3631; }
 
 /* —— 出嫁 / 认祖 / 挂载弹窗内的搜索结果 —— */
-html[data-theme='dark'] .join-tip { color: #B8A894; }
-html[data-theme='dark'] .join-result { border-color: #3A3027; }
-html[data-theme='dark'] .join-result.selected { border-color: #C98850; background: #332A20; }
-html[data-theme='dark'] .result-name { color: #EDE3D6; }
-html[data-theme='dark'] .result-id { color: #8A7A66; }
-html[data-theme='dark'] .result-gender { color: #C98850; }
-html[data-theme='dark'] .identity-confirm { background: #332A20; }
-html[data-theme='dark'] .identity-text { color: #B8A894; }
+html[data-theme='dark'] .join-tip { color: #A5B6AE; }
+html[data-theme='dark'] .join-result { border-color: #36453F; }
+html[data-theme='dark'] .join-result.selected { border-color: #D9A96B; background: #2A3631; }
+html[data-theme='dark'] .result-name { color: #DFE9E4; }
+html[data-theme='dark'] .result-id { color: #7A8B83; }
+html[data-theme='dark'] .result-gender { color: #D9A96B; }
+html[data-theme='dark'] .identity-confirm { background: #2A3631; }
+html[data-theme='dark'] .identity-text { color: #A5B6AE; }
 
 /* —— 邀请入族 —— */
-html[data-theme='dark'] .invite-entry { background: linear-gradient(180deg, #332A20, #241D16); border-color: #3A3027; }
-html[data-theme='dark'] .invite-entry-text { color: #C98850; }
-html[data-theme='dark'] .invite-panel { background: #241D16; border-color: #3A3027; }
-html[data-theme='dark'] .invite-hint { color: #8A7A66; }
-html[data-theme='dark'] .invite-tip { color: #C98850; }
-html[data-theme='dark'] .invite-label { color: #C98850; }
-html[data-theme='dark'] .invite-link { color: #B8A894; }
-html[data-theme='dark'] .invite-copy { background: #332A20; border-color: #3A3027; }
-html[data-theme='dark'] .invite-copy-text { color: #EDE3D6; }
-html[data-theme='dark'] .invite-expiry { color: #8A7A66; }
+html[data-theme='dark'] .invite-entry { background: linear-gradient(180deg, #2A3631, #1E2825); border-color: #36453F; }
+html[data-theme='dark'] .invite-entry-text { color: #D9A96B; }
+html[data-theme='dark'] .invite-panel { background: #1E2825; border-color: #36453F; }
+html[data-theme='dark'] .invite-hint { color: #7A8B83; }
+html[data-theme='dark'] .invite-tip { color: #D9A96B; }
+html[data-theme='dark'] .invite-label { color: #D9A96B; }
+html[data-theme='dark'] .invite-link { color: #A5B6AE; }
+html[data-theme='dark'] .invite-copy { background: #2A3631; border-color: #36453F; }
+html[data-theme='dark'] .invite-copy-text { color: #DFE9E4; }
+html[data-theme='dark'] .invite-expiry { color: #7A8B83; }
 html[data-theme='dark'] .invite-err { color: #E0675F; }
 
 /* —— 直建祖谱（方式 C）—— */
-html[data-theme='dark'] .clan-create-entry { background: linear-gradient(180deg, #332A20, #241D16); border-color: #4A3D31; }
-html[data-theme='dark'] .clan-create-entry-text { color: #C98850; }
-html[data-theme='dark'] .clan-create-entry-fee { color: #B8A894; }
-html[data-theme='dark'] .clan-create-form { background: #241D16; border-color: #3A3027; }
-html[data-theme='dark'] .clan-create-note { color: #8A7A66; }
+html[data-theme='dark'] .clan-create-entry { background: linear-gradient(180deg, #2A3631, #1E2825); border-color: #42524B; }
+html[data-theme='dark'] .clan-create-entry-text { color: #D9A96B; }
+html[data-theme='dark'] .clan-create-entry-fee { color: #A5B6AE; }
+html[data-theme='dark'] .clan-create-form { background: #1E2825; border-color: #36453F; }
+html[data-theme='dark'] .clan-create-note { color: #7A8B83; }
 /* #endif */
 </style>

@@ -857,7 +857,7 @@ function goToPage(path: string) {
 </script>
 
 <style scoped>
-/* ---- 页面骨架（暖棕主题：主色 #8B4513 / 深棕字 #3E2723 / 暖米底 #FFFDF8 / 辅助 #A1887F·#795548） ---- */
+/* ---- 页面骨架（暖棕主题：主色 #4E6B57 / 深棕字 #2F3A33 / 暖米底 #FAFCF8 / 辅助 #6E7D70·#6E7D70） ---- */
 /* 注意：**不得**给 .container 加 overflow:hidden —— H5 三层 banner 靠 100vw 负 margin 出血到视口两边 */
 .container { padding: 20px; padding-bottom: 90px; }
 
@@ -880,8 +880,8 @@ function goToPage(path: string) {
 .person-search-input { flex: 1 1 auto; min-width: 0; }
 /* 输入框本体：暖米底 + 暖棕圆角描边（组件自带的下边线隐藏，改整圈描边） */
 .person-search :deep(.t-input) {
-  background: #FFFDF8;
-  border: 1px solid #E0D5C8;
+  background: #FAFCF8;
+  border: 1px solid #CFD8CE;
   border-radius: 12px;
   padding: 5px 5px 5px 14px;
   height: 44px;
@@ -893,37 +893,37 @@ function goToPage(path: string) {
 .search-btn {
   display: flex; align-items: center; justify-content: center;
   height: 34px; min-width: 64px; padding: 0 16px;
-  background: #8B4513; border-radius: 8px; box-sizing: border-box;
+  background: #4E6B57; border-radius: 8px; box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
 }
 .search-btn:active { background: #7A3C10; }
 .search-btn-text { font-size: 13px; color: #fff; line-height: 1; letter-spacing: 0.5px; }
 .person-search-panel {
-  background: #FFFDF8; border: 1px solid #E0D5C8; border-radius: 14px;
-  padding: 6px 14px; box-shadow: 0 2px 10px rgba(62, 39, 35, 0.05);
+  background: #FAFCF8; border: 1px solid #CFD8CE; border-radius: 14px;
+  padding: 6px 14px; box-shadow: 0 2px 10px rgba(47, 58, 51, 0.05);
 }
 /* 分区（家族在上 / 人物在下）：段标题小字，两段之间一条分割线 */
-.ps-section + .ps-section { border-top: 1px solid #F0E8DE; }
+.ps-section + .ps-section { border-top: 1px solid #E6EDE7; }
 .ps-section-title {
   display: block; padding: 8px 2px 2px;
-  font-size: 11px; color: #A1887F; letter-spacing: 0.5px;
+  font-size: 11px; color: #6E7D70; letter-spacing: 0.5px;
 }
 .ps-result {
   display: flex; align-items: center; gap: 8px;
-  padding: 10px 2px; border-bottom: 1px solid #F0E8DE;
+  padding: 10px 2px; border-bottom: 1px solid #E6EDE7;
 }
 .ps-result:last-child { border-bottom: none; }
 /* 受限条：追加一行中性辅助色小字（仅该类生效，不影响其它结果行） */
 .ps-result-restricted { flex-wrap: wrap; }
-.ps-restricted { flex-basis: 100%; font-size: 11px; color: #A1887F; line-height: 1.4; }
-.ps-name { font-size: 14px; font-weight: 500; color: #3E2723; }
-.ps-id { font-size: 11px; color: #A1887F; }
+.ps-restricted { flex-basis: 100%; font-size: 11px; color: #6E7D70; line-height: 1.4; }
+.ps-name { font-size: 14px; font-weight: 500; color: #2F3A33; }
+.ps-id { font-size: 11px; color: #6E7D70; }
 .ps-tree {
   margin-left: auto; max-width: 42%;
-  font-size: 11px; color: #A1887F;
+  font-size: 11px; color: #6E7D70;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
-.ps-tip { text-align: center; font-size: 13px; color: #A1887F; padding: 14px 0; }
+.ps-tip { text-align: center; font-size: 13px; color: #6E7D70; padding: 14px 0; }
 .ps-error { color: #C62828; }
 
 /* ---- 排序 + 列表切换（同一行：左＝综合/人数/活跃度，右＝家谱 | 祖谱） ----
@@ -935,24 +935,24 @@ function goToPage(path: string) {
 .sort-btn {
   display: flex; align-items: center; justify-content: center;
   padding: 8px 14px;
-  background: #FFFDF8; border: 1px solid #E0D5C8; border-radius: 999px;
+  background: #FAFCF8; border: 1px solid #CFD8CE; border-radius: 999px;
 }
-.sort-text { font-size: 13px; color: #8B4513; white-space: nowrap; }
-.sort-btn.active { background: #8B4513; border-color: #8B4513; }
+.sort-text { font-size: 13px; color: #4E6B57; white-space: nowrap; }
+.sort-btn.active { background: #4E6B57; border-color: #4E6B57; }
 .sort-btn.active .sort-text { color: #fff; }
 
 /* 列表切换组：靠右（排序组隐藏时仍停在同一行右侧，不跳位）；shrink:0 保证永不被排序组挤压 */
 .tab-switch {
   display: flex; gap: 2px; margin-left: auto; flex-shrink: 0;
-  padding: 2px; background: #FFFDF8;
-  border: 1px solid #E0D5C8; border-radius: 999px;
+  padding: 2px; background: #FAFCF8;
+  border: 1px solid #CFD8CE; border-radius: 999px;
 }
 .tab-btn {
   display: flex; align-items: center; justify-content: center;
   padding: 6px 14px; border-radius: 999px;
 }
-.tab-text { font-size: 13px; color: #8B4513; white-space: nowrap; }
-.tab-btn.active { background: #8B4513; }
+.tab-text { font-size: 13px; color: #4E6B57; white-space: nowrap; }
+.tab-btn.active { background: #4E6B57; }
 .tab-btn.active .tab-text { color: #fff; }
 
 /* 窄屏（≤370px，含 320px）：收窄水平空间，保证「三颗排序 pill + 两颗 tab」单行放得下且不溢出、不出现横向滚动 */
@@ -966,11 +966,11 @@ function goToPage(path: string) {
 
 /* 卡片容器：暖米底 + 暖棕描边 + 14 圆角 + 极轻投影（与「新建家族树」入口同族） */
 .hall-list :deep(.t-cell-group) {
-  background: #FFFDF8;
-  border: 1px solid #E0D5C8;
+  background: #FAFCF8;
+  border: 1px solid #CFD8CE;
   border-radius: 14px;
   overflow: hidden;
-  box-shadow: 0 2px 10px rgba(62, 39, 35, 0.05);
+  box-shadow: 0 2px 10px rgba(47, 58, 51, 0.05);
 }
 
 /* 卡片内节奏：名称 → 地名 → 简介 纵向堆叠（不再左右分栏与简介抢宽，
@@ -982,10 +982,10 @@ function goToPage(path: string) {
   padding: 13px 16px 14px;
   background: transparent;
   --td-cell-hover-color: #FBF3E9;
-  --td-cell-border-color: #F0E8DE;
+  --td-cell-border-color: #E6EDE7;
   --td-cell-border-left-space: 16px;
   --td-cell-border-right-space: 16px;
-  --td-cell-right-icon-color: #B5A594;
+  --td-cell-right-icon-color: #8E9A93;
   --td-cell-right-icon-font-size: 20px;
 }
 /* 末张卡片不再多一条分割线（圆角内不露线） */
@@ -1000,11 +1000,11 @@ function goToPage(path: string) {
 /* 名称（一级信息）：17/700 深棕，单行截断 */
 .hall-list :deep(.t-cell__title-text) {
   display: block; width: 100%;
-  font-size: 17px; font-weight: 700; color: #3E2723; line-height: 1.35;
+  font-size: 17px; font-weight: 700; color: #2F3A33; line-height: 1.35;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
 /* 地名（二/三级信息）：12 辅助棕，单行截断 */
-.hall-list :deep(.t-cell__description) { font-size: 12px; color: #A1887F; line-height: 1.5; }
+.hall-list :deep(.t-cell__description) { font-size: 12px; color: #6E7D70; line-height: 1.5; }
 .hall-list :deep(.t-cell__description-text) {
   margin-top: 2px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
@@ -1012,20 +1012,20 @@ function goToPage(path: string) {
    右侧留出 24px 箭头位，等级标签不再与右侧箭头相压 */
 .hall-list :deep(.t-cell__note) {
   display: block; margin-top: 4px; padding-right: 24px; box-sizing: border-box;
-  font-size: 13px; color: #795548;
+  font-size: 13px; color: #6E7D70;
 }
 .note-line { display: flex; align-items: flex-start; gap: 8px; }
 .note-text {
   flex: 1 1 auto; min-width: 0;
-  font-size: 13px; line-height: 1.6; color: #795548;
+  font-size: 13px; line-height: 1.6; color: #6E7D70;
   word-break: break-word;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
 }
 /* 等级标签：与简介同排、右对齐成列；家乘级等中性等级收敛为暖中性灰（语义色不变） */
 .hall-list :deep(.rank-tag) {
-  --td-tag-default-color: #795548;
-  --td-tag-default-font-color: #795548;
-  --td-tag-default-light-color: #F3EAE0;
+  --td-tag-default-color: #6E7D70;
+  --td-tag-default-font-color: #6E7D70;
+  --td-tag-default-light-color: #EAF0EE;
   flex: 0 0 auto; margin-left: 0; margin-top: 1px;
   padding: 0 6px; height: 18px; line-height: 18px; font-size: 11px;
 }
@@ -1033,7 +1033,7 @@ function goToPage(path: string) {
 .people-tag {
   flex: 0 0 auto; margin-top: 1px;
   padding: 0 6px; height: 18px; line-height: 18px; font-size: 11px;
-  border-radius: 4px; background: #F3EAE0; color: #795548;
+  border-radius: 4px; background: #EAF0EE; color: #6E7D70;
 }
 /* 仅居住地命中（籍贯未命中）的绿色小标记：与人数标签同排、同尺寸（18/11/4） */
 .live-tag {
@@ -1045,14 +1045,14 @@ function goToPage(path: string) {
 
 /* 加载态（与卡片同形同宽，避免首屏空态闪烁与布局跳动） */
 .loading {
-  background: #FFFDF8; border: 1px solid #E0D5C8; border-radius: 14px;
+  background: #FAFCF8; border: 1px solid #CFD8CE; border-radius: 14px;
   padding: 28px 0 30px; text-align: center;
 }
 /* 空态：暖色虚线卡片（与「新建家族树」入口同款） */
 .empty {
-  background: #FFFDF8; border: 1px dashed #C8A88A; border-radius: 14px;
+  background: #FAFCF8; border: 1px dashed #C8A88A; border-radius: 14px;
   padding: 34px 16px; text-align: center;
-  font-size: 13px; color: #A1887F; line-height: 1.6;
+  font-size: 13px; color: #6E7D70; line-height: 1.6;
 }
 
 /* 页脚降权（Kevin 拍定 A 版）：一行 11px 极淡文字并与版权合并，
@@ -1061,18 +1061,18 @@ function goToPage(path: string) {
   display: flex; align-items: center; justify-content: center;
   margin-top: 26px;
   font-size: 11px; line-height: 14px;
-  color: #B5A594;
+  color: #8E9A93;
 }
-.footer-copy { font-size: 11px; line-height: 14px; color: #B5A594; padding: 9px 0; }
-.footer-dot { font-size: 11px; line-height: 14px; color: #B5A594; padding: 9px 0; margin: 0 4px; }
+.footer-copy { font-size: 11px; line-height: 14px; color: #8E9A93; padding: 9px 0; }
+.footer-dot { font-size: 11px; line-height: 14px; color: #8E9A93; padding: 9px 0; margin: 0 4px; }
 /* 仍可点、仍跳 /pages/about/about；仅降视觉权重（1px 下边框当链接提示）。
    可点区靠 padding 撑到 33px（14 行高 + 9×2 + 1px 下边框），不低于 32px。 */
 .footer-link {
   display: inline-block;
   font-size: 11px; line-height: 14px;
-  color: #A1887F;
+  color: #6E7D70;
   padding: 9px 2px;
-  border: none; border-bottom: 1px solid #A1887F;
+  border: none; border-bottom: 1px solid #6E7D70;
   background: transparent;
 }
 
@@ -1084,9 +1084,9 @@ function goToPage(path: string) {
   z-index: 950;
   width: 58px; height: 58px;
   border-radius: 50%;
-  background: #8B4513;
+  background: #4E6B57;
   border: 1px solid rgba(255, 255, 255, 0.28);
-  box-shadow: 0 6px 16px rgba(62, 39, 35, 0.28), 0 1px 3px rgba(62, 39, 35, 0.18);
+  box-shadow: 0 6px 16px rgba(47, 58, 51, 0.28), 0 1px 3px rgba(47, 58, 51, 0.18);
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -1102,7 +1102,7 @@ function goToPage(path: string) {
 /* 按压反馈（视觉，无新增交互逻辑） */
 .floating-switch:active {
   transform: scale(0.94);
-  box-shadow: 0 3px 9px rgba(62, 39, 35, 0.24);
+  box-shadow: 0 3px 9px rgba(47, 58, 51, 0.24);
 }
 .floating-icon { font-size: 21px; line-height: 1; }
 .floating-text {
@@ -1114,10 +1114,10 @@ function goToPage(path: string) {
 .create-entry {
   display: flex; align-items: center; gap: 8px;
   margin-top: 14px; padding: 14px 16px;
-  background: #FBF6EF; border: 1px dashed #C8A88A; border-radius: 14px;
+  background: #F1F6F2; border: 1px dashed #C8A88A; border-radius: 14px;
 }
-.create-icon { font-size: 18px; color: #8B4513; font-weight: bold; }
-.create-text { flex: 1; font-size: 15px; color: #3E2723; font-weight: bold; }
+.create-icon { font-size: 18px; color: #4E6B57; font-weight: bold; }
+.create-text { flex: 1; font-size: 15px; color: #2F3A33; font-weight: bold; }
 .create-hint { font-size: 12px; color: #999; }
 
 .ct-mask {
@@ -1133,119 +1133,119 @@ function goToPage(path: string) {
 }
 .ct-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 14px 8px; border-bottom: 1px solid #F0E8DE;
+  padding: 12px 14px 8px; border-bottom: 1px solid #E6EDE7;
 }
-.ct-title { font-size: 16px; font-weight: bold; color: #3E2723; }
+.ct-title { font-size: 16px; font-weight: bold; color: #2F3A33; }
 .ct-close { width: 30px; height: 30px; line-height: 30px; text-align: center; font-size: 16px; color: #999; }
 .ct-body { padding: 12px 14px 16px; overflow-y: auto; }
-.ct-label { display: block; font-size: 12px; color: #8B4513; margin: 10px 0 4px; }
+.ct-label { display: block; font-size: 12px; color: #4E6B57; margin: 10px 0 4px; }
 .ct-fee {
   margin: 14px 0 10px; padding: 10px 12px;
-  background: #FBF8F4; border-radius: 10px;
+  background: #F6FAF6; border-radius: 10px;
 }
-.ct-fee-text { display: block; font-size: 13px; color: #3E2723; }
+.ct-fee-text { display: block; font-size: 13px; color: #2F3A33; }
 .ct-fee-sub { display: block; font-size: 11px; color: #999; margin-top: 4px; line-height: 1.5; }
 .ct-error { display: block; text-align: center; color: #C62828; font-size: 13px; margin-bottom: 8px; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
    本页**没有**任何容器级深色兜底，所有色都是逐元素硬编码喰色，故夜间必须逐元素给对偶值。
    口径（与 styles/td-dark-warm.css 同族，不另发明色）：
-     卡面 #2A2219 · 按下/浅底 #332A20 · 底 #211A14 · 边框/分割 #3A3027
-     主字 #EDE3D6 · 次字 #B8A894 · 更淡 #8A7A66 · 暖棕主色 #C98850（字压主色时用 #211A14）
+     卡面 #232E2B · 按下/浅底 #2A3631 · 底 #1B2422 · 边框/分割 #36453F
+     主字 #DFE9E4 · 次字 #A5B6AE · 更淡 #7A8B83 · 暖棕主色 #D9A96B（字压主色时用 #1B2422）
    **不用 invert / filter 反色 hack**：反色会把 emoji、图标、阴影一起翻掉，且与 T3 几何口径冲突。
    全部 H5 条件编译 ⇒ 小程序零改动。 */
 /* #ifdef H5 */
 /* —— 搜索框（输入框本体：米白底 → 卡面底；描边 → 夜间分割色）—— */
 html[data-theme='dark'] .person-search :deep(.t-input) {
-  background: #2A2219;
-  border-color: #3A3027;
+  background: #232E2B;
+  border-color: #36453F;
 }
-/* 内嵌搜索按钮：暖棕主色一档（#C98850），字取深色（对比 6.4:1，白字只有 2.1:1） */
-html[data-theme='dark'] .search-btn { background: #C98850; }
-html[data-theme='dark'] .search-btn:active { background: #B47844; }
-html[data-theme='dark'] .search-btn-text { color: #211A14; }
+/* 内嵌搜索按钮：暖棕主色一档（#D9A96B），字取深色（对比 6.4:1，白字只有 2.1:1） */
+html[data-theme='dark'] .search-btn { background: #D9A96B; }
+html[data-theme='dark'] .search-btn:active { background: #C49A60; }
+html[data-theme='dark'] .search-btn-text { color: #1B2422; }
 
 /* —— 搜索结果面板 —— */
 html[data-theme='dark'] .person-search-panel {
-  background: #2A2219; border-color: #3A3027;
+  background: #232E2B; border-color: #36453F;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
-html[data-theme='dark'] .ps-section + .ps-section { border-top-color: #3A3027; }
-html[data-theme='dark'] .ps-result { border-bottom-color: #3A3027; }
-html[data-theme='dark'] .ps-section-title { color: #B8A894; }
-html[data-theme='dark'] .ps-name { color: #EDE3D6; }
+html[data-theme='dark'] .ps-section + .ps-section { border-top-color: #36453F; }
+html[data-theme='dark'] .ps-result { border-bottom-color: #36453F; }
+html[data-theme='dark'] .ps-section-title { color: #A5B6AE; }
+html[data-theme='dark'] .ps-name { color: #DFE9E4; }
 html[data-theme='dark'] .ps-id,
 html[data-theme='dark'] .ps-tree,
-html[data-theme='dark'] .ps-tip { color: #B8A894; }
-html[data-theme='dark'] .ps-restricted { color: #8A7A66; }
+html[data-theme='dark'] .ps-tip { color: #A5B6AE; }
+html[data-theme='dark'] .ps-restricted { color: #7A8B83; }
 html[data-theme='dark'] .ps-error { color: #E0675F; }
 
 /* —— 排序条 / 家谱·祖谱切换 —— */
-html[data-theme='dark'] .sort-btn { background: #2A2219; border-color: #3A3027; }
-html[data-theme='dark'] .sort-text { color: #C98850; }
-html[data-theme='dark'] .sort-btn.active { background: #C98850; border-color: #C98850; }
-html[data-theme='dark'] .sort-btn.active .sort-text { color: #211A14; }
-html[data-theme='dark'] .tab-switch { background: #2A2219; border-color: #3A3027; }
-html[data-theme='dark'] .tab-text { color: #C98850; }
-html[data-theme='dark'] .tab-btn.active { background: #C98850; }
-html[data-theme='dark'] .tab-btn.active .tab-text { color: #211A14; }
+html[data-theme='dark'] .sort-btn { background: #232E2B; border-color: #36453F; }
+html[data-theme='dark'] .sort-text { color: #D9A96B; }
+html[data-theme='dark'] .sort-btn.active { background: #D9A96B; border-color: #D9A96B; }
+html[data-theme='dark'] .sort-btn.active .sort-text { color: #1B2422; }
+html[data-theme='dark'] .tab-switch { background: #232E2B; border-color: #36453F; }
+html[data-theme='dark'] .tab-text { color: #D9A96B; }
+html[data-theme='dark'] .tab-btn.active { background: #D9A96B; }
+html[data-theme='dark'] .tab-btn.active .tab-text { color: #1B2422; }
 
 /* —— 列表卡片（t-cell-group + t-cell 的 token 也在这里收口，避免只改外壳）—— */
 html[data-theme='dark'] .hall-list :deep(.t-cell-group) {
-  background: #2A2219;
-  border-color: #3A3027;
+  background: #232E2B;
+  border-color: #36453F;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 html[data-theme='dark'] .hall-list :deep(.t-cell) {
-  --td-cell-hover-color: #332A20;
-  --td-cell-border-color: #3A3027;
-  --td-cell-right-icon-color: #8A7A66;
-  --td-cell-title-color: #EDE3D6;
-  --td-cell-description-color: #B8A894;
+  --td-cell-hover-color: #2A3631;
+  --td-cell-border-color: #36453F;
+  --td-cell-right-icon-color: #7A8B83;
+  --td-cell-title-color: #DFE9E4;
+  --td-cell-description-color: #A5B6AE;
 }
-html[data-theme='dark'] .hall-list :deep(.t-cell__title-text) { color: #EDE3D6; }
-html[data-theme='dark'] .hall-list :deep(.t-cell__description) { color: #B8A894; }
-html[data-theme='dark'] .hall-list :deep(.t-cell__note) { color: #C4B4A0; }
-html[data-theme='dark'] .note-text { color: #C4B4A0; }
+html[data-theme='dark'] .hall-list :deep(.t-cell__title-text) { color: #DFE9E4; }
+html[data-theme='dark'] .hall-list :deep(.t-cell__description) { color: #A5B6AE; }
+html[data-theme='dark'] .hall-list :deep(.t-cell__note) { color: #B4C2BB; }
+html[data-theme='dark'] .note-text { color: #B4C2BB; }
 html[data-theme='dark'] .hall-list :deep(.rank-tag) {
-  --td-tag-default-color: #C4B4A0;
-  --td-tag-default-font-color: #C4B4A0;
-  --td-tag-default-light-color: #332A20;
+  --td-tag-default-color: #B4C2BB;
+  --td-tag-default-font-color: #B4C2BB;
+  --td-tag-default-light-color: #2A3631;
 }
-html[data-theme='dark'] .people-tag { background: #332A20; color: #C4B4A0; }
+html[data-theme='dark'] .people-tag { background: #2A3631; color: #B4C2BB; }
 html[data-theme='dark'] .live-tag { background: #26301F; color: #A6C79A; }
 
 /* —— 加载态 / 空态 —— */
-html[data-theme='dark'] .loading { background: #2A2219; border-color: #3A3027; }
-html[data-theme='dark'] .empty { background: #2A2219; border-color: #5E5142; color: #B8A894; }
+html[data-theme='dark'] .loading { background: #232E2B; border-color: #36453F; }
+html[data-theme='dark'] .empty { background: #232E2B; border-color: #4C5A54; color: #A5B6AE; }
 
 /* —— 页脚（含「关于本站 · 免责声明」链接）—— */
 html[data-theme='dark'] .footer,
 html[data-theme='dark'] .footer-copy,
-html[data-theme='dark'] .footer-dot { color: #8A7A66; }
-html[data-theme='dark'] .footer-link { color: #B8A894; border-bottom-color: #8A7A66; }
+html[data-theme='dark'] .footer-dot { color: #7A8B83; }
+html[data-theme='dark'] .footer-link { color: #A5B6AE; border-bottom-color: #7A8B83; }
 
 /* —— 浮动切换按钮（右侧圆形）—— */
 html[data-theme='dark'] .floating-switch {
-  background: #C98850;
-  border-color: rgba(33, 26, 20, 0.35);
+  background: #D9A96B;
+  border-color: rgba(27, 36, 34, 0.35);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.35);
 }
-html[data-theme='dark'] .floating-text { color: #211A14; }
+html[data-theme='dark'] .floating-text { color: #1B2422; }
 
 /* —— 新建家族树入口 + 表单弹层（入口与弹层都在本页，漏了会露白）—— */
-html[data-theme='dark'] .create-entry { background: #332A20; border-color: #5E5142; }
-html[data-theme='dark'] .create-icon { color: #C98850; }
-html[data-theme='dark'] .create-text { color: #EDE3D6; }
-html[data-theme='dark'] .create-hint { color: #8A7A66; }
-html[data-theme='dark'] .ct-modal { background: #2A2219; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6); }
-html[data-theme='dark'] .ct-head { border-bottom-color: #3A3027; }
-html[data-theme='dark'] .ct-title { color: #EDE3D6; }
-html[data-theme='dark'] .ct-close { color: #B8A894; }
-html[data-theme='dark'] .ct-label { color: #C98850; }
-html[data-theme='dark'] .ct-fee { background: #332A20; }
-html[data-theme='dark'] .ct-fee-text { color: #EDE3D6; }
-html[data-theme='dark'] .ct-fee-sub { color: #8A7A66; }
+html[data-theme='dark'] .create-entry { background: #2A3631; border-color: #4C5A54; }
+html[data-theme='dark'] .create-icon { color: #D9A96B; }
+html[data-theme='dark'] .create-text { color: #DFE9E4; }
+html[data-theme='dark'] .create-hint { color: #7A8B83; }
+html[data-theme='dark'] .ct-modal { background: #232E2B; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6); }
+html[data-theme='dark'] .ct-head { border-bottom-color: #36453F; }
+html[data-theme='dark'] .ct-title { color: #DFE9E4; }
+html[data-theme='dark'] .ct-close { color: #A5B6AE; }
+html[data-theme='dark'] .ct-label { color: #D9A96B; }
+html[data-theme='dark'] .ct-fee { background: #2A3631; }
+html[data-theme='dark'] .ct-fee-text { color: #DFE9E4; }
+html[data-theme='dark'] .ct-fee-sub { color: #7A8B83; }
 html[data-theme='dark'] .ct-error { color: #E0675F; }
 /* #endif */
 </style>

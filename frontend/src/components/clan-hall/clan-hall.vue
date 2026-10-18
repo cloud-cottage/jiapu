@@ -609,7 +609,7 @@ watch(
   display: inline-block; margin-top: 10px; padding: 7px 16px;
   background: #FFF3E0; border: 1px solid #E8C9A0; border-radius: 18px;
 }
-.clan-edit-text { font-size: 13px; color: #8B4513; }
+.clan-edit-text { font-size: 13px; color: #4E6B57; }
 /* 【修改谱名】入口：与「✏️ 编辑祖谱信息」同体例、同一行（同规则同价，共享弹窗） */
 .clan-rename-entry { margin-left: 8px; }
 
@@ -625,21 +625,21 @@ watch(
 }
 /* #endif */
 .view-btn {
-  width: 56px; height: 56px; background: #fff; border: 1px solid #E0D5C8;
+  width: 56px; height: 56px; background: #fff; border: 1px solid #CFD8CE;
   border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.12);
   display: flex; align-items: center; justify-content: center; padding: 2px;
 }
-.view-text { font-size: 11px; color: #8B4513; line-height: 1.3; text-align: center; }
-.view-btn.active { background: #8B4513; border-color: #8B4513; }
+.view-text { font-size: 11px; color: #4E6B57; line-height: 1.3; text-align: center; }
+.view-btn.active { background: #4E6B57; border-color: #4E6B57; }
 .view-btn.active .view-text { color: #fff; }
 
 /* 版式文档占位 */
 .doc-placeholder {
-  background: #FFFDF8; border: 1px dashed #E0D5C8; border-radius: 12px;
+  background: #FAFCF8; border: 1px dashed #CFD8CE; border-radius: 12px;
   padding: 30px 16px; text-align: center; margin-bottom: 12px;
 }
-.doc-ph-title { font-size: 15px; font-weight: bold; color: #8B4513; display: block; }
-.doc-ph-text { font-size: 12px; color: #A1887F; display: block; margin-top: 8px; line-height: 1.6; }
+.doc-ph-title { font-size: 15px; font-weight: bold; color: #4E6B57; display: block; }
+.doc-ph-text { font-size: 12px; color: #6E7D70; display: block; margin-top: 8px; line-height: 1.6; }
 
 /* 祖谱消息视图（左侧按钮留位） */
 .clan-msg-body { margin-left: 8px; }
@@ -655,47 +655,47 @@ watch(
   padding: 24px 20px; box-shadow: 0 8px 30px rgba(0,0,0,0.3);
   max-height: 85vh; overflow-y: auto;
 }
-.modal-title { font-size: 18px; font-weight: bold; color: #3E2723; display: block; text-align: center; margin-bottom: 18px; }
+.modal-title { font-size: 18px; font-weight: bold; color: #2F3A33; display: block; text-align: center; margin-bottom: 18px; }
 .form-item { margin-bottom: 14px; }
-.label { font-size: 13px; color: #8B4513; font-weight: bold; display: block; margin-bottom: 6px; }
+.label { font-size: 13px; color: #4E6B57; font-weight: bold; display: block; margin-bottom: 6px; }
 .input {
-  height: 42px; border: 1px solid #E0D5C8; border-radius: 8px;
-  padding: 0 12px; font-size: 14px; background: #FBF8F4; width: 100%;
+  height: 42px; border: 1px solid #CFD8CE; border-radius: 8px;
+  padding: 0 12px; font-size: 14px; background: #F6FAF6; width: 100%;
 }
 .textarea {
-  min-height: 80px; border: 1px solid #E0D5C8; border-radius: 8px;
-  padding: 10px 12px; font-size: 14px; background: #FBF8F4; width: 100%;
+  min-height: 80px; border: 1px solid #CFD8CE; border-radius: 8px;
+  padding: 10px 12px; font-size: 14px; background: #F6FAF6; width: 100%;
 }
 .edit-error { color: #C62828; font-size: 13px; text-align: center; margin-bottom: 10px; }
 .modal-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
 
 .clan-hero {
-  background: #FFFDF8;
+  background: #FAFCF8;
   border: 1px solid #EFE3D3;
   border-radius: 12px;
   padding: 12px 14px;
   margin-bottom: 12px;
 }
-.clan-title { font-size: 18px; font-weight: bold; color: #3E2723; display: block; }
+.clan-title { font-size: 18px; font-weight: bold; color: #2F3A33; display: block; }
 .clan-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-.clan-surname { font-size: 13px; color: #8B4513; }
-.clan-genealogy { font-size: 12px; color: #A1887F; }
+.clan-surname { font-size: 13px; color: #4E6B57; }
+.clan-genealogy { font-size: 12px; color: #6E7D70; }
 .clan-notice { font-size: 12px; color: #C62828; display: block; margin-top: 8px; }
 
 .clan-loading { text-align: center; padding: 40px 0; }
 .clan-error { text-align: center; color: #C62828; font-size: 13px; padding: 24px 0; }
 
 .segment {
-  background: #FFFDF8;
+  background: #FAFCF8;
   border: 1px solid #EFE3D3;
   border-radius: 12px;
   padding: 12px;
   margin-bottom: 12px;
 }
 .seg-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.seg-title { font-size: 15px; font-weight: bold; color: #8B4513; }
-.seg-count { font-size: 12px; color: #A1887F; }
-.seg-hint { font-size: 11px; color: #A1887F; line-height: 1.6; display: block; margin-top: 6px; }
+.seg-title { font-size: 15px; font-weight: bold; color: #4E6B57; }
+.seg-count { font-size: 12px; color: #6E7D70; }
+.seg-hint { font-size: 11px; color: #6E7D70; line-height: 1.6; display: block; margin-top: 6px; }
 .seg-actions { display: flex; gap: 8px; margin-top: 10px; }
 
 /* 上游未认祖提示块（原①段空态文案的落点；比常规 segment 轻量） */
@@ -705,15 +705,15 @@ watch(
 /* 图谱三类节点图例 + 图下方说明/计数（原③段计数与空态文案的落点） */
 .pedigree-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .legend-item {
-  font-size: 11px; color: #8B4513; background: #FBF6EF;
+  font-size: 11px; color: #4E6B57; background: #F1F6F2;
   border: 1px solid #EFE3D3; border-radius: 10px; padding: 2px 8px;
 }
 .seg-foot { margin-top: 10px; }
-.foot-line { font-size: 11px; color: #A1887F; line-height: 1.6; display: block; }
+.foot-line { font-size: 11px; color: #6E7D70; line-height: 1.6; display: block; }
 
 /* 未画进图谱的只读条目（兜底入口：镜像 → 真身档案；支系 → 家族树首页） */
 .off-graph { margin-top: 10px; padding-top: 8px; border-top: 1px dashed #EFE3D3; }
-.off-graph-title { font-size: 11px; color: #A1887F; display: block; margin-bottom: 4px; }
+.off-graph-title { font-size: 11px; color: #6E7D70; display: block; margin-bottom: 4px; }
 
 .branch-row {
   display: flex;
@@ -724,115 +724,115 @@ watch(
 }
 .branch-row:last-child { border-bottom: none; }
 .branch-body { flex: 1; min-width: 0; }
-.branch-name { font-size: 14px; font-weight: bold; color: #3E2723; display: block; }
-.branch-founder { font-size: 12px; color: #8B4513; display: block; margin-top: 4px; }
-.branch-sub { font-size: 11px; color: #A1887F; display: block; margin-top: 4px; }
+.branch-name { font-size: 14px; font-weight: bold; color: #2F3A33; display: block; }
+.branch-founder { font-size: 12px; color: #4E6B57; display: block; margin-top: 4px; }
+.branch-sub { font-size: 11px; color: #6E7D70; display: block; margin-top: 4px; }
 .branch-arrow { font-size: 16px; color: #C7B299; }
 
 /* ---- 夜间模式（html[data-theme='dark']）：祖谱页外壳（页头卡 / 三段 segment / 图例 /
-   版式文档占位 / 左侧浮动按钮 / 编辑弹窗）；选中与主色态一律 #C98850。
+   版式文档占位 / 左侧浮动按钮 / 编辑弹窗）；选中与主色态一律 #D9A96B。
    只改颜色，不改几何（T3：两态 rect 差 ≤0.5px）。H5 条件编译 ⇒ 小程序零改动。 */
 /* #ifdef H5 */
 html[data-theme='dark'] .clan-edit-entry {
-  background: #332A20;
-  border-color: #7A6234;
+  background: #2A3631;
+  border-color: #5C6E63;
 }
-html[data-theme='dark'] .clan-edit-text { color: #C98850; }
+html[data-theme='dark'] .clan-edit-text { color: #D9A96B; }
 
 /* 左侧功能按钮（血脉图示 / 版式文档 / 祖谱消息） */
 html[data-theme='dark'] .view-btn {
-  background: #2A2219;
-  border-color: #3A3027;
+  background: #232E2B;
+  border-color: #36453F;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
 }
-html[data-theme='dark'] .view-text { color: #C98850; }
+html[data-theme='dark'] .view-text { color: #D9A96B; }
 html[data-theme='dark'] .view-btn.active {
-  background: #C98850;
-  border-color: #C98850;
+  background: #D9A96B;
+  border-color: #D9A96B;
 }
-html[data-theme='dark'] .view-btn.active .view-text { color: #211A14; }
+html[data-theme='dark'] .view-btn.active .view-text { color: #1B2422; }
 
 /* 版式文档占位（空态） */
 html[data-theme='dark'] .doc-placeholder {
-  background: #2A2219;
-  border-color: #4A3D31;
+  background: #232E2B;
+  border-color: #42524B;
 }
-html[data-theme='dark'] .doc-ph-title { color: #C98850; }
-html[data-theme='dark'] .doc-ph-text { color: #8A7A66; }
+html[data-theme='dark'] .doc-ph-title { color: #D9A96B; }
+html[data-theme='dark'] .doc-ph-text { color: #7A8B83; }
 
 /* 页头卡 */
 html[data-theme='dark'] .clan-hero {
-  background: #2A2219;
-  border-color: #3A3027;
+  background: #232E2B;
+  border-color: #36453F;
 }
-html[data-theme='dark'] .clan-title { color: #EDE3D6; }
-html[data-theme='dark'] .clan-surname { color: #C98850; }
-html[data-theme='dark'] .clan-genealogy { color: #8A7A66; }
+html[data-theme='dark'] .clan-title { color: #DFE9E4; }
+html[data-theme='dark'] .clan-surname { color: #D9A96B; }
+html[data-theme='dark'] .clan-genealogy { color: #7A8B83; }
 html[data-theme='dark'] .clan-notice { color: #E0675F; }
 html[data-theme='dark'] .clan-error { color: #E0675F; }
 
 /* 三段 segment 卡 */
 html[data-theme='dark'] .segment {
-  background: #2A2219;
-  border-color: #3A3027;
+  background: #232E2B;
+  border-color: #36453F;
 }
-html[data-theme='dark'] .seg-title { color: #C98850; }
-html[data-theme='dark'] .seg-count { color: #8A7A66; }
-html[data-theme='dark'] .seg-hint { color: #8A7A66; }
+html[data-theme='dark'] .seg-title { color: #D9A96B; }
+html[data-theme='dark'] .seg-count { color: #7A8B83; }
+html[data-theme='dark'] .seg-hint { color: #7A8B83; }
 html[data-theme='dark'] .legend-item {
-  color: #C98850;
-  background: #332A20;
-  border-color: #4A3D31;
+  color: #D9A96B;
+  background: #2A3631;
+  border-color: #42524B;
 }
-html[data-theme='dark'] .foot-line { color: #8A7A66; }
-html[data-theme='dark'] .off-graph { border-top-color: #4A3D31; }
-html[data-theme='dark'] .off-graph-title { color: #8A7A66; }
-html[data-theme='dark'] .branch-row { border-bottom-color: #3A3027; }
-html[data-theme='dark'] .branch-name { color: #EDE3D6; }
-html[data-theme='dark'] .branch-founder { color: #C98850; }
-html[data-theme='dark'] .branch-sub { color: #8A7A66; }
-html[data-theme='dark'] .branch-arrow { color: #8A7A66; }
+html[data-theme='dark'] .foot-line { color: #7A8B83; }
+html[data-theme='dark'] .off-graph { border-top-color: #42524B; }
+html[data-theme='dark'] .off-graph-title { color: #7A8B83; }
+html[data-theme='dark'] .branch-row { border-bottom-color: #36453F; }
+html[data-theme='dark'] .branch-name { color: #DFE9E4; }
+html[data-theme='dark'] .branch-founder { color: #D9A96B; }
+html[data-theme='dark'] .branch-sub { color: #7A8B83; }
+html[data-theme='dark'] .branch-arrow { color: #7A8B83; }
 
 /* 编辑祖谱信息弹窗 */
 html[data-theme='dark'] .modal {
-  background: #2A2219;
+  background: #232E2B;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
 }
-html[data-theme='dark'] .modal-title { color: #EDE3D6; }
-html[data-theme='dark'] .label { color: #C98850; }
+html[data-theme='dark'] .modal-title { color: #DFE9E4; }
+html[data-theme='dark'] .label { color: #D9A96B; }
 html[data-theme='dark'] .input,
 html[data-theme='dark'] .textarea {
-  background: #241D16;
-  border-color: #3A3027;
-  color: #EDE3D6;
+  background: #1E2825;
+  border-color: #36453F;
+  color: #DFE9E4;
 }
 html[data-theme='dark'] .edit-error { color: #E0675F; }
 
 /* 树图浮层（由子组件 tree-pedigree 渲染，故用 :deep 从本宿主落色；**不改该组件文件**）：
    统计条 / ＋－⟳ 缩放圆钮 / 右侧「纵向·横向·迁徙地图」图例栏 / 图下提示 / 加载空态。只改颜色。 */
 html[data-theme='dark'] .clan-hall :deep(.stats) {
-  background: #241D16;
-  border-color: #3A3027;
-  color: #EDE3D6;
+  background: #1E2825;
+  border-color: #36453F;
+  color: #DFE9E4;
 }
-html[data-theme='dark'] .clan-hall :deep(.stats .stat) { color: #EDE3D6; }
-html[data-theme='dark'] .clan-hall :deep(.stat.stat-hint) { color: #C98850; }
-html[data-theme='dark'] .clan-hall :deep(.hint) { color: #8A7A66; }
+html[data-theme='dark'] .clan-hall :deep(.stats .stat) { color: #DFE9E4; }
+html[data-theme='dark'] .clan-hall :deep(.stat.stat-hint) { color: #D9A96B; }
+html[data-theme='dark'] .clan-hall :deep(.hint) { color: #7A8B83; }
 html[data-theme='dark'] .clan-hall :deep(.loading),
-html[data-theme='dark'] .clan-hall :deep(.empty) { color: #8A7A66; }
+html[data-theme='dark'] .clan-hall :deep(.empty) { color: #7A8B83; }
 html[data-theme='dark'] .clan-hall :deep(.error) { color: #E0675F; }
 html[data-theme='dark'] .clan-hall :deep(.zoom-btn),
 html[data-theme='dark'] .clan-hall :deep(.layout-btn) {
-  background: #2A2219;
-  border-color: #3A3027;
+  background: #232E2B;
+  border-color: #36453F;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
 }
 html[data-theme='dark'] .clan-hall :deep(.zoom-icon),
-html[data-theme='dark'] .clan-hall :deep(.layout-name) { color: #C98850; }
+html[data-theme='dark'] .clan-hall :deep(.layout-name) { color: #D9A96B; }
 html[data-theme='dark'] .clan-hall :deep(.layout-btn.active) {
-  background: #C98850;
-  border-color: #C98850;
+  background: #D9A96B;
+  border-color: #D9A96B;
 }
-html[data-theme='dark'] .clan-hall :deep(.layout-btn.active .layout-name) { color: #211A14; }
+html[data-theme='dark'] .clan-hall :deep(.layout-btn.active .layout-name) { color: #1B2422; }
 /* #endif */
 </style>

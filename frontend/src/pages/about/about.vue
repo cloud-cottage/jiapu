@@ -54,7 +54,7 @@
   margin-bottom: 16px; background: #fff; border-radius: 12px;
   padding: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);
 }
-.section-title { font-size: 16px; font-weight: bold; color: #8B4513; display: block; margin-bottom: 8px; }
+.section-title { font-size: 16px; font-weight: bold; color: #4E6B57; display: block; margin-bottom: 8px; }
 .text { font-size: 14px; color: #555; line-height: 1.8; display: block; }
 .mt { margin-top: 8px; }
 </style>

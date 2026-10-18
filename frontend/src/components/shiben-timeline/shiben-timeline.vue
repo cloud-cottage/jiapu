@@ -244,10 +244,10 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* 中华世本（纵向世系树）— 与时间轴同一套棕色配色：暖米底 #FFFDF8 / 棕边 #8B4513 / 深棕字 #3E2723 */
+/* 中华世本（纵向世系树）— 与时间轴同一套棕色配色：暖米底 #FAFCF8 / 棕边 #4E6B57 / 深棕字 #2F3A33 */
 .shiben-view { padding-bottom: 20px; }
 .hero {
-  background: linear-gradient(135deg, #3E2723, #6D4C41);
+  background: linear-gradient(135deg, #2F3A33, #6D4C41);
   border-radius: 14px; padding: 20px; color: #fff; margin-bottom: 14px;
 }
 .hero-title { font-size: 22px; font-weight: bold; display: block; }
@@ -255,7 +255,7 @@ onMounted(() => {
 .hero-rank { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .hero-rank-text { font-size: 12px; color: #FFD54F; }
 .hero-warn { margin-top: 6px; font-size: 11px; color: #FFB74D; background: rgba(255,183,77,0.15); padding: 4px 8px; border-radius: 6px; }
-.center { text-align: center; padding: 24px 0; color: #A1887F; font-size: 12px; }
+.center { text-align: center; padding: 24px 0; color: #6E7D70; font-size: 12px; }
 .center.error { color: #C62828; }
 
 /* 左侧功能按钮（与普通家族树 / 祖谱首页同款：固定悬浮正方按钮） */
@@ -264,119 +264,119 @@ onMounted(() => {
   display: flex; flex-direction: column; gap: 10px; z-index: 950;
 }
 .view-btn {
-  width: 56px; height: 56px; background: #fff; border: 1px solid #E0D5C8;
+  width: 56px; height: 56px; background: #fff; border: 1px solid #CFD8CE;
   border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.12);
   display: flex; align-items: center; justify-content: center; padding: 2px;
 }
-.view-text { font-size: 11px; color: #8B4513; line-height: 1.3; text-align: center; }
-.view-btn.active { background: #8B4513; border-color: #8B4513; }
+.view-text { font-size: 11px; color: #4E6B57; line-height: 1.3; text-align: center; }
+.view-btn.active { background: #4E6B57; border-color: #4E6B57; }
 .view-btn.active .view-text { color: #fff; }
 
 /* 版式文档占位 */
 .doc-placeholder {
-  background: #FFFDF8; border: 1px dashed #E0D5C8; border-radius: 12px;
+  background: #FAFCF8; border: 1px dashed #CFD8CE; border-radius: 12px;
   padding: 30px 16px; text-align: center; margin-bottom: 12px;
 }
-.doc-ph-title { font-size: 15px; font-weight: bold; color: #8B4513; display: block; }
-.doc-ph-text { font-size: 12px; color: #A1887F; display: block; margin-top: 8px; line-height: 1.6; }
+.doc-ph-title { font-size: 15px; font-weight: bold; color: #4E6B57; display: block; }
+.doc-ph-text { font-size: 12px; color: #6E7D70; display: block; margin-top: 8px; line-height: 1.6; }
 
 /* 世本消息视图（左侧按钮留位） */
 .shiben-msg-body { margin-left: 8px; }
 
 /* 树图宿主卡片：暖米底 + 棕边 + 深棕字（与档案卡片一致） */
 .tree-host {
-  background: #FFFDF8;
-  border: 1px solid #E0D5C8;
+  background: #FAFCF8;
+  border: 1px solid #CFD8CE;
   border-radius: 12px;
   padding: 10px 10px 6px;
 }
 .tree-host-head { display: flex; align-items: baseline; gap: 8px; margin: 2px 2px 8px; }
-.tree-host-title { font-size: 14px; font-weight: bold; color: #3E2723; }
-.tree-host-sub { font-size: 11px; color: #A1887F; }
+.tree-host-title { font-size: 14px; font-weight: bold; color: #2F3A33; }
+.tree-host-sub { font-size: 11px; color: #6E7D70; }
 
 /* 树图内部：用同一套棕色配色收敛（统计条 / 提示 / 图例），不改结构与图标 */
-.tree-host :deep(.stats) { background: #FBF6EF; border: 1px solid #E0D5C8; color: #3E2723; }
-.tree-host :deep(.stats .stat) { color: #3E2723; }
-.tree-host :deep(.stat-hint) { color: #8B4513; }
-.tree-host :deep(.hint) { color: #A1887F; }
-.tree-host :deep(.loading), .tree-host :deep(.empty) { color: #A1887F; }
+.tree-host :deep(.stats) { background: #F1F6F2; border: 1px solid #CFD8CE; color: #2F3A33; }
+.tree-host :deep(.stats .stat) { color: #2F3A33; }
+.tree-host :deep(.stat-hint) { color: #4E6B57; }
+.tree-host :deep(.hint) { color: #6E7D70; }
+.tree-host :deep(.loading), .tree-host :deep(.empty) { color: #6E7D70; }
 
 /* ---- 夜间模式（html[data-theme='dark']）：世本页外壳（轴卡 hero / 版式占位 / 左侧浮动按钮 /
-   世系树宿主卡与卡内统计条）；主色态 #C98850。只改颜色，不改几何（T3：两态 rect 差 ≤0.5px）。
+   世系树宿主卡与卡内统计条）；主色态 #D9A96B。只改颜色，不改几何（T3：两态 rect 差 ≤0.5px）。
    注：树图内部的**节点卡底/字/边框、世代连线与「第 N 世」代际文字由 ECharts canvas 绘制**
    （颜色在 JS option 里，非 CSS）⇒ 已由 `tree-pedigree.vue` 按 `themeRef` 现取色板并在主题切换时
    就地重建 option（浅/暗同色槽、几何同值）。本文件不再需要碰 canvas。
    本文件全部 dark 规则都在 H5 条件编译块内 ⇒ 小程序零新增 data-theme 规则。 */
 /* #ifdef H5 */
 html[data-theme='dark'] .hero {
-  background: linear-gradient(135deg, #2A2219, #241D16);
-  color: #EDE3D6;
+  background: linear-gradient(135deg, #232E2B, #1E2825);
+  color: #DFE9E4;
 }
-html[data-theme='dark'] .hero-sub { color: #B8A894; }
-html[data-theme='dark'] .hero-rank-text { color: #C98850; }
+html[data-theme='dark'] .hero-sub { color: #A5B6AE; }
+html[data-theme='dark'] .hero-rank-text { color: #D9A96B; }
 html[data-theme='dark'] .hero-warn {
-  color: #C98850;
-  background: rgba(201, 136, 80, 0.15);
+  color: #D9A96B;
+  background: rgba(217, 169, 107, 0.15);
 }
-html[data-theme='dark'] .center { color: #8A7A66; }
+html[data-theme='dark'] .center { color: #7A8B83; }
 html[data-theme='dark'] .center.error { color: #E0675F; }
 
 /* 左侧功能按钮（血脉图示 / 版式文档 / 世本消息） */
 html[data-theme='dark'] .view-btn {
-  background: #2A2219;
-  border-color: #3A3027;
+  background: #232E2B;
+  border-color: #36453F;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
 }
-html[data-theme='dark'] .view-text { color: #C98850; }
+html[data-theme='dark'] .view-text { color: #D9A96B; }
 html[data-theme='dark'] .view-btn.active {
-  background: #C98850;
-  border-color: #C98850;
+  background: #D9A96B;
+  border-color: #D9A96B;
 }
-html[data-theme='dark'] .view-btn.active .view-text { color: #211A14; }
+html[data-theme='dark'] .view-btn.active .view-text { color: #1B2422; }
 
 /* 版式文档占位（空态） */
 html[data-theme='dark'] .doc-placeholder {
-  background: #2A2219;
-  border-color: #4A3D31;
+  background: #232E2B;
+  border-color: #42524B;
 }
-html[data-theme='dark'] .doc-ph-title { color: #C98850; }
-html[data-theme='dark'] .doc-ph-text { color: #8A7A66; }
+html[data-theme='dark'] .doc-ph-title { color: #D9A96B; }
+html[data-theme='dark'] .doc-ph-text { color: #7A8B83; }
 
 /* 树图宿主卡 + 卡内统计条（统计条由 tree-pedigree 的 .stats 渲染，用 :deep 落色） */
 html[data-theme='dark'] .tree-host {
-  background: #2A2219;
-  border-color: #3A3027;
+  background: #232E2B;
+  border-color: #36453F;
 }
-html[data-theme='dark'] .tree-host-title { color: #EDE3D6; }
-html[data-theme='dark'] .tree-host-sub { color: #8A7A66; }
+html[data-theme='dark'] .tree-host-title { color: #DFE9E4; }
+html[data-theme='dark'] .tree-host-sub { color: #7A8B83; }
 html[data-theme='dark'] .tree-host :deep(.stats) {
-  background: #241D16;
-  border-color: #3A3027;
-  color: #EDE3D6;
+  background: #1E2825;
+  border-color: #36453F;
+  color: #DFE9E4;
 }
-html[data-theme='dark'] .tree-host :deep(.stats .stat) { color: #EDE3D6; }
+html[data-theme='dark'] .tree-host :deep(.stats .stat) { color: #DFE9E4; }
 /* `.stat-hint` 与 `.stat` 同用（`class="stat stat-hint"`）⇒ 必须抬到同等特异性并排在后面，
-   否则被上面 `.stats .stat`（#EDE3D6）压掉，#C98850 不生效 */
-html[data-theme='dark'] .tree-host :deep(.stat.stat-hint) { color: #C98850; }
-html[data-theme='dark'] .tree-host :deep(.hint) { color: #8A7A66; }
+   否则被上面 `.stats .stat`（#DFE9E4）压掉，#D9A96B 不生效 */
+html[data-theme='dark'] .tree-host :deep(.stat.stat-hint) { color: #D9A96B; }
+html[data-theme='dark'] .tree-host :deep(.hint) { color: #7A8B83; }
 html[data-theme='dark'] .tree-host :deep(.loading),
-html[data-theme='dark'] .tree-host :deep(.empty) { color: #8A7A66; }
+html[data-theme='dark'] .tree-host :deep(.empty) { color: #7A8B83; }
 
 /* 树图浮层（由子组件 tree-pedigree 渲染，故用 :deep 从本宿主落色；**不改该组件文件**）：
    ＋－⟳ 缩放圆钮 / 右侧「纵向·横向·迁徙地图」图例栏。只改颜色，不改几何。 */
 html[data-theme='dark'] .shiben-view :deep(.zoom-btn),
 html[data-theme='dark'] .shiben-view :deep(.layout-btn) {
-  background: #2A2219;
-  border-color: #3A3027;
+  background: #232E2B;
+  border-color: #36453F;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
 }
 html[data-theme='dark'] .shiben-view :deep(.zoom-icon),
-html[data-theme='dark'] .shiben-view :deep(.layout-name) { color: #C98850; }
+html[data-theme='dark'] .shiben-view :deep(.layout-name) { color: #D9A96B; }
 html[data-theme='dark'] .shiben-view :deep(.layout-btn.active) {
-  background: #C98850;
-  border-color: #C98850;
+  background: #D9A96B;
+  border-color: #D9A96B;
 }
-html[data-theme='dark'] .shiben-view :deep(.layout-btn.active .layout-name) { color: #211A14; }
+html[data-theme='dark'] .shiben-view :deep(.layout-btn.active .layout-name) { color: #1B2422; }
 html[data-theme='dark'] .shiben-view :deep(.error) { color: #E0675F; }
 /* #endif */
 </style>

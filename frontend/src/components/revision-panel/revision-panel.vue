@@ -1138,7 +1138,7 @@ onMounted(load);
   justify-content: space-between;
   margin-bottom: 8px;
 }
-.rp-title { font-size: 16px; font-weight: bold; color: #8B4513; }
+.rp-title { font-size: 16px; font-weight: bold; color: #4E6B57; }
 .rp-close { font-size: 16px; color: #666; padding: 0 4px; }
 
 .rp-tip { padding: 12px 0; text-align: center; color: #999; font-size: 13px; }
@@ -1150,9 +1150,9 @@ onMounted(load);
   margin-top: 12px;
   padding: 10px;
   background: #fff;
-  border: 1px solid #E0D5C8;
+  border: 1px solid #CFD8CE;
 }
-.rp-block-title { display: block; margin-bottom: 6px; font-size: 14px; font-weight: bold; color: #8B4513; }
+.rp-block-title { display: block; margin-bottom: 6px; font-size: 14px; font-weight: bold; color: #4E6B57; }
 .rp-cover { width: 100%; height: 160px; background: #F1ECE0; }
 
 /* 档位横幅（编辑期免费 / 锁定后按次扣费） */
@@ -1160,9 +1160,9 @@ onMounted(load);
   margin-top: 10px;
   padding: 8px 10px;
   background: #FBF3E4;
-  border: 1px solid #E0D5C8;
+  border: 1px solid #CFD8CE;
 }
-.rp-tier-line { display: block; font-size: 13px; color: #8B4513; line-height: 1.6; }
+.rp-tier-line { display: block; font-size: 13px; color: #4E6B57; line-height: 1.6; }
 
 /* 轮次选择：总编辑可修任意轮 */
 .rp-round {
@@ -1171,10 +1171,10 @@ onMounted(load);
   justify-content: space-between;
   margin-top: 4px;
   padding: 6px 8px;
-  border: 1px solid #E0D5C8;
-  background: #FFFDF8;
+  border: 1px solid #CFD8CE;
+  background: #FAFCF8;
 }
-.rp-round-on { border-color: #8B4513; background: #FBF3E4; }
+.rp-round-on { border-color: #4E6B57; background: #FBF3E4; }
 .rp-round-text { font-size: 13px; color: #111; }
 .rp-round-time { font-size: 11px; color: #999; }
 
@@ -1184,8 +1184,8 @@ onMounted(load);
   margin-top: 6px;
   padding: 6px 8px;
   font-size: 13px;
-  border: 1px solid #E0D5C8;
-  background: #FFFDF8;
+  border: 1px solid #CFD8CE;
+  background: #FAFCF8;
 }
 .rp-textarea {
   box-sizing: border-box;
@@ -1194,8 +1194,8 @@ onMounted(load);
   margin-top: 6px;
   padding: 6px 8px;
   font-size: 13px;
-  border: 1px solid #E0D5C8;
-  background: #FFFDF8;
+  border: 1px solid #CFD8CE;
+  background: #FAFCF8;
 }
 .rp-input-sub { flex: 1; min-width: 80px; }
 
@@ -1207,42 +1207,42 @@ onMounted(load);
 .rp-duty-chip {
   padding: 3px 8px;
   font-size: 12px;
-  color: #8B4513;
+  color: #4E6B57;
   background: #fff;
-  border: 1px solid #E0D5C8;
+  border: 1px solid #CFD8CE;
   border-radius: 12px;
 }
-.rp-duty-on { color: #fff; background: #8B4513; border-color: #8B4513; }
+.rp-duty-on { color: #fff; background: #4E6B57; border-color: #4E6B57; }
 .rp-duty-chip.disabled { opacity: 0.45; }
 .rp-pick {
   flex: 1;
   min-width: 96px;
   padding: 6px 8px;
   border: 1px dashed #C9B79B;
-  background: #FFFDF8;
+  background: #FAFCF8;
 }
 .rp-pick-name { display: block; font-size: 13px; color: #111; }
 .rp-pick-id { display: block; font-size: 11px; color: #999; }
 .rp-del { padding: 4px 6px; font-size: 12px; color: #C62828; }
 
-.rp-picker { margin-top: 8px; padding: 8px; background: #FBF7EE; border: 1px solid #E0D5C8; }
+.rp-picker { margin-top: 8px; padding: 8px; background: #FBF7EE; border: 1px solid #CFD8CE; }
 .rp-picker-head { display: flex; align-items: center; justify-content: space-between; }
-.rp-picker-title { font-size: 13px; color: #8B4513; }
+.rp-picker-title { font-size: 13px; color: #4E6B57; }
 .rp-picker-search { display: flex; align-items: center; gap: 6px; }
 .rp-results { margin-top: 6px; max-height: 180px; overflow-y: auto; }
 .rp-result { padding: 6px 8px; border-bottom: 1px solid #EFE7D8; }
 
 .rp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
-.rp-save { margin-top: 12px; padding-top: 10px; border-top: 1px solid #E0D5C8; }
+.rp-save { margin-top: 12px; padding-top: 10px; border-top: 1px solid #CFD8CE; }
 .rp-btn {
   padding: 6px 12px;
   font-size: 13px;
-  color: #8B4513;
+  color: #4E6B57;
   background: #fff;
-  border: 1px solid #E0D5C8;
+  border: 1px solid #CFD8CE;
   border-radius: 14px;
 }
-.rp-btn-primary { color: #fff; background: #8B4513; border-color: #8B4513; }
+.rp-btn-primary { color: #fff; background: #4E6B57; border-color: #4E6B57; }
 .rp-btn.disabled { opacity: 0.45; }
 
 /* 小程序 canvas 2d 重绘用（移出可视区，不参与布局） */

@@ -621,15 +621,15 @@ const WEAK_FONT = 11;
 /**
  * **名卡配色槽位（夜间模式补丁）**：ECharts 的颜色写在 JS option / series data 里，读不到 CSS 变量
  * ⇒ 由 `themeRef` 现取值（见 `palette`）。**浅色列 = 改造前逐字原值**（浅色观感零变化）；
- * 暗色列取暖调 token：底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 / 主字 #EDE3D6 / 次字 #B8A894 /
- * 边框·连线 #3A3027–#4A3D31 / 强调 #C98850。
+ * 暗色列取暖调 token：底 #1B2422 / 卡面 #232E2B / 次容器 #1E2825 / 主字 #DFE9E4 / 次字 #A5B6AE /
+ * 边框·连线 #36453F–#42524B / 强调 #D9A96B。
  * ⚠️ 只换颜色：卡宽/卡高/行距/symbolSize/盒子尺寸/布局参数一律与浅色同值 ⇒ 两态节点数与坐标逐值一致。
  */
 function buildPalette(dark: boolean) {
-  const nameColor = dark ? '#EDE3D6' : '#3E2723';
-  const weakColor = dark ? '#B8A894' : '#9E8F80';
-  /** 主色（浅色 #8B4513 棕 / 暗色 #C98850 暖棕）：虚拟根、占位卡边框、hover 边框、chip 文字 */
-  const accent = dark ? '#C98850' : '#8B4513';
+  const nameColor = dark ? '#DFE9E4' : '#2F3A33';
+  const weakColor = dark ? '#A5B6AE' : '#9E8F80';
+  /** 主色（浅色 #4E6B57 棕 / 暗色 #D9A96B 暖棕）：虚拟根、占位卡边框、hover 边框、chip 文字 */
+  const accent = dark ? '#D9A96B' : '#4E6B57';
   /** 次级行 rich 样式（配偶行 / 第N世 / 外树镜像角标）：视觉上弱于姓名（14px / 主字） */
   const weakRich = { w: { fontSize: WEAK_FONT, color: weakColor } };
   /**
@@ -639,8 +639,8 @@ function buildPalette(dark: boolean) {
   const chipRich = {
     fontSize: WEAK_FONT,
     color: accent,
-    backgroundColor: dark ? '#241D16' : '#FBF6EF',
-    borderColor: dark ? '#3A3027' : '#E0D5C8',
+    backgroundColor: dark ? '#1E2825' : '#F1F6F2',
+    borderColor: dark ? '#36453F' : '#CFD8CE',
     borderWidth: 1,
     borderRadius: 8,
     padding: [2, 6] as [number, number],
@@ -652,21 +652,21 @@ function buildPalette(dark: boolean) {
     cardRich: { ...weakRich, chip: chipRich },
     /**
      * 卡面底色：按性别区分（男冷 / 女暖 / 未知中性）。暗色不是把浅色变暗（那样会亮成一块白卡），
-     * 而是「同一色相压到卡面色阶」：男 #232B31 / 女 #2E242A / 未知 #2A2219 —— 性别一眼可辨且整体偏暗。
+     * 而是「同一色相压到卡面色阶」：男 #232B31 / 女 #2E242A / 未知 #232E2B —— 性别一眼可辨且整体偏暗。
      */
     cardFill: (g: string | undefined): string =>
       dark
-        ? g === 'M' ? '#232B31' : g === 'F' ? '#2E242A' : '#2A2219'
+        ? g === 'M' ? '#232B31' : g === 'F' ? '#2E242A' : '#232E2B'
         : g === 'M' ? '#EDF3F8' : g === 'F' ? '#FCEFF1' : '#F2F2F2',
     /** 已故者「明显边框」：浅色 = 黑；暗色 = 次字色（黑边在暗底上看不见） */
-    deceasedBorder: dark ? '#B8A894' : '#000000',
+    deceasedBorder: dark ? '#A5B6AE' : '#000000',
     /** 虚拟根 / 占位卡（非人物卡）底色 */
-    artifactFill: dark ? '#241D16' : '#F7EFE3',
+    artifactFill: dark ? '#1E2825' : '#F0F5F1',
     artifactBorder: accent,
     /** 世代连线（ECharts lineStyle） */
-    lineColor: dark ? '#4A3D31' : '#A1887F',
-    tooltipBg: dark ? '#2A2219' : '#FFFDF7',
-    tooltipBorder: dark ? '#4A3D31' : '#8B4513',
+    lineColor: dark ? '#42524B' : '#6E7D70',
+    tooltipBg: dark ? '#232E2B' : '#FAFCF8',
+    tooltipBorder: dark ? '#42524B' : '#4E6B57',
     tooltipTextColor: nameColor,
     /** hover 强调边框 + 虚拟根卡面 */
     emphasisBorder: accent,
@@ -715,7 +715,7 @@ function genderFillColor(g: string | undefined): string {
 /** 递归生成名卡节点树（返回克隆，不改业务数据）：写入自适应卡宽/卡高 + 名卡样式。
  * 夫妇卡：节点有配偶（嫁入成员）时卡体加高，第二行起每行一个「娶 XX / 嫁 XX」（性别未知仍「配XX」），
  * 子女连线仍挂在整卡下方 —— 谱式“夫 + 配某氏”一格并列。
- * 次级行（配偶行/第N世/外树镜像角标）弱化 = 11px/#9E8F80，弱于姓名行（14px/#3E2723）。 */
+ * 次级行（配偶行/第N世/外树镜像角标）弱化 = 11px/#9E8F80，弱于姓名行（14px/#2F3A33）。 */
 const CARD_LINE_STEP = 22; // 每增一行的卡高增量（单行 CARD_H=28）；**与 business/pedigree.ts 的 CARD_CHIP_LINE_STEP 同值**（chip 命中判据按它算）
 const CARD_GAP = 12; // 世代行距：卡高之外每层再留的间距（整树展开时按卡高铺开）
 /** 卡片行数（与 decorateTree 的行构成一致）：姓名 / 关键节点标签 / 第N世 / 每位配偶各一行 / 祖谱节点注记行 */
@@ -848,7 +848,7 @@ function decorateTree(node: TreePersonNode, isVirtualRoot = false): TreePersonNo
   const lines: string[] = [];
   /** chip 在 `lines` 里的 0 基下标（-1 = 本卡无 chip）；渲染期烘进节点，供 `cardChipHit` 按实际行序算命中带 */
   let chipLineIndex = -1;
-  /** 每行的卡面样式（与 lines 等长）：'' = 姓名行（14px/#3E2723）；'w' = 次级行（11px 弱化）；'chip' = 可见入口 */
+  /** 每行的卡面样式（与 lines 等长）：'' = 姓名行（14px/#2F3A33）；'w' = 次级行（11px 弱化）；'chip' = 可见入口 */
   const styles: string[] = [];
   /** 加一行卡面文本；style = ''（姓名行）/ 'w'（次级行）/ 'chip'（卡面可见入口小按钮） */
   const pushLine = (text: string, style = '') => { lines.push(text); styles.push(style); };
@@ -1541,7 +1541,7 @@ function applyZoom(resetCenter = false) {
 <style scoped>
 .stats { text-align: center; margin: 16px 0; padding: 10px; background: #FFF8E1; border-radius: 8px; }
 .stat { font-size: 14px; color: #5D4037; margin: 0 12px; display: inline-block; }
-.stat-hint { font-size: 12px; color: #A1887F; }
+.stat-hint { font-size: 12px; color: #6E7D70; }
 .loading, .error, .empty { text-align: center; padding: 40px; color: #999; }
 .error { color: #C62828; }
 .chart-wrap { margin-top: 8px; }
@@ -1563,7 +1563,7 @@ function applyZoom(resetCenter = false) {
   width: 52px;
   padding: 8px 4px;
   background: #fff;
-  border: 1px solid #E0D5C8;
+  border: 1px solid #CFD8CE;
   border-radius: 12px;
   display: flex;
   flex-direction: column;
@@ -1571,11 +1571,11 @@ function applyZoom(resetCenter = false) {
   box-shadow: 0 2px 8px rgba(0,0,0,0.12);
 }
 .layout-btn.active {
-  background: #8B4513;
-  border-color: #8B4513;
+  background: #4E6B57;
+  border-color: #4E6B57;
 }
 .layout-icon { font-size: 16px; }
-.layout-name { font-size: 10px; color: #8B4513; margin-top: 2px; }
+.layout-name { font-size: 10px; color: #4E6B57; margin-top: 2px; }
 .layout-btn.active .layout-name { color: #fff; }
 
 /* 缩放控制（左下角悬浮） */
@@ -1592,14 +1592,14 @@ function applyZoom(resetCenter = false) {
   width: 40px;
   height: 40px;
   background: #fff;
-  border: 1px solid #E0D5C8;
+  border: 1px solid #CFD8CE;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 2px 8px rgba(0,0,0,0.12);
 }
-.zoom-icon { font-size: 18px; color: #8B4513; font-weight: bold; }
+.zoom-icon { font-size: 18px; color: #4E6B57; font-weight: bold; }
 
 /* 模态框 */
 .modal-mask {
@@ -1611,7 +1611,7 @@ function applyZoom(resetCenter = false) {
   width: 82%; max-width: 360px; background: #fff; border-radius: 14px;
   padding: 24px 20px; box-shadow: 0 8px 30px rgba(0,0,0,0.3);
 }
-.modal-name { font-size: 20px; font-weight: bold; color: #3E2723; display: block; text-align: center; }
+.modal-name { font-size: 20px; font-weight: bold; color: #2F3A33; display: block; text-align: center; }
 .modal-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
 .btn-close { text-align: center; color: #999; font-size: 14px; padding: 4px 0; }
 
@@ -1619,11 +1619,11 @@ function applyZoom(resetCenter = false) {
 .node-menu-mask { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 995; }
 .node-menu {
   position: fixed; min-width: 200px; max-width: 260px;
-  background: #FFFDF7; border: 1px solid #E0D5C8; border-radius: 10px;
+  background: #FAFCF8; border: 1px solid #CFD8CE; border-radius: 10px;
   box-shadow: 0 6px 20px rgba(0,0,0,0.18); padding: 10px 12px;
 }
-.node-menu-note { font-size: 11px; color: #A1887F; display: block; line-height: 1.5; margin-bottom: 8px; }
-.node-menu-item { font-size: 14px; color: #3E2723; display: block; padding: 8px 0; }
+.node-menu-note { font-size: 11px; color: #6E7D70; display: block; line-height: 1.5; margin-bottom: 8px; }
+.node-menu-item { font-size: 14px; color: #2F3A33; display: block; padding: 8px 0; }
 .node-menu-cancel { font-size: 13px; color: #999; display: block; padding: 6px 0 2px; text-align: center; }
 
 /* 始祖列表 */
@@ -1631,11 +1631,11 @@ function applyZoom(resetCenter = false) {
 .attach-results { max-height: 32vh; overflow-y: auto; margin-top: 8px; }
 .attach-item {
   display: flex; align-items: center; gap: 8px;
-  padding: 10px 12px; border: 1px solid #F0E8DE; border-radius: 8px;
+  padding: 10px 12px; border: 1px solid #E6EDE7; border-radius: 8px;
   margin-bottom: 8px;
 }
-.attach-item.selected { border-color: #8B4513; background: #FBF6EF; }
-.attach-name { font-size: 14px; color: #3E2723; font-weight: 500; }
+.attach-item.selected { border-color: #4E6B57; background: #F1F6F2; }
+.attach-name { font-size: 14px; color: #2F3A33; font-weight: 500; }
 .attach-id { font-size: 11px; color: #999; margin-left: auto; }
 
 /* 添加父/子节点弹窗 */
@@ -1644,11 +1644,11 @@ function applyZoom(resetCenter = false) {
 }
 .mode-btn {
   flex: 1; text-align: center; padding: 8px 0;
-  border: 1px solid #E0D5C8; border-radius: 8px;
+  border: 1px solid #CFD8CE; border-radius: 8px;
   font-size: 13px; color: #666;
 }
 .mode-btn.active {
-  background: #8B4513; border-color: #8B4513; color: #fff;
+  background: #4E6B57; border-color: #4E6B57; color: #fff;
 }
 .gender-row { margin-top: 10px; }
 </style>

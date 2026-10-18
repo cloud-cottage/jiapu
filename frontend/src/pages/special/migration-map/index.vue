@@ -30,7 +30,7 @@ onLoad((options): void => {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #fffdf8;
+  background: #FAFCF8;
 }
 .center {
   flex: 1;
@@ -45,9 +45,9 @@ onLoad((options): void => {
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
    迁徙地图页外壳（地图底图/面/标签 = 图像本体，由 MigrationMapH5 内部 :deep 规则维持浅色，
-   本页不碰）：外壳底 #211A14、占位文字 #B8A894。只改颜色、零几何改动；H5 条件编译。 */
+   本页不碰）：外壳底 #1B2422、占位文字 #A5B6AE。只改颜色、零几何改动；H5 条件编译。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .mig-page { background: #211A14; }
-html[data-theme='dark'] .center-txt { color: #B8A894; }
+html[data-theme='dark'] .mig-page { background: #1B2422; }
+html[data-theme='dark'] .center-txt { color: #A5B6AE; }
 /* #endif */
 </style>

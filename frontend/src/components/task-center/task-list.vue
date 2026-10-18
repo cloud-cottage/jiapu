@@ -159,29 +159,29 @@ defineExpose({ refresh });
 <style scoped>
 .tq { padding: 12px 16px 24px; }
 .tq-loading { padding: 40px 0; text-align: center; }
-.tq-loading-text { font-size: 13px; color: #B5A594; }
+.tq-loading-text { font-size: 13px; color: #8E9A93; }
 .tq-fail { padding: 32px 16px; text-align: center; }
 .tq-fail-text { display: block; font-size: 13px; color: #A8322D; line-height: 1.8; }
 .tq-retry {
   display: inline-flex; align-items: center; justify-content: center;
   margin-top: 12px; padding: 7px 16px; border-radius: 999px;
-  background: #FFFDF8; border: 1px solid #E3D3BE;
+  background: #FAFCF8; border: 1px solid #D5DFD4;
 }
-.tq-retry-text { font-size: 13px; color: #8B4513; }
+.tq-retry-text { font-size: 13px; color: #4E6B57; }
 .tq-head { display: flex; align-items: center; }
-.tq-day { font-size: 11px; color: #B5A594; }
-.tq-refreshing { margin-left: auto; font-size: 11px; color: #B5A594; }
+.tq-day { font-size: 11px; color: #8E9A93; }
+.tq-refreshing { margin-left: auto; font-size: 11px; color: #8E9A93; }
 
 .tq-card {
   margin-top: 10px; padding: 12px 14px; border-radius: 12px;
-  background: linear-gradient(180deg, #FFFDF8, #F8F0E5);
-  border: 1px solid #E3D3BE; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  background: linear-gradient(180deg, #FAFCF8, #EFF4EE);
+  border: 1px solid #D5DFD4; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
 }
 .tq-row { display: flex; align-items: center; }
-.tq-title { font-size: 14px; font-weight: bold; color: #3E2723; }
+.tq-title { font-size: 14px; font-weight: bold; color: #2F3A33; }
 .tq-state { margin-left: auto; font-size: 12px; padding: 2px 10px; border-radius: 999px; }
 .tq-state-not_achieved { color: #8A8A8A; background: #F1EDE7; }
-.tq-state-claimable { color: #fff; background: #8B4513; }
+.tq-state-claimable { color: #fff; background: #4E6B57; }
 .tq-state-claimed { color: #2F6B3A; background: #E8F2E9; }
 .tq-rule { display: block; font-size: 11px; color: #9C8C7C; line-height: 1.7; margin-top: 6px; }
 .tq-block { display: block; font-size: 11px; color: #B07A2A; line-height: 1.7; margin-top: 4px; }
@@ -189,11 +189,11 @@ defineExpose({ refresh });
 .tq-btn {
   display: flex; align-items: center; justify-content: center;
   padding: 6px 18px; border-radius: 999px;
-  background: #F1EDE7; border: 1px solid #E0D5C8;
+  background: #F1EDE7; border: 1px solid #CFD8CE;
 }
-.tq-btn-on { background: #8B4513; border-color: #8B4513; }
+.tq-btn-on { background: #4E6B57; border-color: #4E6B57; }
 .tq-btn-busy { opacity: 0.6; }
-.tq-btn-text { font-size: 13px; color: #8B4513; }
+.tq-btn-text { font-size: 13px; color: #4E6B57; }
 .tq-btn-on .tq-btn-text { color: #fff; }
 .tq-feedback { flex: 1; min-width: 0; margin-left: 10px; font-size: 11px; color: #2F6B3A; line-height: 1.6; }
 .tq-feedback-err { color: #A8322D; }
@@ -204,43 +204,43 @@ defineExpose({ refresh });
    规则写在**组件自身**：本组件是任务卡本体的唯一实现（当前唯一引用方 = `pages/task/index.vue`，
    该页只是入口壳），暗色跟着实现走 ⇒ 引用方不必再用 `:deep()` 穿透
    （scoped 的 data-v 只打到子组件根节点，`:deep` 只是权宜手法；组件被多处引用时会在各页堆暗色副本）。
-   色板同 styles/td-dark-warm.css（卡面 #2A2219 / 次容器 #241D16 / 主字 #EDE3D6 / 次字 #B8A894 /
-   更淡 #8A7A66 / 边框 #3A3027 / 格位 #332A20 / 暖棕 #C98850 / error #E0675F / success #7FC08A /
-   warning #D9973F）。领取按钮：**可领 = #C98850（压字 #211A14）/ 不可领·已领 = #3A3027**。
+   色板同 styles/td-dark-warm.css（卡面 #232E2B / 次容器 #1E2825 / 主字 #DFE9E4 / 次字 #A5B6AE /
+   更淡 #7A8B83 / 边框 #36453F / 格位 #2A3631 / 暖棕 #D9A96B / error #E0675F / success #7FC08A /
+   warning #D9973F）。领取按钮：**可领 = #D9A96B（压字 #1B2422）/ 不可领·已领 = #36453F**。
    **只改颜色**，零布局属性、零 `filter` / `invert`；H5 条件编译 ⇒ 小程序端零改动。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .tq-loading-text { color: #8A7A66; }
+html[data-theme='dark'] .tq-loading-text { color: #7A8B83; }
 html[data-theme='dark'] .tq-fail-text { color: #E0675F; }
-html[data-theme='dark'] .tq-retry { background: #332A20; border-color: #3A3027; }
-html[data-theme='dark'] .tq-retry-text { color: #C98850; }
-html[data-theme='dark'] .tq-day { color: #8A7A66; }
-html[data-theme='dark'] .tq-refreshing { color: #8A7A66; }
+html[data-theme='dark'] .tq-retry { background: #2A3631; border-color: #36453F; }
+html[data-theme='dark'] .tq-retry-text { color: #D9A96B; }
+html[data-theme='dark'] .tq-day { color: #7A8B83; }
+html[data-theme='dark'] .tq-refreshing { color: #7A8B83; }
 
 /* 三条任务卡（任务卡本体） */
 html[data-theme='dark'] .tq-card {
-  background: linear-gradient(180deg, #2A2219, #241D16);
-  border-color: #3A3027;
+  background: linear-gradient(180deg, #232E2B, #1E2825);
+  border-color: #36453F;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
-html[data-theme='dark'] .tq-title { color: #EDE3D6; }
-html[data-theme='dark'] .tq-rule { color: #8A7A66; }
+html[data-theme='dark'] .tq-title { color: #DFE9E4; }
+html[data-theme='dark'] .tq-rule { color: #7A8B83; }
 html[data-theme='dark'] .tq-block { color: #D9973F; }
 
 /* 三态状态标签 */
-html[data-theme='dark'] .tq-state-not_achieved { color: #8A7A66; background: #332A20; }
-html[data-theme='dark'] .tq-state-claimable { color: #211A14; background: #C98850; }
-html[data-theme='dark'] .tq-state-claimed { color: #7FC08A; background: #332A20; }
+html[data-theme='dark'] .tq-state-not_achieved { color: #7A8B83; background: #2A3631; }
+html[data-theme='dark'] .tq-state-claimable { color: #1B2422; background: #D9A96B; }
+html[data-theme='dark'] .tq-state-claimed { color: #7FC08A; background: #2A3631; }
 
 /* 领取按钮：可领（isHighlighted → tq-btn-on）/ 不可领·已领 */
-html[data-theme='dark'] .tq-btn { background: #3A3027; border-color: #4A3D31; }
-html[data-theme='dark'] .tq-btn-text { color: #B8A894; }
-html[data-theme='dark'] .tq-btn-on { background: #C98850; border-color: #C98850; }
-html[data-theme='dark'] .tq-btn-on .tq-btn-text { color: #211A14; }
+html[data-theme='dark'] .tq-btn { background: #36453F; border-color: #42524B; }
+html[data-theme='dark'] .tq-btn-text { color: #A5B6AE; }
+html[data-theme='dark'] .tq-btn-on { background: #D9A96B; border-color: #D9A96B; }
+html[data-theme='dark'] .tq-btn-on .tq-btn-text { color: #1B2422; }
 
 /* 三态提示文字 */
 html[data-theme='dark'] .tq-feedback { color: #7FC08A; }
 html[data-theme='dark'] .tq-feedback-err { color: #E0675F; }
-html[data-theme='dark'] .tq-bag { color: #8A7A66; }
+html[data-theme='dark'] .tq-bag { color: #7A8B83; }
 html[data-theme='dark'] .tq-warn { color: #E0675F; }
 /* #endif */
 </style>

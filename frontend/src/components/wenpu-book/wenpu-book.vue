@@ -399,28 +399,28 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown));
 .toolbar-more {
   padding: 6px 12px;
   background: #fff;
-  border: 1px solid #E0D5C8;
+  border: 1px solid #CFD8CE;
   border-radius: 14px;
 }
-.toolbar-more-text { font-size: 12px; color: #8B4513; }
+.toolbar-more-text { font-size: 12px; color: #4E6B57; }
 /* 修谱入口（与「⋯ 更多」同一行、其左侧；仅家族管理员 / 总编辑渲染） */
 .toolbar-revision {
   margin-right: 8px;
   padding: 6px 12px;
   background: #fff;
-  border: 1px solid #E0D5C8;
+  border: 1px solid #CFD8CE;
   border-radius: 14px;
 }
-.toolbar-revision-text { font-size: 12px; color: #8B4513; }
+.toolbar-revision-text { font-size: 12px; color: #4E6B57; }
 /* 【修改谱名】入口（**与修谱入口同体例**、仍排在其左侧；可见性同 `canManageRevision`） */
 .toolbar-rename {
   margin-right: 8px;
   padding: 6px 12px;
   background: #fff;
-  border: 1px solid #E0D5C8;
+  border: 1px solid #CFD8CE;
   border-radius: 14px;
 }
-.toolbar-rename-text { font-size: 12px; color: #8B4513; }
+.toolbar-rename-text { font-size: 12px; color: #4E6B57; }
 /* 展开的小菜单：PDF 导出为次级 / 弱化样式 */
 .more-menu {
   position: absolute;
@@ -431,7 +431,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown));
   margin-top: 4px;
   padding: 4px;
   background: #fff;
-  border: 1px solid #E0D5C8;
+  border: 1px solid #CFD8CE;
   border-radius: 8px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
 }
@@ -539,29 +539,29 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown));
 html[data-theme='dark'] .toolbar-more,
 html[data-theme='dark'] .toolbar-revision,
 html[data-theme='dark'] .toolbar-rename {
-  background: #2A2219;
-  border-color: #3A3027;
+  background: #232E2B;
+  border-color: #36453F;
 }
 html[data-theme='dark'] .toolbar-more-text,
 html[data-theme='dark'] .toolbar-revision-text,
-html[data-theme='dark'] .toolbar-rename-text { color: #C98850; }
+html[data-theme='dark'] .toolbar-rename-text { color: #D9A96B; }
 html[data-theme='dark'] .more-menu {
-  background: #2A2219;
-  border-color: #3A3027;
+  background: #232E2B;
+  border-color: #36453F;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
 }
-html[data-theme='dark'] .more-item-text { color: #B8A894; }
-html[data-theme='dark'] .book-tip { color: #8A7A66; }
+html[data-theme='dark'] .more-item-text { color: #A5B6AE; }
+html[data-theme='dark'] .book-tip { color: #7A8B83; }
 html[data-theme='dark'] .book-error { color: #E0675F; }
 html[data-theme='dark'] .pager-btn {
-  background: #332A20;
-  border-color: #4A3D31;
+  background: #2A3631;
+  border-color: #42524B;
 }
-html[data-theme='dark'] .pager-btn-text { color: #EDE3D6; }
-html[data-theme='dark'] .page-indicator { color: #EDE3D6; }
+html[data-theme='dark'] .pager-btn-text { color: #DFE9E4; }
+html[data-theme='dark'] .page-indicator { color: #DFE9E4; }
 /* 纸内文字**一律不动**：纸页内多数文字不自带 `color`，靠继承取浅色态下的 `#333`
    （uni 的 page 默认字色）。夜间若不放回这个继承值，会从 App.vue 的全局
-   `page/uni-page-body { color: #EDE3D6 }` 继承成浅字 ⇒ 米色纸上淡字不可读。
+   `page/uni-page-body { color: #DFE9E4 }` 继承成浅字 ⇒ 米色纸上淡字不可读。
    这里把**只有继承链**的那一层钉回浅色态取到的同一个值 `#333`（纸内显式设定的字色/书口色
    全部照旧优先，不受影响）；阅读器与打印预览两条路径都经过 `.book-page`，故同一条覆盖。
    ⇒ 观感 = 夜间纸页与浅色态**逐像素同款**。 */

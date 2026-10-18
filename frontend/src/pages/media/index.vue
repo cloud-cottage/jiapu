@@ -81,29 +81,29 @@ function openArchive() {
   padding: 16px;
   background: #fff;
   border-radius: 12px;
-  border: 1px solid #F0E8DE;
+  border: 1px solid #E6EDE7;
 }
 .archive-entry {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 4px;
 }
 .archive-icon { font-size: 18px; }
-.archive-title { font-size: 15px; font-weight: bold; color: #3E2723; }
+.archive-title { font-size: 15px; font-weight: bold; color: #2F3A33; }
 .archive-value {
-  flex: 1; font-size: 12px; color: #8B4513;
+  flex: 1; font-size: 12px; color: #4E6B57;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.archive-arrow { font-size: 16px; color: #B5A594; }
+.archive-arrow { font-size: 16px; color: #8E9A93; }
 .archive-note {
   padding: 10px 12px; background: #FFF8E1; border-radius: 8px;
 }
 .note-zh { font-size: 12px; color: #5D4037; line-height: 1.7; display: block; }
-.note-en { font-size: 11px; color: #A1887F; line-height: 1.6; display: block; margin-top: 6px; }
+.note-en { font-size: 11px; color: #6E7D70; line-height: 1.6; display: block; margin-top: 6px; }
 .archive-link {
   margin-top: 10px; display: flex; align-items: center; gap: 6px;
-  padding: 10px 12px; background: #FBF6EF; border-radius: 8px;
+  padding: 10px 12px; background: #F1F6F2; border-radius: 8px;
 }
-.link-label { font-size: 13px; color: #8B4513; font-weight: bold; flex-shrink: 0; }
+.link-label { font-size: 13px; color: #4E6B57; font-weight: bold; flex-shrink: 0; }
 .link-value {
   flex: 1; font-size: 12px; color: #2C5F8A;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

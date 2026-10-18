@@ -33,23 +33,25 @@ THEME_CSS = ROOT / "node_modules/@tdesign/uniapp/dist/theme.css"
 LIGHT_PIN = ROOT / "src/styles/td-light-pin.css"
 TARGET = ROOT / "src/styles/td-dark-warm.css"
 
-# ── 暖调角色表（喰色族）────────────────────────────────────────────────────────
-PAGE = "#211A14"          # 页面底
-CARD = "#2A2219"          # 卡面 / 容器
-CARD_ACTIVE = "#332A20"   # 卡面按下
-SUBCARD = "#241D16"       # 次级容器
-SUB_ACTIVE = "#2E251C"
-COMP = "#332A20"          # 组件底（输入框等）
-COMP_ACTIVE = "#3A3027"
-COMP_DIS = "#2E251C"
-TEXT1 = "#EDE3D6"         # 主文字
-TEXT2 = "#B8A894"         # 次文字
-PLACEHOLDER = "#8A7A66"
-TEXT_DIS = "#6E5F4D"
-BORDER1 = "#3A3027"       # 边框 / 分割
-BORDER2 = "#4A3D31"
+# ── 角色表（深青墨族 · 2026-10 换色）──────────────────────────────────────────
+# 口径：与 frontend/scripts/remap-palette-2026-10.mjs 的夜间表逐值一致，
+#      底 #1B2422 / 卡 #232E2B / 次 #1E2825 / 格 #2A3631 / 暖金 #D9A96B。
+PAGE = "#1B2422"          # 页面底
+CARD = "#232E2B"          # 卡面 / 容器
+CARD_ACTIVE = "#2A3631"   # 卡面按下
+SUBCARD = "#1E2825"       # 次级容器
+SUB_ACTIVE = "#212B27"
+COMP = "#2A3631"          # 组件底（输入框等）
+COMP_ACTIVE = "#36453F"
+COMP_DIS = "#212B27"
+TEXT1 = "#DFE9E4"         # 主文字
+TEXT2 = "#A5B6AE"         # 次文字
+PLACEHOLDER = "#7A8B83"
+TEXT_DIS = "#5F6E67"
+BORDER1 = "#36453F"       # 边框 / 分割
+BORDER2 = "#42524B"
 
-BRAND_BASE = "#C98850"    # 暖棕（本批指定起算色）
+BRAND_BASE = "#D9A96B"    # 暖金（与夜间表 #C98850→#D9A96B 同源）
 WARNING_BASE = "#D9973F"
 ERROR_BASE = "#D9705F"
 SUCCESS_BASE = "#6FA96A"
@@ -104,11 +106,13 @@ WARNING = ramp(WARNING_BASE)
 ERROR = ramp(ERROR_BASE)
 SUCCESS = ramp(SUCCESS_BASE)
 
-# 暖中性 14 阶（1 = 最亮 … 14 = 最暗；与 TDesign 的 gray-color 方向一致）
+# 青墨中性 14 阶（1 = 最亮 … 14 = 最暗；与 TDesign 的 gray-color 方向一致）
+# 第 4/6/8/9/10/11/12/13/14 阶 = 夜间表的 次字/placeholder/禁用字/边框/强边框/格/次按下/卡/底；
+# 其余（2/3/5/7）为同族插值，保证 1→14 单调变暗。
 GRAY = [
-    "#EDE3D6", "#E0D5C4", "#D2C3AE", "#B8A894", "#A38F75",
-    "#8A7A66", "#75664F", "#5E5142", "#4A3D31", "#3A3027",
-    "#332A20", "#2E251C", "#2A2219", "#211A14",
+    "#DFE9E4", "#D2DED8", "#C3D1CA", "#A5B6AE", "#93A59D",
+    "#7A8B83", "#697A73", "#4C5A54", "#42524B", "#36453F",
+    "#2A3631", "#212B27", "#232E2B", "#1B2422",
 ]
 
 
@@ -128,10 +132,10 @@ def roles():
     # 中性 14 阶 + 字体色
     for i in range(1, 15):
         m["--td-gray-color-%d" % i] = GRAY[i - 1]
-    m["--td-font-white-1"] = "rgba(255, 246, 234, 0.92)"
-    m["--td-font-white-2"] = "rgba(255, 246, 234, 0.55)"
-    m["--td-font-white-3"] = "rgba(255, 246, 234, 0.35)"
-    m["--td-font-white-4"] = "rgba(255, 246, 234, 0.22)"
+    m["--td-font-white-1"] = "rgba(223, 233, 228, 0.92)"
+    m["--td-font-white-2"] = "rgba(223, 233, 228, 0.55)"
+    m["--td-font-white-3"] = "rgba(223, 233, 228, 0.35)"
+    m["--td-font-white-4"] = "rgba(223, 233, 228, 0.22)"
     m["--td-font-gray-1"] = TEXT1
     m["--td-font-gray-2"] = TEXT2
     m["--td-font-gray-3"] = PLACEHOLDER
@@ -165,8 +169,8 @@ def roles():
 
     # 遮罩
     m["--td-mask-active"] = "rgba(0, 0, 0, 60%)"
-    m["--td-mask-disabled"] = "rgba(33, 26, 20, 60%)"
-    m["--td-mask-background"] = "rgba(36, 29, 22, 96%)"
+    m["--td-mask-disabled"] = "rgba(27, 36, 34, 60%)"
+    m["--td-mask-background"] = "rgba(30, 40, 37, 96%)"
 
     # 底 / 容器 / 组件
     m["--td-bg-color-page"] = PAGE
@@ -212,12 +216,12 @@ def roles():
     m["--td-table-shadow-color"] = "rgba(0, 0, 0, 55%)"
 
     # 滚动条
-    m["--td-scrollbar-color"] = "rgba(237, 227, 214, 15%)"
-    m["--td-scrollbar-hover-color"] = "rgba(237, 227, 214, 30%)"
+    m["--td-scrollbar-color"] = "rgba(223, 233, 228, 15%)"
+    m["--td-scrollbar-hover-color"] = "rgba(223, 233, 228, 30%)"
     m["--td-scroll-track-color"] = SUBCARD
 
-    # 组件补丁（light 块里的三条，此处给暖调深色对偶）
-    m["--td-picker-transparent-color"] = "rgba(42, 34, 25, 0)"
+    # 组件补丁（light 块里的三条，此处给深青墨族对偶）
+    m["--td-picker-transparent-color"] = "rgba(35, 46, 43, 0)"
     m["--td-switch-dot-disabled-color"] = TEXT2
     m["--td-switch-loading-color"] = BRAND_BASE
     return m
@@ -285,12 +289,12 @@ HEADER = """/*
  * 生成器：frontend/scripts/gen-td-dark-warm.py（`--write` 落盘，默认 dry-run）
  * 键集：td-light-pin.css 的 {n} 条 `--td-*`（light-pin 钉住哪些，夜间就逐条翻回哪些；
  *       其中 131 条在 @tdesign/uniapp/dist/theme.css 的 dark 块里也有，另 5 条只在 light 块）。
- *       值**不取** TDesign 蓝调，全部由生成器的暖调角色表推导（brand = {brand} 起算的
+ *       值**不取** TDesign 蓝调，全部由生成器的青墨角色表推导（brand = {brand} 起算的
  *       1–10 阶单调 ramp，第 7 阶 = 主色）。
  *
  * 与 td-light-pin.css 的关系（顺序有意义）：
- *   · light-pin 继续在 `@media (prefers-color-scheme: dark)` 下把 token 钉回喰色 ⇒
- *     默认（无 data-theme / data-theme=light）下两种系统偏好都是喰色观感，**行为不变**；
+ *   · light-pin 继续在 `@media (prefers-color-scheme: dark)` 下把 token 钉回日间色 ⇒
+ *     默认（无 data-theme / data-theme=light）下两种系统偏好都是日间观感，**行为不变**；
  *   · 本文件只在 `html[data-theme='dark']` 下生效，且选择器特异性更高 ⇒ 夜间覆盖。
  *     特异性对照（必须逐条压过，否则夜间不生效）：
  *       `:root:root`                        (0,2,0)  ← light-pin 的 html

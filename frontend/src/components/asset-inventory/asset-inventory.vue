@@ -2053,8 +2053,8 @@ onUnmounted(() => {
 /* 卡片：与「我的」页既有 bind-card 同规格（圆角 / 阴影 / 内距一致），底色走古风牙黄纸感 */
 .inv-card {
   position: relative;
-  background: linear-gradient(180deg, #FFFDF8, #F8F0E5);
-  border: 1px solid #E3D3BE; border-radius: 14px; padding: 16px;
+  background: linear-gradient(180deg, #FAFCF8, #EFF4EE);
+  border: 1px solid #D5DFD4; border-radius: 14px; padding: 16px;
   margin-bottom: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);
 }
 .inv-head { display: flex; align-items: center; justify-content: space-between; }
@@ -2062,18 +2062,18 @@ onUnmounted(() => {
 /* 标题装饰（朱红 → 棕 的小竖笔，古风书签感） */
 .inv-title-mark {
   width: 4px; height: 15px; border-radius: 2px; margin-right: 8px;
-  background: linear-gradient(180deg, #A8322D, #8B4513);
+  background: linear-gradient(180deg, #A8322D, #8E2A24);
 }
-.inv-title { font-size: 16px; font-weight: bold; color: #3E2723; letter-spacing: 2px; }
+.inv-title { font-size: 16px; font-weight: bold; color: #2F3A33; letter-spacing: 2px; }
 .inv-count { font-size: 12px; color: #B08D57; }
-.inv-hint { font-size: 11px; color: #B5A594; display: block; margin: 4px 0 10px; line-height: 1.5; }
+.inv-hint { font-size: 11px; color: #8E9A93; display: block; margin: 4px 0 10px; line-height: 1.5; }
 
 /* 6×6 道具栏：木质底板 + 内嵌格位（游戏道具栏观感）；375–1440 宽度按 1fr 自适应、不破格 */
 .inv-grid {
   display: grid; gap: 6px; padding: 8px; box-sizing: border-box;
   max-width: 520px; margin: 0 auto;
-  background: linear-gradient(180deg, #F8F0E5, #EFE2D2);
-  border: 1px solid #E3D3BE; border-radius: 12px;
+  background: linear-gradient(180deg, #EFF4EE, #E3EBE3);
+  border: 1px solid #D5DFD4; border-radius: 12px;
   user-select: none; -webkit-user-select: none;
 }
 /* 每格正方形：padding-top 的百分比按格宽解析（跨端一致，不依赖 aspect-ratio）；
@@ -2083,20 +2083,20 @@ onUnmounted(() => {
   position: relative; padding-top: 100%; box-sizing: border-box;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.55);
-  box-shadow: inset 0 0 0 1px #E0D6CB, inset 0 2px 4px rgba(139, 69, 19, 0.08);
+  box-shadow: inset 0 0 0 1px #D2DBD2, inset 0 2px 4px rgba(78, 107, 87, 0.08);
 }
 .inv-slot-filled .inv-slot-box {
-  background: linear-gradient(160deg, #FFFDF8, #F6E9D8);
-  box-shadow: inset 0 0 0 1px #C9A227, inset 0 1px 2px rgba(139, 69, 19, 0.12), 0 1px 2px rgba(139, 69, 19, 0.12);
+  background: linear-gradient(160deg, #FAFCF8, #F6E9D8);
+  box-shadow: inset 0 0 0 1px #C9A227, inset 0 1px 2px rgba(78, 107, 87, 0.12), 0 1px 2px rgba(78, 107, 87, 0.12);
 }
 .inv-slot-active .inv-slot-box {
   background: #FFF3E6;
-  box-shadow: inset 0 0 0 2px #8B4513;
+  box-shadow: inset 0 0 0 2px #4E6B57;
 }
 .inv-slot-drag .inv-slot-box { opacity: 0.4; }
 .inv-slot-drop .inv-slot-box {
   background: #FFF3E6;
-  box-shadow: inset 0 0 0 2px #8B4513;
+  box-shadow: inset 0 0 0 2px #4E6B57;
 }
 .inv-ico {
   position: absolute; left: 50%; top: 50%; width: 96%; height: 96%;
@@ -2142,7 +2142,7 @@ onUnmounted(() => {
 .inv-tip {
   position: absolute; z-index: 1010; width: 240px; max-width: calc(100% - 16px);
   box-sizing: border-box; padding: 8px 10px; border-radius: 8px;
-  background: rgba(62, 39, 35, 0.94); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  background: rgba(47, 58, 51, 0.94); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
   pointer-events: auto; /* 层内按钮要能接点击 ⇒ 不再穿透（关闭边界见 hoverAt / inTipLayer） */
   transition: box-shadow .18s ease;
 }
@@ -2279,7 +2279,7 @@ onUnmounted(() => {
   padding: 6px 12px; border-radius: 12px; box-sizing: border-box; max-width: 100%;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   font-size: 12px; line-height: 1.5; text-align: center; color: #FFE9C9;
-  background: rgba(62, 39, 35, 0.92);
+  background: rgba(47, 58, 51, 0.92);
   box-shadow: inset 0 0 0 1px rgba(255, 233, 201, 0.45);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
 }
@@ -2297,8 +2297,8 @@ onUnmounted(() => {
 .inv-confirm {
   position: relative; z-index: 1031;
   width: 80%; max-width: 340px; box-sizing: border-box; padding: 18px; border-radius: 14px;
-  background: linear-gradient(180deg, #FFFDF8, #F8F0E5);
-  border: 1px solid #E3D3BE;
+  background: linear-gradient(180deg, #FAFCF8, #EFF4EE);
+  border: 1px solid #D5DFD4;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.6);
   display: flex; flex-direction: column;
   /* 入场（180ms 上浮；不阻塞交互）—— 两帧法由 `.is-in` 触发，零 @keyframes */
@@ -2317,7 +2317,7 @@ onUnmounted(() => {
 .inv-confirm-actions { display: flex; gap: 10px; margin-top: 16px; }
 .inv-confirm-btn {
   flex: 1; text-align: center; padding: 8px 0; border-radius: 8px;
-  background: #FBF8F5; border: 1px solid #E0D6CB;
+  background: #F6FAF7; border: 1px solid #D2DBD2;
   transition: transform .1s ease;
 }
 .inv-confirm-btn-text { font-size: 14px; color: #5D4037; }
@@ -2338,68 +2338,68 @@ onUnmounted(() => {
 /* ---- 夜间模式（html[data-theme='dark']）：只收口卡面 / 底板 / 格位这几个大面 ----
    为什么写在本组件、不写在父页 `pages/mine`：Vue scoped 的 data-v 只会打到子组件**根节点**，
    父页里写 `.inv-card` 之类内部类选择器命中不了。值与 pages/mine 的暗色段同族
-   （卡面 #2A2219 / 底 #211A14 / 边框 #3A3027 / 主字 #EDE3D6 / 暖棕 #C98850）。
+   （卡面 #232E2B / 底 #1B2422 / 边框 #36453F / 主字 #DFE9E4 / 暖棕 #D9A96B）。
    **只改颜色，不改任何几何**；H5 条件编译 ⇒ 小程序零改动。 */
 /* #ifdef H5 */
 html[data-theme='dark'] .inv-card {
-  background: linear-gradient(180deg, #2A2219, #241D16);
-  border-color: #3A3027;
+  background: linear-gradient(180deg, #232E2B, #1E2825);
+  border-color: #36453F;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
-html[data-theme='dark'] .inv-title { color: #EDE3D6; }
-html[data-theme='dark'] .inv-count { color: #C4B4A0; }
-html[data-theme='dark'] .inv-hint { color: #8A7A66; }
+html[data-theme='dark'] .inv-title { color: #DFE9E4; }
+html[data-theme='dark'] .inv-count { color: #B4C2BB; }
+html[data-theme='dark'] .inv-hint { color: #7A8B83; }
 html[data-theme='dark'] .inv-grid {
-  background: linear-gradient(180deg, #241D16, #1C1610);
-  border-color: #3A3027;
+  background: linear-gradient(180deg, #1E2825, #18211F);
+  border-color: #36453F;
 }
 html[data-theme='dark'] .inv-slot-box {
-  background: rgba(237, 227, 214, 0.06);
-  box-shadow: inset 0 0 0 1px #3A3027, inset 0 2px 4px rgba(0, 0, 0, 0.3);
+  background: rgba(223, 233, 228, 0.06);
+  box-shadow: inset 0 0 0 1px #36453F, inset 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 html[data-theme='dark'] .inv-slot-filled .inv-slot-box {
-  background: linear-gradient(160deg, #332A20, #2A2219);
-  box-shadow: inset 0 0 0 1px #7A6234, inset 0 1px 2px rgba(0, 0, 0, 0.35);
+  background: linear-gradient(160deg, #2A3631, #232E2B);
+  box-shadow: inset 0 0 0 1px #5C6E63, inset 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 html[data-theme='dark'] .inv-slot-active .inv-slot-box,
 html[data-theme='dark'] .inv-slot-drop .inv-slot-box {
-  background: #3A3027;
-  box-shadow: inset 0 0 0 2px #C98850;
+  background: #36453F;
+  box-shadow: inset 0 0 0 2px #D9A96B;
 }
 
 /* 第二阶段补：属性提示层（自绘 tip · z-index 1010）/ 二次确认框 / 结果浮字 / 角标。
-   提示层浅色态本就是深棕浮层，夜间改为同族更暗的底 + 暖棕描边 ⇒ 与卡片底（#2A2219）分层可见；
+   提示层浅色态本就是深棕浮层，夜间改为同族更暗的底 + 暖棕描边 ⇒ 与卡片底（#232E2B）分层可见；
    **不改尺寸**（padding / border-width / font-size 一行未动），`.inv-ico` 实物图不碰 ⇒ 不反色。 */
 html[data-theme='dark'] .inv-tip {
-  background: rgba(42, 34, 25, 0.97);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), inset 0 0 0 1px #3A3027;
+  background: rgba(35, 46, 43, 0.97);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), inset 0 0 0 1px #36453F;
 }
 html[data-theme='dark'] .inv-tip.is-fail {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(224, 103, 95, 0.8);
 }
-html[data-theme='dark'] .inv-tip-title { color: #EDE3D6; }
-html[data-theme='dark'] .inv-tip-line { color: #B8A894; }
+html[data-theme='dark'] .inv-tip-title { color: #DFE9E4; }
+html[data-theme='dark'] .inv-tip-line { color: #A5B6AE; }
 html[data-theme='dark'] .inv-tip-lock { color: #E0675F; }
-html[data-theme='dark'] .inv-tip-note { color: #8A7A66; }
+html[data-theme='dark'] .inv-tip-note { color: #7A8B83; }
 html[data-theme='dark'] .inv-tip-poem {
-  color: #C98850;
-  border-top-color: rgba(201, 136, 80, 0.4);
+  color: #D9A96B;
+  border-top-color: rgba(217, 169, 107, 0.4);
 }
 html[data-theme='dark'] .inv-tip-btn {
-  background: linear-gradient(180deg, #D6A57A, #C98850);
-  box-shadow: inset 0 1px 0 rgba(237, 227, 214, 0.5), inset 0 -2px 4px rgba(70, 44, 22, 0.5),
-              inset 0 0 0 1px rgba(237, 227, 214, 0.35), 0 0 9px rgba(201, 136, 80, 0.35);
+  background: linear-gradient(180deg, #E3BF8C, #D9A96B);
+  box-shadow: inset 0 1px 0 rgba(223, 233, 228, 0.5), inset 0 -2px 4px rgba(70, 44, 22, 0.5),
+              inset 0 0 0 1px rgba(223, 233, 228, 0.35), 0 0 9px rgba(217, 169, 107, 0.35);
 }
-html[data-theme='dark'] .inv-tip-btn-text { color: #211A14; text-shadow: none; }
+html[data-theme='dark'] .inv-tip-btn-text { color: #1B2422; text-shadow: none; }
 html[data-theme='dark'] .inv-tip-btn.inv-tip-btn-off {
-  background: rgba(237, 227, 214, 0.10);
-  box-shadow: inset 0 0 0 1px #3A3027;
+  background: rgba(223, 233, 228, 0.10);
+  box-shadow: inset 0 0 0 1px #36453F;
 }
-html[data-theme='dark'] .inv-tip-btn.inv-tip-btn-off .inv-tip-btn-text { color: #8A7A66; }
+html[data-theme='dark'] .inv-tip-btn.inv-tip-btn-off .inv-tip-btn-text { color: #7A8B83; }
 html[data-theme='dark'] .inv-lock { color: #E0675F; }
 html[data-theme='dark'] .fx-float {
-  background: rgba(42, 34, 25, 0.94);
-  box-shadow: inset 0 0 0 1px #4A3D31;
+  background: rgba(35, 46, 43, 0.94);
+  box-shadow: inset 0 0 0 1px #42524B;
 }
 html[data-theme='dark'] .fx-float.fail {
   background: rgba(58, 26, 24, 0.95);
@@ -2407,19 +2407,19 @@ html[data-theme='dark'] .fx-float.fail {
   box-shadow: inset 0 0 0 1px rgba(224, 103, 95, 0.55);
 }
 html[data-theme='dark'] .inv-confirm {
-  background: linear-gradient(180deg, #2A2219, #241D16);
-  border-color: #3A3027;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(237, 227, 214, 0.06);
+  background: linear-gradient(180deg, #232E2B, #1E2825);
+  border-color: #36453F;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(223, 233, 228, 0.06);
 }
 html[data-theme='dark'] .inv-confirm-title,
-html[data-theme='dark'] .inv-confirm-body { color: #EDE3D6; }
-html[data-theme='dark'] .inv-confirm-btn { background: #332A20; border-color: #3A3027; }
-html[data-theme='dark'] .inv-confirm-btn-text { color: #B8A894; }
+html[data-theme='dark'] .inv-confirm-body { color: #DFE9E4; }
+html[data-theme='dark'] .inv-confirm-btn { background: #2A3631; border-color: #36453F; }
+html[data-theme='dark'] .inv-confirm-btn-text { color: #A5B6AE; }
 html[data-theme='dark'] .inv-confirm-btn.ok {
-  background: linear-gradient(180deg, #D6A57A, #C98850); border-color: #C98850;
+  background: linear-gradient(180deg, #E3BF8C, #D9A96B); border-color: #D9A96B;
 }
-html[data-theme='dark'] .inv-confirm-btn.ok .inv-confirm-btn-text { color: #211A14; }
-html[data-theme='dark'] .inv-notice { color: #8A7A66; }
+html[data-theme='dark'] .inv-confirm-btn.ok .inv-confirm-btn-text { color: #1B2422; }
+html[data-theme='dark'] .inv-notice { color: #7A8B83; }
 html[data-theme='dark'] .inv-error,
 html[data-theme='dark'] .inv-overflow-label,
 html[data-theme='dark'] .inv-overflow-text { color: #E0675F; }
@@ -2427,24 +2427,24 @@ html[data-theme='dark'] .inv-overflow-text { color: #E0675F; }
 /* 第三阶段补：夜间仍靠**自绘色**的两处（角标字 / 提示层按钮高光）。只改颜色与投影，
    `padding` / `border-width` / `font-size` / `transition` / `@keyframes` 一行未动。 */
 /* 格内角标：`inv-badge` 的白字压在**实物图**（`static/icons/*.png` 不反色，卷轴 / 碎简均亮 ≈ 89 / 62）
-   与夜间深格位（`#332A20`）交界处 —— 改暖白 #EDE3D6 并加深投影，亮纸面与深格位两侧都分得开。 */
+   与夜间深格位（`#2A3631`）交界处 —— 改暖白 #DFE9E4 并加深投影，亮纸面与深格位两侧都分得开。 */
 html[data-theme='dark'] .inv-badge {
-  color: #EDE3D6;
+  color: #DFE9E4;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 4px rgba(0, 0, 0, 0.75);
 }
 /* 悬停高光（真 bug，非观感）：基础态 `html[...] .inv-tip-btn` 特异性 (0,2,1) 高于
    `.inv-tip-btn.is-hover` 的 (0,2,0) ⇒ 夜间那条外发光被整条顶掉（指针/手指在按钮上毫无反馈）。
    此处按夜间底色重写同一条 `box-shadow`（暖金），`.btn-fx` 叠加层与 `transition` 不动。 */
 html[data-theme='dark'] .inv-tip-btn.is-hover {
-  box-shadow: inset 0 1px 0 rgba(237, 227, 214, 0.9), inset 0 -2px 4px rgba(70, 44, 22, 0.55),
-              inset 0 0 0 1px rgba(237, 227, 214, 0.7), 0 0 16px rgba(201, 136, 80, 0.6),
-              0 0 24px rgba(214, 165, 122, 0.38);
+  box-shadow: inset 0 1px 0 rgba(223, 233, 228, 0.9), inset 0 -2px 4px rgba(70, 44, 22, 0.55),
+              inset 0 0 0 1px rgba(223, 233, 228, 0.7), 0 0 16px rgba(217, 169, 107, 0.6),
+              0 0 24px rgba(227, 191, 140, 0.38);
 }
 /* 扫光带（一次性 `.btn-sheen` / H5 循环 `.btn-vein`）：夜间按钮是暖棕，粉白扫光偏灰 ⇒ 换暖白。
    只换渐变里的色值；起始 `transform: translateX(-180%)`、一次性 `transition`、循环 `@keyframes` 全沿用。 */
 html[data-theme='dark'] .btn-sheen,
 html[data-theme='dark'] .btn-vein {
-  background: linear-gradient(100deg, rgba(237, 227, 214, 0), rgba(237, 227, 214, 0.92) 45%, rgba(237, 227, 214, 0));
+  background: linear-gradient(100deg, rgba(223, 233, 228, 0), rgba(223, 233, 228, 0.92) 45%, rgba(223, 233, 228, 0));
 }
 /* #endif */
 

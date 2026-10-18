@@ -138,15 +138,15 @@ function confirmPicker() {
 .tp-trigger {
   display: flex; align-items: center; justify-content: space-between;
   height: 44px; box-sizing: border-box; padding: 0 12px;
-  border: 1px solid #F0E8DE; border-radius: 8px; background: #FBF6EF;
+  border: 1px solid #E6EDE7; border-radius: 8px; background: #F1F6F2;
 }
-.tp-trigger:active { background: #F5F0EA; }
+.tp-trigger:active { background: #EDF2EC; }
 .tp-trigger-text {
-  flex: 1; font-size: 13px; color: #3E2723;
+  flex: 1; font-size: 13px; color: #2F3A33;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
-.tp-trigger-empty { color: #A1887F; }
-.tp-trigger-arrow { font-size: 12px; color: #8B4513; margin-left: 8px; }
+.tp-trigger-empty { color: #6E7D70; }
+.tp-trigger-arrow { font-size: 12px; color: #4E6B57; margin-left: 8px; }
 
 /* 覆盖层：z-index 1200 > 既有 .modal-mask 的 999 */
 .tp-mask {
@@ -160,66 +160,66 @@ function confirmPicker() {
   display: flex; flex-direction: column;
 }
 .tp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.tp-head-title { font-size: 16px; font-weight: bold; color: #3E2723; }
+.tp-head-title { font-size: 16px; font-weight: bold; color: #2F3A33; }
 .tp-head-close {
   width: 28px; height: 28px; line-height: 28px; text-align: center;
-  font-size: 15px; color: #A1887F; border-radius: 50%;
+  font-size: 15px; color: #6E7D70; border-radius: 50%;
 }
-.tp-head-close:active { background: #F5F0EA; }
+.tp-head-close:active { background: #EDF2EC; }
 .tp-search { margin-bottom: 10px; }
 /* 列表区：固定高度上限 + 内部滚动（弹窗外溢的根治点） */
 .tp-list { max-height: 36vh; overflow-y: auto; }
 .tp-group-title {
-  display: block; font-size: 12px; color: #A1887F; padding: 8px 0 6px;
+  display: block; font-size: 12px; color: #6E7D70; padding: 8px 0 6px;
 }
 .tp-item {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 12px; border: 1px solid #F0E8DE; border-radius: 8px; margin-bottom: 8px;
+  padding: 10px 12px; border: 1px solid #E6EDE7; border-radius: 8px; margin-bottom: 8px;
 }
-.tp-item.selected { border-color: #8B4513; background: #FBF6EF; }
+.tp-item.selected { border-color: #4E6B57; background: #F1F6F2; }
 .tp-item-main { flex: 1; min-width: 0; }
 .tp-item-label {
-  display: block; font-size: 13px; color: #3E2723;
+  display: block; font-size: 13px; color: #2F3A33;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
 /* sub 副文案：label 下方单行小字，超出省略（无 sub 的项保持单行） */
 .tp-item-sub {
-  display: block; margin-top: 2px; font-size: 11px; color: #A1887F;
+  display: block; margin-top: 2px; font-size: 11px; color: #6E7D70;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
-.tp-item-id { font-size: 11px; color: #A1887F; margin-left: 8px; }
-.tp-empty { display: block; text-align: center; color: #A1887F; font-size: 13px; padding: 24px 0; }
+.tp-item-id { font-size: 11px; color: #6E7D70; margin-left: 8px; }
+.tp-empty { display: block; text-align: center; color: #6E7D70; font-size: 13px; padding: 24px 0; }
 .tp-actions { display: flex; gap: 8px; margin-top: 12px; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
-   触发条按表单输入框口径（底 #241D16 / 边 #3A3027，与 tree-hall `.input` 同族），
-   覆盖层面板走卡面 #2A2219；选中项 = #C98850 边 + #332A20 底。
+   触发条按表单输入框口径（底 #1E2825 / 边 #36453F，与 tree-hall `.input` 同族），
+   覆盖层面板走卡面 #232E2B；选中项 = #D9A96B 边 + #2A3631 底。
    遮罩 `.tp-mask` 保持半透明黑（rgba(0,0,0,0.55)）不改；只改颜色声明，不含任何布局属性、
    无 filter / invert；全部 H5 条件编译 ⇒ 小程序零改动。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .tp-trigger { background: #241D16; border-color: #3A3027; }
-html[data-theme='dark'] .tp-trigger:active { background: #332A20; }
-html[data-theme='dark'] .tp-trigger-text { color: #EDE3D6; }
-html[data-theme='dark'] .tp-trigger-empty { color: #8A7A66; }
-html[data-theme='dark'] .tp-trigger-arrow { color: #C98850; }
+html[data-theme='dark'] .tp-trigger { background: #1E2825; border-color: #36453F; }
+html[data-theme='dark'] .tp-trigger:active { background: #2A3631; }
+html[data-theme='dark'] .tp-trigger-text { color: #DFE9E4; }
+html[data-theme='dark'] .tp-trigger-empty { color: #7A8B83; }
+html[data-theme='dark'] .tp-trigger-arrow { color: #D9A96B; }
 html[data-theme='dark'] .tp-panel {
-  background: #2A2219;
+  background: #232E2B;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
 }
-html[data-theme='dark'] .tp-head-title { color: #EDE3D6; }
-html[data-theme='dark'] .tp-head-close { color: #B8A894; }
-html[data-theme='dark'] .tp-head-close:active { background: #332A20; }
-/* 搜索框（t-input 本体）：面板同为 #2A2219，故压深一档到 #241D16 才分得出层次 */
+html[data-theme='dark'] .tp-head-title { color: #DFE9E4; }
+html[data-theme='dark'] .tp-head-close { color: #A5B6AE; }
+html[data-theme='dark'] .tp-head-close:active { background: #2A3631; }
+/* 搜索框（t-input 本体）：面板同为 #232E2B，故压深一档到 #1E2825 才分得出层次 */
 html[data-theme='dark'] .tp-search :deep(.t-input) {
-  background: #241D16;
-  border-color: #3A3027;
+  background: #1E2825;
+  border-color: #36453F;
 }
-html[data-theme='dark'] .tp-group-title { color: #8A7A66; }
-html[data-theme='dark'] .tp-item { border-color: #3A3027; }
-html[data-theme='dark'] .tp-item.selected { border-color: #C98850; background: #332A20; }
-html[data-theme='dark'] .tp-item-label { color: #EDE3D6; }
-html[data-theme='dark'] .tp-item-sub { color: #B8A894; }
-html[data-theme='dark'] .tp-item-id { color: #8A7A66; }
-html[data-theme='dark'] .tp-empty { color: #8A7A66; }
+html[data-theme='dark'] .tp-group-title { color: #7A8B83; }
+html[data-theme='dark'] .tp-item { border-color: #36453F; }
+html[data-theme='dark'] .tp-item.selected { border-color: #D9A96B; background: #2A3631; }
+html[data-theme='dark'] .tp-item-label { color: #DFE9E4; }
+html[data-theme='dark'] .tp-item-sub { color: #A5B6AE; }
+html[data-theme='dark'] .tp-item-id { color: #7A8B83; }
+html[data-theme='dark'] .tp-empty { color: #7A8B83; }
 /* #endif */
 </style>

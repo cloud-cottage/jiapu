@@ -144,7 +144,7 @@ function goMarket() {
 <style scoped>
 .container { padding: 20px; }
 .balance-card {
-  background: linear-gradient(135deg, #8B4513, #A66B32);
+  background: linear-gradient(135deg, #4E6B57, #A66B32);
   border-radius: 14px;
   padding: 24px 20px;
   color: #fff;
@@ -159,24 +159,24 @@ function goMarket() {
   background: #fff; border-radius: 12px; padding: 16px;
   margin-bottom: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);
 }
-.section-title { font-size: 15px; font-weight: bold; color: #3E2723; display: block; margin-bottom: 12px; }
+.section-title { font-size: 15px; font-weight: bold; color: #2F3A33; display: block; margin-bottom: 12px; }
 .row { display: flex; gap: 8px; align-items: center; }
 .row .input { flex: 1; }
-.dev-tip { font-size: 11px; color: #B5A594; margin-top: 8px; display: block; }
+.dev-tip { font-size: 11px; color: #8E9A93; margin-top: 8px; display: block; }
 .entry { display: flex; align-items: center; justify-content: space-between; }
 .entry-left { flex: 1; }
-.entry-title { font-size: 15px; font-weight: bold; color: #3E2723; display: block; }
-.entry-desc { font-size: 12px; color: #B5A594; display: block; margin-top: 4px; }
-.entry-arrow { font-size: 20px; color: #B5A594; }
+.entry-title { font-size: 15px; font-weight: bold; color: #2F3A33; display: block; }
+.entry-desc { font-size: 12px; color: #8E9A93; display: block; margin-top: 4px; }
+.entry-arrow { font-size: 20px; color: #8E9A93; }
 .empty { text-align: center; color: #999; padding: 20px; font-size: 13px; }
 .tx-item {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 0; border-bottom: 1px solid #f5f0ea;
+  padding: 10px 0; border-bottom: 1px solid #EDF2EC;
 }
 .tx-item:last-child { border-bottom: none; }
 .tx-left { flex: 1; }
 .tx-desc { font-size: 14px; color: #555; display: block; }
-.tx-time { font-size: 11px; color: #B5A594; margin-top: 2px; display: block; }
+.tx-time { font-size: 11px; color: #8E9A93; margin-top: 2px; display: block; }
 .tx-amount { font-size: 15px; font-weight: bold; color: #2E7D32; }
 .tx-amount.minus { color: #C62828; }
 .error { text-align: center; color: #C62828; font-size: 13px; margin-top: 12px; }

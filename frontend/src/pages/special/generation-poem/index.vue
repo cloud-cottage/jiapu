@@ -65,17 +65,17 @@ function doSearch() {
 .char-input { width: 120px; }
 .result { margin-top: 24px; text-align: center; }
 .help { margin-top: 40px; padding: 16px; background: #FFF8E1; border-radius: 8px; }
-.help-title { font-size: 14px; font-weight: bold; color: #8B4513; display: block; }
+.help-title { font-size: 14px; font-weight: bold; color: #4E6B57; display: block; }
 .help-text { font-size: 13px; color: #666; margin-top: 8px; line-height: 1.6; display: block; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
-   字辈检索页 = 纯检索 UI（无纸页本体）：标题 #EDE3D6、说明块 #241D16、
-   说明小标题 #C98850、正文 #B8A894；输入框描边走 --td-component-stroke (#3A3027)。
+   字辈检索页 = 纯检索 UI（无纸页本体）：标题 #DFE9E4、说明块 #1E2825、
+   说明小标题 #D9A96B、正文 #A5B6AE；输入框描边走 --td-component-stroke (#36453F)。
    只改颜色、零几何改动、无 filter / invert；H5 条件编译 ⇒ 小程序零改动。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .title { color: #EDE3D6; }
-html[data-theme='dark'] .help { background: #241D16; }
-html[data-theme='dark'] .help-title { color: #C98850; }
-html[data-theme='dark'] .help-text { color: #B8A894; }
+html[data-theme='dark'] .title { color: #DFE9E4; }
+html[data-theme='dark'] .help { background: #1E2825; }
+html[data-theme='dark'] .help-title { color: #D9A96B; }
+html[data-theme='dark'] .help-text { color: #A5B6AE; }
 /* #endif */
 </style>

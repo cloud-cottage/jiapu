@@ -450,15 +450,15 @@ onMounted(measureRowHeight);
 .som-hint { font-size: 12px; color: #B08D57; line-height: 1.6; margin-top: 8px; }
 .som-seg-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .som-seg-tab {
-  padding: 4px 10px; border: 1px solid #E0D6CB; border-radius: 12px;
-  background: #FBF8F5;
+  padding: 4px 10px; border: 1px solid #D2DBD2; border-radius: 12px;
+  background: #F6FAF7;
 }
-.som-seg-tab.active { border-color: #8B4513; background: #FFF3E6; }
+.som-seg-tab.active { border-color: #4E6B57; background: #FFF3E6; }
 .som-seg-text { font-size: 12px; color: #5D4037; }
 .som-list { margin-top: 12px; }
 .som-row {
   display: flex; align-items: center; gap: 10px;
-  padding: 10px 8px; border-bottom: 1px solid #F5F0EA;
+  padding: 10px 8px; border-bottom: 1px solid #EDF2EC;
   background: #fff; transition: transform 0.12s ease;
 }
 .som-row:last-child { border-bottom: none; }
@@ -473,7 +473,7 @@ onMounted(measureRowHeight);
 }
 .som-name { flex: 1; font-size: 15px; color: #5D4037; }
 .som-arrows { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.som-arrow { font-size: 15px; color: #8B4513; padding: 2px 6px; }
+.som-arrow { font-size: 15px; color: #4E6B57; padding: 2px 6px; }
 .som-arrow-off { color: #DDD; }
 .som-empty { display: block; font-size: 13px; color: #999; padding: 16px 0; text-align: center; }
 .som-error { display: block; font-size: 12px; color: #C62828; line-height: 1.6; margin-top: 10px; }
@@ -499,48 +499,48 @@ onMounted(measureRowHeight);
 .som-confirm-actions { display: flex; gap: 10px; margin-top: 16px; }
 .som-confirm-btn {
   flex: 1; text-align: center; padding: 8px 0; border-radius: 8px;
-  font-size: 14px; color: #5D4037; background: #FBF8F5; border: 1px solid #E0D6CB;
+  font-size: 14px; color: #5D4037; background: #F6FAF7; border: 1px solid #D2DBD2;
 }
-.som-confirm-ok { color: #fff; background: #8B4513; border-color: #8B4513; }
+.som-confirm-ok { color: #fff; background: #4E6B57; border-color: #4E6B57; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
-   面板 / 二次确认层走卡面 #2A2219，分段胶囊 #241D16、选中 #C98850 边 + #332A20 底，
-   列表行 #2A2219 + #4A3D31 分隔，序号徽记 #C98850 底压深字（#211A14，对比 6.4:1；白字仅 2.1:1）。
+   面板 / 二次确认层走卡面 #232E2B，分段胶囊 #1E2825、选中 #D9A96B 边 + #2A3631 底，
+   列表行 #232E2B + #42524B 分隔，序号徽记 #D9A96B 底压深字（#1B2422，对比 6.4:1；白字仅 2.1:1）。
    两层遮罩（.som-mask / .som-confirm-mask）保持半透明黑不改；只改颜色声明、无 filter / invert；
    全部 H5 条件编译 ⇒ 小程序零改动。 */
 /* #ifdef H5 */
 html[data-theme='dark'] .som-panel {
-  background: #2A2219;
+  background: #232E2B;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
 }
-html[data-theme='dark'] .som-title { color: #EDE3D6; }
-html[data-theme='dark'] .som-close { color: #B8A894; }
-html[data-theme='dark'] .som-sub { color: #B8A894; }
-html[data-theme='dark'] .som-hint { color: #C98850; }
-html[data-theme='dark'] .som-seg-tab { background: #241D16; border-color: #3A3027; }
-html[data-theme='dark'] .som-seg-tab.active { background: #332A20; border-color: #C98850; }
-html[data-theme='dark'] .som-seg-text { color: #EDE3D6; }
-html[data-theme='dark'] .som-seg-tab.active .som-seg-text { color: #C98850; }
-html[data-theme='dark'] .som-row { background: #2A2219; border-bottom-color: #4A3D31; }
+html[data-theme='dark'] .som-title { color: #DFE9E4; }
+html[data-theme='dark'] .som-close { color: #A5B6AE; }
+html[data-theme='dark'] .som-sub { color: #A5B6AE; }
+html[data-theme='dark'] .som-hint { color: #D9A96B; }
+html[data-theme='dark'] .som-seg-tab { background: #1E2825; border-color: #36453F; }
+html[data-theme='dark'] .som-seg-tab.active { background: #2A3631; border-color: #D9A96B; }
+html[data-theme='dark'] .som-seg-text { color: #DFE9E4; }
+html[data-theme='dark'] .som-seg-tab.active .som-seg-text { color: #D9A96B; }
+html[data-theme='dark'] .som-row { background: #232E2B; border-bottom-color: #42524B; }
 html[data-theme='dark'] .som-row-dragging {
-  background: #332A20;
+  background: #2A3631;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
-html[data-theme='dark'] .som-seq { background: #C98850; color: #211A14; }
-html[data-theme='dark'] .som-name { color: #EDE3D6; }
-html[data-theme='dark'] .som-arrow { color: #C98850; }
-html[data-theme='dark'] .som-arrow-off { color: #5E5142; }
-html[data-theme='dark'] .som-empty { color: #8A7A66; }
+html[data-theme='dark'] .som-seq { background: #D9A96B; color: #1B2422; }
+html[data-theme='dark'] .som-name { color: #DFE9E4; }
+html[data-theme='dark'] .som-arrow { color: #D9A96B; }
+html[data-theme='dark'] .som-arrow-off { color: #4C5A54; }
+html[data-theme='dark'] .som-empty { color: #7A8B83; }
 html[data-theme='dark'] .som-error { color: #E0675F; }
-html[data-theme='dark'] .som-note-text { color: #8A7A66; }
+html[data-theme='dark'] .som-note-text { color: #7A8B83; }
 /* 自绘计费确认层 */
 html[data-theme='dark'] .som-confirm {
-  background: #2A2219;
+  background: #232E2B;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
 }
-html[data-theme='dark'] .som-confirm-title { color: #EDE3D6; }
-html[data-theme='dark'] .som-confirm-body { color: #B8A894; }
-html[data-theme='dark'] .som-confirm-btn { background: #241D16; border-color: #3A3027; color: #EDE3D6; }
-html[data-theme='dark'] .som-confirm-ok { background: #C98850; border-color: #C98850; color: #211A14; }
+html[data-theme='dark'] .som-confirm-title { color: #DFE9E4; }
+html[data-theme='dark'] .som-confirm-body { color: #A5B6AE; }
+html[data-theme='dark'] .som-confirm-btn { background: #1E2825; border-color: #36453F; color: #DFE9E4; }
+html[data-theme='dark'] .som-confirm-ok { background: #D9A96B; border-color: #D9A96B; color: #1B2422; }
 /* #endif */
 </style>

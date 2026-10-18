@@ -262,15 +262,15 @@ onMounted(load);
 <style scoped>
 .family-messages { padding: 4px 2px 24px; }
 .fm-head { margin-bottom: 10px; }
-.fm-title { font-size: 16px; font-weight: bold; color: #8B4513; display: block; }
-.fm-sub { font-size: 12px; color: #A1887F; display: block; margin-top: 4px; }
+.fm-title { font-size: 16px; font-weight: bold; color: #4E6B57; display: block; }
+.fm-sub { font-size: 12px; color: #6E7D70; display: block; margin-top: 4px; }
 .fm-empty { text-align: center; color: #999; padding: 28px 0; font-size: 13px; }
-.fm-item { background: #FFFDF8; border: 1px solid #EFE3D3; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+.fm-item { background: #FAFCF8; border: 1px solid #EFE3D3; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
 .fm-item-head { display: flex; align-items: center; gap: 8px; }
-.fm-item-title { font-size: 15px; font-weight: bold; color: #3E2723; }
-.fm-item-desc { font-size: 12px; color: #795548; display: block; margin-top: 6px; }
+.fm-item-title { font-size: 15px; font-weight: bold; color: #2F3A33; }
+.fm-item-desc { font-size: 12px; color: #6E7D70; display: block; margin-top: 6px; }
 .fm-item-actions { display: flex; gap: 8px; margin-top: 10px; }
 .fm-error { color: #C62828; font-size: 12px; margin-top: 8px; }
 .fm-foot { text-align: center; margin-top: 10px; }
-.fm-foot-text { font-size: 12px; color: #8B4513; }
+.fm-foot-text { font-size: 12px; color: #4E6B57; }
 </style>

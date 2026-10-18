@@ -383,24 +383,24 @@ function goFamily(): void {
 <style scoped>
 .iv-page { padding: 16px; padding-bottom: 40px; }
 .iv-head { margin-bottom: 12px; }
-.iv-title { display: block; font-size: 16px; font-weight: bold; color: #3E2723; line-height: 1.6; }
-.iv-suggest { display: block; font-size: 13px; color: #8B4513; margin-top: 6px; font-weight: bold; }
-.iv-hint { display: block; font-size: 11px; color: #B5A594; line-height: 1.7; margin-top: 6px; }
+.iv-title { display: block; font-size: 16px; font-weight: bold; color: #2F3A33; line-height: 1.6; }
+.iv-suggest { display: block; font-size: 13px; color: #4E6B57; margin-top: 6px; font-weight: bold; }
+.iv-hint { display: block; font-size: 11px; color: #8E9A93; line-height: 1.7; margin-top: 6px; }
 
 .iv-loading { padding: 60px 0; text-align: center; }
 
 .iv-card {
-  background: linear-gradient(180deg, #FFFDF8, #F8F0E5);
-  border: 1px solid #E3D3BE; border-radius: 12px; padding: 14px;
+  background: linear-gradient(180deg, #FAFCF8, #EFF4EE);
+  border: 1px solid #D5DFD4; border-radius: 12px; padding: 14px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05); margin-bottom: 12px;
 }
-.iv-card-title { display: block; font-size: 15px; font-weight: bold; color: #3E2723; }
+.iv-card-title { display: block; font-size: 15px; font-weight: bold; color: #2F3A33; }
 .iv-card-hint { display: block; font-size: 12px; color: #B08D57; line-height: 1.7; margin: 6px 0 12px; }
 
 .iv-acts { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
 .iv-btn {
   padding: 8px 16px; border-radius: 8px; text-align: center;
-  background: #FBF8F5; border: 1px solid #E0D6CB;
+  background: #F6FAF7; border: 1px solid #D2DBD2;
 }
 .iv-btn-primary { background: linear-gradient(180deg, #EFA9B4, #C4747F); border-color: #C4747F; }
 .iv-btn-primary .iv-btn-text { color: #FFF6F8; }
@@ -422,65 +422,65 @@ function goFamily(): void {
   position: relative; z-index: 1011;
   width: 88%; max-width: 360px; max-height: 86vh; overflow-y: auto;
   box-sizing: border-box; padding: 16px; border-radius: 14px;
-  background: linear-gradient(180deg, #FFFDF8, #F8F0E5);
-  border: 1px solid #E3D3BE;
+  background: linear-gradient(180deg, #FAFCF8, #EFF4EE);
+  border: 1px solid #D5DFD4;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.6);
 }
-.iv-modal-title { display: block; font-size: 16px; font-weight: bold; color: #3E2723; margin-bottom: 10px; }
-.iv-field-label { display: block; font-size: 12px; color: #8B4513; margin: 10px 0 6px; }
+.iv-modal-title { display: block; font-size: 16px; font-weight: bold; color: #2F3A33; margin-bottom: 10px; }
+.iv-field-label { display: block; font-size: 12px; color: #4E6B57; margin: 10px 0 6px; }
 .iv-input { margin-bottom: 8px; }
-.iv-node-list { max-height: 36vh; overflow-y: auto; border: 1px solid #EFE5D8; border-radius: 8px; background: #FFFDF8; }
+.iv-node-list { max-height: 36vh; overflow-y: auto; border: 1px solid #EFE5D8; border-radius: 8px; background: #FAFCF8; }
 .iv-node {
   display: flex; align-items: center; justify-content: space-between;
   padding: 8px 10px; border-bottom: 1px solid #F4EDE3;
 }
 .iv-node.selected { background: #F6E9D8; }
-.iv-node-name { font-size: 13px; color: #3E2723; }
+.iv-node-name { font-size: 13px; color: #2F3A33; }
 .iv-node-id { font-size: 11px; color: #B08D57; }
-.iv-empty { display: block; font-size: 12px; color: #B5A594; padding: 12px; text-align: center; }
+.iv-empty { display: block; font-size: 12px; color: #8E9A93; padding: 12px; text-align: center; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
-   色板同 styles/td-dark-warm.css（底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 /
-   主字 #EDE3D6 / 次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 / 分割 #4A3D31 /
-   暖棕 #C98850 / error #E0675F / success #7FC08A）。
+   色板同 styles/td-dark-warm.css（底 #1B2422 / 卡面 #232E2B / 次容器 #1E2825 /
+   主字 #DFE9E4 / 次字 #A5B6AE / 更淡 #7A8B83 / 边框 #36453F / 分割 #42524B /
+   暖棕 #D9A96B / error #E0675F / success #7FC08A）。
    **只改颜色**（背景 / 文字 / 边框 / 阴影），零布局属性、零 `filter` / `invert`；
    输入框与下拉是 `t-input`（走 `--td-*` token）。
    ⚠️ 页内 `<TreePicker>` / `<TreePedigree>` 属**公共组件**（另有使用方），其暗色不在本单收口
    （已上报 uncovered），本段只覆盖本页自绘的卡片 / 弹层 / 节点列表。
    H5 条件编译 ⇒ 小程序端零改动。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .iv-title { color: #EDE3D6; }
-html[data-theme='dark'] .iv-suggest { color: #C98850; }
-html[data-theme='dark'] .iv-hint { color: #8A7A66; }
+html[data-theme='dark'] .iv-title { color: #DFE9E4; }
+html[data-theme='dark'] .iv-suggest { color: #D9A96B; }
+html[data-theme='dark'] .iv-hint { color: #7A8B83; }
 html[data-theme='dark'] .iv-card {
-  background: linear-gradient(180deg, #2A2219, #241D16);
-  border-color: #3A3027;
+  background: linear-gradient(180deg, #232E2B, #1E2825);
+  border-color: #36453F;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
-html[data-theme='dark'] .iv-card-title { color: #EDE3D6; }
-html[data-theme='dark'] .iv-card-hint { color: #8A7A66; }
-html[data-theme='dark'] .iv-btn { background: #332A20; border-color: #3A3027; }
-html[data-theme='dark'] .iv-btn-text { color: #B8A894; }
-html[data-theme='dark'] .iv-btn-primary { background: linear-gradient(180deg, #D6A57A, #C98850); border-color: #C98850; }
-html[data-theme='dark'] .iv-btn-primary .iv-btn-text { color: #211A14; }
-html[data-theme='dark'] .iv-reason { color: #8A7A66; }
+html[data-theme='dark'] .iv-card-title { color: #DFE9E4; }
+html[data-theme='dark'] .iv-card-hint { color: #7A8B83; }
+html[data-theme='dark'] .iv-btn { background: #2A3631; border-color: #36453F; }
+html[data-theme='dark'] .iv-btn-text { color: #A5B6AE; }
+html[data-theme='dark'] .iv-btn-primary { background: linear-gradient(180deg, #E3BF8C, #D9A96B); border-color: #D9A96B; }
+html[data-theme='dark'] .iv-btn-primary .iv-btn-text { color: #1B2422; }
+html[data-theme='dark'] .iv-reason { color: #7A8B83; }
 html[data-theme='dark'] .iv-err { color: #E0675F; }
 html[data-theme='dark'] .iv-done { color: #7FC08A; }
 
 /* 更换节点覆盖层（遮罩 1010 / 面板 1011） */
 html[data-theme='dark'] .iv-mask { background: rgba(0, 0, 0, 0.66); }
 html[data-theme='dark'] .iv-modal {
-  background: linear-gradient(180deg, #2A2219, #241D16);
-  border-color: #3A3027;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(237, 227, 214, 0.06);
+  background: linear-gradient(180deg, #232E2B, #1E2825);
+  border-color: #36453F;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(223, 233, 228, 0.06);
 }
-html[data-theme='dark'] .iv-modal-title { color: #EDE3D6; }
-html[data-theme='dark'] .iv-field-label { color: #C98850; }
-html[data-theme='dark'] .iv-node-list { background: #241D16; border-color: #3A3027; }
-html[data-theme='dark'] .iv-node { border-bottom-color: #3A3027; }
-html[data-theme='dark'] .iv-node.selected { background: #332A20; }
-html[data-theme='dark'] .iv-node-name { color: #EDE3D6; }
-html[data-theme='dark'] .iv-node-id { color: #8A7A66; }
-html[data-theme='dark'] .iv-empty { color: #8A7A66; }
+html[data-theme='dark'] .iv-modal-title { color: #DFE9E4; }
+html[data-theme='dark'] .iv-field-label { color: #D9A96B; }
+html[data-theme='dark'] .iv-node-list { background: #1E2825; border-color: #36453F; }
+html[data-theme='dark'] .iv-node { border-bottom-color: #36453F; }
+html[data-theme='dark'] .iv-node.selected { background: #2A3631; }
+html[data-theme='dark'] .iv-node-name { color: #DFE9E4; }
+html[data-theme='dark'] .iv-node-id { color: #7A8B83; }
+html[data-theme='dark'] .iv-empty { color: #7A8B83; }
 /* #endif */
 </style>

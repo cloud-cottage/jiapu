@@ -285,15 +285,15 @@ uni-tabbar.uni-tabbar-bottom .uni-tabbar {
 
 /* 全局样式 */
 page {
-  background-color: #f8f8f8;
+  background-color: #EEF1EF;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   color: #333;
   font-size: 14px;
 }
 
-/* ---- H5 页面底色：暖纸色（Kevin 2026-10-17 视觉修正单「背景图片的范围扩大」）----
-   窄栏两侧原先露纯 #f8f8f8 灰白、显空；改成与首页 banner 宣纸同族的暖纸 #F6F0E4，
+/* ---- H5 页面底色：青瓷纸色（Kevin 2026-10-17 视觉修正单「背景图片的范围扩大」/ 2026-10 换色）
+   窄栏两侧原先露纯白/浅灰白、显空；改成与首页 banner 宣纸同族的青瓷纸 #EDF1EA，
    让三层 banner 自然「渗」到页面上。**只在 H5 生效（条件编译），小程序版式零改动**。
    ① html / body 管 480px 列**之外**的两侧；② uni-page-body（= H5 里的 page）管列内。
    注意：`page` 选择器会被 uni-app 的 postcss 重写成 `uni-page-body`，两条都留以对齐。
@@ -303,7 +303,7 @@ html,
 body,
 page,
 uni-page-body {
-  background-color: #F6F0E4;
+  background-color: #EDF1EA;
 }
 /* #endif */
 
@@ -319,12 +319,12 @@ page,
   --td-brand-color-4: #e4b27e;
   --td-brand-color-5: #d49355;
   --td-brand-color-6: #b06e33;
-  --td-brand-color-7: #8b4513;
+  --td-brand-color-7: #4E6B57;
   --td-brand-color-8: #7a3a0e;
   --td-brand-color-9: #5c2d0a;
-  --td-brand-color-10: #3e2723;
+  --td-brand-color-10: #2F3A33;
 
-  --td-primary-color: #8b4513;
+  --td-primary-color: #4E6B57;
   --td-primary-color-1: var(--td-brand-color-1);
   --td-primary-color-2: var(--td-brand-color-2);
   --td-primary-color-3: var(--td-brand-color-3);
@@ -345,44 +345,44 @@ page,
    这里只放**不读 `--td-*` token 的硬编码色**：页面底色 / H5 页头 / 底部 tabBar / 滚动条。
    组件 token 在 `styles/td-dark-warm.css`（生成物）；页内硬编码色在各页 scoped <style> 的
    `html[data-theme='dark']` 段。全部 H5 条件编译 ⇒ 小程序零改动。
-   tabBar / 页头的颜色是 uni-h5 用**内联 style** 打上去的（取自 pages.json 的 #ffffff / #F8F8F8），
+   tabBar / 页头的颜色是 uni-h5 用**内联 style** 打上去的（取自 pages.json 的 #ffffff / #EEF1EF），
    故这里的覆盖必须带 `!important`，否则被内联样式压住。 */
 /* #ifdef H5 */
 html[data-theme='dark'],
 html[data-theme='dark'] body,
 html[data-theme='dark'] page,
 html[data-theme='dark'] uni-page-body {
-  background-color: #211A14 !important;
+  background-color: #1B2422 !important;
 }
 html[data-theme='dark'] page,
-html[data-theme='dark'] uni-page-body { color: #EDE3D6 !important; }
+html[data-theme='dark'] uni-page-body { color: #DFE9E4 !important; }
 
 /* H5 页头（导航条）：亮条 → 深暖底，标题/返回键转浅字 */
-html[data-theme='dark'] uni-page-head .uni-page-head { background-color: #241D16 !important; }
-html[data-theme='dark'] uni-page-head .uni-page-head__title { color: #EDE3D6 !important; }
-html[data-theme='dark'] uni-page-head .uni-page-head-btn { color: #EDE3D6 !important; }
+html[data-theme='dark'] uni-page-head .uni-page-head { background-color: #1E2825 !important; }
+html[data-theme='dark'] uni-page-head .uni-page-head__title { color: #DFE9E4 !important; }
+html[data-theme='dark'] uni-page-head .uni-page-head-btn { color: #DFE9E4 !important; }
 
-/* 底部 tabBar：白底 → 深暖底；未选中 #B8A894、选中暖棕 #C98850（与夜间主色同族） */
-html[data-theme='dark'] .uni-tabbar { background-color: #241D16 !important; }
-html[data-theme='dark'] .uni-tabbar-border { background-color: #3A3027 !important; }
-html[data-theme='dark'] .uni-tabbar__label { color: #B8A894 !important; }
+/* 底部 tabBar：白底 → 深暖底；未选中 #A5B6AE、选中暖棕 #D9A96B（与夜间主色同族） */
+html[data-theme='dark'] .uni-tabbar { background-color: #1E2825 !important; }
+html[data-theme='dark'] .uni-tabbar-border { background-color: #36453F !important; }
+html[data-theme='dark'] .uni-tabbar__label { color: #A5B6AE !important; }
 html[data-theme='dark'] .uni-tabbar__item--active .uni-tabbar__label,
-html[data-theme='dark'] .uni-tabbar__item-active .uni-tabbar__label { color: #C98850 !important; }
+html[data-theme='dark'] .uni-tabbar__item-active .uni-tabbar__label { color: #D9A96B !important; }
 
 /* 滚动条：只改颜色、**不改宽度**（改宽度会动几何，违反 T3 口径） */
-html[data-theme='dark'] ::-webkit-scrollbar-thumb { background: rgba(237, 227, 214, 0.18); border-radius: 6px; }
-html[data-theme='dark'] ::-webkit-scrollbar-thumb:hover { background: rgba(237, 227, 214, 0.32); }
-html[data-theme='dark'] ::-webkit-scrollbar-track { background: #241D16; }
+html[data-theme='dark'] ::-webkit-scrollbar-thumb { background: rgba(223, 233, 228, 0.18); border-radius: 6px; }
+html[data-theme='dark'] ::-webkit-scrollbar-thumb:hover { background: rgba(223, 233, 228, 0.32); }
+html[data-theme='dark'] ::-webkit-scrollbar-track { background: #1E2825; }
 /* #endif */
 
 /* ---- 浅色（html[data-theme='light']）显式钉底 ----
-   修 2026-10-17 实测 bug：日间模式（html[data-theme='light']）下 `body` 被涂成夜间底色 #211A14，
-   窄栏两侧/底部露出黑块（html 与 uni-page-body 均为 #F6F0E4，只有 body 错）。
+   修 2026-10-17 实测 bug：日间模式（html[data-theme='light']）下 `body` 被涂成夜间底色 #1B2422，
+   窄栏两侧/底部露出黑块（html 与 uni-page-body 均为 #EDF1EA，只有 body 错）。
    根因（产物取证）：uni-app H5 的 postcss 插件
    `@dcloudio/uni-cli-shared/dist/postcss/plugins/uniapp.js` → createBodyBackgroundRule()
    会把**任何含 `page` 选择器的规则**里的 background-* 声明克隆成一条**裸 `body{...}` 规则**
    （克隆时丢掉原选择器的全部前缀）。上面暗色块的 `html[data-theme='dark'] page` 因此被克隆成
-   无条件的 `body{background-color:#211a14}`，在产物里排在浅色 `body{#f6f0e4}` 之后
+   无条件的 `body{background-color:#1B2422}`，在产物里排在浅色 `body{#EDF1EA}` 之后
    ⇒ 与 data-theme 无关，body 恒为夜间色。
    对策（不改依赖）：① 浅色侧加 html[data-theme='light'] 前缀 + !important 显式钉住
    html / body / page / uni-page-body；② 暗色侧同法加 !important。两侧前缀选择器特异性
@@ -395,8 +395,8 @@ html[data-theme='light'],
 html[data-theme='light'] body,
 html[data-theme='light'] page,
 html[data-theme='light'] uni-page-body {
-  background-color: #F6F0E4 !important;
-  color: #333 !important;
+  background-color: #EDF1EA !important;
+  color: #2F3A33 !important;
 }
 /* #endif */
 

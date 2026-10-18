@@ -108,18 +108,18 @@ function goList(): void {
 .fi-head { display: flex; align-items: center; }
 .fi-title-mark {
   width: 4px; height: 15px; border-radius: 2px; margin-right: 8px;
-  background: linear-gradient(180deg, #A8322D, #8B4513);
+  background: linear-gradient(180deg, #A8322D, #8E2A24);
 }
-.fi-title { font-size: 16px; font-weight: bold; color: #3E2723; letter-spacing: 2px; }
-.fi-hint { display: block; font-size: 11px; color: #B5A594; line-height: 1.7; margin: 8px 0 12px; }
-.fi-hint-strong { color: #8B4513; font-weight: bold; }
+.fi-title { font-size: 16px; font-weight: bold; color: #2F3A33; letter-spacing: 2px; }
+.fi-hint { display: block; font-size: 11px; color: #8E9A93; line-height: 1.7; margin: 8px 0 12px; }
+.fi-hint-strong { color: #4E6B57; font-weight: bold; }
 
 .fi-card {
-  background: linear-gradient(180deg, #FFFDF8, #F8F0E5);
-  border: 1px solid #E3D3BE; border-radius: 12px; padding: 14px;
+  background: linear-gradient(180deg, #FAFCF8, #EFF4EE);
+  border: 1px solid #D5DFD4; border-radius: 12px; padding: 14px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
 }
-.fi-label { display: block; font-size: 12px; color: #8B4513; margin-bottom: 8px; }
+.fi-label { display: block; font-size: 12px; color: #4E6B57; margin-bottom: 8px; }
 .fi-input { margin-bottom: 12px; }
 .fi-btn {
   padding: 8px 0; border-radius: 8px; text-align: center;
@@ -135,33 +135,33 @@ function goList(): void {
 .fi-ok { display: block; font-size: 12px; color: #2E7D32; margin-top: 12px; line-height: 1.7; }
 .fi-err { display: block; font-size: 12px; color: #C62828; margin-top: 12px; line-height: 1.7; }
 .fi-acts { display: flex; gap: 10px; margin-top: 12px; }
-.fi-note { display: block; font-size: 11px; color: #B5A594; margin-top: 16px; line-height: 1.7; }
+.fi-note { display: block; font-size: 11px; color: #8E9A93; margin-top: 16px; line-height: 1.7; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
-   色板同 styles/td-dark-warm.css（底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 /
-   主字 #EDE3D6 / 次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 / 分割 #4A3D31 /
-   暖棕 #C98850 / error #E0675F / success #7FC08A）。
+   色板同 styles/td-dark-warm.css（底 #1B2422 / 卡面 #232E2B / 次容器 #1E2825 /
+   主字 #DFE9E4 / 次字 #A5B6AE / 更淡 #7A8B83 / 边框 #36453F / 分割 #42524B /
+   暖棕 #D9A96B / error #E0675F / success #7FC08A）。
    **只改颜色**（背景 / 文字 / 边框 / 阴影），零布局属性、零 `filter` / `invert`；
    邀请输入框是 `t-input`（走 `--td-*` token，td-dark-warm.css 已覆盖），此处只收口页面自绘部分。
    H5 条件编译 ⇒ 小程序端零改动。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .fi-title-mark { background: linear-gradient(180deg, #E0675F, #C98850); }
-html[data-theme='dark'] .fi-title { color: #EDE3D6; }
-html[data-theme='dark'] .fi-hint { color: #8A7A66; }
-html[data-theme='dark'] .fi-hint-strong { color: #C98850; }
+html[data-theme='dark'] .fi-title-mark { background: linear-gradient(180deg, #E0675F, #D9A96B); }
+html[data-theme='dark'] .fi-title { color: #DFE9E4; }
+html[data-theme='dark'] .fi-hint { color: #7A8B83; }
+html[data-theme='dark'] .fi-hint-strong { color: #D9A96B; }
 html[data-theme='dark'] .fi-card {
-  background: linear-gradient(180deg, #2A2219, #241D16);
-  border-color: #3A3027;
+  background: linear-gradient(180deg, #232E2B, #1E2825);
+  border-color: #36453F;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
-html[data-theme='dark'] .fi-label { color: #C98850; }
-html[data-theme='dark'] .fi-btn { background: linear-gradient(180deg, #D6A57A, #C98850); border-color: #C98850; }
-html[data-theme='dark'] .fi-btn-text { color: #211A14; }
-html[data-theme='dark'] .fi-btn-off { background: #3A3027; border-color: #4A3D31; }
-html[data-theme='dark'] .fi-btn-off .fi-btn-text { color: #8A7A66; }
-html[data-theme='dark'] .fi-reason { color: #8A7A66; }
+html[data-theme='dark'] .fi-label { color: #D9A96B; }
+html[data-theme='dark'] .fi-btn { background: linear-gradient(180deg, #E3BF8C, #D9A96B); border-color: #D9A96B; }
+html[data-theme='dark'] .fi-btn-text { color: #1B2422; }
+html[data-theme='dark'] .fi-btn-off { background: #36453F; border-color: #42524B; }
+html[data-theme='dark'] .fi-btn-off .fi-btn-text { color: #7A8B83; }
+html[data-theme='dark'] .fi-reason { color: #7A8B83; }
 html[data-theme='dark'] .fi-ok { color: #7FC08A; }
 html[data-theme='dark'] .fi-err { color: #E0675F; }
-html[data-theme='dark'] .fi-note { color: #8A7A66; }
+html[data-theme='dark'] .fi-note { color: #7A8B83; }
 /* #endif */
 </style>

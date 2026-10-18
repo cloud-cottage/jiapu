@@ -16,16 +16,16 @@ import TaskList from '@/components/task-center/task-list.vue';
 <style scoped>
 .task-page { padding: 16px 0 40px; }
 .tp-head { padding: 0 16px; }
-.tp-title { font-size: 16px; font-weight: bold; color: #3E2723; letter-spacing: 2px; }
-.tp-sub { display: block; margin-top: 6px; font-size: 11px; color: #B5A594; }
+.tp-title { font-size: 16px; font-weight: bold; color: #2F3A33; letter-spacing: 2px; }
+.tp-sub { display: block; margin-top: 6px; font-size: 11px; color: #8E9A93; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
    本页只负责**自己的页头**（`.tp-title` / `.tp-sub`）；任务卡本体的暗色规则已下沉到
    `components/task-center/task-list.vue` 自身（实现处拥有自己的暗色，页面不再用 `:deep()` 穿透）。
-   色板同 styles/td-dark-warm.css（主字 #EDE3D6 / 次字 #8A7A66）。
+   色板同 styles/td-dark-warm.css（主字 #DFE9E4 / 次字 #7A8B83）。
    **只改颜色**，零布局属性、零 `filter` / `invert`；H5 条件编译 ⇒ 小程序端零改动。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .tp-title { color: #EDE3D6; }
-html[data-theme='dark'] .tp-sub { color: #8A7A66; }
+html[data-theme='dark'] .tp-title { color: #DFE9E4; }
+html[data-theme='dark'] .tp-sub { color: #7A8B83; }
 /* #endif */
 </style>

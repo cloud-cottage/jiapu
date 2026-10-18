@@ -394,7 +394,7 @@ function goLogin() {
   background: #fff; border-radius: 12px; padding: 16px;
   margin-bottom: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);
 }
-.section-title { font-size: 15px; font-weight: bold; color: #3E2723; display: block; }
+.section-title { font-size: 15px; font-weight: bold; color: #2F3A33; display: block; }
 .overview-head {
   display: flex; align-items: center; justify-content: space-between;
   gap: 10px; margin-bottom: 12px;
@@ -403,17 +403,17 @@ function goLogin() {
 
 .asset-row {
   display: flex; align-items: flex-start; justify-content: space-between;
-  padding: 10px 0; border-bottom: 1px solid #f5f0ea;
+  padding: 10px 0; border-bottom: 1px solid #EDF2EC;
 }
 .asset-row:last-child { border-bottom: none; }
-.asset-name { font-size: 14px; color: #3E2723; flex-shrink: 0; }
+.asset-name { font-size: 14px; color: #2F3A33; flex-shrink: 0; }
 .asset-value-wrap { flex: 1; text-align: right; }
 
 /* 资产行图标：石榴籽碎片 / 石榴籽 / 竹简 / 石榴籽玉（统一经 business/icons.ts 常量引用，禁止手写 /static 路径） */
 .asset-name-cell { display: flex; align-items: center; gap: 10rpx; flex-shrink: 0; }
 .ico-card { width: 64rpx; height: 64rpx; flex-shrink: 0; }
-.asset-value { font-size: 16px; font-weight: bold; color: #8B4513; display: block; }
-.asset-sub { font-size: 11px; color: #B5A594; display: block; margin-top: 2px; }
+.asset-value { font-size: 16px; font-weight: bold; color: #4E6B57; display: block; }
+.asset-sub { font-size: 11px; color: #8E9A93; display: block; margin-top: 2px; }
 
 .empty { text-align: center; color: #999; padding: 16px 0; font-size: 13px; }
 .section-error { font-size: 12px; color: #C62828; margin-bottom: 8px; }
@@ -425,65 +425,65 @@ function goLogin() {
   border-radius: 10px; padding: 2px 8px;
 }
 .msg-item {
-  padding: 10px 0; border-bottom: 1px solid #f5f0ea;
+  padding: 10px 0; border-bottom: 1px solid #EDF2EC;
 }
 .msg-item:last-child { border-bottom: none; }
-.msg-item.unread .msg-title { color: #3E2723; font-weight: bold; }
+.msg-item.unread .msg-title { color: #2F3A33; font-weight: bold; }
 .msg-head { display: flex; align-items: center; gap: 6px; }
 .msg-dot {
   width: 6px; height: 6px; border-radius: 50%; background: #C62828; flex-shrink: 0;
 }
 .msg-title { font-size: 14px; color: #555; flex: 1; }
-.msg-time { font-size: 11px; color: #B5A594; flex-shrink: 0; }
+.msg-time { font-size: 11px; color: #8E9A93; flex-shrink: 0; }
 .msg-text { font-size: 12px; color: #777; display: block; margin-top: 4px; line-height: 1.6; }
 .row-item {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 0; border-bottom: 1px solid #f5f0ea;
+  padding: 10px 0; border-bottom: 1px solid #EDF2EC;
 }
 .row-item:last-child { border-bottom: none; }
 .row-left { flex: 1; }
 .row-main { font-size: 14px; color: #555; display: block; }
-.row-sub { font-size: 11px; color: #B5A594; margin-top: 2px; display: block; }
+.row-sub { font-size: 11px; color: #8E9A93; margin-top: 2px; display: block; }
 .row-right { font-size: 14px; font-weight: bold; color: #2E7D32; }
 .row-right.minus { color: #C62828; }
 .error { text-align: center; color: #C62828; font-size: 13px; margin-top: 12px; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
-   色板同 styles/td-dark-warm.css：底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 /
-   主字 #EDE3D6 / 次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 / 分割 #4A3D31 /
-   暖棕 #C98850 / error #E0675F / success #7FC08A。
+   色板同 styles/td-dark-warm.css：底 #1B2422 / 卡面 #232E2B / 次容器 #1E2825 /
+   主字 #DFE9E4 / 次字 #A5B6AE / 更淡 #7A8B83 / 边框 #36453F / 分割 #42524B /
+   暖棕 #D9A96B / error #E0675F / success #7FC08A。
    **只改颜色**（背景 / 文字 / 边框 / 阴影），零布局属性、零 `filter` / `invert`；
    页内 `.ico-card`（碎片 / 石榴籽 / 竹简 / 玉 实物图）**一律不碰 ⇒ 不反色**。
    批次行与耐久行同属 `.asset-sub`（「N 个批次 · 耐久文案」），一并收口。
    H5 条件编译 ⇒ 小程序端零改动。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .not-logged { color: #8A7A66; }
+html[data-theme='dark'] .not-logged { color: #7A8B83; }
 html[data-theme='dark'] .section {
-  background: linear-gradient(180deg, #2A2219, #241D16);
+  background: linear-gradient(180deg, #232E2B, #1E2825);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
-html[data-theme='dark'] .section-title { color: #EDE3D6; }
-html[data-theme='dark'] .asset-row { border-bottom-color: #3A3027; }
-html[data-theme='dark'] .asset-name { color: #EDE3D6; }
-html[data-theme='dark'] .asset-value { color: #C98850; }
+html[data-theme='dark'] .section-title { color: #DFE9E4; }
+html[data-theme='dark'] .asset-row { border-bottom-color: #36453F; }
+html[data-theme='dark'] .asset-name { color: #DFE9E4; }
+html[data-theme='dark'] .asset-value { color: #D9A96B; }
 /* 批次行 / 耐久行（N 个批次 · 剩余天数） */
-html[data-theme='dark'] .asset-sub { color: #8A7A66; }
-html[data-theme='dark'] .empty { color: #8A7A66; }
+html[data-theme='dark'] .asset-sub { color: #7A8B83; }
+html[data-theme='dark'] .empty { color: #7A8B83; }
 html[data-theme='dark'] .section-error { color: #E0675F; }
 
 /* 消息提醒 */
-html[data-theme='dark'] .unread-badge { background: #E0675F; color: #211A14; }
-html[data-theme='dark'] .msg-item { border-bottom-color: #3A3027; }
-html[data-theme='dark'] .msg-item.unread .msg-title { color: #EDE3D6; }
+html[data-theme='dark'] .unread-badge { background: #E0675F; color: #1B2422; }
+html[data-theme='dark'] .msg-item { border-bottom-color: #36453F; }
+html[data-theme='dark'] .msg-item.unread .msg-title { color: #DFE9E4; }
 html[data-theme='dark'] .msg-dot { background: #E0675F; }
-html[data-theme='dark'] .msg-title { color: #B8A894; }
-html[data-theme='dark'] .msg-time { color: #8A7A66; }
-html[data-theme='dark'] .msg-text { color: #B8A894; }
+html[data-theme='dark'] .msg-title { color: #A5B6AE; }
+html[data-theme='dark'] .msg-time { color: #7A8B83; }
+html[data-theme='dark'] .msg-text { color: #A5B6AE; }
 
 /* 即将过期 / 最近流水 */
-html[data-theme='dark'] .row-item { border-bottom-color: #3A3027; }
-html[data-theme='dark'] .row-main { color: #B8A894; }
-html[data-theme='dark'] .row-sub { color: #8A7A66; }
+html[data-theme='dark'] .row-item { border-bottom-color: #36453F; }
+html[data-theme='dark'] .row-main { color: #A5B6AE; }
+html[data-theme='dark'] .row-sub { color: #7A8B83; }
 html[data-theme='dark'] .row-right { color: #7FC08A; }
 html[data-theme='dark'] .row-right.minus { color: #E0675F; }
 html[data-theme='dark'] .error { color: #E0675F; }

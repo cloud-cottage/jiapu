@@ -338,36 +338,36 @@ onUnmounted(stopNowTimer);
 .fd-head-left { display: flex; align-items: center; }
 .fd-title-mark {
   width: 4px; height: 15px; border-radius: 2px; margin-right: 8px;
-  background: linear-gradient(180deg, #A8322D, #8B4513);
+  background: linear-gradient(180deg, #A8322D, #8E2A24);
 }
-.fd-title { font-size: 16px; font-weight: bold; color: #3E2723; letter-spacing: 2px; }
-.fd-hint { display: block; font-size: 11px; color: #B5A594; line-height: 1.6; margin: 8px 0 12px; }
+.fd-title { font-size: 16px; font-weight: bold; color: #2F3A33; letter-spacing: 2px; }
+.fd-hint { display: block; font-size: 11px; color: #8E9A93; line-height: 1.6; margin: 8px 0 12px; }
 
 .fd-group { margin-bottom: 10px; }
 .fd-group-head { display: flex; align-items: center; margin: 6px 0; }
-.fd-group-title { font-size: 13px; font-weight: bold; color: #8B4513; }
+.fd-group-title { font-size: 13px; font-weight: bold; color: #4E6B57; }
 .fd-group-count { font-size: 11px; color: #B08D57; margin-left: 6px; }
 
 .fd-card {
-  background: linear-gradient(180deg, #FFFDF8, #F8F0E5);
-  border: 1px solid #E3D3BE; border-radius: 12px;
+  background: linear-gradient(180deg, #FAFCF8, #EFF4EE);
+  border: 1px solid #D5DFD4; border-radius: 12px;
   padding: 12px; margin-bottom: 10px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
 }
 .fd-card-head { display: flex; align-items: center; justify-content: space-between; }
-.fd-name { font-size: 15px; font-weight: bold; color: #3E2723; }
-.fd-status { font-size: 11px; color: #8B4513; background: #F6E9D8; border-radius: 8px; padding: 2px 8px; }
+.fd-name { font-size: 15px; font-weight: bold; color: #2F3A33; }
+.fd-status { font-size: 11px; color: #4E6B57; background: #F6E9D8; border-radius: 8px; padding: 2px 8px; }
 .fd-status-grace { color: #C62828; background: #FDECEC; }
 .fd-status-pending { color: #1565C0; background: #E8F1FC; }
 .fd-line { display: block; font-size: 12px; color: #5D4037; line-height: 1.7; margin-top: 6px; }
 .fd-line-sub { color: #8D6E63; }
-.fd-line-wait { color: #8B4513; }
+.fd-line-wait { color: #4E6B57; }
 .fd-line-lock { color: #A8322D; font-weight: bold; }
 
 .fd-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
 .fd-btn {
   padding: 5px 14px; border-radius: 6px;
-  background: #FBF8F5; border: 1px solid #E0D6CB;
+  background: #F6FAF7; border: 1px solid #D2DBD2;
 }
 .fd-btn-primary { background: linear-gradient(180deg, #EFA9B4, #C4747F); border-color: #C4747F; }
 .fd-btn-primary .fd-btn-text { color: #FFF6F8; }
@@ -395,8 +395,8 @@ onUnmounted(stopNowTimer);
 .fd-cfm {
   position: relative; z-index: 1011;
   width: 80%; max-width: 340px; box-sizing: border-box; padding: 18px; border-radius: 14px;
-  background: linear-gradient(180deg, #FFFDF8, #F8F0E5);
-  border: 1px solid #E3D3BE;
+  background: linear-gradient(180deg, #FAFCF8, #EFF4EE);
+  border: 1px solid #D5DFD4;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.6);
   display: flex; flex-direction: column;
 }
@@ -404,68 +404,68 @@ onUnmounted(stopNowTimer);
   height: 3px; border-radius: 2px; margin: -6px 0 12px; opacity: .9;
   background: linear-gradient(90deg, rgba(168, 50, 45, 0), #A8322D 30%, #EFA9B4 50%, #A8322D 70%, rgba(168, 50, 45, 0));
 }
-.fd-cfm-title { display: block; font-size: 16px; font-weight: 600; color: #3E2723; letter-spacing: .5px; }
-.fd-cfm-peer { display: block; font-size: 12px; color: #8B4513; margin-top: 8px; }
+.fd-cfm-title { display: block; font-size: 16px; font-weight: 600; color: #2F3A33; letter-spacing: .5px; }
+.fd-cfm-peer { display: block; font-size: 12px; color: #4E6B57; margin-top: 8px; }
 .fd-cfm-body { display: block; font-size: 13px; color: #5D4037; line-height: 1.6; margin-top: 8px; }
 .fd-cfm-acts { display: flex; gap: 10px; margin-top: 16px; }
-.fd-cfm-btn { flex: 1; text-align: center; padding: 8px 0; border-radius: 8px; background: #FBF8F5; border: 1px solid #E0D6CB; }
+.fd-cfm-btn { flex: 1; text-align: center; padding: 8px 0; border-radius: 8px; background: #F6FAF7; border: 1px solid #D2DBD2; }
 .fd-cfm-btn-text { font-size: 14px; color: #5D4037; }
 /* 破坏性操作：确认键用朱红（与「解除」语义一致） */
 .fd-cfm-btn.ok { background: linear-gradient(180deg, #C4747F, #A8322D); border-color: #A8322D; }
 .fd-cfm-btn.ok .fd-cfm-btn-text { color: #FFF6F8; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
-   色板同 styles/td-dark-warm.css（底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 /
-   主字 #EDE3D6 / 次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 / 分割 #4A3D31 /
-   暖棕 #C98850 / error #E0675F / success #7FC08A）。
+   色板同 styles/td-dark-warm.css（底 #1B2422 / 卡面 #232E2B / 次容器 #1E2825 /
+   主字 #DFE9E4 / 次字 #A5B6AE / 更淡 #7A8B83 / 边框 #36453F / 分割 #42524B /
+   暖棕 #D9A96B / error #E0675F / success #7FC08A）。
    **只改颜色**（背景 / 文字 / 边框 / 阴影），零布局属性、零 `filter` / `invert`。
    `.fd-title-mark`（朱红→暖棕竖条）保留渐变本身，只把两端换成夜间可见的朱红 / 暖棕。
    H5 条件编译 ⇒ 小程序端零改动。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .fd-title-mark { background: linear-gradient(180deg, #E0675F, #C98850); }
-html[data-theme='dark'] .fd-title { color: #EDE3D6; }
-html[data-theme='dark'] .fd-hint { color: #8A7A66; }
-html[data-theme='dark'] .fd-group-title { color: #C98850; }
-html[data-theme='dark'] .fd-group-count { color: #8A7A66; }
+html[data-theme='dark'] .fd-title-mark { background: linear-gradient(180deg, #E0675F, #D9A96B); }
+html[data-theme='dark'] .fd-title { color: #DFE9E4; }
+html[data-theme='dark'] .fd-hint { color: #7A8B83; }
+html[data-theme='dark'] .fd-group-title { color: #D9A96B; }
+html[data-theme='dark'] .fd-group-count { color: #7A8B83; }
 
 html[data-theme='dark'] .fd-card {
-  background: linear-gradient(180deg, #2A2219, #241D16);
-  border-color: #3A3027;
+  background: linear-gradient(180deg, #232E2B, #1E2825);
+  border-color: #36453F;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
-html[data-theme='dark'] .fd-name { color: #EDE3D6; }
-html[data-theme='dark'] .fd-status { color: #C98850; background: #332A20; }
-html[data-theme='dark'] .fd-status-grace { color: #E0675F; background: #33231D; }
-html[data-theme='dark'] .fd-status-pending { color: #D6A57A; background: #2E251C; }
-html[data-theme='dark'] .fd-line { color: #B8A894; }
-html[data-theme='dark'] .fd-line-sub { color: #8A7A66; }
-html[data-theme='dark'] .fd-line-wait { color: #C98850; }
+html[data-theme='dark'] .fd-name { color: #DFE9E4; }
+html[data-theme='dark'] .fd-status { color: #D9A96B; background: #2A3631; }
+html[data-theme='dark'] .fd-status-grace { color: #E0675F; background: #242E2A; }
+html[data-theme='dark'] .fd-status-pending { color: #E3BF8C; background: #212B27; }
+html[data-theme='dark'] .fd-line { color: #A5B6AE; }
+html[data-theme='dark'] .fd-line-sub { color: #7A8B83; }
+html[data-theme='dark'] .fd-line-wait { color: #D9A96B; }
 html[data-theme='dark'] .fd-line-lock { color: #E0675F; }
 
-html[data-theme='dark'] .fd-btn { background: #332A20; border-color: #3A3027; }
-html[data-theme='dark'] .fd-btn-text { color: #B8A894; }
-html[data-theme='dark'] .fd-btn-primary { background: linear-gradient(180deg, #D6A57A, #C98850); border-color: #C98850; }
-html[data-theme='dark'] .fd-btn-primary .fd-btn-text { color: #211A14; }
-html[data-theme='dark'] .fd-btn-off { background: #241D16; border-color: #3A3027; }
-html[data-theme='dark'] .fd-btn-off .fd-btn-text { color: #8A7A66; }
-html[data-theme='dark'] .fd-reason { color: #8A7A66; }
+html[data-theme='dark'] .fd-btn { background: #2A3631; border-color: #36453F; }
+html[data-theme='dark'] .fd-btn-text { color: #A5B6AE; }
+html[data-theme='dark'] .fd-btn-primary { background: linear-gradient(180deg, #E3BF8C, #D9A96B); border-color: #D9A96B; }
+html[data-theme='dark'] .fd-btn-primary .fd-btn-text { color: #1B2422; }
+html[data-theme='dark'] .fd-btn-off { background: #1E2825; border-color: #36453F; }
+html[data-theme='dark'] .fd-btn-off .fd-btn-text { color: #7A8B83; }
+html[data-theme='dark'] .fd-reason { color: #7A8B83; }
 html[data-theme='dark'] .fd-done { color: #7FC08A; }
 html[data-theme='dark'] .fd-err { color: #E0675F; }
-html[data-theme='dark'] .fd-empty-text { color: #8A7A66; }
+html[data-theme='dark'] .fd-empty-text { color: #7A8B83; }
 
 /* 解除好友自绘确认层（1010 / 1011） */
 html[data-theme='dark'] .fd-cfm-mask { background: rgba(0, 0, 0, 0.66); }
 html[data-theme='dark'] .fd-cfm {
-  background: linear-gradient(180deg, #2A2219, #241D16);
-  border-color: #3A3027;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(237, 227, 214, 0.06);
+  background: linear-gradient(180deg, #232E2B, #1E2825);
+  border-color: #36453F;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(223, 233, 228, 0.06);
 }
-html[data-theme='dark'] .fd-cfm-title { color: #EDE3D6; }
-html[data-theme='dark'] .fd-cfm-peer { color: #C98850; }
-html[data-theme='dark'] .fd-cfm-body { color: #B8A894; }
-html[data-theme='dark'] .fd-cfm-btn { background: #332A20; border-color: #3A3027; }
-html[data-theme='dark'] .fd-cfm-btn-text { color: #B8A894; }
+html[data-theme='dark'] .fd-cfm-title { color: #DFE9E4; }
+html[data-theme='dark'] .fd-cfm-peer { color: #D9A96B; }
+html[data-theme='dark'] .fd-cfm-body { color: #A5B6AE; }
+html[data-theme='dark'] .fd-cfm-btn { background: #2A3631; border-color: #36453F; }
+html[data-theme='dark'] .fd-cfm-btn-text { color: #A5B6AE; }
 html[data-theme='dark'] .fd-cfm-btn.ok { background: linear-gradient(180deg, #E0675F, #A8322D); border-color: #A8322D; }
-html[data-theme='dark'] .fd-cfm-btn.ok .fd-cfm-btn-text { color: #211A14; }
+html[data-theme='dark'] .fd-cfm-btn.ok .fd-cfm-btn-text { color: #1B2422; }
 /* #endif */
 </style>

@@ -6,7 +6,7 @@
       左右两层各占 ≤44% 宽、贴边、向内以 mask 渐隐，中段整片留给文字。
     · 纸底**不再止于 banner**：`.banner__paper` 是一层连续纸面，从 banner 顶边一直铺到
       banner 下方 `--extend-h`（260px，即搜索框 / 排序条 / 首张卡片上半部所在的高度），
-      末端渐隐进页面底色 #F6F0E4 ⇒ 背景「侵占」搜索区，不再在 banner 下缘硬切一刀。
+      末端渐隐进页面底色 #EDF1EA ⇒ 背景「侵占」搜索区，不再在 banner 下缘硬切一刀。
     · 小程序（`#ifndef H5`）**完全保持**原文字 hero：同一份 title / subtitle，
       字号 / 字重 / 颜色 / 间距与改版前逐值一致（模板与样式均原样搬迁）。
     · 三张素材**只在本文件的 H5 分支引用**（全仓唯一引用点）：小程序编译时该分支被条件编译整段
@@ -83,7 +83,7 @@ defineProps<{
   overflow: hidden;
   pointer-events: none;
   z-index: 0;
-  background: #F3E9DA; /* 素材未加载时的暖纸兜底色（与宣纸同族） */
+  background: #E9F0EA; /* 素材未加载时的青瓷纸兜底色（与宣纸同族·2026-10 换色） */
 }
 
 /* 纸面纹理：宣纸古籍铺满整层（含 banner 区），8px 模糊 + scale 吃毛边 */
@@ -113,11 +113,11 @@ defineProps<{
   top: 0;
   height: 56px;
   z-index: 1;
-  background: linear-gradient(to bottom, rgba(246, 240, 228, 0.92), rgba(246, 240, 228, 0));
+  background: linear-gradient(to bottom, rgba(237, 241, 234, 0.92), rgba(237, 241, 234, 0));
   pointer-events: none;
 }
 
-/* 纸面末端渐隐到页面底色 #F6F0E4（= App.vue H5 `page` 暖纸底色）。
+/* 纸面末端渐隐到页面底色 #EDF1EA（= App.vue H5 `page` 暖纸底色）。
    起点落在 banner 下缘之后约 50px ⇒ 搜索框坐在接近满强度的纸面上，排序条 / 首张卡片处逐格淡出。 */
 .banner__paper-fade {
   position: absolute;
@@ -127,10 +127,10 @@ defineProps<{
   height: 210px;
   background: linear-gradient(
     to bottom,
-    rgba(246, 240, 228, 0) 0%,
-    rgba(246, 240, 228, 0.38) 40%,
-    rgba(246, 240, 228, 0.85) 74%,
-    #F6F0E4 100%
+    rgba(237, 241, 234, 0) 0%,
+    rgba(237, 241, 234, 0.38) 40%,
+    rgba(237, 241, 234, 0.85) 74%,
+    #EDF1EA 100%
   );
   pointer-events: none;
 }
@@ -222,10 +222,10 @@ defineProps<{
   transform: translateX(-50%);
   z-index: 5;
   pointer-events: none;
-  background: radial-gradient(closest-side, rgba(249, 242, 231, 0.62), rgba(249, 242, 231, 0) 100%);
+  background: radial-gradient(closest-side, rgba(237, 241, 234, 0.62), rgba(237, 241, 234, 0) 100%);
 }
 
-/* 文案层：三维叠图之上（z-index 10），垂直居中；文案色沿用现有（#3E2723 / 暖棕） */
+/* 文案层：三维叠图之上（z-index 10），垂直居中；文案色沿用现有（#2F3A33 / 暖棕） */
 .banner__content {
   position: relative;
   z-index: 10;
@@ -244,15 +244,15 @@ defineProps<{
   display: block;
   font-size: clamp(18px, 4.6vw, 24px);
   font-weight: 700;
-  color: #3E2723;
+  color: #2F3A33;
   letter-spacing: 2px;
   line-height: 1.7;
-  text-shadow: 0 1px 0 rgba(255, 253, 248, 0.7), 0 2px 12px rgba(255, 253, 248, 0.9);
+  text-shadow: 0 1px 0 rgba(250, 252, 248, 0.7), 0 2px 12px rgba(250, 252, 248, 0.9);
 }
 
-/* 副标题：暖棕加深到 #5D4638（原 #A1887F 在暖纸底上对比不足；#6E5546 在 390 下叠在
+/* 副标题：暖棕加深到 #5D4638（原 #6E7D70 在暖纸底上对比不足；#6E5546 在 390 下叠在
    书页细字上仍略弱）⇒ 同族色相再深一档 + 三层浅色柔光托底（不加描边、不显脏），
-   对 #F6F0E4 底约 7.2:1。文案一字未改。 */
+   对 #EDF1EA 底约 7.2:1。文案一字未改。 */
 .banner__subtitle {
   display: block;
   margin-top: 10px;
@@ -260,8 +260,8 @@ defineProps<{
   color: #5D4638;
   letter-spacing: 0.5px;
   line-height: 1.6;
-  text-shadow: 0 1px 0 rgba(255, 253, 248, 0.85), 0 0 6px rgba(255, 253, 248, 0.85),
-    0 0 14px rgba(255, 253, 248, 0.6);
+  text-shadow: 0 1px 0 rgba(250, 252, 248, 0.85), 0 0 6px rgba(250, 252, 248, 0.85),
+    0 0 14px rgba(250, 252, 248, 0.6);
 }
 
 /* ---- 窄屏 / 平板（≤1100px）：两侧层改为 cover 填满盒子 ----
@@ -301,7 +301,7 @@ defineProps<{
   .banner::after {
     width: 94%;
     max-width: none;
-    background: radial-gradient(closest-side, rgba(249, 242, 231, 0.8), rgba(249, 242, 231, 0) 100%);
+    background: radial-gradient(closest-side, rgba(237, 241, 234, 0.8), rgba(237, 241, 234, 0) 100%);
   }
 }
 
@@ -315,22 +315,22 @@ defineProps<{
 /* ---- 夜间模式（html[data-theme='dark']）：三层图统一压暗 ----
    · 三层各自**保留原模糊值**（纸面 8px / 两侧 3px），只在 filter 链尾叠加 brightness ⇒ 模糊观感不变、
      只是变暗；saturate 略收，避免压暗后纸纹发花。
-   · 纸面层同时换深暖底 #241D16（图片未加载时不露白），末端渐隐改到夜间页面底色 #211A14。
+   · 纸面层同时换深青墨底 #1E2825（图片未加载时不露白），末端渐隐改到夜间页面底色 #1B2422。
    · 中段柔光（.banner::after）在浅色下是「提亮托字」，夜间**反向**成一层暗纱 ⇒ 文字落在更暗的底上。
-   · 文案转亮系（标题 #EDE3D6 / 副标题 #C4B4A0），文字阴影由浅色柔光改为深色投影（反之）。
+   · 文案转亮系（标题 #DFE9E4 / 副标题 #B4C2BB），文字阴影由浅色柔光改为深色投影（反之）。
    · 选择器带 html[data-theme='dark'] 前缀，特异性高于上面 base / 媒体查询里的同名规则，无需 !important。 */
-html[data-theme='dark'] .banner__paper { background: #241D16; }
+html[data-theme='dark'] .banner__paper { background: #1E2825; }
 html[data-theme='dark'] .banner__paper-img { filter: blur(8px) brightness(0.42) saturate(0.7); }
 html[data-theme='dark'] .banner__paper::before {
-  background: linear-gradient(to bottom, rgba(36, 29, 22, 0.9), rgba(36, 29, 22, 0));
+  background: linear-gradient(to bottom, rgba(30, 40, 37, 0.9), rgba(30, 40, 37, 0));
 }
 html[data-theme='dark'] .banner__paper-fade {
   background: linear-gradient(
     to bottom,
-    rgba(33, 26, 20, 0) 0%,
-    rgba(33, 26, 20, 0.38) 40%,
-    rgba(33, 26, 20, 0.85) 74%,
-    #211A14 100%
+    rgba(27, 36, 34, 0) 0%,
+    rgba(27, 36, 34, 0.38) 40%,
+    rgba(27, 36, 34, 0.85) 74%,
+    #1B2422 100%
   );
 }
 html[data-theme='dark'] .banner__left,
@@ -338,14 +338,14 @@ html[data-theme='dark'] .banner__right {
   filter: blur(3px) brightness(0.5) saturate(0.75);
 }
 html[data-theme='dark'] .banner::after {
-  background: radial-gradient(closest-side, rgba(33, 26, 20, 0.78), rgba(33, 26, 20, 0) 100%);
+  background: radial-gradient(closest-side, rgba(27, 36, 34, 0.78), rgba(27, 36, 34, 0) 100%);
 }
 html[data-theme='dark'] .banner__title {
-  color: #EDE3D6;
+  color: #DFE9E4;
   text-shadow: 0 1px 0 rgba(24, 18, 13, 0.7), 0 2px 12px rgba(24, 18, 13, 0.9);
 }
 html[data-theme='dark'] .banner__subtitle {
-  color: #C4B4A0;
+  color: #B4C2BB;
   text-shadow: 0 1px 0 rgba(24, 18, 13, 0.85), 0 0 6px rgba(24, 18, 13, 0.85),
     0 0 14px rgba(24, 18, 13, 0.6);
 }
@@ -357,14 +357,14 @@ html[data-theme='dark'] .banner__subtitle {
 .title {
   font-size: 19px;
   font-weight: 700;
-  color: #3E2723;
+  color: #2F3A33;
   letter-spacing: 1px;
   line-height: 1.5;
   display: block;
 }
 .subtitle {
   font-size: 13px;
-  color: #A1887F;
+  color: #6E7D70;
   line-height: 1.5;
   margin-top: 8px;
   display: block;

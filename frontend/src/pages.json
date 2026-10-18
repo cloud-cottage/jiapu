@@ -145,8 +145,8 @@
   ],
   "tabBar": {
     "color": "#999999",
-    "selectedColor": "#8B4513",
-    "backgroundColor": "#ffffff",
+    "selectedColor": "#4E6B57",
+    "backgroundColor": "#FAFCF8",
     "borderStyle": "black",
     "list": [
       {
@@ -166,8 +166,8 @@
   "globalStyle": {
     "navigationBarTextStyle": "black",
     "navigationBarTitleText": "家族历史数字馆",
-    "navigationBarBackgroundColor": "#F8F8F8",
-    "backgroundColor": "#F8F8F8"
+    "navigationBarBackgroundColor": "#EEF1EF",
+    "backgroundColor": "#EEF1EF"
   },
   "easycom": {
     "autoscan": true,

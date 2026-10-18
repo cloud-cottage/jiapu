@@ -196,15 +196,15 @@ async function submitRename() {
   box-sizing: border-box;
 }
 .rename-title {
-  font-size: 18px; font-weight: bold; color: #3E2723;
+  font-size: 18px; font-weight: bold; color: #2F3A33;
   display: block; text-align: center; margin-bottom: 18px;
 }
 .rename-form-item { margin-bottom: 14px; }
-.rename-label { font-size: 13px; color: #8B4513; font-weight: bold; display: block; margin-bottom: 6px; }
+.rename-label { font-size: 13px; color: #4E6B57; font-weight: bold; display: block; margin-bottom: 6px; }
 .rename-current-text { font-size: 14px; color: #555; display: block; }
 .rename-input {
-  height: 42px; border: 1px solid #E0D5C8; border-radius: 8px;
-  padding: 0 12px; font-size: 14px; background: #FBF8F4; width: 100%;
+  height: 42px; border: 1px solid #CFD8CE; border-radius: 8px;
+  padding: 0 12px; font-size: 14px; background: #F6FAF6; width: 100%;
   box-sizing: border-box;
 }
 /* 价格行：本次消耗明示 */
@@ -213,7 +213,7 @@ async function submitRename() {
 .rename-error { color: #C62828; font-size: 13px; text-align: center; margin-bottom: 10px; }
 .rename-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
 .rename-btn-save {
-  height: 42px; line-height: 42px; background: #8B4513; color: #fff;
+  height: 42px; line-height: 42px; background: #4E6B57; color: #fff;
   font-size: 15px; border-radius: 8px;
 }
 .rename-btn-cancel { text-align: center; color: #999; font-size: 14px; padding: 4px 0; }

@@ -251,14 +251,14 @@ function clearAll() {
 
 /* 折叠态触发条（与既有 .input 同高同风格） */
 .gc-trigger {
-  height: 42px; border: 1px solid #E0D5C8; border-radius: 8px;
-  padding: 0 12px; background: #FBF8F4; width: 100%;
+  height: 42px; border: 1px solid #CFD8CE; border-radius: 8px;
+  padding: 0 12px; background: #F6FAF6; width: 100%;
   display: flex; align-items: center; justify-content: space-between;
   box-sizing: border-box;
 }
-.gc-trigger-text { font-size: 14px; color: #3E2723; flex: 1; }
-.gc-trigger-empty { color: #B5A594; }
-.gc-trigger-arrow { font-size: 16px; color: #B5A594; margin-left: 6px; }
+.gc-trigger-text { font-size: 14px; color: #2F3A33; flex: 1; }
+.gc-trigger-empty { color: #8E9A93; }
+.gc-trigger-arrow { font-size: 16px; color: #8E9A93; margin-left: 6px; }
 
 /* 覆盖层：z-index 1200 > 既有 .modal-mask 的 999（首页建树弹窗为 960） */
 .gc-mask {
@@ -274,63 +274,63 @@ function clearAll() {
 .gc-head {
   display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
 }
-.gc-head-title { font-size: 16px; font-weight: bold; color: #3E2723; }
-.gc-head-close { font-size: 16px; color: #B5A594; padding: 0 4px; }
+.gc-head-title { font-size: 16px; font-weight: bold; color: #2F3A33; }
+.gc-head-close { font-size: 16px; color: #8E9A93; padding: 0 4px; }
 
 /* 三级列：等宽三列 + 各自内部滚动（scroll-view，H5 与小程序一致） */
 .gc-cols { display: flex; gap: 6px; }
 .gc-col {
-  flex: 1; height: 230px; border: 1px solid #F0E8DE; border-radius: 8px;
-  background: #FFFDF8; box-sizing: border-box;
+  flex: 1; height: 230px; border: 1px solid #E6EDE7; border-radius: 8px;
+  background: #FAFCF8; box-sizing: border-box;
 }
 .gc-item { padding: 9px 8px; border-bottom: 1px solid #F7F1E8; }
 .gc-item-on { background: #FFF3E0; }
 .gc-item-text { font-size: 13px; color: #5D4037; }
-.gc-item-on .gc-item-text { color: #8B4513; font-weight: bold; }
+.gc-item-on .gc-item-text { color: #4E6B57; font-weight: bold; }
 
-.gc-hint { font-size: 12px; color: #A1887F; margin-top: 10px; display: block; }
-.gc-preview { font-size: 12px; color: #8B4513; margin-top: 6px; display: block; }
+.gc-hint { font-size: 12px; color: #6E7D70; margin-top: 10px; display: block; }
+.gc-preview { font-size: 12px; color: #4E6B57; margin-top: 6px; display: block; }
 
 .gc-actions { display: flex; gap: 10px; margin-top: 14px; }
 .gc-btn {
   flex: 1; height: 40px; border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
 }
-.gc-btn-ghost { background: #FBF8F4; border: 1px solid #E0D5C8; }
-.gc-btn-main { background: #8B4513; }
+.gc-btn-ghost { background: #F6FAF6; border: 1px solid #CFD8CE; }
+.gc-btn-main { background: #4E6B57; }
 .gc-btn-off { opacity: 0.5; }
-.gc-btn-text { font-size: 14px; color: #8B4513; }
+.gc-btn-text { font-size: 14px; color: #4E6B57; }
 .gc-btn-text-main { color: #fff; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
-   触发条同表单输入框口径（底 #241D16 / 边 #3A3027）；面板卡面 #2A2219；
-   三列容器 #241D16、选中项 #C98850 边（inset 影子，不占布局）+ #332A20 底。
+   触发条同表单输入框口径（底 #1E2825 / 边 #36453F）；面板卡面 #232E2B；
+   三列容器 #1E2825、选中项 #D9A96B 边（inset 影子，不占布局）+ #2A3631 底。
    遮罩 `.gc-mask` 保持半透明黑（rgba(0,0,0,0.55)）不改；只改颜色声明、无 filter / invert；
    全部 H5 条件编译 ⇒ 小程序零改动。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .gc-trigger { background: #241D16; border-color: #3A3027; }
-html[data-theme='dark'] .gc-trigger-text { color: #EDE3D6; }
-html[data-theme='dark'] .gc-trigger-empty { color: #8A7A66; }
-html[data-theme='dark'] .gc-trigger-arrow { color: #C98850; }
+html[data-theme='dark'] .gc-trigger { background: #1E2825; border-color: #36453F; }
+html[data-theme='dark'] .gc-trigger-text { color: #DFE9E4; }
+html[data-theme='dark'] .gc-trigger-empty { color: #7A8B83; }
+html[data-theme='dark'] .gc-trigger-arrow { color: #D9A96B; }
 html[data-theme='dark'] .gc-panel {
-  background: #2A2219;
+  background: #232E2B;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
 }
-html[data-theme='dark'] .gc-head-title { color: #EDE3D6; }
-html[data-theme='dark'] .gc-head-close { color: #B8A894; }
-html[data-theme='dark'] .gc-col { background: #241D16; border-color: #3A3027; }
-html[data-theme='dark'] .gc-item { border-bottom-color: #4A3D31; }
+html[data-theme='dark'] .gc-head-title { color: #DFE9E4; }
+html[data-theme='dark'] .gc-head-close { color: #A5B6AE; }
+html[data-theme='dark'] .gc-col { background: #1E2825; border-color: #36453F; }
+html[data-theme='dark'] .gc-item { border-bottom-color: #42524B; }
 html[data-theme='dark'] .gc-item-on {
-  background: #332A20;
-  box-shadow: inset 0 0 0 1px #C98850;
+  background: #2A3631;
+  box-shadow: inset 0 0 0 1px #D9A96B;
 }
-html[data-theme='dark'] .gc-item-text { color: #B8A894; }
-html[data-theme='dark'] .gc-item-on .gc-item-text { color: #C98850; }
-html[data-theme='dark'] .gc-hint { color: #8A7A66; }
-html[data-theme='dark'] .gc-preview { color: #C98850; }
-html[data-theme='dark'] .gc-btn-ghost { background: #241D16; border-color: #3A3027; }
-html[data-theme='dark'] .gc-btn-main { background: #C98850; }
-html[data-theme='dark'] .gc-btn-text { color: #C98850; }
-html[data-theme='dark'] .gc-btn-text-main { color: #211A14; }
+html[data-theme='dark'] .gc-item-text { color: #A5B6AE; }
+html[data-theme='dark'] .gc-item-on .gc-item-text { color: #D9A96B; }
+html[data-theme='dark'] .gc-hint { color: #7A8B83; }
+html[data-theme='dark'] .gc-preview { color: #D9A96B; }
+html[data-theme='dark'] .gc-btn-ghost { background: #1E2825; border-color: #36453F; }
+html[data-theme='dark'] .gc-btn-main { background: #D9A96B; }
+html[data-theme='dark'] .gc-btn-text { color: #D9A96B; }
+html[data-theme='dark'] .gc-btn-text-main { color: #1B2422; }
 /* #endif */
 </style>

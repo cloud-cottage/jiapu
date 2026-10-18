@@ -582,14 +582,14 @@ function goInjectorProfile() {
   background: #fff; border-radius: 12px; padding: 16px;
   margin-bottom: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);
 }
-.section-title { font-size: 15px; font-weight: bold; color: #3E2723; display: block; }
+.section-title { font-size: 15px; font-weight: bold; color: #2F3A33; display: block; }
 .section-head {
   display: flex; align-items: center; justify-content: space-between;
   gap: 10px; margin-bottom: 10px;
 }
 .section-head .section-title { margin-bottom: 0; }
-.section-extra { font-size: 12px; color: #8B4513; }
-.section-hint { font-size: 12px; color: #B5A594; display: block; margin: 8px 0; }
+.section-extra { font-size: 12px; color: #4E6B57; }
+.section-hint { font-size: 12px; color: #8E9A93; display: block; margin: 8px 0; }
 
 /* 石榴籽 / 石榴籽玉 行内图标（统一经 business/icons.ts 常量引用，禁止手写 /static 路径） */
 .ico-line { display: flex; align-items: center; gap: 8rpx; }
@@ -597,40 +597,40 @@ function goInjectorProfile() {
 .ico-sm { width: 40rpx; height: 40rpx; flex-shrink: 0; }
 .ico-seed { width: 36rpx; height: 36rpx; flex-shrink: 0; }
 
-.status { border-left: 4px solid #B5A594; }
+.status { border-left: 4px solid #8E9A93; }
 .status-active { border-left-color: #2E7D32; }
 .status-buffer { border-left-color: #EF6C00; }
 .status-expired { border-left-color: #C62828; }
-.status-none { border-left-color: #8B4513; }
-.status-main { font-size: 17px; font-weight: bold; color: #3E2723; display: block; }
-.status-sub { font-size: 13px; color: #8B4513; display: block; margin-top: 4px; }
+.status-none { border-left-color: #4E6B57; }
+.status-main { font-size: 17px; font-weight: bold; color: #2F3A33; display: block; }
+.status-sub { font-size: 13px; color: #4E6B57; display: block; margin-top: 4px; }
 .status-line { font-size: 12px; color: #555; display: block; margin-top: 4px; }
-.status-tree { font-size: 11px; color: #B5A594; display: block; margin-top: 6px; }
+.status-tree { font-size: 11px; color: #8E9A93; display: block; margin-top: 6px; }
 
-.guide { margin-top: 10px; padding: 10px 12px; background: #FBF6EF; border-radius: 8px; }
-.guide-text { font-size: 12px; color: #8B4513; }
+.guide { margin-top: 10px; padding: 10px 12px; background: #F1F6F2; border-radius: 8px; }
+.guide-text { font-size: 12px; color: #4E6B57; }
 .banner { margin-top: 10px; padding: 10px 12px; background: #FDECEA; border-radius: 8px; }
 .banner-text { font-size: 12px; color: #C62828; font-weight: bold; }
 
 .jade-mounted { margin-top: 8px; }
-.jade-line { font-size: 13px; color: #3E2723; display: block; margin-bottom: 4px; }
+.jade-line { font-size: 13px; color: #2F3A33; display: block; margin-bottom: 4px; }
 .jade-warn { font-size: 12px; color: #C62828; display: block; margin-top: 8px; }
-.jade-note { font-size: 11px; color: #B5A594; display: block; margin-top: 4px; }
+.jade-note { font-size: 11px; color: #8E9A93; display: block; margin-top: 4px; }
 
 /* 注入者（口径 v6）：醒目主文案 + 可点节点卡片 / 两级兜底文案 */
 .injector-box {
   margin-top: 10px; padding: 10px 12px;
-  background: #FBF6EF; border-radius: 8px; border-left: 4px solid #8B4513;
+  background: #F1F6F2; border-radius: 8px; border-left: 4px solid #4E6B57;
 }
-.injector-main { font-size: 14px; font-weight: bold; color: #8B4513; display: block; }
+.injector-main { font-size: 14px; font-weight: bold; color: #4E6B57; display: block; }
 .injector-card {
   margin-top: 8px; padding: 8px 10px;
   background: #fff; border: 1px solid #E8DCCB; border-radius: 8px;
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
 }
-.injector-card-name { font-size: 13px; color: #3E2723; }
+.injector-card-name { font-size: 13px; color: #2F3A33; }
 .injector-card-link { font-size: 12px; color: #2C5F8A; flex-shrink: 0; }
-.injector-note { font-size: 12px; color: #B5A594; display: block; margin-top: 6px; }
+.injector-note { font-size: 12px; color: #8E9A93; display: block; margin-top: 6px; }
 
 .plan-grid { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
 .plan-card {
@@ -638,9 +638,9 @@ function goInjectorProfile() {
   border: 1px solid #F0E7DC; border-radius: 10px; padding: 10px 8px;
   background: #FFFDFA; text-align: center;
 }
-.plan-card.on { border-color: #8B4513; background: #FBF6EF; }
-.plan-name { font-size: 13px; font-weight: bold; color: #3E2723; display: block; }
-.plan-seeds { font-size: 12px; color: #8B4513; display: block; margin-top: 4px; }
+.plan-card.on { border-color: #4E6B57; background: #F1F6F2; }
+.plan-name { font-size: 13px; font-weight: bold; color: #2F3A33; display: block; }
+.plan-seeds { font-size: 12px; color: #4E6B57; display: block; margin-top: 4px; }
 .plan-days { font-size: 11px; color: #555; display: block; margin-top: 2px; }
 .plan-gift { font-size: 11px; color: #2E7D32; display: block; margin-top: 2px; }
 .plan-short { font-size: 11px; color: #C62828; display: block; margin-top: 2px; }
@@ -654,12 +654,12 @@ function goInjectorProfile() {
 
 .row-item {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 0; border-bottom: 1px solid #f5f0ea;
+  padding: 10px 0; border-bottom: 1px solid #EDF2EC;
 }
 .row-item:last-child { border-bottom: none; }
 .row-left { flex: 1; }
 .row-main { font-size: 13px; color: #555; display: block; }
-.row-sub { font-size: 11px; color: #B5A594; margin-top: 2px; display: block; }
+.row-sub { font-size: 11px; color: #8E9A93; margin-top: 2px; display: block; }
 .row-right { font-size: 13px; font-weight: bold; color: #2E7D32; }
 
 .fatal-box { text-align: center; }
@@ -667,67 +667,67 @@ function goInjectorProfile() {
 .error { text-align: center; color: #C62828; font-size: 13px; margin-top: 12px; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
-   色板同 styles/td-dark-warm.css（底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 /
-   主字 #EDE3D6 / 次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 / 暖棕 #C98850 /
+   色板同 styles/td-dark-warm.css（底 #1B2422 / 卡面 #232E2B / 次容器 #1E2825 /
+   主字 #DFE9E4 / 次字 #A5B6AE / 更淡 #7A8B83 / 边框 #36453F / 暖棕 #D9A96B /
    error #E0675F / success #7FC08A / warning #D9973F）。
    **只改颜色**（背景 / 文字 / 边框 / 阴影），零布局属性、零 `filter` / `invert`。
    玉（`ICON.JADE`）与石榴籽（`ICON.SEED`）图标**一律不碰 ⇒ 不反色**。
-   已镶嵌玉的视觉强调继续用暖棕（#C98850）：含凹槽内「已镶玉」行、注入者主文案与侧边条、
+   已镶嵌玉的视觉强调继续用暖棕（#D9A96B）：含凹槽内「已镶玉」行、注入者主文案与侧边条、
    `status-none` 左条 —— 不改成中性灰，避免丢掉「这棵树已有玉」的辨识。
    H5 条件编译 ⇒ 小程序端零改动。 */
 /* #ifdef H5 */
 html[data-theme='dark'] .section {
-  background: linear-gradient(180deg, #2A2219, #241D16);
+  background: linear-gradient(180deg, #232E2B, #1E2825);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
-html[data-theme='dark'] .section-title { color: #EDE3D6; }
-html[data-theme='dark'] .section-extra { color: #C98850; }
-html[data-theme='dark'] .section-hint { color: #8A7A66; }
+html[data-theme='dark'] .section-title { color: #DFE9E4; }
+html[data-theme='dark'] .section-extra { color: #D9A96B; }
+html[data-theme='dark'] .section-hint { color: #7A8B83; }
 
 /* ① 状态区四态：左条语义色 + 文案 */
-html[data-theme='dark'] .status { border-left-color: #8A7A66; }
+html[data-theme='dark'] .status { border-left-color: #7A8B83; }
 html[data-theme='dark'] .status-active { border-left-color: #7FC08A; }
 html[data-theme='dark'] .status-buffer { border-left-color: #D9973F; }
 html[data-theme='dark'] .status-expired { border-left-color: #E0675F; }
-html[data-theme='dark'] .status-none { border-left-color: #C98850; }
-html[data-theme='dark'] .status-main { color: #EDE3D6; }
-html[data-theme='dark'] .status-sub { color: #C98850; }
-html[data-theme='dark'] .status-line { color: #B8A894; }
-html[data-theme='dark'] .status-tree { color: #8A7A66; }
-html[data-theme='dark'] .guide { background: #241D16; }
-html[data-theme='dark'] .guide-text { color: #C98850; }
-html[data-theme='dark'] .banner { background: #33231D; }
+html[data-theme='dark'] .status-none { border-left-color: #D9A96B; }
+html[data-theme='dark'] .status-main { color: #DFE9E4; }
+html[data-theme='dark'] .status-sub { color: #D9A96B; }
+html[data-theme='dark'] .status-line { color: #A5B6AE; }
+html[data-theme='dark'] .status-tree { color: #7A8B83; }
+html[data-theme='dark'] .guide { background: #1E2825; }
+html[data-theme='dark'] .guide-text { color: #D9A96B; }
+html[data-theme='dark'] .banner { background: #242E2A; }
 html[data-theme='dark'] .banner-text { color: #E0675F; }
 
 /* ② 镶玉区 */
-html[data-theme='dark'] .jade-line { color: #EDE3D6; }
+html[data-theme='dark'] .jade-line { color: #DFE9E4; }
 /* 已镶嵌玉的强调句（凹槽内首行）保持暖棕 */
-html[data-theme='dark'] .jade-mounted .ico-line .jade-line { color: #C98850; }
+html[data-theme='dark'] .jade-mounted .ico-line .jade-line { color: #D9A96B; }
 html[data-theme='dark'] .jade-warn { color: #E0675F; }
-html[data-theme='dark'] .jade-note { color: #8A7A66; }
-html[data-theme='dark'] .injector-box { background: #241D16; border-left-color: #C98850; }
-html[data-theme='dark'] .injector-main { color: #C98850; }
-html[data-theme='dark'] .injector-card { background: #2A2219; border-color: #3A3027; }
-html[data-theme='dark'] .injector-card-name { color: #EDE3D6; }
-html[data-theme='dark'] .injector-card-link { color: #D6A57A; }
-html[data-theme='dark'] .injector-note { color: #8A7A66; }
+html[data-theme='dark'] .jade-note { color: #7A8B83; }
+html[data-theme='dark'] .injector-box { background: #1E2825; border-left-color: #D9A96B; }
+html[data-theme='dark'] .injector-main { color: #D9A96B; }
+html[data-theme='dark'] .injector-card { background: #232E2B; border-color: #36453F; }
+html[data-theme='dark'] .injector-card-name { color: #DFE9E4; }
+html[data-theme='dark'] .injector-card-link { color: #E3BF8C; }
+html[data-theme='dark'] .injector-note { color: #7A8B83; }
 
 /* ③ 蓄能区五档位 */
-html[data-theme='dark'] .plan-card { background: #241D16; border-color: #3A3027; }
-html[data-theme='dark'] .plan-card.on { background: #2E251C; border-color: #C98850; }
-html[data-theme='dark'] .plan-name { color: #EDE3D6; }
-html[data-theme='dark'] .plan-seeds { color: #C98850; }
-html[data-theme='dark'] .plan-days { color: #B8A894; }
+html[data-theme='dark'] .plan-card { background: #1E2825; border-color: #36453F; }
+html[data-theme='dark'] .plan-card.on { background: #212B27; border-color: #D9A96B; }
+html[data-theme='dark'] .plan-name { color: #DFE9E4; }
+html[data-theme='dark'] .plan-seeds { color: #D9A96B; }
+html[data-theme='dark'] .plan-days { color: #A5B6AE; }
 html[data-theme='dark'] .plan-gift { color: #7FC08A; }
 html[data-theme='dark'] .plan-short { color: #E0675F; }
-html[data-theme='dark'] .plan-activity { background: #D9973F; color: #211A14; }
+html[data-theme='dark'] .plan-activity { background: #D9973F; color: #1B2422; }
 
 /* ④ 流水 / 空态 / 链接 / 错误 */
-html[data-theme='dark'] .empty { color: #8A7A66; }
-html[data-theme='dark'] .link { color: #D6A57A; }
-html[data-theme='dark'] .row-item { border-bottom-color: #3A3027; }
-html[data-theme='dark'] .row-main { color: #B8A894; }
-html[data-theme='dark'] .row-sub { color: #8A7A66; }
+html[data-theme='dark'] .empty { color: #7A8B83; }
+html[data-theme='dark'] .link { color: #E3BF8C; }
+html[data-theme='dark'] .row-item { border-bottom-color: #36453F; }
+html[data-theme='dark'] .row-main { color: #A5B6AE; }
+html[data-theme='dark'] .row-sub { color: #7A8B83; }
 html[data-theme='dark'] .row-right { color: #7FC08A; }
 html[data-theme='dark'] .fatal-text,
 html[data-theme='dark'] .error { color: #E0675F; }
@@ -737,14 +737,14 @@ html[data-theme='dark'] .error { color: #E0675F; }
    编译产物即为裸 `html[data-theme='dark'] .uni-modal` ⇒ 只在夜间生效、浅色零影响。
    （写法注意：前缀若留在 `:global()` 之外会被编译丢弃 —— 实测产物曾退化成裸 `.uni-modal`。）
    只改颜色，不改任何几何，不用 invert。 */
-:global(html[data-theme='dark'] .uni-modal) { background: #2A2219; }
+:global(html[data-theme='dark'] .uni-modal) { background: #232E2B; }
 :global(html[data-theme='dark'] .uni-modal__hd),
 :global(html[data-theme='dark'] .uni-modal__ft),
 :global(html[data-theme='dark'] .uni-modal__bd) { background: transparent; }
-:global(html[data-theme='dark'] .uni-modal__title) { color: #EDE3D6; }
-:global(html[data-theme='dark'] .uni-modal__bd) { color: #B8A894; }
-:global(html[data-theme='dark'] .uni-modal__btn) { color: #B8A894; background: transparent; }
-:global(html[data-theme='dark'] .uni-modal__btn_primary) { color: #C98850; }
-:global(html[data-theme='dark'] .uni-modal__textarea) { color: #EDE3D6; background: #332A20; }
+:global(html[data-theme='dark'] .uni-modal__title) { color: #DFE9E4; }
+:global(html[data-theme='dark'] .uni-modal__bd) { color: #A5B6AE; }
+:global(html[data-theme='dark'] .uni-modal__btn) { color: #A5B6AE; background: transparent; }
+:global(html[data-theme='dark'] .uni-modal__btn_primary) { color: #D9A96B; }
+:global(html[data-theme='dark'] .uni-modal__textarea) { color: #DFE9E4; background: #2A3631; }
 /* #endif */
 </style>

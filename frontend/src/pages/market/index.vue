@@ -588,12 +588,12 @@ function goWallet() {
   margin-bottom: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);
 }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.section-title { font-size: 15px; font-weight: bold; color: #3E2723; display: block; }
+.section-title { font-size: 15px; font-weight: bold; color: #2F3A33; display: block; }
 .section-extra { font-size: 12px; color: #999; }
-.section-hint { font-size: 11px; color: #B5A594; display: block; margin-top: 6px; line-height: 1.6; }
+.section-hint { font-size: 11px; color: #8E9A93; display: block; margin-top: 6px; line-height: 1.6; }
 .section-error { font-size: 12px; color: #C62828; display: block; margin-top: 8px; line-height: 1.6; }
 
-.official-price { font-size: 14px; color: #8B4513; font-weight: bold; display: block; margin-top: 10px; }
+.official-price { font-size: 14px; color: #4E6B57; font-weight: bold; display: block; margin-top: 10px; }
 .official-stock { font-size: 14px; color: #2E7D32; display: block; margin-top: 6px; }
 .buy-row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
 .buy-row .input { flex: 1; }
@@ -601,34 +601,34 @@ function goWallet() {
 
 .asset-row {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 0; border-bottom: 1px solid #f5f0ea;
+  padding: 10px 0; border-bottom: 1px solid #EDF2EC;
 }
 .asset-row:last-child { border-bottom: none; }
-.asset-name { font-size: 14px; color: #3E2723; }
-.asset-value { font-size: 15px; font-weight: bold; color: #8B4513; }
+.asset-name { font-size: 14px; color: #2F3A33; }
+.asset-value { font-size: 15px; font-weight: bold; color: #4E6B57; }
 
-.compliance { font-size: 11px; color: #B5A594; display: block; margin-top: 10px; line-height: 1.6; }
+.compliance { font-size: 11px; color: #8E9A93; display: block; margin-top: 10px; line-height: 1.6; }
 .compliance-footer { text-align: center; margin-top: 4px; }
 
 .empty { text-align: center; color: #999; padding: 16px 0; font-size: 13px; }
-.link { color: #8B4513; font-size: 13px; display: block; margin-top: 8px; text-decoration: underline; }
+.link { color: #4E6B57; font-size: 13px; display: block; margin-top: 8px; text-decoration: underline; }
 
 .row-item {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 0; border-bottom: 1px solid #f5f0ea;
+  padding: 10px 0; border-bottom: 1px solid #EDF2EC;
 }
 .row-item:last-child { border-bottom: none; }
 .row-left { flex: 1; }
 .row-main { font-size: 14px; color: #555; display: block; }
-.row-sub { font-size: 11px; color: #B5A594; margin-top: 2px; display: block; }
-.own-tag { font-size: 12px; color: #B5A594; }
+.row-sub { font-size: 11px; color: #8E9A93; margin-top: 2px; display: block; }
+.own-tag { font-size: 12px; color: #8E9A93; }
 
 /* 石榴籽行内图标（统一经 business/icons.ts 常量引用，禁止手写 /static 路径） */
 .ico-line { display: flex; align-items: center; gap: 6rpx; }
 .ico-sm { width: 28rpx; height: 28rpx; flex-shrink: 0; }
 
 .form-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
-.form-label { font-size: 13px; color: #3E2723; width: 72px; flex-shrink: 0; }
+.form-label { font-size: 13px; color: #2F3A33; width: 72px; flex-shrink: 0; }
 .form-row .input { flex: 1; }
 .form-submit { margin-top: 14px; }
 
@@ -641,22 +641,22 @@ function goWallet() {
   width: 86%; max-width: 380px; background: #fff; border-radius: 14px;
   padding: 20px; box-shadow: 0 8px 30px rgba(0,0,0,0.3);
 }
-.modal-title { font-size: 17px; font-weight: bold; color: #3E2723; display: block; text-align: center; }
+.modal-title { font-size: 17px; font-weight: bold; color: #2F3A33; display: block; text-align: center; }
 .modal-sub { font-size: 12px; color: #999; display: block; text-align: center; margin: 6px 0 14px; }
 .modal-row {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 0; border-bottom: 1px solid #f5f0ea;
+  padding: 8px 0; border-bottom: 1px solid #EDF2EC;
 }
 .modal-label { font-size: 13px; color: #999; }
-.modal-value { font-size: 14px; font-weight: bold; color: #3E2723; }
-.modal-hint { font-size: 11px; color: #B5A594; display: block; margin-top: 10px; line-height: 1.6; }
+.modal-value { font-size: 14px; font-weight: bold; color: #2F3A33; }
+.modal-hint { font-size: 11px; color: #8E9A93; display: block; margin-top: 10px; line-height: 1.6; }
 .modal-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
 
 .error { text-align: center; color: #C62828; font-size: 13px; margin-top: 12px; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
-   色板同 styles/td-dark-warm.css（底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 /
-   主字 #EDE3D6 / 次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 / 暖棕 #C98850 /
+   色板同 styles/td-dark-warm.css（底 #1B2422 / 卡面 #232E2B / 次容器 #1E2825 /
+   主字 #DFE9E4 / 次字 #A5B6AE / 更淡 #7A8B83 / 边框 #36453F / 暖棕 #D9A96B /
    error #E0675F / success #7FC08A）。
    **只改颜色**（背景 / 文字 / 边框 / 阴影），零布局属性、零 `filter` / `invert`；
    `t-input` 等控件走 `--td-*` token（td-dark-warm.css 已覆盖），此处只收口页面自绘部分。
@@ -664,43 +664,43 @@ function goWallet() {
    H5 条件编译 ⇒ 小程序端零改动。 */
 /* #ifdef H5 */
 html[data-theme='dark'] .section {
-  background: linear-gradient(180deg, #2A2219, #241D16);
+  background: linear-gradient(180deg, #232E2B, #1E2825);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
-html[data-theme='dark'] .section-title { color: #EDE3D6; }
-html[data-theme='dark'] .section-extra { color: #8A7A66; }
-html[data-theme='dark'] .section-hint { color: #8A7A66; }
+html[data-theme='dark'] .section-title { color: #DFE9E4; }
+html[data-theme='dark'] .section-extra { color: #7A8B83; }
+html[data-theme='dark'] .section-hint { color: #7A8B83; }
 html[data-theme='dark'] .section-error { color: #E0675F; }
 
 /* 官方发售 */
-html[data-theme='dark'] .official-price { color: #C98850; }
+html[data-theme='dark'] .official-price { color: #D9A96B; }
 html[data-theme='dark'] .official-stock { color: #7FC08A; }
 
 /* 我的资产行 / 挂单列表行 */
-html[data-theme='dark'] .asset-row { border-bottom-color: #3A3027; }
-html[data-theme='dark'] .asset-name { color: #EDE3D6; }
-html[data-theme='dark'] .asset-value { color: #C98850; }
-html[data-theme='dark'] .row-item { border-bottom-color: #3A3027; }
-html[data-theme='dark'] .row-main { color: #B8A894; }
-html[data-theme='dark'] .row-sub { color: #8A7A66; }
-html[data-theme='dark'] .own-tag { color: #8A7A66; }
-html[data-theme='dark'] .compliance { color: #8A7A66; }
-html[data-theme='dark'] .empty { color: #8A7A66; }
-html[data-theme='dark'] .link { color: #D6A57A; }
-html[data-theme='dark'] .form-label { color: #EDE3D6; }
+html[data-theme='dark'] .asset-row { border-bottom-color: #36453F; }
+html[data-theme='dark'] .asset-name { color: #DFE9E4; }
+html[data-theme='dark'] .asset-value { color: #D9A96B; }
+html[data-theme='dark'] .row-item { border-bottom-color: #36453F; }
+html[data-theme='dark'] .row-main { color: #A5B6AE; }
+html[data-theme='dark'] .row-sub { color: #7A8B83; }
+html[data-theme='dark'] .own-tag { color: #7A8B83; }
+html[data-theme='dark'] .compliance { color: #7A8B83; }
+html[data-theme='dark'] .empty { color: #7A8B83; }
+html[data-theme='dark'] .link { color: #E3BF8C; }
+html[data-theme='dark'] .form-label { color: #DFE9E4; }
 
 /* 挂单确认弹层（自绘 .modal-mask 999 / .modal） */
 html[data-theme='dark'] .modal-mask { background: rgba(0, 0, 0, 0.66); }
 html[data-theme='dark'] .modal {
-  background: linear-gradient(180deg, #2A2219, #241D16);
+  background: linear-gradient(180deg, #232E2B, #1E2825);
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
 }
-html[data-theme='dark'] .modal-title { color: #EDE3D6; }
-html[data-theme='dark'] .modal-sub { color: #8A7A66; }
-html[data-theme='dark'] .modal-row { border-bottom-color: #3A3027; }
-html[data-theme='dark'] .modal-label { color: #8A7A66; }
-html[data-theme='dark'] .modal-value { color: #EDE3D6; }
-html[data-theme='dark'] .modal-hint { color: #8A7A66; }
+html[data-theme='dark'] .modal-title { color: #DFE9E4; }
+html[data-theme='dark'] .modal-sub { color: #7A8B83; }
+html[data-theme='dark'] .modal-row { border-bottom-color: #36453F; }
+html[data-theme='dark'] .modal-label { color: #7A8B83; }
+html[data-theme='dark'] .modal-value { color: #DFE9E4; }
+html[data-theme='dark'] .modal-hint { color: #7A8B83; }
 html[data-theme='dark'] .error { color: #E0675F; }
 /* #endif */
 </style>

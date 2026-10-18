@@ -186,38 +186,38 @@ watch(() => props.treeId, (v) => { if (v) load(); });
 
 <style scoped>
 .origin-picker { width: 100%; }
-.op-hint { font-size: 11px; color: #A1887F; line-height: 1.6; display: block; margin-bottom: 8px; }
+.op-hint { font-size: 11px; color: #6E7D70; line-height: 1.6; display: block; margin-bottom: 8px; }
 
 .op-state { padding: 10px 0; text-align: center; }
-.op-state-text { font-size: 12px; color: #A1887F; }
-.op-empty { font-size: 12px; color: #8B4513; line-height: 1.7; display: block; }
+.op-state-text { font-size: 12px; color: #6E7D70; }
+.op-empty { font-size: 12px; color: #4E6B57; line-height: 1.7; display: block; }
 .op-err { font-size: 12px; color: #C62828; display: block; line-height: 1.6; }
 .op-retry {
   display: inline-block; margin-top: 8px; padding: 4px 14px;
   border: 1px solid #D7B27A; border-radius: 12px;
 }
-.op-retry-text { font-size: 12px; color: #8B4513; }
+.op-retry-text { font-size: 12px; color: #4E6B57; }
 
-.op-current { font-size: 12px; color: #3E2723; display: block; }
-.op-current-src { font-size: 11px; color: #A1887F; display: block; margin-top: 2px; }
+.op-current { font-size: 12px; color: #2F3A33; display: block; }
+.op-current-src { font-size: 11px; color: #6E7D70; display: block; margin-top: 2px; }
 
 .op-list {
-  margin-top: 8px; border: 1px solid #E0D5C8; border-radius: 8px;
-  background: #FBF8F4; max-height: 260px; overflow-y: auto;
+  margin-top: 8px; border: 1px solid #CFD8CE; border-radius: 8px;
+  background: #F6FAF6; max-height: 260px; overflow-y: auto;
 }
 .op-row { padding: 8px 10px; border-bottom: 1px solid #F0E7DA; }
 .op-row:last-child { border-bottom: none; }
 .op-row-on { background: #FFF3E0; }
 .op-row-off { opacity: 0.55; }
 .op-row-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.op-name { font-size: 14px; color: #3E2723; font-weight: bold; }
+.op-name { font-size: 14px; color: #2F3A33; font-weight: bold; }
 .op-gen {
-  font-size: 11px; color: #8B4513; padding: 1px 6px;
-  border: 1px solid #E8C9A0; border-radius: 8px; background: #FFFDF8;
+  font-size: 11px; color: #4E6B57; padding: 1px 6px;
+  border: 1px solid #E8C9A0; border-radius: 8px; background: #FAFCF8;
 }
 .op-cur-tag {
   font-size: 11px; color: #fff; padding: 1px 6px;
-  border-radius: 8px; background: #8B4513;
+  border-radius: 8px; background: #4E6B57;
 }
 .op-place { font-size: 12px; color: #5D4037; display: block; margin-top: 3px; }
 .op-place-off { color: #9E9E9E; }
@@ -226,7 +226,7 @@ watch(() => props.treeId, (v) => { if (v) load(); });
 .op-save-err { margin-top: 8px; }
 .op-actions { margin-top: 10px; }
 .op-btn {
-  height: 38px; border-radius: 8px; background: #8B4513;
+  height: 38px; border-radius: 8px; background: #4E6B57;
   display: flex; align-items: center; justify-content: center;
 }
 .op-btn-off { background: #C7B299; }

@@ -25,10 +25,10 @@ onLoad((options: any) => {
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
    本页 = 导出配置外壳（无纸页本体：PDF 由 paged.js 另页渲染），故整体转暗：
-   标题 #EDE3D6、副行 #8A7A66；外壳底由页面统一 #211A14，面板颜色见 doc-layout-panel。
+   标题 #DFE9E4、副行 #7A8B83；外壳底由页面统一 #1B2422，面板颜色见 doc-layout-panel。
    只改颜色、零几何改动、无 filter / invert；H5 条件编译 ⇒ 小程序零改动。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .title { color: #EDE3D6; }
-html[data-theme='dark'] .tree-id { color: #8A7A66; }
+html[data-theme='dark'] .title { color: #DFE9E4; }
+html[data-theme='dark'] .tree-id { color: #7A8B83; }
 /* #endif */
 </style>

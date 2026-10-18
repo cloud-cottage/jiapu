@@ -116,6 +116,6 @@ function openTreePage(treeId: string) {
    （其夜间配色见 components/person-archive）⇒ 这里只补加载态文字色。
    只改颜色、零几何改动；H5 条件编译 ⇒ 小程序零改动。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .page-loading { color: #B8A894; }
+html[data-theme='dark'] .page-loading { color: #A5B6AE; }
 /* #endif */
 </style>

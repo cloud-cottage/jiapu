@@ -1127,7 +1127,7 @@ function goLogin() {
 .not-logged { text-align: center; padding: 60px 0; color: #999; }
 .btn-login { margin-top: 14px; }
 .header-card {
-  background: linear-gradient(135deg, #8B4513, #A66B32);
+  background: linear-gradient(135deg, #4E6B57, #A66B32);
   border-radius: 14px; padding: 20px; color: #fff; margin-bottom: 16px;
 }
 .header-title { font-size: 20px; font-weight: bold; display: block; }
@@ -1136,26 +1136,26 @@ function goLogin() {
   background: #fff; border-radius: 12px; padding: 16px;
   margin-bottom: 14px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);
 }
-.section-title { font-size: 15px; font-weight: bold; color: #3E2723; display: block; margin-bottom: 12px; }
+.section-title { font-size: 15px; font-weight: bold; color: #2F3A33; display: block; margin-bottom: 12px; }
 .empty { text-align: center; color: #999; padding: 20px; font-size: 13px; }
 .user-item {
-  padding: 12px 0; border-bottom: 1px solid #f5f0ea;
+  padding: 12px 0; border-bottom: 1px solid #EDF2EC;
 }
 .user-item:last-child { border-bottom: none; }
 .user-info { display: flex; align-items: center; gap: 8px; }
-.user-name { font-size: 15px; color: #3E2723; font-weight: 500; }
+.user-name { font-size: 15px; color: #2F3A33; font-weight: 500; }
 .user-phone { font-size: 12px; color: #999; }
 .user-role { margin-left: 4px; }
 .user-actions { margin-top: 8px; }
 .anchor-row { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
 .anchor-input { flex: 1; }
 .leave-item {
-  padding: 12px 0; border-bottom: 1px solid #f5f0ea;
+  padding: 12px 0; border-bottom: 1px solid #EDF2EC;
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
 }
 .leave-item:last-child { border-bottom: none; }
 .leave-info { flex: 1; }
-.leave-name { font-size: 14px; color: #3E2723; font-weight: 500; display: block; }
+.leave-name { font-size: 14px; color: #2F3A33; font-weight: 500; display: block; }
 .leave-desc { font-size: 12px; color: #999; display: block; margin-top: 2px; }
 .leave-status { margin-top: 6px; }
 .leave-actions { display: flex; gap: 8px; flex-shrink: 0; }
@@ -1164,7 +1164,7 @@ function goLogin() {
 /* 加入申请审批面板 */
 .approve-box {
   margin-top: 10px; padding: 12px;
-  background: #FBF6EF; border: 1px solid #F0E0C8; border-radius: 10px;
+  background: #F1F6F2; border: 1px solid #F0E0C8; border-radius: 10px;
 }
 .search-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .search-input { flex: 1; }
@@ -1172,11 +1172,11 @@ function goLogin() {
 .approve-results { max-height: 34vh; overflow-y: auto; margin-top: 8px; }
 .approve-result {
   display: flex; align-items: center; gap: 8px;
-  padding: 10px 12px; border: 1px solid #F0E8DE; border-radius: 8px;
+  padding: 10px 12px; border: 1px solid #E6EDE7; border-radius: 8px;
   margin-bottom: 6px;
 }
-.approve-result.selected { border-color: #8B4513; background: #FFF3E0; }
-.approve-result-name { font-size: 14px; color: #3E2723; font-weight: 500; }
+.approve-result.selected { border-color: #4E6B57; background: #FFF3E0; }
+.approve-result-name { font-size: 14px; color: #2F3A33; font-weight: 500; }
 .approve-result-id { font-size: 11px; color: #999; margin-left: auto; }
 .approve-error { color: #C62828; font-size: 13px; text-align: center; margin: 8px 0; }
 .approve-actions { display: flex; gap: 8px; margin-top: 8px; }
@@ -1189,14 +1189,14 @@ function goLogin() {
   margin-top: 6px;
   padding: 6px 8px;
   font-size: 13px;
-  border: 1px solid #E0D5C8;
-  background: #FFFDF8;
+  border: 1px solid #CFD8CE;
+  background: #FAFCF8;
 }
 .wenpu-hint { font-size: 12px; color: #777; display: block; margin-top: 6px; line-height: 1.6; }
 .wenpu-actions { display: flex; gap: 8px; margin-top: 12px; }
 
 /* 资产运维（资产发放 / 用户快照 / 变动日志） */
-.field-label { font-size: 13px; color: #3E2723; display: block; margin: 10px 0 4px; }
+.field-label { font-size: 13px; color: #2F3A33; display: block; margin: 10px 0 4px; }
 .field { margin-bottom: 4px; }
 .delta-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .delta-cell { flex: 1 1 45%; }
@@ -1205,86 +1205,86 @@ function goLogin() {
 .pool-inputs { display: flex; gap: 6px; }
 .pool-input { flex: 1; min-width: 0; }
 .grant-error { color: #C62828; font-size: 13px; margin: 8px 0; }
-.grant-sub { margin-top: 18px; padding-top: 12px; border-top: 1px solid #f5f0ea; }
+.grant-sub { margin-top: 18px; padding-top: 12px; border-top: 1px solid #EDF2EC; }
 .query-row { display: flex; gap: 6px; align-items: center; }
 .query-input { flex: 1; }
-.snap { margin-top: 8px; background: #FBF6EF; border: 1px solid #F0E0C8; border-radius: 10px; padding: 10px; }
+.snap { margin-top: 8px; background: #F1F6F2; border: 1px solid #F0E0C8; border-radius: 10px; padding: 10px; }
 .snap-row { display: flex; justify-content: space-between; padding: 4px 0; }
 .snap-label { font-size: 13px; color: #999; }
-.snap-value { font-size: 13px; color: #3E2723; font-weight: 500; }
-.snap-lot { font-size: 11px; color: #B5A594; display: block; margin-top: 2px; }
-.log-item { padding: 10px 0; border-bottom: 1px solid #f5f0ea; }
+.snap-value { font-size: 13px; color: #2F3A33; font-weight: 500; }
+.snap-lot { font-size: 11px; color: #8E9A93; display: block; margin-top: 2px; }
+.log-item { padding: 10px 0; border-bottom: 1px solid #EDF2EC; }
 .log-item:last-child { border-bottom: none; }
 .log-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.log-target { font-size: 14px; color: #3E2723; font-weight: 500; }
+.log-target { font-size: 14px; color: #2F3A33; font-weight: 500; }
 .log-delta { font-size: 13px; color: #2E7D32; font-weight: bold; }
 .log-delta.minus { color: #C62828; }
-.log-sub { font-size: 11px; color: #B5A594; display: block; margin-top: 2px; }
+.log-sub { font-size: 11px; color: #8E9A93; display: block; margin-top: 2px; }
 .log-reason { font-size: 12px; color: #777; display: block; margin-top: 2px; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
-   色板同 styles/td-dark-warm.css（底 #211A14 / 卡面 #2A2219 / 次容器 #241D16 /
-   主字 #EDE3D6 / 次字 #B8A894 / 更淡 #8A7A66 / 边框 #3A3027 / 分割 #4A3D31 /
-   暖棕 #C98850 / error #E0675F / success #7FC08A / warning #D9973F）。
+   色板同 styles/td-dark-warm.css（底 #1B2422 / 卡面 #232E2B / 次容器 #1E2825 /
+   主字 #DFE9E4 / 次字 #A5B6AE / 更淡 #7A8B83 / 边框 #36453F / 分割 #42524B /
+   暖棕 #D9A96B / error #E0675F / success #7FC08A / warning #D9973F）。
    **只改颜色**（背景 / 文字 / 边框 / 阴影），零布局属性、零 `filter` / `invert`。
    `t-input` / `t-tag` / `t-dropdown-menu` / `t-button` 走 `--td-*` token（td-dark-warm.css 的
    136 条已把 brand / success / warning / danger 的 1–10 阶全部夜间化，语义色即上面给定值）；
    本段只收口页面自绘的卡片 / 列表行 / 审批面板 / 快照 / 原生 `textarea`。
    H5 条件编译 ⇒ 小程序端零改动。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .not-logged { color: #8A7A66; }
+html[data-theme='dark'] .not-logged { color: #7A8B83; }
 html[data-theme='dark'] .header-card {
-  background: linear-gradient(135deg, #6E4420, #8A5A2B);
-  color: #EDE3D6;
+  background: linear-gradient(135deg, #3A4A44, #45564F);
+  color: #DFE9E4;
 }
-html[data-theme='dark'] .header-sub { color: #D6A57A; }
+html[data-theme='dark'] .header-sub { color: #E3BF8C; }
 html[data-theme='dark'] .section {
-  background: linear-gradient(180deg, #2A2219, #241D16);
+  background: linear-gradient(180deg, #232E2B, #1E2825);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
-html[data-theme='dark'] .section-title { color: #EDE3D6; }
-html[data-theme='dark'] .empty { color: #8A7A66; }
+html[data-theme='dark'] .section-title { color: #DFE9E4; }
+html[data-theme='dark'] .empty { color: #7A8B83; }
 
 /* 用户列表 / 退族申请列表（表格行的自绘部分） */
-html[data-theme='dark'] .user-item { border-bottom-color: #3A3027; }
-html[data-theme='dark'] .user-name { color: #EDE3D6; }
-html[data-theme='dark'] .user-phone { color: #8A7A66; }
-html[data-theme='dark'] .leave-item { border-bottom-color: #3A3027; }
-html[data-theme='dark'] .leave-name { color: #EDE3D6; }
-html[data-theme='dark'] .leave-desc { color: #8A7A66; }
+html[data-theme='dark'] .user-item { border-bottom-color: #36453F; }
+html[data-theme='dark'] .user-name { color: #DFE9E4; }
+html[data-theme='dark'] .user-phone { color: #7A8B83; }
+html[data-theme='dark'] .leave-item { border-bottom-color: #36453F; }
+html[data-theme='dark'] .leave-name { color: #DFE9E4; }
+html[data-theme='dark'] .leave-desc { color: #7A8B83; }
 html[data-theme='dark'] .error { color: #E0675F; }
 
 /* 加入申请审批面板（筛选 / 搜索结果） */
-html[data-theme='dark'] .approve-box { background: #241D16; border-color: #3A3027; }
-html[data-theme='dark'] .approve-tip { color: #8A7A66; }
-html[data-theme='dark'] .approve-result { background: #2A2219; border-color: #3A3027; }
-html[data-theme='dark'] .approve-result.selected { background: #2E251C; border-color: #C98850; }
-html[data-theme='dark'] .approve-result-name { color: #EDE3D6; }
-html[data-theme='dark'] .approve-result-id { color: #8A7A66; }
+html[data-theme='dark'] .approve-box { background: #1E2825; border-color: #36453F; }
+html[data-theme='dark'] .approve-tip { color: #7A8B83; }
+html[data-theme='dark'] .approve-result { background: #232E2B; border-color: #36453F; }
+html[data-theme='dark'] .approve-result.selected { background: #212B27; border-color: #D9A96B; }
+html[data-theme='dark'] .approve-result-name { color: #DFE9E4; }
+html[data-theme='dark'] .approve-result-id { color: #7A8B83; }
 html[data-theme='dark'] .approve-error { color: #E0675F; }
 
 /* 家谱内容设定（原生 textarea 不吃 token，单独收口） */
 html[data-theme='dark'] .wenpu-textarea {
-  background: #332A20;
-  border-color: #3A3027;
-  color: #EDE3D6;
+  background: #2A3631;
+  border-color: #36453F;
+  color: #DFE9E4;
 }
-html[data-theme='dark'] .wenpu-hint { color: #8A7A66; }
+html[data-theme='dark'] .wenpu-hint { color: #7A8B83; }
 
 /* 资产运维（发放 / 快照 / 变动日志） */
-html[data-theme='dark'] .field-label { color: #EDE3D6; }
-html[data-theme='dark'] .delta-name { color: #8A7A66; }
+html[data-theme='dark'] .field-label { color: #DFE9E4; }
+html[data-theme='dark'] .delta-name { color: #7A8B83; }
 html[data-theme='dark'] .grant-error { color: #E0675F; }
-html[data-theme='dark'] .grant-sub { border-top-color: #3A3027; }
-html[data-theme='dark'] .snap { background: #241D16; border-color: #3A3027; }
-html[data-theme='dark'] .snap-label { color: #8A7A66; }
-html[data-theme='dark'] .snap-value { color: #EDE3D6; }
-html[data-theme='dark'] .snap-lot { color: #8A7A66; }
-html[data-theme='dark'] .log-item { border-bottom-color: #3A3027; }
-html[data-theme='dark'] .log-target { color: #EDE3D6; }
+html[data-theme='dark'] .grant-sub { border-top-color: #36453F; }
+html[data-theme='dark'] .snap { background: #1E2825; border-color: #36453F; }
+html[data-theme='dark'] .snap-label { color: #7A8B83; }
+html[data-theme='dark'] .snap-value { color: #DFE9E4; }
+html[data-theme='dark'] .snap-lot { color: #7A8B83; }
+html[data-theme='dark'] .log-item { border-bottom-color: #36453F; }
+html[data-theme='dark'] .log-target { color: #DFE9E4; }
 html[data-theme='dark'] .log-delta { color: #7FC08A; }
 html[data-theme='dark'] .log-delta.minus { color: #E0675F; }
-html[data-theme='dark'] .log-sub { color: #8A7A66; }
-html[data-theme='dark'] .log-reason { color: #B8A894; }
+html[data-theme='dark'] .log-sub { color: #7A8B83; }
+html[data-theme='dark'] .log-reason { color: #A5B6AE; }
 /* #endif */
 </style>

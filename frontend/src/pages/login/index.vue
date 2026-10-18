@@ -157,7 +157,7 @@ function goRegister() {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: linear-gradient(160deg, #3E2723 0%, #6D4C41 100%);
+  background: linear-gradient(160deg, #2F3A33 0%, #6D4C41 100%);
 }
 .card {
   width: 100%;
@@ -168,7 +168,7 @@ function goRegister() {
   box-shadow: 0 8px 24px rgba(0,0,0,0.2);
 }
 .logo { font-size: 44px; display: block; text-align: center; }
-.title { font-size: 20px; font-weight: bold; color: #3E2723; display: block; text-align: center; margin-top: 8px; }
+.title { font-size: 20px; font-weight: bold; color: #2F3A33; display: block; text-align: center; margin-top: 8px; }
 .subtitle { font-size: 13px; color: #999; display: block; text-align: center; margin: 6px 0 20px; }
 .form { display: flex; flex-direction: column; gap: 16px; }
 .code-row { display: flex; gap: 10px; align-items: center; }
@@ -176,29 +176,29 @@ function goRegister() {
 .send-btn { flex-shrink: 0; }
 .error { text-align: center; color: #C62828; font-size: 13px; margin-top: 12px; }
 .switch { text-align: center; margin-top: 18px; }
-.switch-text { color: #8B4513; font-size: 14px; }
+.switch-text { color: #4E6B57; font-size: 14px; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
    页底：暖棕渐变 → 更深的暖底渐变（只换色值，角度 / 停点不变）；
-   表单卡：面 #2A2219、标题 #EDE3D6、副题 #B8A894、错误 #E0675F、协议/切换链接 #C4B4A0。
-   输入框描边 = #3A3027 与输入底色 #2A2219 由 td-dark-warm.css 的 --td-component-stroke /
+   表单卡：面 #232E2B、标题 #DFE9E4、副题 #A5B6AE、错误 #E0675F、协议/切换链接 #B4C2BB。
+   输入框描边 = #36453F 与输入底色 #232E2B 由 td-dark-warm.css 的 --td-component-stroke /
    --td-bg-color-container 提供（t-input 不另写底色，避免出现浅色孤岛）。
-   **验证码倒计时**：disabled 态默认取 --td-brand-color-disabled（brand-4 #88562A，压 #2A2219 仅 ~2:1）
-   ⇒ 在卡片作用域内把 --td-button-primary-outline-disabled-color 抬到 #B8A894，倒计时文字可读。
-   主按钮（登 录）由 --td-brand-color #C98850 + --td-text-color-anti #211A14 自动达成暖棕+深字。
+   **验证码倒计时**：disabled 态默认取 --td-brand-color-disabled（brand-4 #8C7B4F，压 #232E2B 仅 ~2:1）
+   ⇒ 在卡片作用域内把 --td-button-primary-outline-disabled-color 抬到 #A5B6AE，倒计时文字可读。
+   主按钮（登 录）由 --td-brand-color #D9A96B + --td-text-color-anti #1B2422 自动达成暖棕+深字。
    只改颜色、零几何改动、无 filter / invert；全部 H5 条件编译 ⇒ 小程序零改动。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .container { background: linear-gradient(160deg, #171210 0%, #241D16 100%); }
+html[data-theme='dark'] .container { background: linear-gradient(160deg, #141C1A 0%, #1E2825 100%); }
 html[data-theme='dark'] .card {
-  background: #2A2219;
+  background: #232E2B;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
   /* 卡片作用域内的按钮色变量（只影响本卡后代按钮）：倒计时/禁用态文字抬亮 */
-  --td-button-primary-outline-disabled-color: #B8A894;
+  --td-button-primary-outline-disabled-color: #A5B6AE;
 }
-html[data-theme='dark'] .title { color: #EDE3D6; }
-html[data-theme='dark'] .subtitle { color: #B8A894; }
+html[data-theme='dark'] .title { color: #DFE9E4; }
+html[data-theme='dark'] .subtitle { color: #A5B6AE; }
 html[data-theme='dark'] .error { color: #E0675F; }
-html[data-theme='dark'] .switch-text { color: #C4B4A0; }
-html[data-theme='dark'] .send-btn { --td-button-primary-outline-color: #C98850; }
+html[data-theme='dark'] .switch-text { color: #B4C2BB; }
+html[data-theme='dark'] .send-btn { --td-button-primary-outline-color: #D9A96B; }
 /* #endif */
 </style>

@@ -69,21 +69,21 @@ function doExport() {
 
 <style scoped>
 .config-section { margin-top: 4px; }
-.section-title { font-size: 16px; font-weight: bold; color: #8B4513; display: block; margin-bottom: 12px; }
+.section-title { font-size: 16px; font-weight: bold; color: #4E6B57; display: block; margin-bottom: 12px; }
 .option { display: flex; align-items: center; gap: 8px; padding: 8px 0; font-size: 14px; }
 .preview-section { margin-top: 20px; padding: 16px; background: #FFF8E1; border-radius: 8px; }
 .desc { font-size: 13px; color: #666; line-height: 1.6; display: block; }
-.export-btn { margin-top: 24px; background: #8B4513; color: #fff; font-size: 16px; border-radius: 8px; }
+.export-btn { margin-top: 24px; background: #4E6B57; color: #fff; font-size: 16px; border-radius: 8px; }
 
 /* ================= 夜间模式（html[data-theme='dark']）=================
    导出选项面板 = 纯配置 UI（无纸页本体：真正的 PDF 由 paged.js 另页渲染，本组件不出纸），
-   故整体转暗：壳底由页面统一 #211A14、说明块 #241D16、主按钮 #C98850 + 深字 #211A14。
+   故整体转暗：壳底由页面统一 #1B2422、说明块 #1E2825、主按钮 #D9A96B + 深字 #1B2422。
    只改颜色、零几何改动、无 filter / invert；全部 H5 条件编译 ⇒ 小程序零改动。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .section-title { color: #C98850; }
-html[data-theme='dark'] .option { color: #EDE3D6; }
-html[data-theme='dark'] .preview-section { background: #241D16; }
-html[data-theme='dark'] .desc { color: #B8A894; }
-html[data-theme='dark'] .export-btn { background: #C98850; color: #211A14; }
+html[data-theme='dark'] .section-title { color: #D9A96B; }
+html[data-theme='dark'] .option { color: #DFE9E4; }
+html[data-theme='dark'] .preview-section { background: #1E2825; }
+html[data-theme='dark'] .desc { color: #A5B6AE; }
+html[data-theme='dark'] .export-btn { background: #D9A96B; color: #1B2422; }
 /* #endif */
 </style>

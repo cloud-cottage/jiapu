@@ -126,28 +126,28 @@ function pick(value: string) {
   width: 78px;
   height: 36px;
   padding: 0 6px;
-  background: #FFFDF8;
-  border: 1px solid #E0D5C8;
+  background: #FAFCF8;
+  border: 1px solid #CFD8CE;
   border-radius: 999px;
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
 }
 .region-pill-active {
-  background: #8B4513;
-  border-color: #8B4513;
+  background: #4E6B57;
+  border-color: #4E6B57;
 }
 /* 省名占剩余宽度并单行省略（「黑龙江 ▾」等超长不换行、不撑宽） */
 .region-pill-text {
   flex: 1 1 auto;
   min-width: 0;
   font-size: 13px;
-  color: #8B4513;
+  color: #4E6B57;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .region-pill-active .region-pill-text { color: #fff; }
-.region-pill-caret { flex: 0 0 auto; font-size: 11px; line-height: 1; color: #8B4513; }
+.region-pill-caret { flex: 0 0 auto; font-size: 11px; line-height: 1; color: #4E6B57; }
 .region-pill-active .region-pill-caret { color: #fff; }
 
 .region-mask {
@@ -170,10 +170,10 @@ function pick(value: string) {
   max-width: calc(100vw - 32px);
   max-height: 56vh;
   overflow-y: auto;
-  background: #FFFDF8;
-  border: 1px solid #E0D5C8;
+  background: #FAFCF8;
+  border: 1px solid #CFD8CE;
   border-radius: 12px;
-  box-shadow: 0 6px 20px rgba(62, 39, 35, 0.14);
+  box-shadow: 0 6px 20px rgba(47, 58, 51, 0.14);
   padding: 4px 0;
 }
 .region-item {
@@ -186,10 +186,10 @@ function pick(value: string) {
   box-sizing: border-box;
 }
 .region-item-current { background: #FBF3E9; }
-.region-item-last { border-top: 1px solid #F0E8DE; }
+.region-item-last { border-top: 1px solid #E6EDE7; }
 .region-item-name {
   font-size: 13px;
-  color: #3E2723;
+  color: #2F3A33;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -197,13 +197,13 @@ function pick(value: string) {
 .region-item-counts { display: inline-flex; gap: 6px; flex: 0 0 auto; }
 .region-count {
   font-size: 11px;
-  color: #A1887F;
+  color: #6E7D70;
   white-space: nowrap;
 }
 .region-tip {
   padding: 14px 14px;
   font-size: 12px;
-  color: #A1887F;
+  color: #6E7D70;
   text-align: center;
 }
 .region-tip-error { color: #C62828; }
@@ -216,21 +216,21 @@ function pick(value: string) {
    与首页搜索框同排，故底色 / 描边 / 主色都必须与首页 .person-search 对齐（同一套喰色对偶值）。
    全部 H5 条件编译 ⇒ 小程序零改动。 */
 /* #ifdef H5 */
-html[data-theme='dark'] .region-pill { background: #2A2219; border-color: #3A3027; }
+html[data-theme='dark'] .region-pill { background: #232E2B; border-color: #36453F; }
 html[data-theme='dark'] .region-pill-text,
-html[data-theme='dark'] .region-pill-caret { color: #C98850; }
-html[data-theme='dark'] .region-pill-active { background: #C98850; border-color: #C98850; }
+html[data-theme='dark'] .region-pill-caret { color: #D9A96B; }
+html[data-theme='dark'] .region-pill-active { background: #D9A96B; border-color: #D9A96B; }
 html[data-theme='dark'] .region-pill-active .region-pill-text,
-html[data-theme='dark'] .region-pill-active .region-pill-caret { color: #211A14; }
+html[data-theme='dark'] .region-pill-active .region-pill-caret { color: #1B2422; }
 html[data-theme='dark'] .region-menu {
-  background: #2A2219; border-color: #3A3027;
+  background: #232E2B; border-color: #36453F;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
 }
-html[data-theme='dark'] .region-item-current { background: #332A20; }
-html[data-theme='dark'] .region-item-last { border-top-color: #3A3027; }
-html[data-theme='dark'] .region-item-name { color: #EDE3D6; }
-html[data-theme='dark'] .region-count { color: #B8A894; }
-html[data-theme='dark'] .region-tip { color: #B8A894; }
+html[data-theme='dark'] .region-item-current { background: #2A3631; }
+html[data-theme='dark'] .region-item-last { border-top-color: #36453F; }
+html[data-theme='dark'] .region-item-name { color: #DFE9E4; }
+html[data-theme='dark'] .region-count { color: #A5B6AE; }
+html[data-theme='dark'] .region-tip { color: #A5B6AE; }
 html[data-theme='dark'] .region-tip-error { color: #E0675F; }
 /* #endif */
 </style>
