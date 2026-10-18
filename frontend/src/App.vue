@@ -254,14 +254,15 @@ onHide(() => {
 </script>
 
 <style>
-/* ---- H5 全站内容窄栏（唯一宽度真源：--jiapu-column · Kevin 2026-10-17） ----
+/* ---- H5 全站内容列（唯一宽度真源：--jiapu-column · Kevin 2026-10-17） ----
    只在 H5 生效（条件编译），小程序版式一字不动。改列宽**只改这一处**变量：
    页面主体列 / 底部 tabBar / 页面内 fixed 浮层（如首页浮动切换按钮）全部引用它。
+   列宽 1440：**超宽屏（>1440）居中 1440，以下（≤1440）铺满视口**。
    母容器（uni-page-body / 各页 .container）**一律不设 overflow:hidden**，
    首页三层 banner 才能用 `width:100vw; margin-left:calc(50% - 50vw)` 出血到视口两边。 */
 /* #ifdef H5 */
 :root {
-  --jiapu-column: 480px;
+  --jiapu-column: 1440px;
 }
 
 /* 页面主体列：居中收窄，两侧露出页面底色 */
@@ -295,7 +296,7 @@ page {
 /* ---- H5 页面底色：青瓷纸色（Kevin 2026-10-17 视觉修正单「背景图片的范围扩大」/ 2026-10 换色）
    窄栏两侧原先露纯白/浅灰白、显空；改成与首页 banner 宣纸同族的青瓷纸 #EDF1EA，
    让三层 banner 自然「渗」到页面上。**只在 H5 生效（条件编译），小程序版式零改动**。
-   ① html / body 管 480px 列**之外**的两侧；② uni-page-body（= H5 里的 page）管列内。
+   ① html / body 管 1440px 列**之外**的两侧；② uni-page-body（= H5 里的 page）管列内。
    注意：`page` 选择器会被 uni-app 的 postcss 重写成 `uni-page-body`，两条都留以对齐。
    **必须写在上面的 `page` 基础规则之后**（同特异性，靠顺序覆盖）。 */
 /* #ifdef H5 */
