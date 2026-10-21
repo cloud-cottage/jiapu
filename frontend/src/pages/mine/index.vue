@@ -47,61 +47,24 @@
       @refresh="refreshInventory"
     />
 
-    <!-- 每日签到（独立卡 · 古风印章式）：置于行囊卡下方；**不展示碎片进度（N/9）**，签到结果只走 toast。
-         本批新增：7 天签到日历条（**真实道具图标 + 数量角标 + 状态色 + 第 7 天金边大奖**）、连签行、
-         漏签格二次确认后**花竹片补签**；日历数据来自 `GET /assets/summary` 的 `signin_calendar`（**不新增请求**） -->
-    <view v-if="isAuthenticated()" class="sign-card">
-      <view class="sign-top">
-        <view
-          class="sign-seal"
-          :class="{ 'sign-seal-done': signedToday, 'sign-seal-busy': signing }"
-          @click="doSignin"
-        >签</view>
-        <view class="sign-body">
-          <text class="sign-title">{{ SIGNIN_TITLE }}</text>
-          <text class="sign-hint">{{ signedToday ? SIGNIN_HINT_DONE : SIGNIN_HINT_PENDING }}</text>
-          <!-- 连签行：`streak` 缺失（后端未重启）⇒ 空串 = 整行不渲染，不显 NaN、不臆造 -->
-          <text v-if="streakText" class="sign-streak">{{ streakText }}</text>
-          <text v-if="signError" class="sign-error">{{ signError }}</text>
-        </view>
-      </view>
-
-      <!-- 签到 7 天日历条（7 格横排）：口径 = 只标**固定基础** + 「随机」标记（方案乙，Kevin 2026-09-28 拍定）——
-           格内逐项出**真实道具图标**（business/icons.ts 单点；`qty > 1` 才出 `×N` 角标）；
-           底部短 chip = 当天还会随机掉一件（**不预标**随机品种）；第 7 天另出大奖图标 + `×N`（金边）；
-           日序标签 `第 N 天` / `第 7 天 · 大奖`；状态色 = 已签（置淡 + 打勾）/ 今天（朱红描边）/ 漏签（虚线边 · 可点击补签）/ 未来（灰）；
-           缺键 / 非 7 长（旧后端）⇒ 整条不渲染（**不臆造格子**）；`base` / `bonus` 缺键 ⇒ 回退单件渲染（不崩、不显 NaN） -->
-      <view v-if="signinCalendar.length" class="sign-cal">
-        <view
-          v-for="c in signinCalendar"
-          :key="c.cycle_day"
-          class="cal-cell"
-          :class="[`cal-${c.state}`, { 'cal-bonus': c.is_bonus, 'cal-tappable': c.state === 'missed' && !makeupBusy }]"
-          @click="onCalendarCell(c)"
-        >
-          <view class="cal-slot">
-            <view class="cal-items">
-              <view v-for="(it, i) in c.baseItems" :key="`base-${i}`" class="cal-item">
-                <image v-if="assetKindIconSrc(it.kind)" class="cal-ico" :src="assetKindIconSrc(it.kind)" mode="aspectFit" />
-                <text v-if="it.qty > 1" class="cal-qty">{{ signinQtyBadge(it.qty) }}</text>
-              </view>
-              <!-- 第 7 天大奖（缺失 ⇒ 空项 `qty === 0` ⇒ 不渲染，不显 NaN） -->
-              <view v-if="c.bonusItem.qty > 0" class="cal-item">
-                <image v-if="assetKindIconSrc(c.bonusItem.kind)" class="cal-ico" :src="assetKindIconSrc(c.bonusItem.kind)" mode="aspectFit" />
-                <text class="cal-qty">{{ signinQtyBadge(c.bonusItem.qty) }}</text>
-              </view>
-            </view>
-            <text v-if="c.state === 'signed'" class="cal-check">{{ SIGNIN_CELL_CHECK }}</text>
-          </view>
-          <text class="cal-day">{{ signinDayLabel(c.cycle_day, c.is_bonus) }}</text>
-          <text v-if="c.random" class="cal-chip">{{ SIGNIN_RANDOM_CHIP }}</text>
-        </view>
-      </view>
-
-      <!-- 今日奖励入口（子包页 pages/task/index）：不显示 x/3 进度，本行不新增取数；
-           位置 = 日历条**之下**（与「签到读数在下、领奖入口最后」的阅读顺序一致） -->
-      <text class="sign-reward" @click="goTaskCenter">{{ SIGNIN_REWARD_LINK }}</text>
-    </view>
+    <!-- 每日签到（游戏化沉浸式场景卡 · 组件化 S-2）：置于行囊卡下方；**纯展示组件**（props 进 / emit 出），
+         请求与业务状态全部留在本页（零新增请求、零 API/类型改动）；已签判据（服务端 signin_date，UTC+8 自然日）、
+         补签二次确认、签到 409 处理均维持既有实现；文案字面单点 = business/asset-text.ts（零改动）。
+         组件内不展示碎片进度（N/9），签到结果只走 toast；日历数据 = `GET /assets/summary` 的 `signin_calendar`。 -->
+    <signin-card
+      v-if="isAuthenticated()"
+      :calendar="signinCalendar"
+      :streak-text="streakText"
+      :streak="signinStreak"
+      :signed-today="signedToday"
+      :signing="signing"
+      :makeup-busy="makeupBusy"
+      :madeup-date="madeupDate"
+      :error="signError"
+      @signin="doSignin"
+      @cell="onCalendarCell"
+      @reward="goTaskCenter"
+    />
 
     <!-- 家族互动（好友域入口 · 子包 pages/friend）：位置 = 每日签到卡之后、功能菜单卡之前 -->
     <view v-if="isAuthenticated()" class="interact-card">
@@ -257,28 +220,21 @@ import { fetchMyAnchor, requestLeave, fetchTreeMetaRemote, fetchMessages, delete
 import { fetchAssetsSummary, postSignin, postSigninMakeup } from '@/business/api';
 import type { AssetsSummary } from '@/business/api';
 import { fetchFriends, scrollLockOf, type ScrollLockView } from '@/business/friends';
-/** 道具 kind → 图标 URL（**单点** = `business/icons.ts`；日历格内为**真实道具图标**，不用 emoji 代替） */
-import { assetKindIconSrc } from '@/business/icons';
 import type { SigninCalendarDay, SigninCalendarState, SigninItem } from '@/business/types';
 import type { SigninCellAsset } from '@/business/asset-text';
-// 注销确认弹窗的六类品类名 + 签到卡全部文案 / toast 拼装引用单点常量（asset-text.ts：
-// `SCROLL_NAME='兰帖'` / `SCROLL_FRAGMENT_NAME='兰帖残页'` / `signinToastText()` 等，本页**不散落签到字面**）
+// 注销确认弹窗的六类品类名 + 签到业务动作文案 / toast 拼装引用单点常量（asset-text.ts：
+// `SCROLL_NAME='兰帖'` / `SCROLL_FRAGMENT_NAME='兰帖残页'` / `signinToastText()` 等，本页**不散落签到字面**；
+// 卡内纯展示文案（标题 / 提示 / 逐格标签 / chip / 打勾 / 旗标）已随场景卡组件化迁入
+// `components/signin-card/signin-card.vue`，同样引用本模块单点，本页只留业务动作侧）
 import {
   SCROLL_NAME,
   SCROLL_FRAGMENT_NAME,
-  SIGNIN_TITLE,
-  SIGNIN_HINT_PENDING,
   SIGNIN_HINT_DONE,
-  SIGNIN_REWARD_LINK,
-  SIGNIN_CELL_CHECK,
   SIGNIN_FAIL,
-  SIGNIN_RANDOM_CHIP,
   SIGNIN_MAKEUP_TITLE,
   SIGNIN_MAKEUP_FAIL,
   SIGNIN_MAKEUP_CONFIRM_TEXT,
   SIGNIN_MAKEUP_CANCEL_TEXT,
-  signinQtyBadge,
-  signinDayLabel,
   signinCellBaseItems,
   signinCellBonusItem,
   signinStreakText,
@@ -296,6 +252,8 @@ import {
   inviteExpiryLine,
 } from '@/business/asset-text';
 import AssetInventory from '@/components/asset-inventory/asset-inventory.vue';
+// 每日签到场景卡（**纯展示组件** S-2）：props 进数据、emit 出动作；请求与业务状态留在本页
+import SigninCard from '@/components/signin-card/signin-card.vue';
 // 日夜模式（business/theme.ts 单点）：默认日间、持久化在 uni storage，不跟随系统
 import { getTheme, setTheme } from '@/business';
 import type { ThemeMode } from '@/business';
@@ -367,6 +325,8 @@ const signinStreak = ref<number | null>(null);
 const makeupCostBamboos = ref<number | null>(null);
 /** 补签进行中（防重复提交；进行中漏签格不可再点） */
 const makeupBusy = ref(false);
+/** 本会话已补签的自然日（**纯展示**：命中格 = 已签形态＋「已补签」词；不参与已签判据、不写 storage） */
+const madeupDate = ref('');
 // 账号注销（docs/economy-ops.spec.md §7）
 const deleting = ref(false);
 const deleteError = ref('');
@@ -678,6 +638,7 @@ async function loadInventory(silent = false) {
   if (!isAuthenticated()) {
     scrollLock.value = null;
     applySummarySigninReadings(null); // 未登录 ⇒ 清空签到读数（不留上一账号的日历 / 连签）
+    madeupDate.value = ''; // 同上：连「已补签」展示态一并清空（不跨账号残留）
     return;
   }
   void loadFriendLock(); // 锁定态与行囊同一入口刷新（不新增刷新按钮）
@@ -766,6 +727,8 @@ async function doMakeup(date: string) {
     uni.showToast({ title: signinMakeupToastText(res), icon: 'none', duration: 3000 });
     await loadInventory(true);
     applySigninPayloadReadings(res);
+    // 纯展示态（组件 props）：命中该日期的日格渲染「已补签」形态（服务端此时已把该格翻成 signed）
+    madeupDate.value = date;
   } catch (e: any) {
     uni.showToast({ title: e?.message || SIGNIN_MAKEUP_FAIL, icon: 'none', duration: 3000 });
   } finally {
@@ -865,75 +828,10 @@ onMounted(() => {
 .bind-line-link { color: #FFF6EA; text-decoration: underline; }
 .user-action { flex-shrink: 0; }
 
-/* 每日签到（古风印章式独立卡；位于行囊卡下方；不展示碎片进度） */
-.sign-card {
-  display: flex; flex-direction: column; align-items: stretch;
-  background: linear-gradient(180deg, #FAFCF8, #EFF4EE);
-  border: 1px solid #D5DFD4; border-radius: 14px; padding: 16px;
-  margin-bottom: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-}
-/* 印章 + 文案行（视觉与改动前一致：印章在左、文案在右；整卡改为纵向以容纳日历条横排） */
-.sign-top { display: flex; align-items: center; gap: 16px; }
-/* 朱红方印（点击区）；已签到 → 整体置灰 */
-.sign-seal {
-  width: 56px; height: 56px; flex-shrink: 0; border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(160deg, #B2352C, #8C1F18);
-  box-shadow: inset 0 0 0 2px rgba(255, 240, 220, 0.75), 0 2px 6px rgba(78, 107, 87, 0.25);
-  color: #FFF6EA; font-size: 26px; font-weight: bold; transform: rotate(-4deg);
-  user-select: none; -webkit-user-select: none;
-  cursor: pointer;
-}
-.sign-seal-done {
-  background: linear-gradient(160deg, #C9BEB2, #A79A8C);
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.6);
-  color: #F7F1E8; transform: none;
-}
-.sign-seal-busy { opacity: 0.6; }
-.sign-body { flex: 1; }
-.sign-title { font-size: 16px; font-weight: bold; color: #2F3A33; letter-spacing: 2px; display: block; }
-.sign-hint { font-size: 12px; color: #B08D57; display: block; margin-top: 4px; }
-/* 连签行（streak；0 天 = 今日还未签到） */
-.sign-streak { font-size: 12px; color: #A8322D; display: block; margin-top: 4px; }
+/* 每日签到卡样式已随组件化（S-2）迁入 components/signin-card/signin-card.vue（红金羊皮固定配色，
+   S-9：不随夜间模式反转），本页不再持有 .sign-* / .cal-* 样式。 */
 
-/* 签到 7 天日历条（7 格横排 · 卡内全宽） */
-.sign-cal { display: flex; gap: 6px; margin-top: 12px; }
-.cal-cell {
-  flex: 1; min-width: 0; padding: 6px 2px 4px; border-radius: 10px;
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  background: #FAFCF8; border: 1px solid #D5DFD4;
-}
-/* 图标 + 数量角标 + 打勾的叠放容器（多件基础项 ⇒ `cal-items` 自动换行；角标压在各自图标右下角） */
-.cal-slot { position: relative; width: 100%; min-height: 26px; display: flex; align-items: center; justify-content: center; }
-/* 固定基础项 + 第 7 天大奖项的横排容器（一格可能 2–3 件，窄屏自动折行，不撑破格子） */
-.cal-items { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px; }
-.cal-item { position: relative; display: inline-flex; align-items: center; justify-content: center; }
-.cal-ico { width: 15px; height: 15px; }
-.cal-qty { position: absolute; right: -5px; bottom: -3px; font-size: 9px; line-height: 1; color: #4E6B57; }
-/* 随机掉落短 chip（格子最底部）：当天还会随机掉一件，**不预标**品种（方案乙口径） */
-.cal-chip {
-  font-size: 9px; line-height: 1.2; color: #4E6B57; padding: 0 4px;
-  border: 1px solid #D5DFD4; border-radius: 8px; background: #FFF7EC;
-}
-.cal-day { font-size: 10px; color: #B08D57; text-align: center; line-height: 1.2; word-break: break-all; }
-/* 状态 ①：已签 = 置淡 + 右上打勾叠标 */
-.cal-signed { opacity: 0.55; }
-.cal-check { position: absolute; left: -5px; top: -4px; font-size: 12px; line-height: 1; color: #2E7D32; }
-/* 状态 ②：今天 = 朱红描边高亮（与既有印章同色系 #A8322D） */
-.cal-today { border: 2px solid #A8322D; box-shadow: 0 0 0 2px rgba(168, 50, 45, 0.12); background: #FFF7F5; }
-/* 状态 ③：漏签 = 虚线边 + 可点击补签（点击后二次确认） */
-.cal-missed { border-style: dashed; border-color: #C08A3E; background: #FFFBF4; }
-.cal-tappable { cursor: pointer; }
-/* 状态 ④：未来 = 灰 */
-.cal-future { opacity: 0.45; background: #F5F5F5; border-color: #DDDDDD; }
-/* 第 7 天大奖格 = 金边（用 outline 与状态边框并存，故「未来态的大奖格」金边也照样可见） */
-.cal-bonus { outline: 2px solid #C9A227; outline-offset: 1px; }
-
-/* 今日奖励入口行（不显示 x/3 进度） */
-.sign-reward { font-size: 12px; color: #4E6B57; display: block; margin-top: 6px; }
-.sign-error { font-size: 12px; color: #C62828; display: block; margin-top: 4px; }
-
-/* 家族互动（白底暖描边卡，与 sign-card 同族 14 圆角 / 轻投影；两格入口样式迁自家谱页 .friend-entry / .fe-*） */
+/* 家族互动（白底暖描边卡，14 圆角 / 轻投影；两格入口样式迁自家谱页 .friend-entry / .fe-*） */
 .interact-card {
   background: #fff; border: 1px solid #D5DFD4; border-radius: 14px; padding: 16px;
   margin-bottom: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);
@@ -1019,36 +917,7 @@ html[data-theme='dark'] .bind-line { color: #B4C2BB; }
 html[data-theme='dark'] .bind-line-link { color: #E3CFA4; }
 html[data-theme='dark'] .avatar { background: rgba(223, 233, 228, 0.14); }
 
-/* —— 每日签到卡 —— */
-html[data-theme='dark'] .sign-card {
-  background: linear-gradient(180deg, #232E2B, #1E2825);
-  border-color: #36453F;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-}
-html[data-theme='dark'] .sign-title { color: #DFE9E4; }
-html[data-theme='dark'] .sign-hint { color: #B4C2BB; }
-html[data-theme='dark'] .sign-streak { color: #E0675F; }
-html[data-theme='dark'] .sign-seal-done {
-  background: linear-gradient(160deg, #4C5A54, #42524B);
-  box-shadow: inset 0 0 0 2px rgba(223, 233, 228, 0.28);
-  color: #DFE9E4;
-}
-/* 七格日历：格位比卡片亮一档（原浅色下也是格比卡亮） */
-html[data-theme='dark'] .cal-cell { background: #2A3631; border-color: #36453F; }
-html[data-theme='dark'] .cal-day { color: #A5B6AE; }
-html[data-theme='dark'] .cal-qty { color: #B4C2BB; }
-html[data-theme='dark'] .cal-chip {
-  background: #232E2B; border-color: #42524B; color: #B4C2BB;
-}
-html[data-theme='dark'] .cal-check { color: #7FC08A; }
-html[data-theme='dark'] .cal-today {
-  background: #242E2A; border-color: #E0675F;
-  box-shadow: 0 0 0 2px rgba(224, 103, 95, 0.18);
-}
-html[data-theme='dark'] .cal-missed { background: #212B27; border-color: #D9A96B; }
-html[data-theme='dark'] .cal-future { background: #1E2825; border-color: #36453F; }
-html[data-theme='dark'] .sign-reward { color: #D9A96B; }
-html[data-theme='dark'] .sign-error { color: #E0675F; }
+/* —— 每日签到卡：组件化后配色固定红金羊皮（S-9，不随夜间模式反转）⇒ 本卡无夜间覆写 —— */
 
 /* —— 家族互动卡 —— */
 html[data-theme='dark'] .interact-card {

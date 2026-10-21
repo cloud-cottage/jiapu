@@ -617,6 +617,28 @@ export function signinCellBonusItem(day?: SigninCellRaw | null): SigninCellAsset
   return cellAssetOf(day?.bonus);
 }
 
+// ---- 场景卡新增展示字面（2026-10-21 「我的」页签到卡组件化 · **纯追加**，上文既有行一字未改）----
+//
+// 「我的」页签到卡改造为游戏化沉浸式场景卡（抽 `components/signin-card/signin-card.vue` 纯展示组件）后，
+// 版式新增两个**既有单点没有的字面**（大奖列旗标 / 已补签状态词）与一个**徽格拼装**（连签徽格）——
+// 为延续「页面 / 组件内不散落签到中文字面」的既有纪律，三者落在本模块（**不改任何既有字面与函数**）。
+
+/** 大奖列异形旗标（唯一字面）：第 5 列纵向大奖列的旗标文字（第 7 日格内不再重复渲染 bonus） */
+export const SIGNIN_BONUS_FLAG = '连签 7 天';
+
+/** 已补签格的状态词（唯一字面；显示态 —— 补签成功后该格 = 已签形态＋本词，判据仍在页面） */
+export const SIGNIN_CELL_MADEUP = '已补签';
+
+/**
+ * 连签徽格文字（唯一拼装点）：拟物徽格内恒出「已连签 N 天」；`streak` 缺失 / 非法 ⇒ `—`
+ * （**不臆造天数**）。与 `signinStreakText`（三段互斥读数行）**并行不互代**：
+ * 徽格只报天数，「今日还未签到」段仍由读数行承担。
+ */
+export function signinStreakBadgeText(streak: unknown): string {
+  const n = Math.floor(Number(streak));
+  return Number.isFinite(n) && n >= 0 ? `已连签 ${n} 天` : '—';
+}
+
 // ==================== 邀请域（批 C-2：节点型 / 普通型邀请 + 落地页三选） ====================
 //
 // **唯一真源**：落地页（`pages/invite/landing.vue`）、节点详情页入口（`components/person-archive`）、
