@@ -232,7 +232,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, defineAsyncComponent } from 'vue';
-import { fetchTreeMetaRemote, buildTreeUrl, fetchTreeRank, openTreeHome, clearMetaCache, createTree, feeText, isAssetInsufficientError, showAssetInsufficientGuide, searchPeopleGlobal, personIdDisplay, fetchGeoTreeIndex, REGION_UNREGISTERED, REGION_TEXT, hitOfEntry, isUnregisteredEntry, regionCityLabelOf, regionProvinceOptions, regionUnregisteredCountOf } from '@/business';
+import { fetchTreeMetaRemote, buildTreeUrl, fetchTreeRankIndex, openTreeHome, clearMetaCache, createTree, feeText, isAssetInsufficientError, showAssetInsufficientGuide, searchPeopleGlobal, personIdDisplay, fetchGeoTreeIndex, REGION_UNREGISTERED, REGION_TEXT, hitOfEntry, isUnregisteredEntry, regionCityLabelOf, regionProvinceOptions, regionUnregisteredCountOf } from '@/business';
 import { isAuthenticated, authState, getAuthToken } from '@/business/auth';
 import type { DigitalHallCard, TreeMeta, TreeEntry, GeoTreeIndex } from '@/business/types';
 import type { RegionHit } from '@/business';
@@ -675,15 +675,20 @@ async function doCreateTree() {
 // ---- 家族等级 ----
 const rankMap = ref<Record<string, TreeRankInfo>>({});
 
+/**
+ * 排序 / 等级数据：**一次** `GET /tree/rank-index` 取全表（服务端 24h 快照 + 前端会话内缓存），
+ * 不再逐树扇出 `/tree/rank`（改造前逐树 `Promise.all` 扇出，现盘 19 棵树 = 19 个请求，每次进首页实时拉）。
+ * 字段与 `/tree/rank` 逐字段同源，直接填 `rankMap`（14 字段原样使用，含 `person_count` / `activity` / `updated_at`）。
+ * 失败 ⇒ `rankMap` 为空：人数 / 活跃度按 0 排序、等级徽章不渲染、人数标签走既有降级文案「— 人」；
+ * **不阻断列表渲染、不弹错、不重试**（缓存只在成功时生效，见 `business/api.ts`）。
+ */
 async function loadRanks() {
-  const results = await Promise.allSettled(
-    halls.value.map((h) => fetchTreeRank(h.tree_id)),
-  );
-  const map: Record<string, TreeRankInfo> = {};
-  results.forEach((r, i) => {
-    if (r.status === 'fulfilled') map[halls.value[i].tree_id] = r.value;
-  });
-  rankMap.value = map;
+  try {
+    const index = await fetchTreeRankIndex();
+    rankMap.value = index.trees || {};
+  } catch {
+    rankMap.value = {};
+  }
 }
 
 function rankLabel(treeId: string): string {

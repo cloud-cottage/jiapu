@@ -726,6 +726,64 @@ export async function fetchTreeRank(treeId: string): Promise<TreeRankInfo> {
   return res.json();
 }
 
+// ---- 家族排序索引（一次取全表；只读、无需鉴权、无需 X-Tree-Id；服务端 24h 快照） ----
+
+/**
+ * 索引里单棵树的字段：与 `/tree/rank` **逐字段同源**（后端同一 `tree-rank.js` 实现），
+ * 唯独**不含 `access`**（排序不需要权限档信息）。
+ */
+export type TreeRankIndexEntry = Omit<TreeRankInfo, 'access'>;
+
+/** `GET /tree/rank-index` 响应：`trees` 以 tree_id 为键，一次给全量等级 / 人数 / 活跃度 */
+export interface TreeRankIndex {
+  v: number;
+  /** 本快照生成时刻（ISO）；从未成功过 → `null` */
+  generated_at: string | null;
+  trees: Record<string, TreeRankIndexEntry>;
+  /** 清单内读取 / 计算失败的树（后端只跳过该树）；无失败则不出现该键 */
+  failed?: string[];
+}
+
+/**
+ * 首页排序数据的**模块级会话缓存**（与地区索引 `fetchGeoTreeIndex` 同频：服务端 24h 快照
+ * + 前端每会话一次）：
+ *   · 成功结果缓存到会话结束 ⇒ 切 tab / 切换排序 / 重进首页一律零请求；
+ *   · 并发调用共享同一个 in-flight Promise（不重复打）；
+ *   · **失败不缓存、不自旋重试**（错误抛给调用方决定降级；下次调用才会重试）。
+ * 纯模块变量，不依赖 DOM / window ⇒ 小程序端同样可用。
+ */
+let treeRankIndexCache: TreeRankIndex | null = null;
+let treeRankIndexInflight: Promise<TreeRankIndex> | null = null;
+
+export async function fetchTreeRankIndex(): Promise<TreeRankIndex> {
+  if (treeRankIndexCache) return treeRankIndexCache;
+  if (treeRankIndexInflight) return treeRankIndexInflight;
+  treeRankIndexInflight = (async () => {
+    try {
+      // 不带 X-Tree-Id、不带 Authorization：排序数据与访问者无关
+      const res = await fetch(`${API_BASE}/tree/rank-index`);
+      if (!res.ok) throw new Error(`读取排序索引失败 (${res.status})`);
+      const body = (await res.json()) as TreeRankIndex;
+      const trees = body && body.trees && typeof body.trees === 'object' ? body.trees : {};
+      treeRankIndexCache = {
+        v: body?.v ?? 1,
+        generated_at: body?.generated_at ?? null,
+        trees,
+        ...(Array.isArray(body?.failed) && body.failed.length ? { failed: body.failed } : {}),
+      };
+      return treeRankIndexCache;
+    } finally {
+      treeRankIndexInflight = null;
+    }
+  })();
+  return treeRankIndexInflight;
+}
+
+/** 作废会话内缓存（数据源变更后需要重取时调用；切换排序 / tab 不调用） */
+export function clearTreeRankIndexCache(): void {
+  treeRankIndexCache = null;
+}
+
 // ---- 角色管理 ----
 
 export interface ManagedUser {

@@ -3,6 +3,9 @@ export type { MirrorFields, MirrorTarget, MirrorReadonlyView, MasterClanFounder 
 export { fetchPerson, fetchPersonForEdit, savePerson, savePersonPlaces, API_BASE, fetchPersonList, fetchFamilyList, searchPeople, searchPeopleGlobal, searchMarriageCandidates, fetchTreeMeta, fetchTreeMetaRemote, updateTreeMeta, fetchOriginCandidates, setTreeOrigin, splitTree, createTree, fetchWallet, rechargeWallet, setTreeCreateFee, fetchMasterTree, fetchTreeStats, fetchTreeRank, clearMetaCache, sendSmsCode, registerByPhone, loginByPhone, fetchMe, submitJoinRequest, fetchJoinRequests, approveJoinRequest, rejectJoinRequest, fetchMyAnchor, requestLeave, fetchLeaveRequests, approveLeave, removeBranchLink, addParentNode, addChildNode, appendChainNode, addSpouseNode, reparentNode, siblingReorder, deleteNode, marriageRequest, fetchMarriageRequests, decideMarriageRequest, marryEnd, founderRequest, fetchFounderRequests, decideFounderRequest, attachFounder, detachFounder, resetFounder, createClan, FOUNDER_LOCK_MESSAGE, CLAN_FOUNDER_LOCK_MESSAGE, CHAIN_MIRROR_LOCK_MESSAGE, ORPHAN_MIRROR_LOCK_MESSAGE, familyMirrorLockMessage, treeKindLabel, fetchClans, fetchClanInfo, submitClanRequest, fetchClanRequests, decideClanRequest } from './api';
 // 按地区筛选索引（`GET /geo/tree-index`；会话内缓存，切换筛选不再请求）
 export { fetchGeoTreeIndex, clearGeoTreeIndexCache } from './api';
+// 首页排序索引（`GET /tree/rank-index`；服务端 24h 快照 + 会话内缓存，一次取全表）
+export { fetchTreeRankIndex, clearTreeRankIndexCache } from './api';
+export type { TreeRankIndex, TreeRankIndexEntry } from './api';
 export {
   REGION_UNREGISTERED,
   REGION_TEXT,

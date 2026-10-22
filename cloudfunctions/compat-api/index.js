@@ -94,7 +94,7 @@ import * as trn from './lib/tree-rename.js';
 import { resolveNode } from './lib/id-resolve.js';
 import { idAllocator, reserveFamilyIds, numberOfId } from './lib/id-seq.js';
 import { treeActivity } from './lib/tree-activity.js';
-import { countFamilyMembers } from './lib/family-population.js';
+// 人数口径已收敛到 lib/tree-rank.js（→ lib/family-population.js），路由层不再直接调 countFamilyMembers
 import { computeAccess, isHiddenFamily, accessToPayload, computePersonDepth } from './lib/tree-access.js';
 // 发源地结构化（docs/geo-origin.spec.md）：路由层只做「未知码 → 400」与「反查生成展示串」两件事；
 // 码表随云函数包内联（lib/geo.js 静态 import lib/geo/divisions.json），无运行期读盘 / 无环境变量。
@@ -121,9 +121,13 @@ import {
 } from './lib/person-places.js';
 // 带色称号字段级写权限（批 1b-1 · docs/person-badge.spec.md §5）：与前端 canEditBadge 同口径单点
 import { assertBadgeWritable } from './lib/badge-guard.js';
+// 等级 / 人数 / 活跃度口径的唯一实现（`/tree/rank` 与 `/tree/rank-index` 共用 ⇒ 不得在此另写一套）。
+// 本文件只保留路由层：取数（tree / meta / details / activity）→ 拼 shape → 200。
+import { MAX_DEPTH, computeTreeDepth, treeRankFields, explicitGensOf } from './lib/tree-rank.js';
+// 首页家族列表排序聚合口（24h 快照，与 /geo/tree-index 同一 TTL 与降级机制）
+import { getTreeRankIndex } from './lib/tree-rank-index.js';
 
 const MASTER_TREE_ID = process.env.MASTER_TREE_ID || 'zhonghua';
-const MAX_DEPTH = 72;
 
 // ---- 工具 ----
 
@@ -141,62 +145,9 @@ function parseBody(event) {
   }
 }
 
-// ---- 等级计算（P1 复用） ----
-
-const RANKS = {
-  family: { key: 'family_rank', label: '家乘级', en: 'Family-Rank', desc: '短程亲属谱系，合计总世代 ≤9 世' },
-  clan: { key: 'clan_rank', label: '族乘级', en: 'Clan-Rank', desc: '中程亲属谱系，合计总世代 10-18 世' },
-  lineage: { key: 'lineage_rank', label: '宗乘级', en: 'Lineage-Rank', desc: '长程亲属谱系，合计总世代 19-72 世' },
-  stemma: { key: 'stemma_rank', label: '世乘级', en: 'Stemma-Rank', desc: '远古长程谱系记录，合计总世代 >72 世' },
-};
-
-function computeTreeDepth(tree, explicitGens) {
-  if (explicitGens && explicitGens.size > 0) {
-    return { totalGenerations: Math.max(...explicitGens.values()), personCount: explicitGens.size, explicit: true };
-  }
-  const childOf = new Map();
-  const parentOf = new Map();
-  for (const f of Object.values(tree.families)) {
-    const parents = [f.father_handle, f.mother_handle].filter(Boolean);
-    for (const c of f.child_handles || []) {
-      if (!childOf.has(c)) childOf.set(c, new Set());
-      for (const p of parents) childOf.get(c).add(p);
-    }
-    for (const p of parents) {
-      if (!parentOf.has(p)) parentOf.set(p, new Set());
-      for (const c of f.child_handles || []) parentOf.get(p).add(c);
-    }
-  }
-  const allPeople = new Set([...Object.keys(tree.people), ...childOf.keys(), ...parentOf.keys()]);
-  const roots = [...allPeople].filter((p) => !childOf.has(p) || childOf.get(p).size === 0);
-  if (roots.length === 0) return { totalGenerations: 1, personCount: allPeople.size, explicit: false };
-  const depth = new Map();
-  const queue = [...roots];
-  for (const r of roots) depth.set(r, 1);
-  let maxDepth = 1;
-  let guard = 0;
-  while (queue.length && guard < 100000) {
-    guard++;
-    const cur = queue.shift();
-    const curDepth = depth.get(cur) || 1;
-    for (const child of parentOf.get(cur) || []) {
-      const nd = curDepth + 1;
-      if (nd > (depth.get(child) || 0)) {
-        depth.set(child, nd);
-        maxDepth = Math.max(maxDepth, nd);
-        queue.push(child);
-      }
-    }
-  }
-  return { totalGenerations: maxDepth, personCount: allPeople.size, explicit: false };
-}
-
-function rankFromDepth(total) {
-  if (total <= 9) return RANKS.family;
-  if (total <= 18) return RANKS.clan;
-  if (total <= 72) return RANKS.lineage;
-  return RANKS.stemma;
-}
+// ---- 等级计算（已上移到 lib/tree-rank.js：`/tree/rank` 与 `/tree/rank-index` 共用同一实现）----
+// 旧本地实现（`RANKS` / `computeTreeDepth` / `rankFromDepth`）连同口径注释一并迁走；
+// 下方三处 `computeTreeDepth(...)` 调用改用顶部 import 的同名函数，行为逐字不变。
 
 // ---- 形状转换（Gramps RawPerson 兼容） ----
 
@@ -892,48 +843,40 @@ async function handleRequest(event) {
       return send(200, await getTreeIndex());
     }
 
+    // `GET /tree/rank-index` → 200 `{ v, generated_at, trees[, failed] }`（契约 = lib/tree-rank-index.js 文件头）。
+    // 首页「家族列表排序」用：**一次拿全站每棵树的人数 / 等级 / 活跃度**，替代原先前端逐树
+    // `Promise.all(halls.map(fetchTreeRank))`（20 棵树 = 20 个请求、每次进首页实时算）。
+    // · 时效：与地区数据（`/geo/tree-index`）**同一 TTL（24h）与同一降级机制**（共享缓存器
+    //   `lib/geo-stats.js` 的 `createSnapshotCache`）；快照内键 = tree_id。
+    // · 字段与 `/tree/rank` 逐字段同源（同一 `lib/tree-rank.js`），**不下发 `access`**（排序无需权限档）。
+    // · **只读 · 无需鉴权 · 无需 X-Tree-Id**：必须注册在树编辑闸门之前（同段先例 = /geo/*）。
+    // · 恒 200：整体失败返上一次成功值 / 空表，绝不 5xx。
+    if (pathname === '/tree/rank-index' && method === 'GET') {
+      return send(200, await getTreeRankIndex());
+    }
+
     // ================= 等级 =================
     if (pathname === '/tree/rank' && method === 'GET') {
       if (!treeId) return send(400, { error: '缺少 X-Tree-Id' });
       const tree = await getTree(treeId);
       if (!tree) return send(404, { error: `树不存在: ${treeId}` });
-      const gens = new Map();
-      const details = await getAllDetails(treeId);
-      for (const d of details) {
-        const g = d.attributes?.find((a) => a.key === 'external_chain_gen');
-        if (g) gens.set(d.handle, parseInt(g.value, 10) || 0);
-      }
-      const { totalGenerations, explicit } = computeTreeDepth(tree, gens);
-      const rank = rankFromDepth(totalGenerations);
       const access = await resolveTreeAccess(headers, treeId, tree);
-      // person_count：家族人数口径 = **纯血缘图**（用户 2026-09-19 重新拍板，见 lib/family-population.js
-      // 文件头 §1–§7）。**姓文本（surname_char / 始祖 surname / 众数）已彻底不再参与计数**。
-      // 分层：仅 `kind === 'family'`（或缺省 ⇒ family）走新口径；
+      // 世代：详情档 `external_chain_gen` 优先，缺失退回家族图（口径 = lib/tree-rank.js §1）
+      const gens = explicitGensOf(await getAllDetails(treeId));
+      // person_count / rank_* / mirror_count / root_count / updated_at：**与 `/tree/rank-index` 同一函数**
+      // （lib/tree-rank.js → `treeRankFields`；人数真源 = lib/family-population.js 纯血缘图口径）。
+      // 分层：仅 `kind === 'family'`（或缺省 ⇒ family）走血缘口径；
       // `zhonghua`（is_master 世本）与 `kind === 'clan'`（祖谱）保持 = 树内 people 数。
       const rankMeta = await getMeta();
       const metaEntry = Object.values(rankMeta?.trees || {}).find((t) => t && t.tree_id === treeId) || null;
-      const personCount = countFamilyMembers(tree, metaEntry, { kind: metaEntry?.kind, is_master: !!metaEntry?.is_master });
       // activity：近 30 天与本树相关的互动事件数（lib/tree-activity.js；集合不可用恒 0，不抛）
       const activity = await treeActivity(treeId, { now: new Date() });
+      const fields = treeRankFields(tree, { metaEntry, explicitGens: gens, activity });
       return send(200, {
         tree_id: treeId,
-        total_generations: totalGenerations,
-        rank_key: rank.key,
-        rank_label: rank.label,
-        rank_en: rank.en,
-        rank_desc: rank.desc,
-        over_limit: totalGenerations > MAX_DEPTH,
-        max_depth: MAX_DEPTH,
-        root_count: Object.values(tree.people).filter((p) => !p.parent_family).length,
-        person_count: personCount,
-        // mirror_count：本树 people 中「外树镜像」节点数（`String(external_mirror) === 'true'`，
-        // 纯计数、不涉权限裁剪）。**保留字段**：首页卡片已不再使用「N 人（含外树 M）」说明，
-        // 新前端只读 person_count；三档排序归一化继续用 person_count（新口径）。
-        mirror_count: Object.values(tree.people).filter((p) => String(p.external_mirror) === 'true').length,
-        explicit,
-        activity,
-        updated_at: tree.updated_at === undefined || tree.updated_at === null ? '' : String(tree.updated_at),
-        access: accessToPayload(access, totalGenerations),
+        ...fields,
+        // access：本树权限档（**仅本口下发**；排序聚合口 `/tree/rank-index` 不含该字段）
+        access: accessToPayload(access, fields.total_generations),
       });
     }
 

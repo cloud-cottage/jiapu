@@ -876,15 +876,18 @@ test('F-A 只做编排：资产只经 ledger 的 withAssets/导出读写（无�
 //    地区统计合并批新增第 51 个（geo-stats.test.js，/geo/hot 与 /geo/tree-index 合并为一趟扫描 +
 //      一份缓存 + 一个 generated_at：两路同快照 / 全量扫描次数 = 1 / 降级语义共享）
 //    ⇒ 定额同步为实得真值 51（依据 `npm test` 实测 # tests 与磁盘 readdir；本质断言一字未放宽）。
-test('package.json 注册数 = 磁盘 *.test.js 数 = 51，且双向零缺口', async () => {
+//    首页排序聚合口批新增第 52 个（tree-rank-index.test.js，GET /tree/rank-index：24h 快照 /
+//      连续两次请求只扫一次 / TTL 过期重扫 / 单树失败隔离 / 与 /tree/rank 逐值同源）
+//    ⇒ 定额同步为实得真值 52（依据 `npm test` 实测 # tests 与磁盘 readdir；本质断言一字未放宽）。
+test('package.json 注册数 = 磁盘 *.test.js 数 = 52，且双向零缺口', async () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));
   const registered = pkg.scripts.test
     .split(/\s+/)
     .filter((x) => x.endsWith('.test.js'))
     .map((x) => path.basename(x));
   const onDisk = fs.readdirSync(HERE).filter((f) => f.endsWith('.test.js')).sort();
-  assert.equal(registered.length, 51, `注册数应为 51，实得 ${registered.length}`);
-  assert.equal(onDisk.length, 51, `磁盘 *.test.js 应为 51，实得 ${onDisk.length}`);
+  assert.equal(registered.length, 52, `注册数应为 52，实得 ${registered.length}`);
+  assert.equal(onDisk.length, 52, `磁盘 *.test.js 应为 52，实得 ${onDisk.length}`);
   assert.equal(new Set(registered).size, registered.length, '注册项不得重复');
   const missingOnDisk = registered.filter((f) => !onDisk.includes(f));
   const unregistered = onDisk.filter((f) => !registered.includes(f));

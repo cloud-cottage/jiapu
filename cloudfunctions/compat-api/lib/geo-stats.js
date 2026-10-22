@@ -97,8 +97,8 @@ function normCode(raw) {
   return isKnownOriginCode(raw) ? String(raw).trim() : null;
 }
 
-/** tree-meta 条目定位：优先按 key（tree_id），退化为按 entry.tree_id 扫描 */
-function metaEntryOf(metaTrees, id) {
+/** tree-meta 条目定位：优先按 key（tree_id），退化为按 entry.tree_id 扫描（`lib/tree-rank-index.js` 复用） */
+export function metaEntryOf(metaTrees, id) {
   const direct = metaTrees?.[id];
   if (direct) return direct;
   for (const entry of Object.values(metaTrees || {})) if (entry && entry.tree_id === id) return entry;
@@ -106,13 +106,48 @@ function metaEntryOf(metaTrees, id) {
 }
 
 /**
+ * 通用快照缓存器 —— **24h TTL + 进程内单份快照 + 并发单飞 + 失败不清缓存**（不抛、绝不 5xx）。
+ *
+ * 由 `geo-stats.js`（地区统计）与 `lib/tree-rank-index.js`（首页排序索引）**共用同一实现**：
+ * 两域各持有自己的快照对象，但 TTL 常量（`GEO_STATS_TTL_MS`）、命中/过期判定、单飞、
+ * 失败降级（返上一次成功值；无 ⇒ 冻结空快照，且**不刷新成功时刻、不设负缓存**）逐条同源。
+ *
+ * @param {{ scan: () => Promise<any>, build: (r: any) => any, empty: any, now?: () => number, ttlMs?: number }} opts
+ *   `scan` 扫真源（抛错 ⇒ 走降级），`build` 把扫描结果包成带 `generated_at` 的对外快照，
+ *   `empty` 无任何成功值时的冻结空快照。
+ * @returns {{ get: () => Promise<any> }} 恒 resolve；TTL 内多次调用返回**同一份快照对象**。
+ */
+export function createSnapshotCache({ scan, build, empty, now = Date.now, ttlMs = GEO_STATS_TTL_MS }) {
+  let cached = null; // 最近一次成功快照
+  let cachedAt = 0; // 最近一次成功快照的生成时刻（失败**不刷新** ⇒ 下次请求重试，不做负缓存）
+  let inflight = null; // 单飞：扫描期间的 refresh promise
+
+  return {
+    async get() {
+      if (cached && now() - cachedAt < ttlMs) return cached;
+      if (inflight) return inflight;
+      inflight = (async () => {
+        try {
+          const r = await scan();
+          cached = build(r);
+          cachedAt = now();
+          return cached;
+        } catch {
+          return cached || empty; // 整体失败 ⇒ 上一次成功快照；无 ⇒ 空快照（仍不抛、绝不 5xx）
+        } finally {
+          inflight = null;
+        }
+      })();
+      return inflight;
+    },
+  };
+}
+
+/**
  * 地区统计读取器工厂（默认实例见文件末）。依赖全部为**只读**函数；`now` 可注入以测 TTL。
  * 返回 `{ getStats() }` —— 恒 resolve，绝不 reject；同一缓存周期内返回**同一份快照对象**。
  */
 export function createGeoStatsReader({ listTreeIds: listIds, getTree: readTree, getMeta: readMeta, now = Date.now } = {}) {
-  let cached = null; // 最近一次成功快照
-  let cachedAt = 0; // 最近一次成功快照的生成时刻（失败**不刷新** ⇒ 下次请求重试，不做负缓存）
-  let inflight = null; // 单飞：扫描期间的 refresh promise
 
   /** 扫真源现算（只读；单树读失败只跳过该树，不整体失败） */
   async function scan() {
@@ -168,32 +203,25 @@ export function createGeoStatsReader({ listTreeIds: listIds, getTree: readTree, 
     return { counts: toCountsObject(counts), direct: toCountsObject(direct), trees, failed };
   }
 
+  // 共享缓存机制：24h TTL / 单飞 / 失败返上一次成功值（与 `lib/tree-rank-index.js` 同一实现）
+  const cache = createSnapshotCache({
+    scan,
+    now,
+    ttlMs: GEO_STATS_TTL_MS,
+    empty: EMPTY_STATS,
+    build: (r) => ({
+      v: GEO_STATS_VERSION,
+      generated_at: new Date(now()).toISOString(),
+      counts: r.counts,
+      direct: r.direct,
+      trees: r.trees,
+      ...(r.failed.length ? { failed: r.failed } : {}),
+    }),
+  });
+
   return {
     /** 取值入口：TTL 内直接返回缓存快照，过期才重扫（并发单飞） */
-    async getStats() {
-      if (cached && now() - cachedAt < GEO_STATS_TTL_MS) return cached;
-      if (inflight) return inflight;
-      inflight = (async () => {
-        try {
-          const r = await scan();
-          cached = {
-            v: GEO_STATS_VERSION,
-            generated_at: new Date(now()).toISOString(),
-            counts: r.counts,
-            direct: r.direct,
-            trees: r.trees,
-            ...(r.failed.length ? { failed: r.failed } : {}),
-          };
-          cachedAt = now();
-          return cached;
-        } catch {
-          return cached || EMPTY_STATS; // 整体失败 ⇒ 上一次成功快照；无 ⇒ 空快照（仍不抛、绝不 5xx）
-        } finally {
-          inflight = null;
-        }
-      })();
-      return inflight;
-    },
+    getStats: () => cache.get(),
   };
 }
 
