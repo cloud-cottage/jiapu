@@ -506,6 +506,13 @@ cd frontend && npm run type-check      # vue-tsc --noEmit
   - 已更正（2026-10-04）：**现证 20 项**（含 `jiazu_friends` / 四类申请集合 / `jiazu_id_seq`）—— 名单漏项曾导致云端缺集合、对应路由首写报错；上传脚本已加漏项自检（`exit 1`）。**上行原文保留、语义自本行起覆盖**（`docs/PENDING_DEPLOY.md` §53-2）。
 - ⚠️ **部署阻塞项（未解除前不得上云）**：`jiazu_assets` 为全体用户共用单文档（`_id='global'`）+ 仅进程内锁 → 云端多实例可丢更新 / 双花；**部署前必须重构为「每手机号一文档 + `version` 乐观锁 CAS 重试」**（`docs/PENDING_DEPLOY.md` §7-7，跨批次登记见 §10-2）——`jiazu_spirit` / `jiazu_market` / `jiazu_messages` / `jiazu_ops_logs` 同形态，一并评估。
 - `auth-server/`、`scripts/*` 一次性修复脚本、`migrate-output/` 中间报告、`/tmp/jiazu-*` **明确不进云**（§6 / §7-6 / §12-7 等「不需要上云」小节）。
+- **⚠️ 自动提交 / 推送前必须核对「代码面 ↔ 产物面」同步（追加 · 2026-10-24 · Kevin 当面指令 · 条款措辞与落点 = Zang 派单 · Jing 落盘）**：ctrl 面板的定时提交（提交信息形如 `chore: jiapu 同步 @<时间>（via ctrl 面板）`）会把**工作区里任何未提交的改动**一并扫进同一笔并推 `origin/main`；而 **`main` = 生产**（Vercel 自动构建 H5）⇒ **「提交」即「发布」**（在途工作不经任何人再点发布就会上线）。因此**硬规则：提交 / 推送前必须先核对「代码面 ↔ 产物面」是否同步**，三问逐条过、缺一条即停：
+  - **① 本次 diff 是否含 `cloudfunctions/compat-api/**`？** 若是 ⇒ `cloudfunctions/deploy/compat-api/index.js`（esbuild 产物）**必须同批重打**（判据 = 产物内 `grep -c` 新路由 / 新符号 ≥ 1）。
+  - **② 产物变了 ⇒ 必须同批 `tcb fn deploy compat-api -e <envId>` 并做线上冒烟**（新路由返 200）：**只推代码不部署 = 半套上线**。
+  - **③ 前端是否调用了云函数的「新路由」？** 若是 ⇒ 上线前先用生产 API host 探针验证该路径**非 404**（`https://liwu-d8gek6jjdab1d087c.service.tcloudbase.com/api/<path>`）。
+  - **反向同理**：只改 `frontend/**` ⇒ 确认 H5 已随推送构建（Vercel 自动构建）；**小程序产物需重打**（推送不产出小程序包）。
+  - **事故锚（只陈述事实）**：**2026-10-22** `eceab3b`（面板自动提交）把首页取数改为批量索引 `GET /tree/rank-index`（前端已在位）推上线，但**云函数产物未重打、未部署** ⇒ **线上该路由 404** ⇒ 首页**人数不显示、三档排序退化为原序**（`rankMap` 为空 ⇒ 归一化常数项全 1）；**2026-10-24** 重打包 + `tcb fn deploy` 修复。
+  - **与既有条款的关系（不重复、只指路）**：**§2.3「不要忘记云函数重打包」**讲的是「改代码时别忘产物」这一层**实现纪律**；本条补的是**「自动提交 / 推送」这个入口的检查点**（在提交前卡住），两者并列有效、**不互相替代**。
 
 ---
 

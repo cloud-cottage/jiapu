@@ -4,13 +4,8 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __esm = (fn, res, err) => function __init() {
-  if (err) throw err[0];
-  try {
-    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
-  } catch (e) {
-    throw err = [e], e;
-  }
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
 var __export = (target, all) => {
   for (var name in all)
@@ -67,7 +62,8 @@ function formatId(kind, n) {
 }
 function idKey(ref) {
   const m = String(ref == null ? "" : ref).trim().match(/^([IF]?)(\d+)$/i);
-  if (!m) return "";
+  if (!m)
+    return "";
   const kind = (m[1] || "").toUpperCase() === "F" ? SEQ_FAMILY : SEQ_PERSON;
   return `${kind}:${parseInt(m[2], 10)}`;
 }
@@ -78,7 +74,8 @@ function sameId(a, b) {
 function parseGlobalId(ref) {
   const s = String(ref || "").trim();
   const m = s.match(/^([IF]?)(\d{1,9})$/i);
-  if (!m) return null;
+  if (!m)
+    return null;
   const prefix = (m[1] || "").toUpperCase();
   return { kind: prefix === "F" ? SEQ_FAMILY : SEQ_PERSON, number: parseInt(m[2], 10) };
 }
@@ -88,7 +85,7 @@ function numberOfId(id) {
 }
 async function readSeq(kind) {
   const doc = await colGet(SEQ_COLLECTION, kind);
-  const n = Number(doc?.next);
+  const n = Number(doc == null ? void 0 : doc.next);
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 async function writeSeq(kind, next) {
@@ -98,7 +95,8 @@ async function writeSeq(kind, next) {
 }
 function localMaxIds() {
   const out = { person: 0, family: 0 };
-  if (SOURCE !== "local") return out;
+  if (SOURCE !== "local")
+    return out;
   const dir = import_path.default.join(PATHS.out, "trees");
   let files = [];
   try {
@@ -107,14 +105,15 @@ function localMaxIds() {
     return out;
   }
   for (const f of files) {
-    if (!f.endsWith(".json")) continue;
+    if (!f.endsWith(".json"))
+      continue;
     try {
       const tree = JSON.parse(import_fs.default.readFileSync(import_path.default.join(dir, f), "utf8"));
       for (const p of Object.values(tree.people || {})) {
-        out.person = Math.max(out.person, numberOfId(p?.gramps_id) || 0);
+        out.person = Math.max(out.person, numberOfId(p == null ? void 0 : p.gramps_id) || 0);
       }
       for (const fam of Object.values(tree.families || {})) {
-        out.family = Math.max(out.family, numberOfId(fam?.gramps_id) || 0);
+        out.family = Math.max(out.family, numberOfId(fam == null ? void 0 : fam.gramps_id) || 0);
       }
     } catch {
     }
@@ -158,7 +157,8 @@ async function reserveIds(kind, count = 1) {
   if (SOURCE === "local") {
     return withLock(kind, async () => {
       let next = await readSeq(kind);
-      if (!next) next = (await initSeqIfMissing())[kind] || 1;
+      if (!next)
+        next = (await initSeqIfMissing())[kind] || 1;
       await writeSeq(kind, next + n);
       return Array.from({ length: n }, (_, i) => next + i);
     });
@@ -209,7 +209,8 @@ var init_id_seq = __esm({
 
 // cloudfunctions/compat-api/lib/store.js
 function assertWriteAllowed(target) {
-  if (!SANDBOX) return target;
+  if (!SANDBOX)
+    return target;
   const p = import_path2.default.resolve(String(target));
   const realRoot = import_path2.default.join(REPO, "migrate-output");
   const hitsReal = samePath(p, REAL_META_FILE) || p === realRoot || p.startsWith(realRoot + import_path2.default.sep);
@@ -232,11 +233,13 @@ function sameTreeStamp(a, b) {
   return !!a && !!b && a.mtimeNs === b.mtimeNs && a.size === b.size && a.ctimeNs === b.ctimeNs;
 }
 function cacheTree(treeId, tree, stamp) {
-  if (treeId) treeCache.set(treeId, { tree, at: Date.now(), stamp: stamp || null });
+  if (treeId)
+    treeCache.set(treeId, { tree, at: Date.now(), stamp: stamp || null });
 }
 function cachedTree(treeId) {
   const entry = treeCache.get(treeId);
-  if (!entry) return null;
+  if (!entry)
+    return null;
   if (Date.now() - entry.at >= TREE_CACHE_TTL_MS) {
     treeCache.delete(treeId);
     return null;
@@ -253,7 +256,7 @@ async function sdkCall(fn) {
     try {
       return await fn();
     } catch (e) {
-      if (String(e?.message || e).includes("abort")) {
+      if (String((e == null ? void 0 : e.message) || e).includes("abort")) {
         await new Promise((r) => setTimeout(r, 200));
         return fn();
       }
@@ -276,27 +279,32 @@ function colFilePath(col) {
   return import_path2.default.join(COLS_DIR, `${col}.json`);
 }
 async function loadCol(col) {
-  if (colCache.has(col)) return colCache.get(col);
+  if (colCache.has(col))
+    return colCache.get(col);
   let map2 = /* @__PURE__ */ new Map();
   if (SOURCE === "local") {
     try {
       const raw = JSON.parse(import_fs2.default.readFileSync(colFilePath(col), "utf8"));
-      for (const [id, doc] of Object.entries(raw)) map2.set(id, doc);
+      for (const [id, doc] of Object.entries(raw))
+        map2.set(id, doc);
     } catch {
     }
   } else {
     const r = await sdkCall(() => getApp().database().collection(col).limit(5e3).get());
-    for (const d of r?.data || []) map2.set(d._id, d);
+    for (const d of (r == null ? void 0 : r.data) || [])
+      map2.set(d._id, d);
   }
   colCache.set(col, map2);
   return map2;
 }
 async function persistColMap(col, map2) {
-  if (SOURCE !== "local") return;
+  if (SOURCE !== "local")
+    return;
   const target = assertWriteAllowed(colFilePath(col));
   import_fs2.default.mkdirSync(import_path2.default.dirname(target), { recursive: true });
   const obj = {};
-  for (const [id, doc] of map2) obj[id] = doc;
+  for (const [id, doc] of map2)
+    obj[id] = doc;
   import_fs2.default.writeFileSync(target, JSON.stringify(obj, null, 2));
 }
 async function colGet(col, id) {
@@ -340,7 +348,7 @@ async function readDocFresh(col, id) {
   }
   return sdkCall(async () => {
     const r = await getApp().database().collection(col).doc(id).get();
-    const d = r?.data;
+    const d = r == null ? void 0 : r.data;
     return (Array.isArray(d) ? d[0] : d) || null;
   });
 }
@@ -353,7 +361,8 @@ function commitLocalCas(col, id, curVersion, next) {
     raw = {};
   }
   const diskVersion = raw[id] ? versionOf(raw[id].version) : 0;
-  if (diskVersion !== curVersion) return null;
+  if (diskVersion !== curVersion)
+    return null;
   assertWriteAllowed(target);
   import_fs2.default.mkdirSync(import_path2.default.dirname(target), { recursive: true });
   raw[id] = next;
@@ -432,7 +441,7 @@ async function list(col, { limit = 100, cursor = 0 } = {}) {
   const r = await sdkCall(
     () => getApp().database().collection(col).orderBy("_id", "asc").skip(skip).limit(take).get()
   );
-  const items = r?.data || [];
+  const items = (r == null ? void 0 : r.data) || [];
   return { items, next_cursor: items.length === take ? skip + take : null };
 }
 async function listAll(col, { limit = 100, max = 1e5 } = {}) {
@@ -441,16 +450,18 @@ async function listAll(col, { limit = 100, max = 1e5 } = {}) {
   for (; ; ) {
     const { items, next_cursor } = await list(col, { limit, cursor });
     out.push(...items);
-    if (next_cursor === null || out.length >= max) break;
+    if (next_cursor === null || out.length >= max)
+      break;
     cursor = next_cursor;
   }
   return out;
 }
 async function colAtomicNext(col, id, delta = 1, field = "next") {
+  var _a3;
   const step = Math.max(1, Math.floor(Number(delta) || 1));
   const map2 = await loadCol(col);
   if (SOURCE === "local") {
-    const cur = Number(map2.get(id)?.[field]);
+    const cur = Number((_a3 = map2.get(id)) == null ? void 0 : _a3[field]);
     const prev = Number.isFinite(cur) && cur > 0 ? cur : 0;
     const pending = new Map(map2);
     pending.set(id, { _id: id, [field]: prev + step });
@@ -469,12 +480,12 @@ async function colAtomicNext(col, id, delta = 1, field = "next") {
     try {
       await db.collection(col).doc(id).update({ [field]: db.command.inc(step) });
     } catch (e) {
-      throw new Error(`\u8BA1\u6570\u5668\u539F\u5B50\u9012\u589E\u5931\u8D25\uFF08${col}.${id}\uFF09: ${e?.message || e}`);
+      throw new Error(`\u8BA1\u6570\u5668\u539F\u5B50\u9012\u589E\u5931\u8D25\uFF08${col}.${id}\uFF09: ${(e == null ? void 0 : e.message) || e}`);
     }
     const r = await db.collection(col).doc(id).get();
-    const d = r?.data;
+    const d = r == null ? void 0 : r.data;
     const doc = Array.isArray(d) ? d[0] : d;
-    const value = Number(doc?.[field]);
+    const value = Number(doc == null ? void 0 : doc[field]);
     const prev = Number.isFinite(value) ? value - step : 0;
     map2.set(id, { _id: id, [field]: Number.isFinite(value) ? value : step });
     return Math.max(0, prev);
@@ -512,21 +523,23 @@ function metaCacheExpired(fetchedAt, now) {
 }
 async function getMeta() {
   if (SOURCE !== "local") {
-    if (metaCache && !metaCacheExpired(metaFetchedAt, Date.now())) return metaCache;
+    if (metaCache && !metaCacheExpired(metaFetchedAt, Date.now()))
+      return metaCache;
     const metaRes = await sdkCall(() => getApp().database().collection(META_COL).doc(META_DOC_ID).get());
-    const md = metaRes?.data;
+    const md = metaRes == null ? void 0 : metaRes.data;
     const metaDoc = (Array.isArray(md) ? md[0] : md) || null;
     const treesRes = await sdkCall(() => getApp().database().collection(META_COL).limit(5e3).get());
     const trees = {};
-    for (const d of treesRes?.data || []) {
-      if (!d || d._id === META_DOC_ID || !d.tree_id) continue;
+    for (const d of (treesRes == null ? void 0 : treesRes.data) || []) {
+      if (!d || d._id === META_DOC_ID || !d.tree_id)
+        continue;
       const { _id, ...entry } = d;
       trees[d._id] = entry;
     }
     metaCache = {
-      _schema: metaDoc?._schema,
-      _description: metaDoc?._description,
-      storage_files: metaDoc?.storage_files || {},
+      _schema: metaDoc == null ? void 0 : metaDoc._schema,
+      _description: metaDoc == null ? void 0 : metaDoc._description,
+      storage_files: (metaDoc == null ? void 0 : metaDoc.storage_files) || {},
       trees
     };
     metaFetchedAt = Date.now();
@@ -534,7 +547,8 @@ async function getMeta() {
   }
   if (metaCache) {
     const stamp = statMetaFile();
-    if (!stamp || sameMetaStamp(stamp, metaStamp)) return metaCache;
+    if (!stamp || sameMetaStamp(stamp, metaStamp))
+      return metaCache;
   }
   try {
     metaCache = JSON.parse(import_fs2.default.readFileSync(META_FILE, "utf8"));
@@ -554,13 +568,15 @@ async function getMeta() {
   return metaCache;
 }
 function stripMetaDoc(doc) {
-  if (!doc || typeof doc !== "object") return null;
+  if (!doc || typeof doc !== "object")
+    return null;
   const { _id, ...entry } = doc;
   return entry;
 }
 function sameEntryContent(a, b) {
   const canon = (o) => {
-    if (Array.isArray(o)) return `[${o.map(canon).join(",")}]`;
+    if (Array.isArray(o))
+      return `[${o.map(canon).join(",")}]`;
     if (o && typeof o === "object") {
       return `{${Object.keys(o).filter((k) => k !== "version").sort().map((k) => `${JSON.stringify(k)}:${canon(o[k])}`).join(",")}}`;
     }
@@ -575,8 +591,10 @@ function withMetaWriteLock(fn) {
   return run;
 }
 function readMetaForWrite() {
-  if (import_fs2.default.existsSync(META_FILE)) return JSON.parse(import_fs2.default.readFileSync(META_FILE, "utf8"));
-  if (metaCache) return JSON.parse(JSON.stringify(metaCache));
+  if (import_fs2.default.existsSync(META_FILE))
+    return JSON.parse(import_fs2.default.readFileSync(META_FILE, "utf8"));
+  if (metaCache)
+    return JSON.parse(JSON.stringify(metaCache));
   if (SANDBOX && !samePath(META_FILE, REAL_META_FILE) && import_fs2.default.existsSync(REAL_META_FILE)) {
     return JSON.parse(import_fs2.default.readFileSync(REAL_META_FILE, "utf8"));
   }
@@ -590,12 +608,13 @@ function writeMetaFile(obj) {
   metaStamp = statMetaFile();
 }
 function metaKeyOf(raw, treeId) {
-  const trees = raw?.trees || {};
+  const trees = (raw == null ? void 0 : raw.trees) || {};
   return Object.keys(trees).find((k) => trees[k] && String(trees[k].tree_id) === String(treeId)) || null;
 }
 async function mutateTreeMeta(treeId, mutator) {
   const id = String(treeId || "");
-  if (!id) throw new Error("[store] mutateTreeMeta\uFF1A\u7F3A\u5C11 tree_id");
+  if (!id)
+    throw new Error("[store] mutateTreeMeta\uFF1A\u7F3A\u5C11 tree_id");
   if (SOURCE !== "local") {
     const cur = await readDocFresh(META_COL, id);
     const curEntry = cur ? stripMetaDoc(cur) : null;
@@ -624,6 +643,7 @@ async function mutateTreeMeta(treeId, mutator) {
     return stripMetaDoc(written);
   }
   return withMetaWriteLock(async () => {
+    var _a3, _b;
     const raw = readMetaForWrite();
     const trees = { ...raw.trees || {} };
     const key = metaKeyOf(raw, id) || id;
@@ -634,14 +654,16 @@ async function mutateTreeMeta(treeId, mutator) {
     if (!next || typeof next !== "object") {
       throw new Error(`[store] mutateTreeMeta\uFF1Amutator \u5FC5\u987B\u8FD4\u56DE\u6761\u76EE\u5BF9\u8C61\uFF08${id}\uFF09`);
     }
-    if (cur && sameEntryContent(next, cur)) return cur;
-    if (!next.tree_id) next.tree_id = id;
+    if (cur && sameEntryContent(next, cur))
+      return cur;
+    if (!next.tree_id)
+      next.tree_id = id;
     next.version = curVersion + 1;
     trees[key] = next;
     const out = { ...raw, trees };
     writeMetaFile(out);
     const back = JSON.parse(import_fs2.default.readFileSync(META_FILE, "utf8"));
-    if (versionOf(back?.trees?.[key]?.version) !== curVersion + 1) {
+    if (versionOf((_b = (_a3 = back == null ? void 0 : back.trees) == null ? void 0 : _a3[key]) == null ? void 0 : _b.version) !== curVersion + 1) {
       throw new Error(`[store] mutateTreeMeta \u56DE\u8BFB\u6821\u9A8C\u5931\u8D25\uFF08${id}\uFF09`);
     }
     return next;
@@ -649,13 +671,15 @@ async function mutateTreeMeta(treeId, mutator) {
 }
 async function removeTreeMeta(treeId) {
   const id = String(treeId || "");
-  if (!id) return;
+  if (!id)
+    return;
   if (SOURCE !== "local") {
     await colDelete(META_COL, id);
-    if (metaCache?.trees) {
+    if (metaCache == null ? void 0 : metaCache.trees) {
       const next = { ...metaCache.trees };
       const key = metaKeyOf(metaCache, id);
-      if (key) delete next[key];
+      if (key)
+        delete next[key];
       metaCache.trees = next;
       metaFetchedAt = Date.now();
     }
@@ -664,7 +688,8 @@ async function removeTreeMeta(treeId) {
   return withMetaWriteLock(async () => {
     const raw = readMetaForWrite();
     const key = metaKeyOf(raw, id);
-    if (!key) return;
+    if (!key)
+      return;
     const trees = { ...raw.trees || {} };
     delete trees[key];
     writeMetaFile({ ...raw, trees });
@@ -673,7 +698,7 @@ async function removeTreeMeta(treeId) {
 async function mutateMetaDoc(mutator) {
   if (SOURCE !== "local") {
     const written = await mutateDoc(META_COL, META_DOC_ID, async (doc) => {
-      const cfg = { _schema: doc?._schema, _description: doc?._description, storage_files: doc?.storage_files };
+      const cfg = { _schema: doc == null ? void 0 : doc._schema, _description: doc == null ? void 0 : doc._description, storage_files: doc == null ? void 0 : doc.storage_files };
       const next = await mutator(cfg);
       if (!next || typeof next !== "object") {
         throw new Error("[store] mutateMetaDoc\uFF1Amutator \u5FC5\u987B\u8FD4\u56DE\u914D\u7F6E\u5BF9\u8C61");
@@ -700,7 +725,8 @@ async function mutateMetaDoc(mutator) {
       throw new Error("[store] mutateMetaDoc\uFF1Amutator \u5FC5\u987B\u8FD4\u56DE\u914D\u7F6E\u5BF9\u8C61");
     }
     const out = { ...raw, _schema: next._schema, _description: next._description };
-    if (next.storage_files !== void 0) out.storage_files = next.storage_files;
+    if (next.storage_files !== void 0)
+      out.storage_files = next.storage_files;
     writeMetaFile(out);
     return next;
   });
@@ -719,7 +745,7 @@ async function saveMeta(meta) {
     () => getApp().database().collection(META_COL).doc(META_DOC_ID).set({ _schema, _description, storage_files: storage_files || {} })
   );
   for (const [key, entry] of Object.entries(trees || {})) {
-    const id = String(entry?.tree_id || key);
+    const id = String((entry == null ? void 0 : entry.tree_id) || key);
     const { _id, ...body } = entry || {};
     await sdkCall(() => getApp().database().collection(META_COL).doc(id).set(body));
   }
@@ -739,8 +765,10 @@ function isVersionedTreeFileId(fileId, treeId, version) {
 function sweepTargets(treeId, newVersion, hasLegacy) {
   const v = Number(newVersion);
   const targets = [];
-  if (Number.isFinite(v) && v - 2 >= 1) targets.push(cloudTreeObjectPath(treeId, v - 2));
-  if (hasLegacy && v >= 3) targets.push(legacyTreeObjectPath(treeId));
+  if (Number.isFinite(v) && v - 2 >= 1)
+    targets.push(cloudTreeObjectPath(treeId, v - 2));
+  if (hasLegacy && v >= 3)
+    targets.push(legacyTreeObjectPath(treeId));
   return targets;
 }
 async function sweepSupersededTreeObjects(treeId, newVersion, replacedFileId) {
@@ -749,44 +777,52 @@ async function sweepSupersededTreeObjects(treeId, newVersion, replacedFileId) {
     const prefix = fid.slice(0, fid.lastIndexOf("/") + 1);
     const hasLegacy = isVersionedTreeFileId(fid, treeId, Number(newVersion) - 1);
     const targets = sweepTargets(treeId, newVersion, hasLegacy).map((p) => `${prefix}${p}`);
-    if (!targets.length) return;
+    if (!targets.length)
+      return;
     await sdkCall(() => getApp().deleteFile({ fileList: targets }));
   } catch {
   }
 }
 async function getTree(treeId) {
+  var _a3;
   const cached = cachedTree(treeId);
-  if (cached) return cached;
+  if (cached)
+    return cached;
   let tree = null;
   let stamp;
   if (SOURCE === "local") {
     const p = import_path2.default.join(OUT, "trees", `${treeId}.json`);
     stamp = statTreeFile(treeId);
-    if (import_fs2.default.existsSync(p)) tree = JSON.parse(import_fs2.default.readFileSync(p, "utf8"));
+    if (import_fs2.default.existsSync(p))
+      tree = JSON.parse(import_fs2.default.readFileSync(p, "utf8"));
   } else {
     const meta = await getMeta();
-    const fileId = meta?.storage_files?.[treeId];
+    const fileId = (_a3 = meta == null ? void 0 : meta.storage_files) == null ? void 0 : _a3[treeId];
     if (fileId) {
       const r = await sdkCall(() => getApp().downloadFile({ fileID: fileId }));
       tree = JSON.parse(Buffer.from(r.fileContent).toString("utf8"));
     }
   }
-  if (tree) cacheTree(treeId, tree, stamp);
+  if (tree)
+    cacheTree(treeId, tree, stamp);
   return tree;
 }
 async function readAuthoritativeVersion(treeId) {
+  var _a3;
   if (SOURCE === "local") {
     const p = assertWriteAllowed(import_path2.default.join(OUT, "trees", `${treeId}.json`));
-    if (!import_fs2.default.existsSync(p)) return { found: false, version: void 0 };
+    if (!import_fs2.default.existsSync(p))
+      return { found: false, version: void 0 };
     const cur2 = JSON.parse(import_fs2.default.readFileSync(p, "utf8"));
-    return { found: true, version: cur2?.version };
+    return { found: true, version: cur2 == null ? void 0 : cur2.version };
   }
   const meta = await getMeta();
-  const fileId = meta?.storage_files?.[treeId];
-  if (!fileId) return { found: false, version: void 0 };
+  const fileId = (_a3 = meta == null ? void 0 : meta.storage_files) == null ? void 0 : _a3[treeId];
+  if (!fileId)
+    return { found: false, version: void 0 };
   const r = await sdkCall(() => getApp().downloadFile({ fileID: fileId }));
   const cur = JSON.parse(Buffer.from(r.fileContent).toString("utf8"));
-  return { found: true, version: cur?.version };
+  return { found: true, version: cur == null ? void 0 : cur.version };
 }
 function treeConflictError() {
   const e = new Error("\u5E76\u53D1\u51B2\u7A81\uFF1A\u6811\u5DF2\u88AB\u5176\u4ED6\u64CD\u4F5C\u4FEE\u6539\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5");
@@ -794,6 +830,7 @@ function treeConflictError() {
   return e;
 }
 async function saveTree(tree, expectedVersion) {
+  var _a3;
   if (expectedVersion !== void 0 && tree.version !== expectedVersion) {
     throw treeConflictError();
   }
@@ -816,15 +853,17 @@ async function saveTree(tree, expectedVersion) {
       stamp = statTreeFile(tree.tree_id);
     } else {
       const meta = await getMeta();
-      const fileId = meta?.storage_files?.[tree.tree_id];
-      if (!fileId) throw new Error(`storage_files \u7F3A\u5C11 ${tree.tree_id}`);
+      const fileId = (_a3 = meta == null ? void 0 : meta.storage_files) == null ? void 0 : _a3[tree.tree_id];
+      if (!fileId)
+        throw new Error(`storage_files \u7F3A\u5C11 ${tree.tree_id}`);
       const r = await sdkCall(
         () => getApp().uploadFile({
           cloudPath: cloudTreeObjectPath(tree.tree_id, tree.version),
           fileContent: Buffer.from(JSON.stringify(tree))
         })
       );
-      if (!r?.fileID) throw new Error("\u4E91\u5B58\u50A8\u4E0A\u4F20\u672A\u8FD4\u56DE fileID");
+      if (!(r == null ? void 0 : r.fileID))
+        throw new Error("\u4E91\u5B58\u50A8\u4E0A\u4F20\u672A\u8FD4\u56DE fileID");
       await mutateMetaDoc((cfg) => ({
         ...cfg,
         storage_files: { ...cfg.storage_files || {}, [tree.tree_id]: r.fileID }
@@ -856,7 +895,8 @@ async function createTreeFile(tree) {
         fileContent: Buffer.from(JSON.stringify(tree))
       })
     );
-    if (!r?.fileID) throw new Error("\u4E91\u5B58\u50A8\u4E0A\u4F20\u672A\u8FD4\u56DE fileID");
+    if (!(r == null ? void 0 : r.fileID))
+      throw new Error("\u4E91\u5B58\u50A8\u4E0A\u4F20\u672A\u8FD4\u56DE fileID");
     await mutateMetaDoc((cfg) => ({
       ...cfg,
       storage_files: { ...cfg.storage_files || {}, [tree.tree_id]: r.fileID }
@@ -866,21 +906,24 @@ async function createTreeFile(tree) {
   return tree;
 }
 async function deleteTree(treeId) {
+  var _a3, _b, _c, _d;
   const id = String(treeId || "");
-  if (!id) return;
+  if (!id)
+    return;
   if (SOURCE === "local") {
     const p = assertWriteAllowed(import_path2.default.join(OUT, "trees", `${id}.json`));
-    if (import_fs2.default.existsSync(p)) import_fs2.default.unlinkSync(p);
+    if (import_fs2.default.existsSync(p))
+      import_fs2.default.unlinkSync(p);
     treeCache.delete(id);
     eventIndexCache.delete(id);
     return;
   }
   const meta = await getMeta();
-  const fileId = meta?.storage_files?.[id];
+  const fileId = (_a3 = meta == null ? void 0 : meta.storage_files) == null ? void 0 : _a3[id];
   if (fileId) {
     const dr = await sdkCall(() => getApp().deleteFile({ fileList: [fileId] }));
-    if (dr?.fileList?.[0]?.code !== "SUCCESS") {
-      throw new Error(`\u4E91\u5B58\u50A8\u5220\u9664\u672A\u6210\u529F\uFF08fileID=${fileId}\uFF09\uFF1A${JSON.stringify(dr?.fileList?.[0] || dr || null)}`);
+    if (((_c = (_b = dr == null ? void 0 : dr.fileList) == null ? void 0 : _b[0]) == null ? void 0 : _c.code) !== "SUCCESS") {
+      throw new Error(`\u4E91\u5B58\u50A8\u5220\u9664\u672A\u6210\u529F\uFF08fileID=${fileId}\uFF09\uFF1A${JSON.stringify(((_d = dr == null ? void 0 : dr.fileList) == null ? void 0 : _d[0]) || dr || null)}`);
     }
     await mutateMetaDoc((cfg) => {
       const sf = { ...cfg.storage_files || {} };
@@ -895,14 +938,19 @@ async function listTreeIds() {
   const ids = /* @__PURE__ */ new Set();
   try {
     const meta = await getMeta();
-    for (const t of Object.values(meta?.trees || {})) if (t?.tree_id) ids.add(t.tree_id);
-    for (const k of Object.keys(meta?.storage_files || {})) if (k) ids.add(k);
+    for (const t of Object.values((meta == null ? void 0 : meta.trees) || {}))
+      if (t == null ? void 0 : t.tree_id)
+        ids.add(t.tree_id);
+    for (const k of Object.keys((meta == null ? void 0 : meta.storage_files) || {}))
+      if (k)
+        ids.add(k);
   } catch {
   }
   if (SOURCE === "local") {
     try {
       for (const f of import_fs2.default.readdirSync(import_path2.default.join(OUT, "trees"))) {
-        if (f.endsWith(".json")) ids.add(f.slice(0, -".json".length));
+        if (f.endsWith(".json"))
+          ids.add(f.slice(0, -".json".length));
       }
     } catch {
     }
@@ -951,7 +999,7 @@ async function updateTrees(treeIds, fn) {
           try {
             const snap = snapshots[id];
             const cur = await getTree(id);
-            snap.version = cur?.version ?? snap.version;
+            snap.version = (cur == null ? void 0 : cur.version) ?? snap.version;
             await saveTree(snap, snap.version);
           } catch {
           }
@@ -964,18 +1012,20 @@ async function updateTrees(treeIds, fn) {
     }
     return result;
   });
-  for (const id of ids) treeWriteLocks.set(id, run.catch(() => {
-  }));
+  for (const id of ids)
+    treeWriteLocks.set(id, run.catch(() => {
+    }));
   return run;
 }
 async function getDetail(treeId, handle) {
   if (SOURCE === "local") {
     const p = import_path2.default.join(OUT, "details", `${treeId}:${handle}.json`);
-    if (!import_fs2.default.existsSync(p)) return null;
+    if (!import_fs2.default.existsSync(p))
+      return null;
     return JSON.parse(import_fs2.default.readFileSync(p, "utf8"));
   }
   const r = await sdkCall(() => getApp().database().collection("jiapu_person_details").doc(`${treeId}:${handle}`).get());
-  const d = r?.data;
+  const d = r == null ? void 0 : r.data;
   return (Array.isArray(d) ? d[0] : d) || null;
 }
 async function saveDetail(detail) {
@@ -993,7 +1043,8 @@ async function deleteDetail(treeId, handle) {
   const id = `${treeId}:${handle}`;
   if (SOURCE === "local") {
     const p = import_path2.default.join(OUT, "details", `${id}.json`);
-    if (import_fs2.default.existsSync(p)) import_fs2.default.unlinkSync(p);
+    if (import_fs2.default.existsSync(p))
+      import_fs2.default.unlinkSync(p);
     return;
   }
   await sdkCall(() => getApp().database().collection("jiapu_person_details").doc(id).remove());
@@ -1009,7 +1060,7 @@ async function getAllDetails(treeId) {
     return out;
   }
   const r = await sdkCall(() => getApp().database().collection("jiapu_person_details").where({ tree_id: treeId }).limit(2e3).get());
-  return r?.data || [];
+  return (r == null ? void 0 : r.data) || [];
 }
 async function getEventIndex(treeId) {
   const entry = eventIndexCache.get(treeId);
@@ -1024,7 +1075,8 @@ async function getEventIndex(treeId) {
   const details = await getAllDetails(treeId);
   for (const d of details) {
     for (const e of d.events || []) {
-      if (e.handle) index.set(e.handle, e);
+      if (e.handle)
+        index.set(e.handle, e);
     }
   }
   eventIndexCache.set(treeId, { index, at: Date.now() });
@@ -1052,8 +1104,10 @@ var init_store = __esm({
     SANDBOX_BY_ENV = !!(process.env.COMPAT_META_FILE || process.env.COMPAT_OUT_DIR);
     SANDBOX = SANDBOX_BY_ENV || !!process.env.NODE_TEST_CONTEXT;
     META_FILE = (() => {
-      if (process.env.COMPAT_META_FILE) return import_path2.default.resolve(process.env.COMPAT_META_FILE);
-      if (process.env.COMPAT_OUT_DIR) return import_path2.default.join(import_path2.default.resolve(process.env.COMPAT_OUT_DIR), "tree-meta.json");
+      if (process.env.COMPAT_META_FILE)
+        return import_path2.default.resolve(process.env.COMPAT_META_FILE);
+      if (process.env.COMPAT_OUT_DIR)
+        return import_path2.default.join(import_path2.default.resolve(process.env.COMPAT_OUT_DIR), "tree-meta.json");
       return REAL_META_FILE;
     })();
     samePath = (a, b) => {
@@ -1125,21 +1179,25 @@ function verifyJwt(token) {
   try {
     const [h, p, s] = token.split(".");
     const expect = import_node_crypto.default.createHmac("sha256", JWT_SECRET).update(`${h}.${p}`).digest("base64url");
-    if (s !== expect) return null;
+    if (s !== expect)
+      return null;
     const payload = JSON.parse(Buffer.from(p, "base64url").toString("utf8"));
-    if (payload.exp < Math.floor(Date.now() / 1e3)) return null;
+    if (payload.exp < Math.floor(Date.now() / 1e3))
+      return null;
     return payload;
   } catch {
     return null;
   }
 }
 async function authUser(headers) {
-  const auth = Object.entries(headers || {}).find(
+  var _a3;
+  const auth = ((_a3 = Object.entries(headers || {}).find(
     ([k]) => k.toLowerCase() === "authorization"
-  )?.[1] || "";
+  )) == null ? void 0 : _a3[1]) || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   const payload = verifyJwt(token);
-  if (!payload) return null;
+  if (!payload)
+    return null;
   const user = await colGet("jiapu_users", payload.phone);
   return user ? { phone: user.phone, role: user.role } : null;
 }
@@ -1167,7 +1225,8 @@ async function requestCode(phone) {
 }
 async function verifyCode(phone, inputCode) {
   const entry = await colGet("jiapu_sms_codes", phone);
-  if (!entry) return { ok: false, message: "\u8BF7\u5148\u83B7\u53D6\u9A8C\u8BC1\u7801" };
+  if (!entry)
+    return { ok: false, message: "\u8BF7\u5148\u83B7\u53D6\u9A8C\u8BC1\u7801" };
   if (Date.now() > entry.expires_at) {
     await colDelete("jiapu_sms_codes", phone);
     return { ok: false, message: "\u9A8C\u8BC1\u7801\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u91CD\u65B0\u83B7\u53D6" };
@@ -1222,17 +1281,20 @@ var init_auth = __esm({
 
 // cloudfunctions/compat-api/lib/wallet.js
 function normalizeSigninPool(raw) {
-  if (!Array.isArray(raw) || raw.length === 0) return { ok: false, message: "\u7B7E\u5230\u5956\u52B1\u6C60\u5FC5\u987B\u662F\u975E\u7A7A\u6570\u7EC4" };
+  if (!Array.isArray(raw) || raw.length === 0)
+    return { ok: false, message: "\u7B7E\u5230\u5956\u52B1\u6C60\u5FC5\u987B\u662F\u975E\u7A7A\u6570\u7EC4" };
   const pool = [];
   for (const [i, item] of raw.entries()) {
-    const kind = typeof item?.kind === "string" ? item.kind.trim() : "";
+    const kind = typeof (item == null ? void 0 : item.kind) === "string" ? item.kind.trim() : "";
     if (!SIGNIN_POOL_KINDS.includes(kind)) {
       return { ok: false, message: `\u7B2C ${i + 1} \u9879\u5956\u52B1\u7C7B\u578B\u4E0D\u5408\u6CD5\uFF08\u53EF\u7528\uFF1Afragment / bamboo / scroll_fragment / scroll\uFF09` };
     }
-    const qty = Number(item?.qty);
-    if (!Number.isInteger(qty) || qty <= 0) return { ok: false, message: `\u7B2C ${i + 1} \u9879\u6570\u91CF\u5FC5\u987B\u4E3A\u6B63\u6574\u6570` };
-    const weight = Number(item?.weight);
-    if (!Number.isInteger(weight) || weight <= 0) return { ok: false, message: `\u7B2C ${i + 1} \u9879\u6743\u91CD\u5FC5\u987B\u4E3A\u6B63\u6574\u6570` };
+    const qty = Number(item == null ? void 0 : item.qty);
+    if (!Number.isInteger(qty) || qty <= 0)
+      return { ok: false, message: `\u7B2C ${i + 1} \u9879\u6570\u91CF\u5FC5\u987B\u4E3A\u6B63\u6574\u6570` };
+    const weight = Number(item == null ? void 0 : item.weight);
+    if (!Number.isInteger(weight) || weight <= 0)
+      return { ok: false, message: `\u7B2C ${i + 1} \u9879\u6743\u91CD\u5FC5\u987B\u4E3A\u6B63\u6574\u6570` };
     pool.push({ kind, qty, weight });
   }
   return { ok: true, pool };
@@ -1252,8 +1314,9 @@ function txid() {
 }
 function mergeTxs(userTxs, platformTxs) {
   return [...userTxs || [], ...platformTxs || []].map((t, i) => ({ t, i })).sort((a, b) => {
-    const av = Date.parse(a.t?.ts);
-    const bv = Date.parse(b.t?.ts);
+    var _a3, _b;
+    const av = Date.parse((_a3 = a.t) == null ? void 0 : _a3.ts);
+    const bv = Date.parse((_b = b.t) == null ? void 0 : _b.ts);
     const an = Number.isFinite(av) ? av : 0;
     const bn = Number.isFinite(bv) ? bv : 0;
     return an - bn || a.i - b.i;
@@ -1261,10 +1324,11 @@ function mergeTxs(userTxs, platformTxs) {
 }
 async function getUserBalance(phone) {
   const doc = await colGet(WALLET_COL, walletIdOf(phone));
-  return doc?.balance_cents || 0;
+  return (doc == null ? void 0 : doc.balance_cents) || 0;
 }
 async function recharge(phone, amountCents) {
-  if (amountCents <= 0) throw new Error("\u5145\u503C\u91D1\u989D\u5FC5\u987B\u5927\u4E8E 0");
+  if (amountCents <= 0)
+    throw new Error("\u5145\u503C\u91D1\u989D\u5FC5\u987B\u5927\u4E8E 0");
   const id = walletIdOf(phone);
   const tx = { id: txid(), type: "recharge", user: phone, amount_cents: amountCents, desc: "\u5145\u503C", ts: (/* @__PURE__ */ new Date()).toISOString() };
   const written = await mutateDoc(WALLET_COL, id, (doc) => {
@@ -1278,7 +1342,8 @@ async function recharge(phone, amountCents) {
 }
 async function deductUserBalance(phone, amountCents, opts = {}) {
   const amount = Math.floor(Number(amountCents) || 0);
-  if (amount <= 0) throw new Error("\u6263\u6B3E\u91D1\u989D\u5FC5\u987B\u5927\u4E8E 0");
+  if (amount <= 0)
+    throw new Error("\u6263\u6B3E\u91D1\u989D\u5FC5\u987B\u5927\u4E8E 0");
   const id = walletIdOf(phone);
   const tx = {
     id: txid(),
@@ -1291,7 +1356,8 @@ async function deductUserBalance(phone, amountCents, opts = {}) {
   const written = await mutateDoc(WALLET_COL, id, (doc) => {
     const rec = stripMeta(doc);
     const balance = rec.balance_cents || 0;
-    if (balance < amount) throw new Error(`\u4F59\u989D\u4E0D\u8DB3\uFF1A\u5F53\u524D \xA5${(balance / 100).toFixed(2)}`);
+    if (balance < amount)
+      throw new Error(`\u4F59\u989D\u4E0D\u8DB3\uFF1A\u5F53\u524D \xA5${(balance / 100).toFixed(2)}`);
     rec.balance_cents = balance - amount;
     rec.txs = Array.isArray(rec.txs) ? rec.txs : [];
     rec.txs.push(tx);
@@ -1300,7 +1366,8 @@ async function deductUserBalance(phone, amountCents, opts = {}) {
   return written.balance_cents;
 }
 async function setTreeCreateFeeCents(amountCents) {
-  if (amountCents <= 0) throw new Error("\u8D39\u7528\u5FC5\u987B\u5927\u4E8E 0");
+  if (amountCents <= 0)
+    throw new Error("\u8D39\u7528\u5FC5\u987B\u5927\u4E8E 0");
   await mutateDoc(WALLET_COL, CONFIG_ID, (doc) => {
     const rec = stripMeta(doc);
     rec.tree_create_fee_cents = amountCents;
@@ -1310,12 +1377,13 @@ async function setTreeCreateFeeCents(amountCents) {
 }
 async function getBranchFeeSeeds() {
   const cfg = await loadConfig();
-  const raw = Number(cfg?.branch_fee_seeds);
+  const raw = Number(cfg == null ? void 0 : cfg.branch_fee_seeds);
   return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_BRANCH_FEE_SEEDS;
 }
 async function setBranchFeeSeeds(seeds) {
   const n = Number(seeds);
-  if (!Number.isFinite(n) || n <= 0 || Math.floor(n) !== n) throw new Error("\u7ACB\u652F\u8D39\u5FC5\u987B\u4E3A\u6B63\u6574\u6570\uFF08\u9897\uFF09");
+  if (!Number.isFinite(n) || n <= 0 || Math.floor(n) !== n)
+    throw new Error("\u7ACB\u652F\u8D39\u5FC5\u987B\u4E3A\u6B63\u6574\u6570\uFF08\u9897\uFF09");
   await mutateDoc(WALLET_COL, CONFIG_ID, (doc) => {
     const rec = stripMeta(doc);
     rec.branch_fee_seeds = n;
@@ -1325,12 +1393,13 @@ async function setBranchFeeSeeds(seeds) {
 }
 async function getConvergeSpiritRatio() {
   const cfg = await loadConfig();
-  const raw = Number(cfg?.converge_spirit_ratio);
+  const raw = Number(cfg == null ? void 0 : cfg.converge_spirit_ratio);
   return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : DEFAULT_CONVERGE_SPIRIT_RATIO;
 }
 async function setConvergeSpiritRatio(ratio) {
   const n = Number(ratio);
-  if (!Number.isFinite(n) || n < 0 || n > 1) throw new Error("\u6298\u635F\u6BD4\u4F8B\u5FC5\u987B\u4E3A 0\u20131 \u4E4B\u95F4\u7684\u6570");
+  if (!Number.isFinite(n) || n < 0 || n > 1)
+    throw new Error("\u6298\u635F\u6BD4\u4F8B\u5FC5\u987B\u4E3A 0\u20131 \u4E4B\u95F4\u7684\u6570");
   await mutateDoc(WALLET_COL, CONFIG_ID, (doc) => {
     const rec = stripMeta(doc);
     rec.converge_spirit_ratio = n;
@@ -1340,13 +1409,14 @@ async function setConvergeSpiritRatio(ratio) {
 }
 async function getSigninPool() {
   const cfg = await loadConfig();
-  const checked = normalizeSigninPool(cfg?.signin_pool);
+  const checked = normalizeSigninPool(cfg == null ? void 0 : cfg.signin_pool);
   const src = checked.ok ? checked.pool : DEFAULT_SIGNIN_POOL;
   return src.map((it) => ({ kind: it.kind, qty: it.qty, weight: it.weight }));
 }
 async function setSigninPool(pool) {
   const checked = normalizeSigninPool(pool);
-  if (!checked.ok) throw new Error(checked.message);
+  if (!checked.ok)
+    throw new Error(checked.message);
   await mutateDoc(WALLET_COL, CONFIG_ID, (doc) => {
     const rec = stripMeta(doc);
     rec.signin_pool = checked.pool;
@@ -1356,12 +1426,13 @@ async function setSigninPool(pool) {
 }
 async function getSigninMakeupCostBamboos() {
   const cfg = await loadConfig();
-  const raw = Number(cfg?.signin_makeup_cost_bamboos);
+  const raw = Number(cfg == null ? void 0 : cfg.signin_makeup_cost_bamboos);
   return Number.isFinite(raw) && raw > 0 && Math.floor(raw) === raw ? raw : DEFAULT_SIGNIN_MAKEUP_COST_BAMBOOS;
 }
 async function setSigninMakeupCostBamboos(n0) {
   const n = Number(n0);
-  if (!Number.isFinite(n) || n <= 0 || Math.floor(n) !== n) throw new Error("\u8865\u7B7E\u8D39\u7528\u5FC5\u987B\u4E3A\u6B63\u6574\u6570\uFF08\u7247\u7AF9\u7247\uFF09");
+  if (!Number.isFinite(n) || n <= 0 || Math.floor(n) !== n)
+    throw new Error("\u8865\u7B7E\u8D39\u7528\u5FC5\u987B\u4E3A\u6B63\u6574\u6570\uFF08\u7247\u7AF9\u7247\uFF09");
   await mutateDoc(WALLET_COL, CONFIG_ID, (doc) => {
     const rec = stripMeta(doc);
     rec.signin_makeup_cost_bamboos = n;
@@ -1371,12 +1442,13 @@ async function setSigninMakeupCostBamboos(n0) {
 }
 async function getSigninDay7Fragments() {
   const cfg = await loadConfig();
-  const raw = Number(cfg?.signin_day7_fragments);
+  const raw = Number(cfg == null ? void 0 : cfg.signin_day7_fragments);
   return Number.isFinite(raw) && raw >= 0 && Math.floor(raw) === raw ? raw : DEFAULT_SIGNIN_DAY7_FRAGMENTS;
 }
 async function setSigninDay7Fragments(n0) {
   const n = Number(n0);
-  if (!Number.isFinite(n) || n < 0 || Math.floor(n) !== n) throw new Error("\u7B2C 7 \u5929\u5956\u52B1\u5FC5\u987B\u4E3A\u975E\u8D1F\u6574\u6570\uFF08\u4E2A\u77F3\u69B4\u7C7D\u788E\u7247\uFF09");
+  if (!Number.isFinite(n) || n < 0 || Math.floor(n) !== n)
+    throw new Error("\u7B2C 7 \u5929\u5956\u52B1\u5FC5\u987B\u4E3A\u975E\u8D1F\u6574\u6570\uFF08\u4E2A\u77F3\u69B4\u7C7D\u788E\u7247\uFF09");
   await mutateDoc(WALLET_COL, CONFIG_ID, (doc) => {
     const rec = stripMeta(doc);
     rec.signin_day7_fragments = n;
@@ -1386,8 +1458,9 @@ async function setSigninDay7Fragments(n0) {
 }
 async function getRevisionIntervalYears() {
   const cfg = await loadConfig();
-  const raw = cfg?.revision_interval_years;
-  if (!Array.isArray(raw) || !raw.length) return [...DEFAULT_REVISION_INTERVAL_YEARS];
+  const raw = cfg == null ? void 0 : cfg.revision_interval_years;
+  if (!Array.isArray(raw) || !raw.length)
+    return [...DEFAULT_REVISION_INTERVAL_YEARS];
   const ok = raw.every((v) => Number.isFinite(Number(v)) && Number(v) > 0 && Math.floor(Number(v)) === Number(v));
   return ok ? raw.map((v) => Number(v)) : [...DEFAULT_REVISION_INTERVAL_YEARS];
 }
@@ -1398,8 +1471,8 @@ async function getWalletOverview(phone) {
     colGet(WALLET_COL, PLATFORM_ID),
     loadConfig()
   ]);
-  const balanceCents = userDoc?.balance_cents || 0;
-  const transactions = mergeTxs(userDoc?.txs, platformDoc?.txs).slice(-50).reverse();
+  const balanceCents = (userDoc == null ? void 0 : userDoc.balance_cents) || 0;
+  const transactions = mergeTxs(userDoc == null ? void 0 : userDoc.txs, platformDoc == null ? void 0 : platformDoc.txs).slice(-50).reverse();
   return {
     user_balance_yuan: (balanceCents / 100).toFixed(2),
     tree_create_fee_yuan: ((cfg.tree_create_fee_cents ?? DEFAULT_FEE_CENTS) / 100).toFixed(2),
@@ -1438,28 +1511,33 @@ function isoPlusDays(from, days) {
   return new Date(toMs(from) + days * DAY_MS).toISOString();
 }
 function isExpired(expires_at, now) {
-  if (expires_at === null || expires_at === void 0 || expires_at === "") return false;
+  if (expires_at === null || expires_at === void 0 || expires_at === "")
+    return false;
   const t = Date.parse(expires_at);
   return Number.isFinite(t) && t <= toMs(now);
 }
 function compareLotByExpiry(a, b) {
-  const av = a?.expires_at ? Date.parse(a.expires_at) : Number.POSITIVE_INFINITY;
-  const bv = b?.expires_at ? Date.parse(b.expires_at) : Number.POSITIVE_INFINITY;
+  const av = (a == null ? void 0 : a.expires_at) ? Date.parse(a.expires_at) : Number.POSITIVE_INFINITY;
+  const bv = (b == null ? void 0 : b.expires_at) ? Date.parse(b.expires_at) : Number.POSITIVE_INFINITY;
   return (Number.isFinite(av) ? av : Number.POSITIVE_INFINITY) - (Number.isFinite(bv) ? bv : Number.POSITIVE_INFINITY);
 }
 function beijingDate(date = /* @__PURE__ */ new Date()) {
   return new Date(toMs(date) + 8 * 3600 * 1e3).toISOString().slice(0, 10);
 }
 function normalizeSigninDays(v) {
-  if (!Array.isArray(v)) return [];
+  if (!Array.isArray(v))
+    return [];
   const seen = /* @__PURE__ */ new Set();
   const out = [];
   for (const raw of v) {
     const s = typeof raw === "string" ? raw.trim() : "";
-    if (!SIGNIN_DAY_RE.test(s)) continue;
+    if (!SIGNIN_DAY_RE.test(s))
+      continue;
     const ms = Date.parse(`${s}T00:00:00.000Z`);
-    if (!Number.isFinite(ms) || new Date(ms).toISOString().slice(0, 10) !== s) continue;
-    if (seen.has(s)) continue;
+    if (!Number.isFinite(ms) || new Date(ms).toISOString().slice(0, 10) !== s)
+      continue;
+    if (seen.has(s))
+      continue;
     seen.add(s);
     out.push(s);
   }
@@ -1509,17 +1587,20 @@ function assetInsufficient(need, current, unit = "seed") {
 }
 function toNonNegInt(x) {
   const n = Number(x);
-  if (!Number.isFinite(n)) return 0;
+  if (!Number.isFinite(n))
+    return 0;
   return n > 0 ? Math.floor(n) : 0;
 }
 function sumLots(lots) {
   let total = 0;
-  for (const lot of lots || []) total += toNonNegInt(lot?.qty);
+  for (const lot of lots || [])
+    total += toNonNegInt(lot == null ? void 0 : lot.qty);
   return total;
 }
 function addLot(user, kind, qty, opts = {}) {
   const key = LOT_KEY[kind];
-  if (!key) throw new Error(`\u672A\u77E5\u8D44\u4EA7\u7C7B\u578B\uFF1A${kind}`);
+  if (!key)
+    throw new Error(`\u672A\u77E5\u8D44\u4EA7\u7C7B\u578B\uFF1A${kind}`);
   const now = opts.now ? new Date(opts.now) : /* @__PURE__ */ new Date();
   let lot;
   if (kind === "scroll") {
@@ -1561,13 +1642,16 @@ function addLot(user, kind, qty, opts = {}) {
   return lot;
 }
 function recordTx(user, tx, now = /* @__PURE__ */ new Date()) {
-  const type = String(tx?.type || "");
-  if (!TX_TYPES.includes(type)) throw new Error(`\u672A\u77E5\u6D41\u6C34\u7C7B\u578B\uFF1A${type}\uFF08docs/economy.spec.md \xA74-6\uFF09`);
+  const type = String((tx == null ? void 0 : tx.type) || "");
+  if (!TX_TYPES.includes(type))
+    throw new Error(`\u672A\u77E5\u6D41\u6C34\u7C7B\u578B\uFF1A${type}\uFF08docs/economy.spec.md \xA74-6\uFF09`);
   const t = { id: nextLotId("tx"), ts: toIso(now), type, delta: tx.delta || {} };
-  if (tx.fee_seeds !== void 0) t.fee_seeds = tx.fee_seeds;
+  if (tx.fee_seeds !== void 0)
+    t.fee_seeds = tx.fee_seeds;
   t.ref = tx.ref || {};
   t.desc = String(tx.desc || "");
-  if (tx.operator !== void 0) t.operator = tx.operator;
+  if (tx.operator !== void 0)
+    t.operator = tx.operator;
   user.txs = user.txs || [];
   user.txs.push(t);
   return t;
@@ -1578,9 +1662,11 @@ function sweep(user, now = /* @__PURE__ */ new Date()) {
     const key = LOT_KEY[kind];
     const kept = [];
     for (const lot of user[key] || []) {
-      if (!lot) continue;
+      if (!lot)
+        continue;
       const qty = toNonNegInt(lot.qty);
-      if (qty <= 0) continue;
+      if (qty <= 0)
+        continue;
       lot.qty = qty;
       if (isExpired(lot.expires_at, now)) {
         removed.push({ asset: kind, lot_id: lot.id, qty, expires_at: lot.expires_at });
@@ -1592,7 +1678,8 @@ function sweep(user, now = /* @__PURE__ */ new Date()) {
   }
   const jades = [];
   for (const jade of user.jades || []) {
-    if (!jade) continue;
+    if (!jade)
+      continue;
     if (isExpired(jade.expires_at, now)) {
       removed.push({ asset: "jade", lot_id: jade.id, qty: 1, expires_at: jade.expires_at });
       continue;
@@ -1602,9 +1689,11 @@ function sweep(user, now = /* @__PURE__ */ new Date()) {
   user.jades = jades;
   const scrolls = [];
   for (const lot of user.scrolls || []) {
-    if (!lot) continue;
+    if (!lot)
+      continue;
     const qty = toNonNegInt(lot.qty);
-    if (qty <= 0) continue;
+    if (qty <= 0)
+      continue;
     lot.qty = qty;
     scrolls.push(lot);
   }
@@ -1621,7 +1710,8 @@ function sweep(user, now = /* @__PURE__ */ new Date()) {
     );
   }
   user.fragments = toNonNegInt(user.fragments);
-  if (user.fragments >= FRAGMENT_SYNTH_THRESHOLD) addFragments(user, 0, now);
+  if (user.fragments >= FRAGMENT_SYNTH_THRESHOLD)
+    addFragments(user, 0, now);
   user.scroll_fragments = toNonNegInt(user.scroll_fragments);
   return removed;
 }
@@ -1648,7 +1738,6 @@ function addFragments(user, n, now = /* @__PURE__ */ new Date()) {
   return { fragments: user.fragments, synthesized: seed_lots.length, seed_lots };
 }
 function addScrollFragments(user, n, now = /* @__PURE__ */ new Date()) {
-  void now;
   const add = toNonNegInt(n);
   user.scroll_fragments = toNonNegInt(user.scroll_fragments) + add;
   return { scroll_fragments: user.scroll_fragments, synthesized: 0, scroll_lots: [] };
@@ -1716,14 +1805,18 @@ function chargeLots(lots, n, unit = "seed") {
   const list2 = lots || [];
   const need = toNonNegInt(n);
   const current = sumLots(list2);
-  if (need === 0) return { ok: true, taken: [], need, current };
-  if (current < need) throw assetInsufficient(need, current, unit);
+  if (need === 0)
+    return { ok: true, taken: [], need, current };
+  if (current < need)
+    throw assetInsufficient(need, current, unit);
   const taken = [];
   let left = need;
   for (const lot of [...list2].sort(compareLotByExpiry)) {
-    if (left <= 0) break;
+    if (left <= 0)
+      break;
     const take = Math.min(toNonNegInt(lot.qty), left);
-    if (take <= 0) continue;
+    if (take <= 0)
+      continue;
     lot.qty -= take;
     left -= take;
     taken.push({ id: lot.id, qty: take, expires_at: lot.expires_at ?? null });
@@ -1737,10 +1830,12 @@ function expiringItems(user, now = /* @__PURE__ */ new Date(), days = EXPIRING_D
   const items = [];
   for (const asset of ["seed", "bamboo"]) {
     for (const lot of user[LOT_KEY[asset]] || []) {
-      const qty = toNonNegInt(lot?.qty);
-      if (!lot || !lot.expires_at || qty <= 0) continue;
+      const qty = toNonNegInt(lot == null ? void 0 : lot.qty);
+      if (!lot || !lot.expires_at || qty <= 0)
+        continue;
       const expMs = Date.parse(lot.expires_at);
-      if (!Number.isFinite(expMs) || expMs > limit) continue;
+      if (!Number.isFinite(expMs) || expMs > limit)
+        continue;
       items.push({
         asset,
         lot_id: lot.id,
@@ -1807,7 +1902,8 @@ async function withAssets(phone, mutator) {
 }
 async function getAssets(phone) {
   const doc = await colGet(ASSETS_COL, assetIdOf(phone));
-  if (!doc) return blankUser();
+  if (!doc)
+    return blankUser();
   const rec = { ...doc };
   delete rec._id;
   delete rec.version;
@@ -1903,8 +1999,8 @@ var init_constant = __esm({
 
 // node_modules/pinyin-pro/dist/esm/common/utils.mjs
 function stringLength(text2) {
-  var _a;
-  return text2.length - (((_a = text2.match(DoubleUnicodeReg)) === null || _a === void 0 ? void 0 : _a.length) || 0);
+  var _a3;
+  return text2.length - (((_a3 = text2.match(DoubleUnicodeReg)) === null || _a3 === void 0 ? void 0 : _a3.length) || 0);
 }
 function splitString(text2) {
   DoubleUnicodeReg.lastIndex = 0;
@@ -2112,7 +2208,7 @@ var init_special = __esm({
       probability: 1e-12,
       length: stringLength(key),
       priority: Priority.Normal,
-      dict: /* @__PURE__ */ Symbol("rule")
+      dict: Symbol("rule")
     }));
     toneSandhiMap = {
       // 说不说，说一说，叠词之间发音为轻声
@@ -21325,7 +21421,7 @@ var init_surname = __esm({
       probability: 1 + stringLength(key),
       length: stringLength(key),
       priority: Priority.Surname,
-      dict: /* @__PURE__ */ Symbol("surname")
+      dict: Symbol("surname")
     }));
   }
 });
@@ -23521,7 +23617,7 @@ var init_dict2 = __esm({
       probability: 2e-8,
       length: 2,
       priority: Priority.Normal,
-      dict: /* @__PURE__ */ Symbol("dict2")
+      dict: Symbol("dict2")
     }));
   }
 });
@@ -23864,7 +23960,7 @@ var init_dict3 = __esm({
       probability: 2e-8,
       length: 3,
       priority: Priority.Normal,
-      dict: /* @__PURE__ */ Symbol("dict3")
+      dict: Symbol("dict3")
     }));
   }
 });
@@ -25477,7 +25573,7 @@ var init_dict4 = __esm({
       probability: 2e-8,
       length: 4,
       priority: Priority.Normal,
-      dict: /* @__PURE__ */ Symbol("dict4")
+      dict: Symbol("dict4")
     }));
   }
 });
@@ -25510,7 +25606,7 @@ var init_dict5 = __esm({
       probability: 2e-8,
       length: 5,
       priority: Priority.Normal,
-      dict: /* @__PURE__ */ Symbol("dict5")
+      dict: Symbol("dict5")
     }));
   }
 });
@@ -25709,7 +25805,7 @@ function scheduleAcBuild() {
     if (typeof requestIdleCallback === "function") {
       requestIdleCallback(() => ensureAcBuilt());
     }
-  } catch (_a) {
+  } catch (_a3) {
   }
 }
 var TokenizationAlgorithm, TrieNode, AC, acBuilt, acTree;
@@ -26415,9 +26511,11 @@ var init_divisions = __esm({
 function resolveOrigin(code) {
   const c = norm(code);
   const empty = { level1: null, level2: null, level3: null, display: "" };
-  if (!c) return empty;
+  if (!c)
+    return empty;
   const hit = owner.get(c);
-  if (!hit) return empty;
+  if (!hit)
+    return empty;
   const level1 = hit.p ? { code: hit.p.code, name: hit.p.name } : null;
   const level2 = hit.c ? { code: hit.c.code, name: hit.c.name } : null;
   const level3 = hit.a ? { code: hit.a.code, name: hit.a.name } : null;
@@ -26429,18 +26527,20 @@ function isKnownOriginCode(code) {
   return !!c && CODE_RE.test(c) && owner.has(c);
 }
 function norm(code) {
-  if (code === null || code === void 0) return "";
+  if (code === null || code === void 0)
+    return "";
   return String(code).trim();
 }
-var SHOW_FILTER_NAMES, FILTER, CODE_RE, provinces, prov, city, county, owner, META;
+var SHOW_FILTER_NAMES, FILTER, CODE_RE, _a, provinces, prov, city, county, owner, _a2, META;
 var init_geo = __esm({
   "cloudfunctions/compat-api/lib/geo.js"() {
     init_divisions();
     SHOW_FILTER_NAMES = ["\u5E02\u8F96\u533A", "\u53BF", "\u7701\u76F4\u8F96\u53BF\u7EA7\u884C\u653F\u533A\u5212", "\u81EA\u6CBB\u533A\u76F4\u8F96\u53BF\u7EA7\u884C\u653F\u533A\u5212"];
     FILTER = new Set(SHOW_FILTER_NAMES);
     CODE_RE = /^\d{6}$/;
-    provinces = Array.isArray(divisions_default?.provinces) ? divisions_default.provinces : [];
-    if (!provinces.length) throw new Error("[geo] \u884C\u653F\u533A\u5212\u6570\u636E\u4E3A\u7A7A\uFF1Alib/geo/divisions.json \u8BF7\u8DD1 scripts/gen-geo-divisions.mjs \u91CD\u65B0\u751F\u6210");
+    provinces = Array.isArray((_a = divisions_default) == null ? void 0 : _a.provinces) ? divisions_default.provinces : [];
+    if (!provinces.length)
+      throw new Error("[geo] \u884C\u653F\u533A\u5212\u6570\u636E\u4E3A\u7A7A\uFF1Alib/geo/divisions.json \u8BF7\u8DD1 scripts/gen-geo-divisions.mjs \u91CD\u65B0\u751F\u6210");
     prov = /* @__PURE__ */ new Map();
     city = /* @__PURE__ */ new Map();
     county = /* @__PURE__ */ new Map();
@@ -26458,7 +26558,7 @@ var init_geo = __esm({
       }
       owner.set(p.code, { p });
     }
-    META = divisions_default?._meta || {};
+    META = ((_a2 = divisions_default) == null ? void 0 : _a2._meta) || {};
   }
 });
 
@@ -26473,13 +26573,16 @@ function startYearAfterDeathMessage(startYear, deathYear) {
   return `\u5C45\u4F4F\u5730\u5F00\u59CB\u5E74\u4EFD\u4E0D\u5F97\u665A\u4E8E\u5352\u5E74\uFF1A${startYear}\uFF08\u5352\u5E74 ${deathYear}\uFF09`;
 }
 function normalizeBirthPlace(raw) {
-  if (typeof raw === "string") return { origin_code: "", note: raw.trim() };
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { origin_code: "", note: "" };
+  if (typeof raw === "string")
+    return { origin_code: "", note: raw.trim() };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw))
+    return { origin_code: "", note: "" };
   return { origin_code: text(raw.origin_code), note: text(raw.note) };
 }
 function normalizeResidencePlaces(raw) {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((item) => ({ ...normalizeBirthPlace(item), start_year: text(item?.start_year) }));
+  if (!Array.isArray(raw))
+    return [];
+  return raw.map((item) => ({ ...normalizeBirthPlace(item), start_year: text(item == null ? void 0 : item.start_year) }));
 }
 function assertResidencePlacesLimit(raw) {
   if (Array.isArray(raw) && raw.length > MAX_RESIDENCE_PLACES) {
@@ -26516,7 +26619,8 @@ function sameBirthPlace(a, b) {
 function sameResidencePlaces(a, b) {
   const x = normalizeResidencePlaces(a);
   const y = normalizeResidencePlaces(b);
-  if (x.length !== y.length) return false;
+  if (x.length !== y.length)
+    return false;
   return x.every((v, i) => v.origin_code === y[i].origin_code && v.note === y[i].note && v.start_year === y[i].start_year);
 }
 function placeViewOf(raw) {
@@ -26525,7 +26629,7 @@ function placeViewOf(raw) {
     place: p.origin_code ? resolveOrigin(p.origin_code).display : "",
     place_code: p.origin_code,
     place_note: p.note,
-    place_start_year: text(raw?.start_year)
+    place_start_year: text(raw == null ? void 0 : raw.start_year)
   };
 }
 function residenceViewOf(raw) {
@@ -26546,11 +26650,13 @@ function assertKnownOriginCodes(body) {
   const bad = [];
   if (b.birth_place !== void 0 && b.birth_place !== null) {
     const code = normalizeBirthPlace(b.birth_place).origin_code;
-    if (code && !isKnownOriginCode(code)) bad.push(code);
+    if (code && !isKnownOriginCode(code))
+      bad.push(code);
   }
   if (b.residence_places !== void 0 && b.residence_places !== null) {
     for (const item of normalizeResidencePlaces(b.residence_places)) {
-      if (item.origin_code && !isKnownOriginCode(item.origin_code)) bad.push(item.origin_code);
+      if (item.origin_code && !isKnownOriginCode(item.origin_code))
+        bad.push(item.origin_code);
     }
   }
   if (bad.length) {
@@ -26566,13 +26672,17 @@ function leadingYear(v) {
 }
 function assertStartYears(body) {
   const b = body || {};
-  if (b.residence_places === void 0 || b.residence_places === null) return true;
+  if (b.residence_places === void 0 || b.residence_places === null)
+    return true;
   for (const item of normalizeResidencePlaces(b.residence_places)) {
     const y = item.start_year;
-    if (!y) continue;
-    if (!/^\d{4}$/.test(y)) throw shapeError(startYearFormatMessage(y));
+    if (!y)
+      continue;
+    if (!/^\d{4}$/.test(y))
+      throw shapeError(startYearFormatMessage(y));
     const n = Number(y);
-    if (n < START_YEAR_MIN || n > START_YEAR_MAX) throw shapeError(startYearRangeMessage(y));
+    if (n < START_YEAR_MIN || n > START_YEAR_MAX)
+      throw shapeError(startYearRangeMessage(y));
   }
   return true;
 }
@@ -26580,11 +26690,14 @@ function assertStartYearNotAfterDeath(body, fallbackDeathDate) {
   const b = body || {};
   const deathRaw = b.death_date !== void 0 && b.death_date !== null ? b.death_date : fallbackDeathDate;
   const deathYear = leadingYear(deathRaw);
-  if (!deathYear) return true;
+  if (!deathYear)
+    return true;
   for (const item of normalizeResidencePlaces(b.residence_places)) {
     const y = item.start_year;
-    if (!y) continue;
-    if (Number(y) > Number(deathYear)) throw shapeError(startYearAfterDeathMessage(y, deathYear));
+    if (!y)
+      continue;
+    if (Number(y) > Number(deathYear))
+      throw shapeError(startYearAfterDeathMessage(y, deathYear));
   }
   return true;
 }
@@ -26614,9 +26727,10 @@ function genRequestId() {
   return import_node_crypto2.default.randomBytes(12).toString("hex");
 }
 function treeKindOf(entry) {
-  const k = String(entry?.kind || "").trim();
-  if (k === TREE_KIND.MASTER || k === TREE_KIND.CLAN || k === TREE_KIND.FAMILY) return k;
-  return entry?.is_master ? TREE_KIND.MASTER : TREE_KIND.FAMILY;
+  const k = String((entry == null ? void 0 : entry.kind) || "").trim();
+  if (k === TREE_KIND.MASTER || k === TREE_KIND.CLAN || k === TREE_KIND.FAMILY)
+    return k;
+  return (entry == null ? void 0 : entry.is_master) ? TREE_KIND.MASTER : TREE_KIND.FAMILY;
 }
 function kindLabel(kind) {
   return KIND_LABEL[kind] || KIND_LABEL.family;
@@ -26624,14 +26738,15 @@ function kindLabel(kind) {
 function assertAttachTarget({ sourceTreeId = "", sourceEntry = null, targetTreeId = "", targetEntry = null } = {}) {
   const src = treeKindOf(sourceEntry);
   const tgt = treeKindOf(targetEntry);
-  if (src === TREE_KIND.MASTER || sourceTreeId && sourceEntry?.is_master) {
+  if (src === TREE_KIND.MASTER || sourceTreeId && (sourceEntry == null ? void 0 : sourceEntry.is_master)) {
     throw badRequest("\u4E2D\u534E\u4E16\u672C\u603B\u8C31\u672C\u8EAB\u4E0D\u53EF\u8BA4\u7956");
   }
   if (src === TREE_KIND.CLAN && tgt !== TREE_KIND.MASTER) {
     throw badRequest("\u7956\u8C31\u53EA\u80FD\u8BA4\u7956\u5230\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09");
   }
   if (src === TREE_KIND.FAMILY && tgt !== TREE_KIND.CLAN) {
-    if (tgt === TREE_KIND.MASTER) throw badRequest("\u666E\u901A\u5BB6\u65CF\u6811\u4E0D\u5F97\u76F4\u6302\u4E2D\u534E\u4E16\u672C\uFF0C\u8BF7\u5148\u5EFA\u7ACB/\u8BA4\u7956\u5230\u672C\u59D3\u7956\u8C31");
+    if (tgt === TREE_KIND.MASTER)
+      throw badRequest("\u666E\u901A\u5BB6\u65CF\u6811\u4E0D\u5F97\u76F4\u6302\u4E2D\u534E\u4E16\u672C\uFF0C\u8BF7\u5148\u5EFA\u7ACB/\u8BA4\u7956\u5230\u672C\u59D3\u7956\u8C31");
     throw badRequest("\u666E\u901A\u5BB6\u65CF\u6811\u7684\u8BA4\u7956\u76EE\u6807\u53EA\u80FD\u662F\u7956\u8C31");
   }
   if (targetTreeId && sourceTreeId && targetTreeId === sourceTreeId) {
@@ -26640,55 +26755,70 @@ function assertAttachTarget({ sourceTreeId = "", sourceEntry = null, targetTreeI
   return { source_kind: src, target_kind: tgt };
 }
 function isFounderMirror(person, masterTreeId) {
-  if (!person) return false;
-  if (person.external_link_type !== FOUNDER_LINK_TYPE) return false;
-  if (!person.external_tree) return false;
+  if (!person)
+    return false;
+  if (person.external_link_type !== FOUNDER_LINK_TYPE)
+    return false;
+  if (!person.external_tree)
+    return false;
   return !masterTreeId || person.external_tree === masterTreeId;
 }
 function isMirrorMarked(person) {
   return !!person && String(person.external_mirror || "") === "true";
 }
 function isReadonlyMirror(person, treeId) {
-  if (!person) return false;
-  if (!isMirrorMarked(person)) return false;
-  if (!person.external_tree) return false;
-  if (treeId && person.external_tree === treeId) return false;
+  if (!person)
+    return false;
+  if (!isMirrorMarked(person))
+    return false;
+  if (!person.external_tree)
+    return false;
+  if (treeId && person.external_tree === treeId)
+    return false;
   return person.external_link_type === FOUNDER_LINK_TYPE || person.external_link_type === CHAIN_LINK_TYPE;
 }
 function isOrphanMirror(person) {
   return isMirrorMarked(person) && !person.external_tree;
 }
 function familyMirrorLockMessage(entry, treeId = "") {
-  const title = String(entry?.display_title || treeId || "\u8BE5\u5BB6\u65CF\u6811");
+  const title = String((entry == null ? void 0 : entry.display_title) || treeId || "\u8BE5\u5BB6\u65CF\u6811");
   return `\u8BE5\u8282\u70B9\u4E3A ${title} \u59CB\u7956\u7684\u955C\u50CF\uFF0C\u9700\u5728 ${title} \u4E2D\u4FEE\u6539`;
 }
 async function mirrorLockMessageOf(person, treeId) {
-  if (!isReadonlyMirror(person, treeId)) return "";
-  if (person.external_link_type === CHAIN_LINK_TYPE) return CHAIN_MIRROR_LOCK_MESSAGE;
+  if (!isReadonlyMirror(person, treeId))
+    return "";
+  if (person.external_link_type === CHAIN_LINK_TYPE)
+    return CHAIN_MIRROR_LOCK_MESSAGE;
   const target = await metaEntryOf(person.external_tree);
   const kind = treeKindOf(target);
-  if (kind === TREE_KIND.FAMILY) return familyMirrorLockMessage(target, person.external_tree);
-  if (kind === TREE_KIND.CLAN) return CLAN_FOUNDER_LOCK_MESSAGE;
+  if (kind === TREE_KIND.FAMILY)
+    return familyMirrorLockMessage(target, person.external_tree);
+  if (kind === TREE_KIND.CLAN)
+    return CLAN_FOUNDER_LOCK_MESSAGE;
   return MIRROR_LOCK_MESSAGE;
 }
 function assertOneAttachPerTree(person) {
-  if (person?.external_link_type === FOUNDER_LINK_TYPE && person.external_tree) {
+  if ((person == null ? void 0 : person.external_link_type) === FOUNDER_LINK_TYPE && person.external_tree) {
     const e = new Error("\u8BE5\u5BB6\u65CF\u6811\u5DF2\u8BA4\u7956\uFF0C\u8BF7\u5148\u89E3\u9664\u6302\u8F7D");
     e.status = 400;
     throw e;
   }
 }
 function founderGrampsIdOf(tree, entry) {
-  return String(entry?.founder_gramps_id || tree?.founder_gramps_id || "");
+  return String((entry == null ? void 0 : entry.founder_gramps_id) || (tree == null ? void 0 : tree.founder_gramps_id) || "");
 }
 function resolveFounderHandle(tree, entry) {
-  if (!tree?.people) return "";
-  const explicit = String(entry?.founder_handle || "");
-  if (explicit && tree.people[explicit]) return explicit;
+  if (!(tree == null ? void 0 : tree.people))
+    return "";
+  const explicit = String((entry == null ? void 0 : entry.founder_handle) || "");
+  if (explicit && tree.people[explicit])
+    return explicit;
   const want = founderGrampsIdOf(tree, entry);
-  if (!want) return "";
+  if (!want)
+    return "";
   for (const p of Object.values(tree.people)) {
-    if (String(p.gramps_id || "") === want) return p.handle;
+    if (String(p.gramps_id || "") === want)
+      return p.handle;
   }
   return "";
 }
@@ -26697,37 +26827,44 @@ function isFounderNode(tree, person, entry) {
   return !!fh && !!person && person.handle === fh;
 }
 function nonMirrorRoots(tree) {
-  return Object.values(tree?.people || {}).filter(
+  return Object.values((tree == null ? void 0 : tree.people) || {}).filter(
     (p) => p && p.handle && !p.parent_family && String(p.external_mirror) !== "true"
   );
 }
 function resolveOriginFounder(tree, entry = null) {
   const byMeta = resolveFounderHandle(tree, entry);
-  if (byMeta) return { handle: byMeta, source: "meta" };
+  if (byMeta)
+    return { handle: byMeta, source: "meta" };
   const roots = nonMirrorRoots(tree);
-  if (roots.length !== 1) return null;
+  if (roots.length !== 1)
+    return null;
   return { handle: roots[0].handle, source: "root" };
 }
 function founderUndecidedMessage(tree) {
   const roots = nonMirrorRoots(tree);
-  if (!roots.length) return "\u672C\u6811\u65E0\u6CD5\u8BA4\u5B9A\u59CB\u7956\uFF1A\u672A\u767B\u8BB0\u59CB\u7956\uFF0C\u4E14\u6811\u5185\u6CA1\u6709\u975E\u955C\u50CF\u6839\u8282\u70B9";
-  if (roots.length > 1) return `\u672C\u6811\u65E0\u6CD5\u8BA4\u5B9A\u59CB\u7956\uFF1A\u672A\u767B\u8BB0\u59CB\u7956\uFF0C\u4E14\u975E\u955C\u50CF\u6839\u8282\u70B9\u6709 ${roots.length} \u4E2A`;
+  if (!roots.length)
+    return "\u672C\u6811\u65E0\u6CD5\u8BA4\u5B9A\u59CB\u7956\uFF1A\u672A\u767B\u8BB0\u59CB\u7956\uFF0C\u4E14\u6811\u5185\u6CA1\u6709\u975E\u955C\u50CF\u6839\u8282\u70B9";
+  if (roots.length > 1)
+    return `\u672C\u6811\u65E0\u6CD5\u8BA4\u5B9A\u59CB\u7956\uFF1A\u672A\u767B\u8BB0\u59CB\u7956\uFF0C\u4E14\u975E\u955C\u50CF\u6839\u8282\u70B9\u6709 ${roots.length} \u4E2A`;
   return "";
 }
 function founderThreeGenerations(tree, founderHandle) {
+  var _a3, _b, _c, _d;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
-  let level = founderHandle && tree?.people?.[founderHandle] ? [founderHandle] : [];
+  let level = founderHandle && ((_a3 = tree == null ? void 0 : tree.people) == null ? void 0 : _a3[founderHandle]) ? [founderHandle] : [];
   for (let generation = 1; generation <= 3 && level.length; generation++) {
     const next = [];
     for (const h of level) {
-      if (seen.has(h)) continue;
+      if (seen.has(h))
+        continue;
       seen.add(h);
       out.push({ handle: h, generation });
       const p = tree.people[h];
-      for (const fh of p?.spouse_families || []) {
-        for (const ch of tree.families?.[fh]?.child_handles || []) {
-          if (tree.people?.[ch] && !seen.has(ch)) next.push(ch);
+      for (const fh of (p == null ? void 0 : p.spouse_families) || []) {
+        for (const ch of ((_c = (_b = tree.families) == null ? void 0 : _b[fh]) == null ? void 0 : _c.child_handles) || []) {
+          if (((_d = tree.people) == null ? void 0 : _d[ch]) && !seen.has(ch))
+            next.push(ch);
         }
       }
     }
@@ -26736,36 +26873,48 @@ function founderThreeGenerations(tree, founderHandle) {
   return out;
 }
 function findAttachedFounderHandle(tree, entry, masterTreeId) {
-  if (!tree?.people) return "";
+  if (!(tree == null ? void 0 : tree.people))
+    return "";
   const hits = [];
   for (const [h, p] of Object.entries(tree.people)) {
-    if (p?.external_link_type === FOUNDER_LINK_TYPE && p?.external_tree === masterTreeId) hits.push(h);
+    if ((p == null ? void 0 : p.external_link_type) === FOUNDER_LINK_TYPE && (p == null ? void 0 : p.external_tree) === masterTreeId)
+      hits.push(h);
   }
-  if (!hits.length) return "";
+  if (!hits.length)
+    return "";
   const pref = resolveFounderHandle(tree, entry);
   return hits.includes(pref) ? pref : hits.sort()[0];
 }
 function founderLockMessage(person, tree, masterTreeId, entry = null) {
-  if (!person || !tree) return "";
-  if (masterTreeId && tree.tree_id === masterTreeId) return "";
+  if (!person || !tree)
+    return "";
+  if (masterTreeId && tree.tree_id === masterTreeId)
+    return "";
   const founderPointerToMaster = person.external_link_type === FOUNDER_LINK_TYPE && !!person.external_tree && person.external_tree === masterTreeId;
   if ((isMirrorMarked(person) || founderPointerToMaster) && isFounderMirror(person, masterTreeId)) {
     return MIRROR_LOCK_MESSAGE;
   }
-  if (isOrphanMirror(person)) return PLACEHOLDER_LOCK_MESSAGE;
+  if (isOrphanMirror(person))
+    return PLACEHOLDER_LOCK_MESSAGE;
   return "";
 }
 async function personEditLockMessage(person, tree, masterTreeId, entry = null) {
-  if (!person || !tree) return "";
-  if (masterTreeId && tree.tree_id === masterTreeId) return "";
+  if (!person || !tree)
+    return "";
+  if (masterTreeId && tree.tree_id === masterTreeId)
+    return "";
   const mirrorLock = await mirrorLockMessageOf(person, tree.tree_id);
-  if (mirrorLock) return mirrorLock;
+  if (mirrorLock)
+    return mirrorLock;
   return founderLockMessage(person, tree, masterTreeId, entry);
 }
 async function assertFounderEditable(tree, handle, masterTreeId, entry = null, body = null) {
-  const person = tree?.people?.[handle];
-  if (!person) return;
-  if (tree.tree_id === masterTreeId) return;
+  var _a3;
+  const person = (_a3 = tree == null ? void 0 : tree.people) == null ? void 0 : _a3[handle];
+  if (!person)
+    return;
+  if (tree.tree_id === masterTreeId)
+    return;
   const metaEntry = entry || await metaEntryOf(tree.tree_id);
   const msg = await personEditLockMessage(person, tree, masterTreeId, metaEntry);
   if (msg && !isPlaceFieldsOnly(body)) {
@@ -26783,29 +26932,35 @@ async function safeMeta() {
 }
 async function metaEntryOf(treeId) {
   const meta = await safeMeta();
-  return Object.values(meta?.trees || {}).find((t) => t.tree_id === treeId) || null;
+  return Object.values((meta == null ? void 0 : meta.trees) || {}).find((t) => t.tree_id === treeId) || null;
 }
 function chainGenOf(detail) {
-  const raw = (detail?.attributes || []).find((a) => a.key === "external_chain_gen")?.value;
+  var _a3;
+  const raw = (_a3 = ((detail == null ? void 0 : detail.attributes) || []).find((a) => a.key === "external_chain_gen")) == null ? void 0 : _a3.value;
   const n = parseInt(raw || "", 10);
   return Number.isFinite(n) ? n : null;
 }
 async function resolveChainGen({ treeId, handle, maxDepth = 8 } = {}) {
+  var _a3;
   const none = { gen: null, source: "none", tree_id: String(treeId || ""), handle: String(handle || ""), hops: 0 };
-  if (!treeId || !handle) return none;
+  if (!treeId || !handle)
+    return none;
   const visited = /* @__PURE__ */ new Set();
   let curTree = String(treeId);
   let curHandle = String(handle);
   for (let hop = 0; hop < maxDepth; hop++) {
     const key = `${curTree}:${curHandle}`;
-    if (visited.has(key)) return none;
+    if (visited.has(key))
+      return none;
     visited.add(key);
     const detail = await getDetail(curTree, curHandle);
     const gen = chainGenOf(detail);
-    if (gen !== null) return { gen, source: "attribute", tree_id: curTree, handle: curHandle, hops: hop };
+    if (gen !== null)
+      return { gen, source: "attribute", tree_id: curTree, handle: curHandle, hops: hop };
     const tree = await getTree(curTree);
-    const person = tree?.people?.[curHandle];
-    if (!isReadonlyMirror(person, curTree) || !person.external_person_handle) return none;
+    const person = (_a3 = tree == null ? void 0 : tree.people) == null ? void 0 : _a3[curHandle];
+    if (!isReadonlyMirror(person, curTree) || !person.external_person_handle)
+      return none;
     curTree = String(person.external_tree);
     curHandle = String(person.external_person_handle);
   }
@@ -26884,24 +27039,25 @@ function isClanRegistration(person, clanTreeId = "") {
   return isReadonlyMirror(person, clanTreeId);
 }
 function clanRegistrationOf(clanTree, familyTreeId, clanTreeId = "") {
-  const cid = clanTreeId || clanTree?.tree_id || "";
+  const cid = clanTreeId || (clanTree == null ? void 0 : clanTree.tree_id) || "";
   const hits = clanRegistrations(clanTree, cid).filter((p) => String(p.external_tree || "") === String(familyTreeId || ""));
   return hits.length ? hits.sort((a, b) => String(a.gramps_id || "").localeCompare(String(b.gramps_id || "")))[0] : null;
 }
 function clanRegistrations(clanTree, clanTreeId = "") {
-  const cid = clanTreeId || clanTree?.tree_id || "";
-  return Object.values(clanTree?.people || {}).filter(
+  const cid = clanTreeId || (clanTree == null ? void 0 : clanTree.tree_id) || "";
+  return Object.values((clanTree == null ? void 0 : clanTree.people) || {}).filter(
     (p) => isClanRegistration(p, cid) && String(p.external_tree || "") && String(p.external_tree) !== cid
   );
 }
 function assertOneRegistrationPerFamilyTree(clanTree, familyTreeId, clanTreeId = "") {
-  if (!familyTreeId) return;
+  if (!familyTreeId)
+    return;
   if (clanRegistrationOf(clanTree, familyTreeId, clanTreeId)) {
     throw badRequest("\u8BE5\u5BB6\u65CF\u6811\u5728\u672C\u5B97\u8C31\u5185\u5DF2\u6709\u59CB\u7956\u767B\u8BB0\uFF0C\u8BF7\u5148\u89E3\u9664\u767B\u8BB0\uFF08\u6216\u89E3\u9664\u6302\u8F7D\uFF09\u540E\u518D\u64CD\u4F5C");
   }
 }
 function mirrorGrampsIdOfTrueBody(trueBody, label = "\u771F\u8EAB\u8BB0\u5F55") {
-  const id = String(trueBody?.gramps_id || "").trim();
+  const id = String((trueBody == null ? void 0 : trueBody.gramps_id) || "").trim();
   if (!id) {
     throw badRequest(`${label}\u6CA1\u6709\u5168\u7AD9\u7F16\u53F7\uFF08gramps_id \u4E3A\u7A7A\uFF09\u21D2 \u4E0D\u5F97\u5EFA\u7ACB\u955C\u50CF\uFF08A-2\uFF1A\u955C\u50CF\u4E0D\u94F8\u53F7\uFF0C\u7F16\u53F7\u5FC5\u987B\u53D6\u81EA\u771F\u8EAB\uFF09`);
   }
@@ -26918,13 +27074,15 @@ function planClanRegistrationMirror({
   const display = planFounderMirror({ handle, gramps_id: grampsId }, familyFounder || {}, familyTreeId, null, "", familyTreeTitle);
   return {
     ...display,
-    external_relation_note: founderRegistrationNote(familyFounder?.name, familyTreeTitle),
+    external_relation_note: founderRegistrationNote(familyFounder == null ? void 0 : familyFounder.name, familyTreeTitle),
     ...prevClanFounderHandle ? { external_prev_clan_founder_handle: String(prevClanFounderHandle) } : {}
   };
 }
 function applyClanRegistration({ clan, registration, parentFamilyHandle = "" }) {
-  if (!clan?.people || !registration?.handle) throw badRequest("\u5B97\u8C31\u767B\u8BB0\u955C\u50CF\u7F3A\u5C11\u5FC5\u8981\u5B57\u6BB5");
-  if (clan.people[registration.handle]) throw badRequest("\u5B97\u8C31\u767B\u8BB0\u955C\u50CF handle \u51B2\u7A81");
+  if (!(clan == null ? void 0 : clan.people) || !(registration == null ? void 0 : registration.handle))
+    throw badRequest("\u5B97\u8C31\u767B\u8BB0\u955C\u50CF\u7F3A\u5C11\u5FC5\u8981\u5B57\u6BB5");
+  if (clan.people[registration.handle])
+    throw badRequest("\u5B97\u8C31\u767B\u8BB0\u955C\u50CF handle \u51B2\u7A81");
   clan.people[registration.handle] = {
     ...registration,
     parent_family: String(parentFamilyHandle || ""),
@@ -26933,8 +27091,10 @@ function applyClanRegistration({ clan, registration, parentFamilyHandle = "" }) 
   return { registration_handle: registration.handle };
 }
 function applyClanRegistrationRemoval({ clan, registrationHandle }) {
-  const person = clan?.people?.[registrationHandle];
-  if (!person) return { removed_handle: "", removed_family: "" };
+  var _a3;
+  const person = (_a3 = clan == null ? void 0 : clan.people) == null ? void 0 : _a3[registrationHandle];
+  if (!person)
+    return { removed_handle: "", removed_family: "" };
   const edge = applyRegistrationParentDetach({ clan, registrationHandle });
   for (const fam of Object.values(clan.families || {})) {
     fam.child_handles = (fam.child_handles || []).filter((h) => h !== registrationHandle);
@@ -26943,14 +27103,19 @@ function applyClanRegistrationRemoval({ clan, registrationHandle }) {
   return { removed_handle: registrationHandle, removed_family: edge.removed_family };
 }
 async function treeWriteLib() {
-  if (!treeWriteModule) treeWriteModule = await Promise.resolve().then(() => (init_tree_write(), tree_write_exports));
+  if (!treeWriteModule)
+    treeWriteModule = await Promise.resolve().then(() => (init_tree_write(), tree_write_exports));
   return treeWriteModule;
 }
 function assertRegistrationLanding({ clan, parentHandle, registrationHandle = "" }) {
+  var _a3;
   const handle = String(parentHandle || "").trim();
-  if (!handle) throw badRequest("\u8BF7\u9009\u62E9\u843D\u70B9\u8282\u70B9\uFF08\u767B\u8BB0\u955C\u50CF\u5FC5\u987B\u6302\u5728\u76EE\u6807\u7956\u8C31\u5185\u7684\u5177\u4F53\u8282\u70B9\u4E4B\u4E0B\uFF0C\u4E0D\u5F97\u7559\u4F5C\u72EC\u7ACB\u6839\uFF09");
-  if (!clan?.people?.[handle]) throw badRequest(`\u843D\u70B9\u8282\u70B9\u4E0D\u5728\u76EE\u6807\u7956\u8C31\u5185\uFF1A${handle}\uFF08\u4E0D\u5F97\u9000\u56DE\u72EC\u7ACB\u6839\uFF09`);
-  if (registrationHandle && handle === String(registrationHandle)) throw badRequest("\u843D\u70B9\u4E0D\u80FD\u662F\u767B\u8BB0\u955C\u50CF\u81EA\u8EAB");
+  if (!handle)
+    throw badRequest("\u8BF7\u9009\u62E9\u843D\u70B9\u8282\u70B9\uFF08\u767B\u8BB0\u955C\u50CF\u5FC5\u987B\u6302\u5728\u76EE\u6807\u7956\u8C31\u5185\u7684\u5177\u4F53\u8282\u70B9\u4E4B\u4E0B\uFF0C\u4E0D\u5F97\u7559\u4F5C\u72EC\u7ACB\u6839\uFF09");
+  if (!((_a3 = clan == null ? void 0 : clan.people) == null ? void 0 : _a3[handle]))
+    throw badRequest(`\u843D\u70B9\u8282\u70B9\u4E0D\u5728\u76EE\u6807\u7956\u8C31\u5185\uFF1A${handle}\uFF08\u4E0D\u5F97\u9000\u56DE\u72EC\u7ACB\u6839\uFF09`);
+  if (registrationHandle && handle === String(registrationHandle))
+    throw badRequest("\u843D\u70B9\u4E0D\u80FD\u662F\u767B\u8BB0\u955C\u50CF\u81EA\u8EAB");
   return handle;
 }
 async function ensureRegistrationParentFamily({ clan, parentHandle, registrationHandle = "", allocFamilyId = null }) {
@@ -26963,26 +27128,34 @@ async function ensureRegistrationParentFamily({ clan, parentHandle, registration
   return { parent_family: family.handle, family_handle: family.handle, created_family: created };
 }
 async function linkRegistrationUnderParent({ clan, registrationHandle, parentHandle, allocFamilyId = null }) {
+  var _a3;
   const edge = await ensureRegistrationParentFamily({ clan, parentHandle, registrationHandle, allocFamilyId });
-  const reg = clan?.people?.[registrationHandle];
-  if (reg) reg.parent_family = edge.parent_family;
+  const reg = (_a3 = clan == null ? void 0 : clan.people) == null ? void 0 : _a3[registrationHandle];
+  if (reg)
+    reg.parent_family = edge.parent_family;
   return edge;
 }
 async function reserveFamilyIdIfNeeded(clan, parentHandle) {
-  if (!clan?.people?.[String(parentHandle || "")]) return "";
+  var _a3;
+  if (!((_a3 = clan == null ? void 0 : clan.people) == null ? void 0 : _a3[String(parentHandle || "")]))
+    return "";
   const tw = await treeWriteLib();
   return tw.reusableParentFamily(clan, String(parentHandle)) ? "" : await nextFamilyId2();
 }
 function childlessFamilyDroppable(fam) {
-  if (!fam) return false;
-  if ((fam.child_handles || []).length) return false;
+  if (!fam)
+    return false;
+  if ((fam.child_handles || []).length)
+    return false;
   return [fam.father_handle, fam.mother_handle].filter(Boolean).length <= 1;
 }
 function applyRegistrationParentDetach({ clan, registrationHandle }) {
+  var _a3, _b, _c;
   const out = { previous_parent_family: "", previous_parent_handle: "", removed_family: "" };
-  const person = clan?.people?.[registrationHandle];
-  if (!person) return out;
-  const prevFam = person.parent_family ? clan.families?.[person.parent_family] : null;
+  const person = (_a3 = clan == null ? void 0 : clan.people) == null ? void 0 : _a3[registrationHandle];
+  if (!person)
+    return out;
+  const prevFam = person.parent_family ? (_b = clan.families) == null ? void 0 : _b[person.parent_family] : null;
   if (!prevFam) {
     for (const fam of Object.values(clan.families || {})) {
       fam.child_handles = (fam.child_handles || []).filter((h) => h !== registrationHandle);
@@ -26996,8 +27169,9 @@ function applyRegistrationParentDetach({ clan, registrationHandle }) {
   person.parent_family = "";
   if (childlessFamilyDroppable(prevFam)) {
     for (const h of [prevFam.father_handle, prevFam.mother_handle]) {
-      const p = h ? clan.people?.[h] : null;
-      if (p) p.spouse_families = (p.spouse_families || []).filter((x) => x !== prevFam.handle);
+      const p = h ? (_c = clan.people) == null ? void 0 : _c[h] : null;
+      if (p)
+        p.spouse_families = (p.spouse_families || []).filter((x) => x !== prevFam.handle);
     }
     delete clan.families[prevFam.handle];
     out.removed_family = prevFam.handle;
@@ -27005,7 +27179,8 @@ function applyRegistrationParentDetach({ clan, registrationHandle }) {
   return out;
 }
 function applyReanchorAudit(person, { by = "", at = "", from = "", to = "", familyTreeId = "", clanTreeId = "" } = {}) {
-  if (!person) return null;
+  if (!person)
+    return null;
   const entry = { by: String(by || ""), at: String(at || ""), from: String(from || ""), to: String(to || "") };
   const log = Array.isArray(person.external_reanchor_log) ? person.external_reanchor_log.slice() : [];
   log.push(entry);
@@ -27015,8 +27190,10 @@ function applyReanchorAudit(person, { by = "", at = "", from = "", to = "", fami
   person.external_reanchor_from = entry.from;
   person.external_reanchor_to = entry.to;
   person.external_reanchor_count = Number(person.external_reanchor_count || 0) + 1;
-  if (familyTreeId) person.external_reanchor_family_tree = String(familyTreeId);
-  if (clanTreeId) person.external_reanchor_clan_tree = String(clanTreeId);
+  if (familyTreeId)
+    person.external_reanchor_family_tree = String(familyTreeId);
+  if (clanTreeId)
+    person.external_reanchor_clan_tree = String(clanTreeId);
   return entry;
 }
 async function remountClanRegistration({
@@ -27028,14 +27205,17 @@ async function remountClanRegistration({
   requestedBy = "",
   now = (/* @__PURE__ */ new Date()).toISOString()
 } = {}) {
+  var _a3, _b;
   const op = String(operator || requestedBy || "").trim();
   const newHandle = String(newMasterHandle || "").trim();
-  if (!newHandle) throw badRequest("\u8BF7\u9009\u62E9\u65B0\u7684\u843D\u70B9\u8282\u70B9\uFF08\u4E0D\u5F97\u9000\u56DE\u72EC\u7ACB\u6839\uFF09");
+  if (!newHandle)
+    throw badRequest("\u8BF7\u9009\u62E9\u65B0\u7684\u843D\u70B9\u8282\u70B9\uFF08\u4E0D\u5F97\u9000\u56DE\u72EC\u7ACB\u6839\uFF09");
   const familyTreeId = String(treeId || "").trim();
   let familyTree0 = null;
   if (familyTreeId) {
     familyTree0 = await getTree(familyTreeId);
-    if (!familyTree0) throw badRequest(`\u6811\u4E0D\u5B58\u5728: ${familyTreeId}`);
+    if (!familyTree0)
+      throw badRequest(`\u6811\u4E0D\u5B58\u5728: ${familyTreeId}`);
     if (treeKindOf(await metaEntryOf(familyTreeId)) !== TREE_KIND.FAMILY) {
       throw badRequest("\u6539\u6302\u53EA\u53D7\u7406\u666E\u901A\u5BB6\u65CF\u6811\u7684\u59CB\u7956\u767B\u8BB0\uFF08\u7956\u8C31 \u2192 \u4E16\u672C\u8BF7\u8D70 attachClanToMaster\uFF09");
     }
@@ -27047,19 +27227,23 @@ async function remountClanRegistration({
     founderHandle = currentFounderHandle(familyTree0, entry) || resolveFounderHandle(familyTree0, entry);
     if (!clanTreeId) {
       const f = founderHandle ? familyTree0.people[founderHandle] : null;
-      clanTreeId = String(f?.external_tree || "").trim();
+      clanTreeId = String((f == null ? void 0 : f.external_tree) || "").trim();
     }
   }
-  if (!clanTreeId) throw badRequest("\u7F3A\u5C11\u7956\u8C31\uFF1A\u8BF7\u7ED9\u51FA target_tree_id\uFF08\u6216\u5148\u5B8C\u6210\u8BA4\u7956\u767B\u8BB0\uFF09");
-  if (clanTreeId === familyTreeId) throw badRequest("\u4E0D\u80FD\u8BA4\u7956\u5230\u81EA\u5DF1");
+  if (!clanTreeId)
+    throw badRequest("\u7F3A\u5C11\u7956\u8C31\uFF1A\u8BF7\u7ED9\u51FA target_tree_id\uFF08\u6216\u5148\u5B8C\u6210\u8BA4\u7956\u767B\u8BB0\uFF09");
+  if (clanTreeId === familyTreeId)
+    throw badRequest("\u4E0D\u80FD\u8BA4\u7956\u5230\u81EA\u5DF1");
   const clanEntry = await metaEntryOf(clanTreeId);
   if (treeKindOf(clanEntry) !== TREE_KIND.CLAN) {
     throw badRequest("\u6539\u6302\u76EE\u6807\u53EA\u80FD\u662F\u7956\u8C31\uFF08\u4E0D\u5F97\u76F4\u6302\u4E2D\u534E\u4E16\u672C\uFF09");
   }
   const clan0 = await getTree(clanTreeId);
-  if (!clan0) throw badRequest(`\u7956\u8C31\u4E0D\u5B58\u5728: ${clanTreeId}`);
+  if (!clan0)
+    throw badRequest(`\u7956\u8C31\u4E0D\u5B58\u5728: ${clanTreeId}`);
   const reg = registrationHandle ? clan0.people[String(registrationHandle).trim()] : clanRegistrationOf(clan0, familyTreeId, clanTreeId);
-  if (!reg || !isClanRegistration(reg, clanTreeId)) throw notFound("\u672C\u7956\u8C31\u5185\u6CA1\u6709\u8BE5\u5BB6\u65CF\u6811\u7684\u59CB\u7956\u767B\u8BB0\uFF0C\u65E0\u6CD5\u6539\u6302");
+  if (!reg || !isClanRegistration(reg, clanTreeId))
+    throw notFound("\u672C\u7956\u8C31\u5185\u6CA1\u6709\u8BE5\u5BB6\u65CF\u6811\u7684\u59CB\u7956\u767B\u8BB0\uFF0C\u65E0\u6CD5\u6539\u6302");
   const regHandle = reg.handle;
   const registeredTreeId = String(reg.external_tree || familyTreeId || "");
   if (familyTreeId && registeredTreeId && registeredTreeId !== familyTreeId) {
@@ -27067,10 +27251,12 @@ async function remountClanRegistration({
   }
   const famId = String(familyTreeId || registeredTreeId);
   const tree0 = familyTree0 || await getTree(famId);
-  if (!tree0) throw badRequest(`\u6811\u4E0D\u5B58\u5728: ${famId}`);
+  if (!tree0)
+    throw badRequest(`\u6811\u4E0D\u5B58\u5728: ${famId}`);
   const entry0 = await metaEntryOf(famId);
   founderHandle = founderHandle || currentFounderHandle(tree0, entry0) || resolveFounderHandle(tree0, entry0);
-  if (!founderHandle || !tree0.people?.[founderHandle]) throw notFound("\u8BE5\u5BB6\u65CF\u6811\u6CA1\u6709\u767B\u8BB0\u7684\u59CB\u7956\u8282\u70B9\uFF0C\u65E0\u6CD5\u540C\u6B65\u843D\u70B9\u6307\u9488");
+  if (!founderHandle || !((_a3 = tree0.people) == null ? void 0 : _a3[founderHandle]))
+    throw notFound("\u8BE5\u5BB6\u65CF\u6811\u6CA1\u6709\u767B\u8BB0\u7684\u59CB\u7956\u8282\u70B9\uFF0C\u65E0\u6CD5\u540C\u6B65\u843D\u70B9\u6307\u9488");
   const landingHandle = assertRegistrationLanding({ clan: clan0, parentHandle: newHandle, registrationHandle: regHandle });
   const newMaster = clan0.people[landingHandle];
   const layerLabel = kindLabel(treeKindOf(clanEntry));
@@ -27110,7 +27296,7 @@ async function remountClanRegistration({
     tree_id: famId,
     clan_tree_id: clanTreeId,
     registration_handle: regHandle,
-    registration_gramps_id: String(clan0.people[regHandle]?.gramps_id || ""),
+    registration_gramps_id: String(((_b = clan0.people[regHandle]) == null ? void 0 : _b.gramps_id) || ""),
     previous_parent_family: applied.detached.previous_parent_family,
     previous_parent_handle: applied.detached.previous_parent_handle,
     removed_family: applied.detached.removed_family,
@@ -27124,27 +27310,31 @@ async function remountClanRegistration({
   };
 }
 function isFounderMissing(entry) {
-  return String(entry?.founder_state || "") === FOUNDER_STATE_NONE;
+  return String((entry == null ? void 0 : entry.founder_state) || "") === FOUNDER_STATE_NONE;
 }
 function canInitiateAttach({ tree, person, entry, treeId = "" }) {
-  if (!person) return false;
-  if (isFounderMissing(entry)) return true;
-  if (isFounderNode(tree, person, entry)) return true;
-  return isUpperMirror(person, treeId || tree?.tree_id || "");
+  if (!person)
+    return false;
+  if (isFounderMissing(entry))
+    return true;
+  if (isFounderNode(tree, person, entry))
+    return true;
+  return isUpperMirror(person, treeId || (tree == null ? void 0 : tree.tree_id) || "");
 }
 function planFounderRegister(entry, person) {
   const next = { ...entry || {} };
   delete next.founder_state;
-  next.founder_handle = String(person?.handle || "");
-  next.founder_gramps_id = String(person?.gramps_id || "");
-  next.founder_name = String(person?.name || "");
+  next.founder_handle = String((person == null ? void 0 : person.handle) || "");
+  next.founder_gramps_id = String((person == null ? void 0 : person.gramps_id) || "");
+  next.founder_name = String((person == null ? void 0 : person.name) || "");
   return next;
 }
 function currentFounderHandle(tree, entry) {
-  if (tree?.people) {
+  if (tree == null ? void 0 : tree.people) {
     const hits = [];
     for (const [h, p] of Object.entries(tree.people)) {
-      if (p?.external_link_type === FOUNDER_LINK_TYPE && p?.external_tree) hits.push(h);
+      if ((p == null ? void 0 : p.external_link_type) === FOUNDER_LINK_TYPE && (p == null ? void 0 : p.external_tree))
+        hits.push(h);
     }
     if (hits.length) {
       const pref = resolveFounderHandle(tree, entry);
@@ -27154,9 +27344,11 @@ function currentFounderHandle(tree, entry) {
   return resolveFounderHandle(tree, entry);
 }
 function assertFounderResettable({ entry, tree }) {
-  if (treeKindOf(entry) === TREE_KIND.MASTER) throw badRequest("\u4E2D\u534E\u4E16\u672C\u603B\u8C31\u4E0D\u53EF\u91CD\u7F6E\u59CB\u7956");
+  var _a3;
+  if (treeKindOf(entry) === TREE_KIND.MASTER)
+    throw badRequest("\u4E2D\u534E\u4E16\u672C\u603B\u8C31\u4E0D\u53EF\u91CD\u7F6E\u59CB\u7956");
   const fh = currentFounderHandle(tree, entry);
-  const founder = fh ? tree?.people?.[fh] : null;
+  const founder = fh ? (_a3 = tree == null ? void 0 : tree.people) == null ? void 0 : _a3[fh] : null;
   if (founder && (founder.external_link_type === FOUNDER_LINK_TYPE || String(founder.external_mirror || "") === "true")) {
     const e = new Error(FOUNDER_RESET_MIRROR_MESSAGE);
     e.status = 400;
@@ -27164,8 +27356,8 @@ function assertFounderResettable({ entry, tree }) {
   }
   return {
     founder_handle: fh,
-    founder_gramps_id: String(founder?.gramps_id || entry?.founder_gramps_id || ""),
-    founder_name: String(founder?.name || entry?.founder_name || "")
+    founder_gramps_id: String((founder == null ? void 0 : founder.gramps_id) || (entry == null ? void 0 : entry.founder_gramps_id) || ""),
+    founder_name: String((founder == null ? void 0 : founder.name) || (entry == null ? void 0 : entry.founder_name) || "")
   };
 }
 function planFounderReset(entry) {
@@ -27200,14 +27392,20 @@ function filterPendingRequests(list2, { chief = false, myTree = "" } = {}) {
   return (list2 || []).filter((r) => r.status === "pending").filter((r) => chief || r.tree_id === myTree).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
 }
 async function attachFounder({ treeId, founderHandle, masterTreeId, masterHandle, requestedBy = "", entry = null, targetEntry = null }) {
-  if (!treeId || !founderHandle) throw badRequest("\u7F3A\u5C11 tree_id \u6216 founder_handle");
-  if (!masterTreeId || !masterHandle) throw badRequest("\u7F3A\u5C11\u4E2D\u534E\u4E16\u672C\u8282\u70B9");
-  if (treeId === masterTreeId) throw badRequest("\u4E2D\u534E\u4E16\u672C\u603B\u8C31\u672C\u8EAB\u4E0D\u53EF\u8BA4\u7956");
+  var _a3, _b;
+  if (!treeId || !founderHandle)
+    throw badRequest("\u7F3A\u5C11 tree_id \u6216 founder_handle");
+  if (!masterTreeId || !masterHandle)
+    throw badRequest("\u7F3A\u5C11\u4E2D\u534E\u4E16\u672C\u8282\u70B9");
+  if (treeId === masterTreeId)
+    throw badRequest("\u4E2D\u534E\u4E16\u672C\u603B\u8C31\u672C\u8EAB\u4E0D\u53EF\u8BA4\u7956");
   const meta = entry !== null && entry !== void 0 ? entry : await metaEntryOf(treeId);
   const tree0 = await getTree(treeId);
-  if (!tree0) throw badRequest(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
+  if (!tree0)
+    throw badRequest(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
   const founder = tree0.people[founderHandle];
-  if (!founder) throw notFound("\u8BE5\u5BB6\u65CF\u6811\u4E2D\u627E\u4E0D\u5230\u59CB\u7956\u8282\u70B9");
+  if (!founder)
+    throw notFound("\u8BE5\u5BB6\u65CF\u6811\u4E2D\u627E\u4E0D\u5230\u59CB\u7956\u8282\u70B9");
   const founderMissing = isFounderMissing(meta);
   if (!founderMissing && !isFounderNode(tree0, founder, meta)) {
     throw badRequest("\u4EC5\u672C\u5BB6\u65CF\u6811\u7684\u59CB\u7956\u8282\u70B9\u53EF\u53D1\u8D77\u8BA4\u7956");
@@ -27219,7 +27417,8 @@ async function attachFounder({ treeId, founderHandle, masterTreeId, masterHandle
   }
   assertOneAttachPerTree(founder);
   const masterTree = await getTree(masterTreeId);
-  if (!masterTree) throw badRequest(`\u4E0A\u5C42\u6811\u4E0D\u5B58\u5728: ${masterTreeId}`);
+  if (!masterTree)
+    throw badRequest(`\u4E0A\u5C42\u6811\u4E0D\u5B58\u5728: ${masterTreeId}`);
   const landingHandle = assertRegistrationLanding({ clan: masterTree, parentHandle: masterHandle });
   const masterPerson = masterTree.people[landingHandle];
   const gen = (await resolveChainGen({ treeId: masterTreeId, handle: masterHandle })).gen;
@@ -27227,15 +27426,15 @@ async function attachFounder({ treeId, founderHandle, masterTreeId, masterHandle
   assertOneRegistrationPerFamilyTree(masterTree, treeId, masterTreeId);
   const trueBodyGrampsId = mirrorGrampsIdOfTrueBody(
     founder,
-    `\u5BB6\u65CF\u6811\u300C${String(meta?.display_title || treeId)}\u300D\u7684\u59CB\u7956`
+    `\u5BB6\u65CF\u6811\u300C${String((meta == null ? void 0 : meta.display_title) || treeId)}\u300D\u7684\u59CB\u7956`
   );
   const registration = planClanRegistrationMirror({
     familyFounder: founder,
     familyTreeId: treeId,
-    familyTreeTitle: String(meta?.display_title || treeId),
+    familyTreeTitle: String((meta == null ? void 0 : meta.display_title) || treeId),
     handle: import_node_crypto2.default.randomBytes(12).toString("hex"),
     grampsId: trueBodyGrampsId,
-    prevClanFounderHandle: String(tgt?.founder_handle || "")
+    prevClanFounderHandle: String((tgt == null ? void 0 : tgt.founder_handle) || "")
   });
   const applied = await updateTrees([treeId, masterTreeId], async (trees) => {
     const clanTree = trees[masterTreeId];
@@ -27266,7 +27465,7 @@ async function attachFounder({ treeId, founderHandle, masterTreeId, masterHandle
   });
   let registered = null;
   if (founderMissing) {
-    const node = (await getTree(treeId))?.people?.[founderHandle] || founder;
+    const node = ((_b = (_a3 = await getTree(treeId)) == null ? void 0 : _a3.people) == null ? void 0 : _b[founderHandle]) || founder;
     registered = await registerFounderInMeta(treeId, node);
   }
   await registerClanFounderIfVacant(masterTreeId);
@@ -27296,22 +27495,32 @@ async function attachFounder({ treeId, founderHandle, masterTreeId, masterHandle
 }
 async function registerFounderInMeta(treeId, person) {
   const m = await getMeta();
-  const trees = m?.trees || {};
-  const key = Object.keys(trees).find((k) => trees[k]?.tree_id === treeId) || "";
-  if (!key) return null;
+  const trees = (m == null ? void 0 : m.trees) || {};
+  const key = Object.keys(trees).find((k) => {
+    var _a3;
+    return ((_a3 = trees[k]) == null ? void 0 : _a3.tree_id) === treeId;
+  }) || "";
+  if (!key)
+    return null;
   const entry = planFounderRegister(trees[key], person);
   return mutateTreeMeta(treeId, () => entry);
 }
 async function registerClanFounderIfVacant(clanTreeId) {
   const m = await getMeta();
-  const key = Object.keys(m?.trees || {}).find((k) => m.trees[k]?.tree_id === clanTreeId) || "";
-  if (!key) return false;
+  const key = Object.keys((m == null ? void 0 : m.trees) || {}).find((k) => {
+    var _a3;
+    return ((_a3 = m.trees[k]) == null ? void 0 : _a3.tree_id) === clanTreeId;
+  }) || "";
+  if (!key)
+    return false;
   const entry = m.trees[key];
-  if (String(entry?.founder_handle || "").trim()) return false;
+  if (String((entry == null ? void 0 : entry.founder_handle) || "").trim())
+    return false;
   const clanTree = await getTree(clanTreeId);
-  const kindOfId = (id) => treeKindOf(Object.values(m?.trees || {}).find((t) => String(t?.tree_id || "") === String(id || "")));
+  const kindOfId = (id) => treeKindOf(Object.values((m == null ? void 0 : m.trees) || {}).find((t) => String((t == null ? void 0 : t.tree_id) || "") === String(id || "")));
   const regs = clanRegistrations(clanTree, clanTreeId).filter((p) => kindOfId(p.external_tree) === TREE_KIND.FAMILY);
-  if (!regs.length) return false;
+  if (!regs.length)
+    return false;
   const primary = regs.sort((a, b) => String(a.gramps_id || "").localeCompare(String(b.gramps_id || "")))[0];
   await mutateTreeMeta(clanTreeId, (entry2) => ({
     ...entry2,
@@ -27322,14 +27531,19 @@ async function registerClanFounderIfVacant(clanTreeId) {
   return true;
 }
 async function detachFounder({ treeId, founderHandle, masterTreeId }) {
-  if (!treeId || !founderHandle) throw badRequest("\u7F3A\u5C11 tree_id \u6216 founder_handle");
+  if (!treeId || !founderHandle)
+    throw badRequest("\u7F3A\u5C11 tree_id \u6216 founder_handle");
   const tree0 = await getTree(treeId);
-  if (!tree0) throw badRequest(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
+  if (!tree0)
+    throw badRequest(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
   const founder = tree0.people[founderHandle];
-  if (!founder) throw notFound("\u8BE5\u5BB6\u65CF\u6811\u4E2D\u627E\u4E0D\u5230\u59CB\u7956\u8282\u70B9");
+  if (!founder)
+    throw notFound("\u8BE5\u5BB6\u65CF\u6811\u4E2D\u627E\u4E0D\u5230\u59CB\u7956\u8282\u70B9");
   const upperTreeId = masterTreeId || founder.external_tree || "";
-  if (!upperTreeId) throw badRequest("\u8BE5\u59CB\u7956\u8282\u70B9\u5F53\u524D\u672A\u6302\u8F7D\u5230\u4EFB\u4F55\u4E0A\u5C42\u6811");
-  if (!isFounderMirror(founder, upperTreeId)) throw badRequest("\u8BE5\u59CB\u7956\u8282\u70B9\u5F53\u524D\u672A\u6302\u8F7D\u5230\u4E0A\u5C42\u6811");
+  if (!upperTreeId)
+    throw badRequest("\u8BE5\u59CB\u7956\u8282\u70B9\u5F53\u524D\u672A\u6302\u8F7D\u5230\u4EFB\u4F55\u4E0A\u5C42\u6811");
+  if (!isFounderMirror(founder, upperTreeId))
+    throw badRequest("\u8BE5\u59CB\u7956\u8282\u70B9\u5F53\u524D\u672A\u6302\u8F7D\u5230\u4E0A\u5C42\u6811");
   const masterHandle = founder.external_person_handle || "";
   let upperTree = null;
   try {
@@ -27342,14 +27556,14 @@ async function detachFounder({ treeId, founderHandle, masterTreeId }) {
     founder: applyFounderDetach({ tree: trees[treeId], founderHandle }),
     registration: upperTree && registration ? applyClanRegistrationRemoval({ clan: trees[upperTreeId], registrationHandle: registration.handle }) : null
   }));
-  if (registration?.handle) {
+  if (registration == null ? void 0 : registration.handle) {
     try {
       await deleteDetail(upperTreeId, registration.handle);
     } catch {
     }
   }
   let clanFounderRestored = false;
-  if (registration?.handle) {
+  if (registration == null ? void 0 : registration.handle) {
     try {
       clanFounderRestored = await restoreClanFounderAfterRemoval(upperTreeId, registration);
     } catch {
@@ -27371,15 +27585,21 @@ async function detachFounder({ treeId, founderHandle, masterTreeId }) {
 }
 async function restoreClanFounderAfterRemoval(clanTreeId, registration) {
   const m = await getMeta();
-  const key = Object.keys(m?.trees || {}).find((k) => m.trees[k]?.tree_id === clanTreeId) || "";
-  if (!key) return false;
+  const key = Object.keys((m == null ? void 0 : m.trees) || {}).find((k) => {
+    var _a3;
+    return ((_a3 = m.trees[k]) == null ? void 0 : _a3.tree_id) === clanTreeId;
+  }) || "";
+  if (!key)
+    return false;
   const entry = m.trees[key];
-  if (String(entry?.founder_handle || "") !== String(registration.handle || "")) return false;
+  if (String((entry == null ? void 0 : entry.founder_handle) || "") !== String(registration.handle || ""))
+    return false;
   const clanTree = await getTree(clanTreeId);
   const prev = String(registration.external_prev_clan_founder_handle || "");
   await mutateTreeMeta(clanTreeId, (entry2) => {
+    var _a3;
     const next = { ...entry2 };
-    if (prev && clanTree?.people?.[prev]) {
+    if (prev && ((_a3 = clanTree == null ? void 0 : clanTree.people) == null ? void 0 : _a3[prev])) {
       next.founder_handle = prev;
       next.founder_gramps_id = String(clanTree.people[prev].gramps_id || "");
       next.founder_name = String(clanTree.people[prev].name || "");
@@ -27393,11 +27613,16 @@ async function restoreClanFounderAfterRemoval(clanTreeId, registration) {
   return true;
 }
 async function resetFounder({ treeId, meta = null } = {}) {
-  if (!treeId) throw badRequest("\u7F3A\u5C11 tree_id");
+  if (!treeId)
+    throw badRequest("\u7F3A\u5C11 tree_id");
   const m = meta || await getMeta();
-  const trees = m?.trees || {};
-  const key = Object.keys(trees).find((k) => trees[k]?.tree_id === treeId) || "";
-  if (!key) throw notFound(`\u672A\u627E\u5230 tree: ${treeId}`);
+  const trees = (m == null ? void 0 : m.trees) || {};
+  const key = Object.keys(trees).find((k) => {
+    var _a3;
+    return ((_a3 = trees[k]) == null ? void 0 : _a3.tree_id) === treeId;
+  }) || "";
+  if (!key)
+    throw notFound(`\u672A\u627E\u5230 tree: ${treeId}`);
   let tree = null;
   try {
     tree = await getTree(treeId);
@@ -27418,17 +27643,21 @@ async function resetFounder({ treeId, meta = null } = {}) {
 async function listAttachedTrees({ masterTreeId, meta = null, getTreeFn = getTree, listIdsFn = listTreeIds } = {}) {
   const m = meta || await safeMeta();
   const entries = /* @__PURE__ */ new Map();
-  for (const e of Object.values(m?.trees || {})) if (e?.tree_id) entries.set(e.tree_id, e);
+  for (const e of Object.values((m == null ? void 0 : m.trees) || {}))
+    if (e == null ? void 0 : e.tree_id)
+      entries.set(e.tree_id, e);
   let ids = [];
   try {
     ids = await listIdsFn();
   } catch {
     ids = [];
   }
-  if (!ids.length) ids = [...entries.keys()];
+  if (!ids.length)
+    ids = [...entries.keys()];
   const out = [];
   for (const id of [...new Set(ids)]) {
-    if (!id || id === masterTreeId) continue;
+    if (!id || id === masterTreeId)
+      continue;
     const e = entries.get(id) || { tree_id: id };
     let tree = null;
     try {
@@ -27436,11 +27665,14 @@ async function listAttachedTrees({ masterTreeId, meta = null, getTreeFn = getTre
     } catch {
       tree = null;
     }
-    if (!tree?.people) continue;
+    if (!(tree == null ? void 0 : tree.people))
+      continue;
     const fh = findAttachedFounderHandle(tree, e, masterTreeId);
-    if (!fh) continue;
+    if (!fh)
+      continue;
     const f = tree.people[fh];
-    if (!f || f.external_link_type !== FOUNDER_LINK_TYPE || f.external_tree !== masterTreeId) continue;
+    if (!f || f.external_link_type !== FOUNDER_LINK_TYPE || f.external_tree !== masterTreeId)
+      continue;
     out.push({
       tree_id: id,
       kind: treeKindOf(e),
@@ -27457,7 +27689,8 @@ async function listAttachedTrees({ masterTreeId, meta = null, getTreeFn = getTre
   return out;
 }
 function attachedTreesOf(attachments, masterHandle) {
-  if (!masterHandle) return [];
+  if (!masterHandle)
+    return [];
   return (attachments || []).filter((a) => a.master_handle === masterHandle);
 }
 function badRequest(message) {
@@ -27495,24 +27728,32 @@ var init_founder_attach = __esm({
 
 // cloudfunctions/compat-api/lib/id-resolve.js
 function isMirrorRecord(person) {
-  return String(person?.external_mirror ?? "").trim() === "true" && !!String(person?.external_person_handle ?? "").trim();
+  return String((person == null ? void 0 : person.external_mirror) ?? "").trim() === "true" && !!String((person == null ? void 0 : person.external_person_handle) ?? "").trim();
 }
 function mirrorRankOf(person) {
-  if (!isMirrorRecord(person)) return 0;
-  return String(person?.external_link_type ?? "").trim() === "founder" ? 1 : 2;
+  if (!isMirrorRecord(person))
+    return 0;
+  return String((person == null ? void 0 : person.external_link_type) ?? "").trim() === "founder" ? 1 : 2;
 }
 function cmpCandidate(a, b) {
+  var _a3, _b;
   const ra = mirrorRankOf(a.person);
   const rb = mirrorRankOf(b.person);
-  if (ra !== rb) return ra - rb;
-  if (a.tree_id !== b.tree_id) return a.tree_id < b.tree_id ? -1 : 1;
-  const ha = String(a.person?.handle || "");
-  const hb = String(b.person?.handle || "");
-  if (ha !== hb) return ha < hb ? -1 : 1;
+  if (ra !== rb)
+    return ra - rb;
+  if (a.tree_id !== b.tree_id)
+    return a.tree_id < b.tree_id ? -1 : 1;
+  const ha = String(((_a3 = a.person) == null ? void 0 : _a3.handle) || "");
+  const hb = String(((_b = b.person) == null ? void 0 : _b.handle) || "");
+  if (ha !== hb)
+    return ha < hb ? -1 : 1;
   return 0;
 }
 function duplicateTrueBodyError(refText, reals) {
-  const where = reals.map((c) => `${c.tree_id}\uFF08${c.person?.name || c.person?.handle || ""}\uFF09`).join("\u3001");
+  const where = reals.map((c) => {
+    var _a3, _b;
+    return `${c.tree_id}\uFF08${((_a3 = c.person) == null ? void 0 : _a3.name) || ((_b = c.person) == null ? void 0 : _b.handle) || ""}\uFF09`;
+  }).join("\u3001");
   const err = new Error(
     `\u7F16\u53F7\u300C${refText}\u300D\u547D\u4E2D ${reals.length} \u6761\u771F\u8EAB\u8BB0\u5F55\uFF08\u540C\u4E00\u4EBA\u53EA\u5141\u8BB8 1 \u6761\u771F\u8EAB\uFF09\uFF1A${where}\uFF1B\u8BF7\u5DE1\u68C0\u4FEE\u6B63\u6570\u636E\u540E\u518D\u64CD\u4F5C`
   );
@@ -27520,40 +27761,52 @@ function duplicateTrueBodyError(refText, reals) {
   return err;
 }
 function pickByIdentity(cands, refText = "") {
+  var _a3;
   const list2 = (cands || []).filter((c) => c && c.person);
-  if (!list2.length) return null;
+  if (!list2.length)
+    return null;
   const sorted = list2.slice().sort(cmpCandidate);
   const reals = sorted.filter((c) => mirrorRankOf(c.person) === 0);
-  if (reals.length > 1) throw duplicateTrueBodyError(refText || String(reals[0].person?.gramps_id || ""), reals);
+  if (reals.length > 1)
+    throw duplicateTrueBodyError(refText || String(((_a3 = reals[0].person) == null ? void 0 : _a3.gramps_id) || ""), reals);
   return sorted[0];
 }
 function collectByExactId(tree, wantId) {
   const want = String(wantId || "").toUpperCase();
-  if (!want) return [];
+  if (!want)
+    return [];
   const out = [];
-  for (const p of Object.values(tree?.people || {})) {
-    if (String(p?.gramps_id || "").toUpperCase() === want) out.push(p);
+  for (const p of Object.values((tree == null ? void 0 : tree.people) || {})) {
+    if (String((p == null ? void 0 : p.gramps_id) || "").toUpperCase() === want)
+      out.push(p);
   }
   return out;
 }
 function legacyHit(node, wantKey) {
-  const legacy = node?.legacy_gramps_id;
-  if (!legacy) return false;
+  const legacy = node == null ? void 0 : node.legacy_gramps_id;
+  if (!legacy)
+    return false;
   return idKey(legacy) === wantKey;
 }
 async function collectLocalLegacy(tree, treeId, wantKey, { withDetails = true } = {}) {
-  if (!wantKey) return [];
+  var _a3;
+  if (!wantKey)
+    return [];
   const out = [];
-  for (const p of Object.values(tree?.people || {})) {
-    if (!p?.gramps_id) continue;
-    if (idKey(p.gramps_id) === wantKey || legacyHit(p, wantKey)) out.push(p);
+  for (const p of Object.values((tree == null ? void 0 : tree.people) || {})) {
+    if (!(p == null ? void 0 : p.gramps_id))
+      continue;
+    if (idKey(p.gramps_id) === wantKey || legacyHit(p, wantKey))
+      out.push(p);
   }
-  if (out.length || !withDetails) return out;
+  if (out.length || !withDetails)
+    return out;
   try {
     for (const d of await getAllDetails(treeId)) {
       if (legacyHit(d, wantKey)) {
-        const p = tree?.people?.[d.handle];
-        if (p) out.push(p);
+        const p = (_a3 = tree == null ? void 0 : tree.people) == null ? void 0 : _a3[d.handle];
+        if (p)
+          out.push(p);
       }
     }
   } catch {
@@ -27561,8 +27814,10 @@ async function collectLocalLegacy(tree, treeId, wantKey, { withDetails = true } 
   return out;
 }
 async function resolveNode(ref, treeId = "", opts = {}) {
+  var _a3, _b;
   const s = String(ref || "").trim();
-  if (!s) return null;
+  if (!s)
+    return null;
   const scope = String(opts.targetTreeId || "").trim();
   const local = String(treeId || "").trim();
   const listIdsFn = opts.listIdsFn || listTreeIds;
@@ -27587,22 +27842,23 @@ async function resolveNode(ref, treeId = "", opts = {}) {
     return loaded.get(id);
   };
   const hit = async (tree_id, handle, matched) => {
-    const person = loaded.get(tree_id)?.people?.[handle] || null;
+    var _a4, _b2, _c, _d, _e;
+    const person = ((_b2 = (_a4 = loaded.get(tree_id)) == null ? void 0 : _a4.people) == null ? void 0 : _b2[handle]) || null;
     const out = {
       tree_id,
       handle,
-      gramps_id: (person?.gramps_id || "") + "",
+      gramps_id: ((person == null ? void 0 : person.gramps_id) || "") + "",
       matched,
       is_mirror: isMirrorRecord(person),
       source_tree_id: "",
       source_tree_title: ""
     };
     if (out.is_mirror) {
-      const src = String(person?.external_tree || "").trim();
+      const src = String((person == null ? void 0 : person.external_tree) || "").trim();
       out.source_tree_id = src;
       let title = src;
       try {
-        title = String((await getMeta())?.trees?.[src]?.display_title || src);
+        title = String(((_e = (_d = (_c = await getMeta()) == null ? void 0 : _c.trees) == null ? void 0 : _d[src]) == null ? void 0 : _e.display_title) || src);
       } catch {
         title = src;
       }
@@ -27614,15 +27870,18 @@ async function resolveNode(ref, treeId = "", opts = {}) {
   const primary = (scope ? [scope] : [local]).filter(Boolean);
   for (const id of primary) {
     const t = await treeOf(id);
-    if (t?.people?.[s]) return hit(id, s, "handle");
+    if ((_a3 = t == null ? void 0 : t.people) == null ? void 0 : _a3[s])
+      return hit(id, s, "handle");
   }
   const parsed = parseGlobalId(s);
   const looksLikeHandle = !parsed && s.length >= 2 && /^[0-9a-zA-Z_-]+$/.test(s);
   if (looksLikeHandle) {
     for (const id of candidates) {
-      if (primary.includes(id)) continue;
+      if (primary.includes(id))
+        continue;
       const t = await treeOf(id);
-      if (t?.people?.[s]) return hit(id, s, "handle");
+      if ((_b = t == null ? void 0 : t.people) == null ? void 0 : _b[s])
+        return hit(id, s, "handle");
     }
   }
   const num = numberOfId(s);
@@ -27633,8 +27892,10 @@ async function resolveNode(ref, treeId = "", opts = {}) {
     for (const id of candidates) {
       const t = await treeOf(id);
       const ps = collectByExactId(t, want);
-      if (!ps.length) continue;
-      for (const p of ps) found.push({ tree_id: id, person: p });
+      if (!ps.length)
+        continue;
+      for (const p of ps)
+        found.push({ tree_id: id, person: p });
       if (id === local || id === scope) {
         return hitOfCandidate(
           pickByIdentity(
@@ -27645,9 +27906,11 @@ async function resolveNode(ref, treeId = "", opts = {}) {
         );
       }
     }
-    if (found.length) return hitOfCandidate(pickByIdentity(found, s), "global");
+    if (found.length)
+      return hitOfCandidate(pickByIdentity(found, s), "global");
   }
-  if (num === null) return null;
+  if (num === null)
+    return null;
   if (scope) {
     const t = await treeOf(scope);
     const row = pickByIdentity(
@@ -27662,25 +27925,34 @@ async function resolveNode(ref, treeId = "", opts = {}) {
       (await collectLocalLegacy(t, local, wantKey)).map((p) => ({ tree_id: local, person: p })),
       s
     );
-    if (row) return hitOfCandidate(row, "legacy");
+    if (row)
+      return hitOfCandidate(row, "legacy");
   }
   const hits = [];
   for (const id of candidates) {
-    if (id === local) continue;
+    if (id === local)
+      continue;
     const t = await treeOf(id);
-    if (!t?.people) continue;
+    if (!(t == null ? void 0 : t.people))
+      continue;
     const ps = await collectLocalLegacy(t, id, wantKey, { withDetails: false });
-    if (ps.length) hits.push(pickByIdentity(ps.map((p) => ({ tree_id: id, person: p })), s));
+    if (ps.length)
+      hits.push(pickByIdentity(ps.map((p) => ({ tree_id: id, person: p })), s));
   }
   const reals = hits.filter((c) => mirrorRankOf(c.person) === 0);
-  if (reals.length === 1) return hitOfCandidate(reals[0], "legacy");
+  if (reals.length === 1)
+    return hitOfCandidate(reals[0], "legacy");
   if (reals.length > 1) {
-    const which = reals.map((c) => `${c.tree_id}\uFF08${c.person?.name || ""}\uFF09`).join("\u3001");
+    const which = reals.map((c) => {
+      var _a4;
+      return `${c.tree_id}\uFF08${((_a4 = c.person) == null ? void 0 : _a4.name) || ""}\uFF09`;
+    }).join("\u3001");
     const err = new Error(`\u7F16\u53F7\u300C${s}\u300D\u5728\u591A\u4E2A\u5BB6\u65CF\u6811\u4E2D\u91CD\u53F7\uFF1A${which}\uFF1B\u8BF7\u6307\u5B9A\u76EE\u6807\u5BB6\u65CF\u6811\u540E\u518D\u64CD\u4F5C`);
     err.status = 400;
     throw err;
   }
-  if (hits.length) return hitOfCandidate(hits.slice().sort(cmpCandidate)[0], "legacy");
+  if (hits.length)
+    return hitOfCandidate(hits.slice().sort(cmpCandidate)[0], "legacy");
   return null;
 }
 var init_id_resolve = __esm({
@@ -27753,30 +28025,37 @@ function genHandle() {
   return import_node_crypto3.default.randomBytes(12).toString("hex");
 }
 function nameParts(pn = {}) {
-  const surname = (pn.surname_list || []).find((s) => s?.primary)?.surname || pn.surname_list?.[0]?.surname || "";
+  var _a3, _b, _c;
+  const surname = ((_a3 = (pn.surname_list || []).find((s) => s == null ? void 0 : s.primary)) == null ? void 0 : _a3.surname) || ((_c = (_b = pn.surname_list) == null ? void 0 : _b[0]) == null ? void 0 : _c.surname) || "";
   const given = pn.first_name || "";
   return { surname, given, name: `${surname}${given}` || "\u672A\u77E5" };
 }
 function genderFromNum(g) {
-  if (g === 1) return "M";
-  if (g === 2) return "F";
+  if (g === 1)
+    return "M";
+  if (g === 2)
+    return "F";
   return "U";
 }
 function nextGrampsId(tree, prefix) {
   const isFamily = String(prefix).toUpperCase() === "F";
   let max = 0;
-  for (const group of [tree?.people, tree?.families]) {
+  for (const group of [tree == null ? void 0 : tree.people, tree == null ? void 0 : tree.families]) {
     for (const o of Object.values(group || {})) {
-      const parsed = parseGlobalId(o?.gramps_id);
-      if (!parsed) continue;
-      if (parsed.kind === SEQ_FAMILY !== isFamily) continue;
-      if (parsed.number > max) max = parsed.number;
+      const parsed = parseGlobalId(o == null ? void 0 : o.gramps_id);
+      if (!parsed)
+        continue;
+      if (parsed.kind === SEQ_FAMILY !== isFamily)
+        continue;
+      if (parsed.number > max)
+        max = parsed.number;
     }
   }
   return formatId(isFamily ? SEQ_FAMILY : SEQ_PERSON, max + 1);
 }
 function attrOf(a) {
-  return { key: typeof a?.type === "string" ? a.type : a?.type?.string || "", value: a?.value ?? "" };
+  var _a3;
+  return { key: typeof (a == null ? void 0 : a.type) === "string" ? a.type : ((_a3 = a == null ? void 0 : a.type) == null ? void 0 : _a3.string) || "", value: (a == null ? void 0 : a.value) ?? "" };
 }
 function applyLifespan(person, body = {}, opts = {}) {
   if (opts.lockedDeceased) {
@@ -27785,8 +28064,10 @@ function applyLifespan(person, body = {}, opts = {}) {
       err.status = 403;
       throw err;
     }
-    if (body.birth_date !== void 0) person.birth_date = String(body.birth_date || "").trim();
-    if (body.death_date !== void 0) person.death_date = String(body.death_date || "").trim();
+    if (body.birth_date !== void 0)
+      person.birth_date = String(body.birth_date || "").trim();
+    if (body.death_date !== void 0)
+      person.death_date = String(body.death_date || "").trim();
     person.is_living = false;
     return person;
   }
@@ -27802,7 +28083,8 @@ function applyLifespan(person, body = {}, opts = {}) {
     }
   } else if (body.death_date !== void 0) {
     person.death_date = String(body.death_date || "").trim();
-    if (person.death_date) person.is_living = false;
+    if (person.death_date)
+      person.is_living = false;
   }
   return person;
 }
@@ -27810,7 +28092,8 @@ async function updatePerson(treeId, handle, body, opts = {}) {
   let pendingDetail = null;
   const result = await updateTree(treeId, async (tree) => {
     const person = tree.people[handle];
-    if (!person) throw new Error("person not found");
+    if (!person)
+      throw new Error("person not found");
     assertPlaceFieldShapes(body);
     if (opts.masterTreeId && treeId !== opts.masterTreeId) {
       const entry = opts.founderEntry !== void 0 ? opts.founderEntry : await metaEntryOf(treeId);
@@ -27835,19 +28118,27 @@ async function updatePerson(treeId, handle, body, opts = {}) {
       lockedDeceased: !!opts.deceasedLocked || !!opts.masterTreeId && treeId === opts.masterTreeId,
       deceasedLockLabel: opts.deceasedLockLabel
     });
-    if (body.birth_place !== void 0 && body.birth_place !== null) person.birth_place = normalizeBirthPlace(body.birth_place);
-    if (body.residence_places !== void 0 && body.residence_places !== null) person.residence_places = normalizeResidencePlaces(body.residence_places);
+    if (body.birth_place !== void 0 && body.birth_place !== null)
+      person.birth_place = normalizeBirthPlace(body.birth_place);
+    if (body.residence_places !== void 0 && body.residence_places !== null)
+      person.residence_places = normalizeResidencePlaces(body.residence_places);
     const ext = {};
     const others = [];
     for (const a of body.attribute_list || []) {
       const { key, value } = attrOf(a);
-      if (!key) continue;
-      if (EXTERNAL_KEYS.includes(key)) ext[key] = value;
-      else others.push({ key, value, type: key });
+      if (!key)
+        continue;
+      if (EXTERNAL_KEYS.includes(key))
+        ext[key] = value;
+      else
+        others.push({ key, value, type: key });
     }
-    for (const k of EXTERNAL_KEYS) if (k in ext) person[k] = ext[k];
+    for (const k of EXTERNAL_KEYS)
+      if (k in ext)
+        person[k] = ext[k];
     const detail = await getDetail(treeId, handle) || { tree_id: treeId, handle, events: [], media: [], citations: [], notes: [], attributes: [] };
-    if (body.attribute_list !== void 0 && body.attribute_list !== null) detail.attributes = others;
+    if (body.attribute_list !== void 0 && body.attribute_list !== null)
+      detail.attributes = others;
     detail.updated_at = (/* @__PURE__ */ new Date()).toISOString();
     pendingDetail = detail;
     return { ok: true, handle };
@@ -27873,9 +28164,12 @@ async function createPerson(treeId, body) {
     const ext = {};
     for (const a of body.attribute_list || []) {
       const { key, value } = attrOf(a);
-      if (!key) continue;
-      if (EXTERNAL_KEYS.includes(key)) ext[key] = value;
-      else detailAttributes.push({ key, value, type: key });
+      if (!key)
+        continue;
+      if (EXTERNAL_KEYS.includes(key))
+        ext[key] = value;
+      else
+        detailAttributes.push({ key, value, type: key });
     }
     const person = {
       handle,
@@ -27912,20 +28206,25 @@ async function createPerson(treeId, body) {
   });
 }
 function inheritedSurname(tree, parentHandle) {
-  if (!parentHandle) return "";
+  if (!parentHandle)
+    return "";
   const parent = tree.people[parentHandle];
-  if (!parent) return "";
+  if (!parent)
+    return "";
   for (const fh of parent.spouse_families || []) {
     const fam = tree.families[fh];
-    const father = fam?.father_handle ? tree.people[fam.father_handle] : null;
-    if (father?.surname) return father.surname;
+    const father = (fam == null ? void 0 : fam.father_handle) ? tree.people[fam.father_handle] : null;
+    if (father == null ? void 0 : father.surname)
+      return father.surname;
   }
   return parent.surname || "";
 }
 function assertNotFounderMirror(tree, handles, masterTreeId) {
-  if (!masterTreeId || tree.tree_id === masterTreeId) return;
+  if (!masterTreeId || tree.tree_id === masterTreeId)
+    return;
   for (const h of handles || []) {
-    if (!h) continue;
+    if (!h)
+      continue;
     const p = tree.people[h];
     if (isFounderMirror(p, masterTreeId) || isUpperMirror(p, tree.tree_id)) {
       const err = new Error(MIRROR_LOCK_MESSAGE);
@@ -27955,7 +28254,8 @@ async function createFamily(treeId, body, opts = {}) {
 async function updateFamily(treeId, handle, body, opts = {}) {
   return updateTree(treeId, async (tree) => {
     const fam = tree.families[handle];
-    if (!fam) throw new Error("family not found");
+    if (!fam)
+      throw new Error("family not found");
     const nextFather = body.father_handle || "";
     const nextMother = body.mother_handle || "";
     const nextChildren = (body.child_ref_list || []).map((c) => c.ref || c).filter(Boolean);
@@ -27997,8 +28297,10 @@ function unlinkFamily(tree, fam) {
 function sameChildHandleSet(current, submitted) {
   const a = (current || []).map((h) => String(h ?? ""));
   const b = (submitted || []).map((h) => String(h ?? ""));
-  if (a.length !== b.length) return false;
-  if (new Set(b).size !== b.length) return false;
+  if (a.length !== b.length)
+    return false;
+  if (new Set(b).size !== b.length)
+    return false;
   const sortedA = [...a].sort();
   const sortedB = [...b].sort();
   return sortedA.every((h, i) => h === sortedB[i]);
@@ -28012,23 +28314,34 @@ async function reorderChildren({
   charge = null,
   refund: refund2 = null
 } = {}) {
-  if (!treeId) throw fail("\u7F3A\u5C11 tree_id");
-  if (!familyHandle) throw fail("\u7F3A\u5C11 family_handle");
-  if (!personHandle) throw fail("\u7F3A\u5C11 person_handle");
-  if (!Array.isArray(childHandles)) throw fail("\u7F3A\u5C11 child_handles\uFF08\u987B\u4E3A\u6570\u7EC4\uFF09");
+  var _a3, _b;
+  if (!treeId)
+    throw fail("\u7F3A\u5C11 tree_id");
+  if (!familyHandle)
+    throw fail("\u7F3A\u5C11 family_handle");
+  if (!personHandle)
+    throw fail("\u7F3A\u5C11 person_handle");
+  if (!Array.isArray(childHandles))
+    throw fail("\u7F3A\u5C11 child_handles\uFF08\u987B\u4E3A\u6570\u7EC4\uFF09");
   const tree0 = await getTree(treeId);
-  if (!tree0) throw fail(`\u6811\u4E0D\u5B58\u5728: ${treeId}`, 404);
-  const person = tree0.people?.[personHandle];
-  if (!person) throw fail("\u8282\u70B9\u4E0D\u5B58\u5728", 404);
-  const fam0 = tree0.families?.[familyHandle];
-  if (!fam0) throw fail(FAMILY_NOT_FOUND_TEXT, 404);
+  if (!tree0)
+    throw fail(`\u6811\u4E0D\u5B58\u5728: ${treeId}`, 404);
+  const person = (_a3 = tree0.people) == null ? void 0 : _a3[personHandle];
+  if (!person)
+    throw fail("\u8282\u70B9\u4E0D\u5B58\u5728", 404);
+  const fam0 = (_b = tree0.families) == null ? void 0 : _b[familyHandle];
+  if (!fam0)
+    throw fail(FAMILY_NOT_FOUND_TEXT, 404);
   const current = (fam0.child_handles || []).map((h) => String(h ?? ""));
   const next = childHandles.map((h) => String(h ?? ""));
-  if (!sameChildHandleSet(current, next)) throw fail(CHILD_SET_MISMATCH_TEXT, 400);
-  if (!current.includes(personHandle)) throw fail("person_handle \u4E0D\u5728\u8BE5\u5BB6\u65CF\u7684\u5B50\u5973\u5217\u8868\u4E2D", 400);
+  if (!sameChildHandleSet(current, next))
+    throw fail(CHILD_SET_MISMATCH_TEXT, 400);
+  if (!current.includes(personHandle))
+    throw fail("person_handle \u4E0D\u5728\u8BE5\u5BB6\u65CF\u7684\u5B50\u5973\u5217\u8868\u4E2D", 400);
   if (masterTreeId) {
     const lockMsg = await personEditLockMessage(person, tree0, masterTreeId);
-    if (lockMsg) throw fail(lockMsg, 403);
+    if (lockMsg)
+      throw fail(lockMsg, 403);
   }
   const personName = person.name || "";
   const position = next.indexOf(personHandle) + 1;
@@ -28051,8 +28364,10 @@ async function reorderChildren({
   let charged = null;
   try {
     await updateTree(treeId, async (tree) => {
-      const fam = tree.families?.[familyHandle];
-      if (!fam) throw fail(FAMILY_NOT_FOUND_TEXT, 404);
+      var _a4;
+      const fam = (_a4 = tree.families) == null ? void 0 : _a4[familyHandle];
+      if (!fam)
+        throw fail(FAMILY_NOT_FOUND_TEXT, 404);
       if (charge) {
         charged = await charge({
           dry_run: false,
@@ -28066,18 +28381,21 @@ async function reorderChildren({
       }
       fam.child_handles = next;
       const problems = checkTreeIntegrity(tree);
-      if (problems.length) throw fail(`\u6392\u884C\u8C03\u6574\u540E\u7ED3\u6784\u6821\u9A8C\u5931\u8D25\uFF1A${problems.slice(0, 3).join("\uFF1B")}`, 500);
+      if (problems.length)
+        throw fail(`\u6392\u884C\u8C03\u6574\u540E\u7ED3\u6784\u6821\u9A8C\u5931\u8D25\uFF1A${problems.slice(0, 3).join("\uFF1B")}`, 500);
     });
   } catch (e) {
-    if (refund2) await refund2(charged);
+    if (refund2)
+      await refund2(charged);
     throw e;
   }
   const saved = await getTree(treeId);
-  return { ...report, noop: false, changed: true, version: saved?.version, updated_at: saved?.updated_at, fee: charged ? charged.fee : null };
+  return { ...report, noop: false, changed: true, version: saved == null ? void 0 : saved.version, updated_at: saved == null ? void 0 : saved.updated_at, fee: charged ? charged.fee : null };
 }
 function attrMap(detail) {
   const map2 = {};
-  for (const a of detail?.attributes || []) map2[a.key] = a.value;
+  for (const a of (detail == null ? void 0 : detail.attributes) || [])
+    map2[a.key] = a.value;
   return map2;
 }
 function nextChainGen(parentGen, opts = {}) {
@@ -28103,13 +28421,16 @@ async function getChainInfo(treeId, handle) {
   };
 }
 async function chainSiblings(treeId, gen, excludeHandle = "") {
+  var _a3;
   const tree = await getTree(treeId);
   const details = /* @__PURE__ */ new Map();
-  for (const d of await getAllDetails(treeId)) details.set(d.handle, attrMap(d));
+  for (const d of await getAllDetails(treeId))
+    details.set(d.handle, attrMap(d));
   const out = [];
   for (const p of Object.values(tree.people)) {
-    if (p.handle === excludeHandle) continue;
-    if (parseInt(details.get(p.handle)?.external_chain_gen || "", 10) === gen) {
+    if (p.handle === excludeHandle)
+      continue;
+    if (parseInt(((_a3 = details.get(p.handle)) == null ? void 0 : _a3.external_chain_gen) || "", 10) === gen) {
       out.push({ handle: p.handle, gramps_id: p.gramps_id, name: p.name, gen });
     }
   }
@@ -28146,12 +28467,15 @@ function chainDetailAttributes({ gen, treeId, mode = "new", note = "", extraAttr
   if (mode === "new" && writeTreeRef !== false) {
     attributes.push({ key: "external_tree", value: treeId, type: "external_tree" });
   }
-  if (note) attributes.push({ key: "external_relation_note", value: note, type: "external_relation_note" });
+  if (note)
+    attributes.push({ key: "external_relation_note", value: note, type: "external_relation_note" });
   for (const a of extraAttributes || []) {
-    const key = String(a?.key || "").trim();
-    if (!key || CHAIN_ATTR_KEYS.includes(key)) continue;
-    const value = String(a?.value ?? "").trim();
-    if (!value) continue;
+    const key = String((a == null ? void 0 : a.key) || "").trim();
+    if (!key || CHAIN_ATTR_KEYS.includes(key))
+      continue;
+    const value = String((a == null ? void 0 : a.value) ?? "").trim();
+    if (!value)
+      continue;
     attributes.push({ key, value, type: key });
   }
   return attributes;
@@ -28217,23 +28541,32 @@ async function appendChainNode({
   extraAttributes = [],
   masterTreeId
 }) {
-  if (masterTreeId && treeId !== masterTreeId) throw new Error("\u7EED\u7F16\u4EC5\u9002\u7528\u4E8E\u4E2D\u534E\u4E16\u672C\u603B\u8C31");
+  var _a3;
+  if (masterTreeId && treeId !== masterTreeId)
+    throw new Error("\u7EED\u7F16\u4EC5\u9002\u7528\u4E8E\u4E2D\u534E\u4E16\u672C\u603B\u8C31");
   const tree0 = await getTree(treeId);
-  if (!tree0) throw new Error(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
+  if (!tree0)
+    throw new Error(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
   const parent = tree0.people[parentHandle];
-  if (!parent) throw new Error("\u7236\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u603B\u8C31");
+  if (!parent)
+    throw new Error("\u7236\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u603B\u8C31");
   const parentInfo = await getChainInfo(treeId, parentHandle);
-  if (!parentInfo.onChain) throw new Error("\u8BE5\u8282\u70B9\u4E0D\u5728\u4E2D\u534E\u4E16\u672C\u6E90\u6D41\u94FE\u4E0A\uFF08\u65E0\u4E16\u6570\uFF09\uFF0C\u65E0\u6CD5\u7EED\u7F16\u4E0B\u4E00\u4E16");
+  if (!parentInfo.onChain)
+    throw new Error("\u8BE5\u8282\u70B9\u4E0D\u5728\u4E2D\u534E\u4E16\u672C\u6E90\u6D41\u94FE\u4E0A\uFF08\u65E0\u4E16\u6570\uFF09\uFF0C\u65E0\u6CD5\u7EED\u7F16\u4E0B\u4E00\u4E16");
   const gen = nextChainGen(parentInfo.gen, { aggregate: parentInfo.aggregate });
   let targetHandle = "";
   if (mode === "attach") {
     targetHandle = childHandle;
-    if (!targetHandle) throw new Error("\u8BF7\u9009\u62E9\u8981\u6302\u63A5\u7684\u5DF2\u6709\u8282\u70B9");
-    if (targetHandle === parentHandle) throw new Error("\u4E0D\u80FD\u628A\u8282\u70B9\u6302\u63A5\u5230\u81EA\u5DF1\u4E4B\u4E0B");
+    if (!targetHandle)
+      throw new Error("\u8BF7\u9009\u62E9\u8981\u6302\u63A5\u7684\u5DF2\u6709\u8282\u70B9");
+    if (targetHandle === parentHandle)
+      throw new Error("\u4E0D\u80FD\u628A\u8282\u70B9\u6302\u63A5\u5230\u81EA\u5DF1\u4E4B\u4E0B");
     const target = tree0.people[targetHandle];
-    if (!target) throw new Error("\u5F85\u6302\u63A5\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u603B\u8C31");
+    if (!target)
+      throw new Error("\u5F85\u6302\u63A5\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u603B\u8C31");
     const info = await getChainInfo(treeId, targetHandle);
-    if (info.onChain) throw new Error(`\u300C${target.name}\u300D\u5DF2\u5728\u6E90\u6D41\u94FE\u7B2C ${info.gen} \u4E16`);
+    if (info.onChain)
+      throw new Error(`\u300C${target.name}\u300D\u5DF2\u5728\u6E90\u6D41\u94FE\u7B2C ${info.gen} \u4E16`);
     if (target.parent_family && tree0.families[target.parent_family]) {
       throw new Error(`\u300C${target.name}\u300D\u5DF2\u6709\u7236\u6BCD\u8BB0\u5F55\uFF0C\u4E0D\u80FD\u518D\u6B21\u6302\u63A5`);
     }
@@ -28272,7 +28605,7 @@ async function appendChainNode({
     return h;
   });
   const siblings = await chainSiblings(treeId, gen, handle);
-  const childName = created.name || tree0.people[handle]?.name || "";
+  const childName = created.name || ((_a3 = tree0.people[handle]) == null ? void 0 : _a3.name) || "";
   return {
     ok: true,
     tree_id: treeId,
@@ -28287,11 +28620,14 @@ async function appendChainNode({
   };
 }
 function normalizeBatchNames(names, max = MAX_BATCH_CHAIN) {
-  if (!Array.isArray(names) || names.length < 1) throw new Error("\u8BF7\u63D0\u4F9B\u8981\u6DFB\u52A0\u7684\u540D\u5B57");
-  if (names.length > max) throw new Error(`\u4E00\u6B21\u6700\u591A\u6DFB\u52A0 ${max} \u4EE3\uFF0C\u5F53\u524D ${names.length} \u4EE3`);
+  if (!Array.isArray(names) || names.length < 1)
+    throw new Error("\u8BF7\u63D0\u4F9B\u8981\u6DFB\u52A0\u7684\u540D\u5B57");
+  if (names.length > max)
+    throw new Error(`\u4E00\u6B21\u6700\u591A\u6DFB\u52A0 ${max} \u4EE3\uFF0C\u5F53\u524D ${names.length} \u4EE3`);
   return names.map((raw, i) => {
     const s = String(raw ?? "").trim();
-    if (!s) throw new Error(`\u7B2C ${i + 1} \u4E2A\u540D\u5B57\u4E3A\u7A7A`);
+    if (!s)
+      throw new Error(`\u7B2C ${i + 1} \u4E2A\u540D\u5B57\u4E3A\u7A7A`);
     if ([...s].length > MAX_BATCH_NAME_LEN) {
       throw new Error(`\u7B2C ${i + 1} \u4E2A\u540D\u5B57\u8FC7\u957F\uFF08\u6700\u591A ${MAX_BATCH_NAME_LEN} \u5B57\uFF09`);
     }
@@ -28299,14 +28635,16 @@ function normalizeBatchNames(names, max = MAX_BATCH_CHAIN) {
   });
 }
 function restoreTreeInPlace(tree, snap) {
-  if (!tree || !snap) return;
+  if (!tree || !snap)
+    return;
   tree.people = snap.people;
   tree.families = snap.families;
   tree.version = snap.version;
   tree.updated_at = snap.updated_at;
 }
 async function treeKindOfId(treeId, masterTreeId) {
-  if (masterTreeId && treeId === masterTreeId) return TREE_KIND.MASTER;
+  if (masterTreeId && treeId === masterTreeId)
+    return TREE_KIND.MASTER;
   return treeKindOf(await metaEntryOf(treeId));
 }
 function isChainBatchTree(kind) {
@@ -28314,18 +28652,23 @@ function isChainBatchTree(kind) {
 }
 function clanFounderHandleOf(tree, entry = null) {
   const fh = resolveFounderHandle(tree, entry);
-  if (fh) return fh;
+  if (fh)
+    return fh;
   const founderKey = idKey(formatId(SEQ_PERSON, 1));
-  for (const p of Object.values(tree?.people || {})) {
-    if (idKey(p?.gramps_id) === founderKey) return p.handle;
+  for (const p of Object.values((tree == null ? void 0 : tree.people) || {})) {
+    if (idKey(p == null ? void 0 : p.gramps_id) === founderKey)
+      return p.handle;
   }
   return "";
 }
 function clanGenerationOf(tree, handle, opts = {}) {
+  var _a3, _b, _c;
   const miss = { inLineage: false, gen: 0 };
-  if (!tree?.people?.[handle]) return miss;
+  if (!((_a3 = tree == null ? void 0 : tree.people) == null ? void 0 : _a3[handle]))
+    return miss;
   const founder = clanFounderHandleOf(tree, opts.entry || null);
-  if (!founder) return miss;
+  if (!founder)
+    return miss;
   const selfGen = opts.selfGen instanceof Map ? opts.selfGen : /* @__PURE__ */ new Map();
   const selfOf = (h, fallback) => {
     const g = parseInt(selfGen.get(h), 10);
@@ -28335,12 +28678,15 @@ function clanGenerationOf(tree, handle, opts = {}) {
   const queue = [founder];
   while (queue.length) {
     const cur = queue.shift();
-    for (const fh of tree.people[cur]?.spouse_families || []) {
-      const fam = tree.families?.[fh];
-      if (!fam) continue;
-      if (fam.father_handle !== cur && fam.mother_handle !== cur) continue;
+    for (const fh of ((_b = tree.people[cur]) == null ? void 0 : _b.spouse_families) || []) {
+      const fam = (_c = tree.families) == null ? void 0 : _c[fh];
+      if (!fam)
+        continue;
+      if (fam.father_handle !== cur && fam.mother_handle !== cur)
+        continue;
       for (const c of fam.child_handles || []) {
-        if (!c || !tree.people[c] || genOf.has(c)) continue;
+        if (!c || !tree.people[c] || genOf.has(c))
+          continue;
         genOf.set(c, selfOf(c, genOf.get(cur) + 1));
         queue.push(c);
       }
@@ -28352,33 +28698,41 @@ async function clanSelfGenMap(treeId) {
   const map2 = /* @__PURE__ */ new Map();
   for (const d of await getAllDetails(treeId)) {
     const g = parseInt(attrMap(d).external_chain_gen || "", 10);
-    if (Number.isFinite(g)) map2.set(d.handle, g);
+    if (Number.isFinite(g))
+      map2.set(d.handle, g);
   }
   const tree = await getTree(treeId);
-  for (const [handle, person] of Object.entries(tree?.people || {})) {
-    if (map2.has(handle) || !isMirrorMarked(person)) continue;
+  for (const [handle, person] of Object.entries((tree == null ? void 0 : tree.people) || {})) {
+    if (map2.has(handle) || !isMirrorMarked(person))
+      continue;
     const drilled = await resolveChainGen({ treeId, handle });
-    if (drilled.gen !== null) map2.set(handle, drilled.gen);
+    if (drilled.gen !== null)
+      map2.set(handle, drilled.gen);
   }
   return map2;
 }
 async function appendChainBatch({ treeId, parentHandle, names, masterTreeId }) {
   const kind = await treeKindOfId(treeId, masterTreeId);
-  if (!isChainBatchTree(kind)) throw new Error("\u6279\u91CF\u7EED\u7F16\u4EC5\u9002\u7528\u4E8E\u4E2D\u534E\u4E16\u672C\u4E0E\u7956\u8C31");
+  if (!isChainBatchTree(kind))
+    throw new Error("\u6279\u91CF\u7EED\u7F16\u4EC5\u9002\u7528\u4E8E\u4E2D\u534E\u4E16\u672C\u4E0E\u7956\u8C31");
   const isClan = kind === TREE_KIND.CLAN;
   const list2 = normalizeBatchNames(names);
   const tree0 = await getTree(treeId);
-  if (!tree0) throw new Error(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
-  if (!tree0.people[parentHandle]) throw new Error(`\u7236\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E${isClan ? "\u7956\u8C31" : "\u603B\u8C31"}`);
+  if (!tree0)
+    throw new Error(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
+  if (!tree0.people[parentHandle])
+    throw new Error(`\u7236\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E${isClan ? "\u7956\u8C31" : "\u603B\u8C31"}`);
   let startGen;
   if (isClan) {
     const entry = await metaEntryOf(treeId);
     const info = clanGenerationOf(tree0, parentHandle, { entry, selfGen: await clanSelfGenMap(treeId) });
-    if (!info.inLineage) throw new Error("\u8BE5\u8282\u70B9\u4E0D\u5728\u7956\u8C31\u4E16\u7CFB\u5185");
+    if (!info.inLineage)
+      throw new Error("\u8BE5\u8282\u70B9\u4E0D\u5728\u7956\u8C31\u4E16\u7CFB\u5185");
     startGen = info.gen + 1;
   } else {
     const parentInfo = await getChainInfo(treeId, parentHandle);
-    if (!parentInfo.onChain) throw new Error("\u8BE5\u8282\u70B9\u4E0D\u5728\u4E2D\u534E\u4E16\u672C\u6E90\u6D41\u94FE\u4E0A\uFF08\u65E0\u4E16\u6570\uFF09\uFF0C\u65E0\u6CD5\u7EED\u7F16\u4E0B\u4E00\u4E16");
+    if (!parentInfo.onChain)
+      throw new Error("\u8BE5\u8282\u70B9\u4E0D\u5728\u4E2D\u534E\u4E16\u672C\u6E90\u6D41\u94FE\u4E0A\uFF08\u65E0\u4E16\u6570\uFF09\uFF0C\u65E0\u6CD5\u7EED\u7F16\u4E0B\u4E00\u4E16");
     startGen = nextChainGen(parentInfo.gen, { aggregate: parentInfo.aggregate });
   }
   const handles = list2.map(() => genHandle());
@@ -28440,14 +28794,16 @@ async function appendChainBatch({ treeId, parentHandle, names, masterTreeId }) {
   };
 }
 function collectSubtree(tree, rootHandle) {
+  var _a3;
   const people = /* @__PURE__ */ new Set([rootHandle]);
   const families = /* @__PURE__ */ new Set();
   const queue = [rootHandle];
   while (queue.length) {
     const h = queue.shift();
-    for (const fh of tree.people[h]?.spouse_families || []) {
+    for (const fh of ((_a3 = tree.people[h]) == null ? void 0 : _a3.spouse_families) || []) {
       const fam = tree.families[fh];
-      if (!fam || families.has(fh)) continue;
+      if (!fam || families.has(fh))
+        continue;
       families.add(fh);
       for (const p of [fam.father_handle, fam.mother_handle]) {
         if (p && !people.has(p)) {
@@ -28467,8 +28823,10 @@ function collectSubtree(tree, rootHandle) {
 }
 function surnamePinyin(surnameChar) {
   const char = String(surnameChar ?? "").trim();
-  if (!char) throw fail("\u7F3A\u5C11\u59D3\u6C0F\uFF0C\u65E0\u6CD5\u751F\u6210\u5BB6\u65CF\u6811\u7F16\u53F7\u524D\u7F00");
-  if (!/^[\u4e00-\u9fa5]$/.test(char)) throw fail(`\u59D3\u6C0F\u300C${char}\u300D\u4E0D\u662F\u5355\u4E2A\u6C49\u5B57\uFF0C\u65E0\u6CD5\u6CE8\u97F3`);
+  if (!char)
+    throw fail("\u7F3A\u5C11\u59D3\u6C0F\uFF0C\u65E0\u6CD5\u751F\u6210\u5BB6\u65CF\u6811\u7F16\u53F7\u524D\u7F00");
+  if (!/^[\u4e00-\u9fa5]$/.test(char))
+    throw fail(`\u59D3\u6C0F\u300C${char}\u300D\u4E0D\u662F\u5355\u4E2A\u6C49\u5B57\uFF0C\u65E0\u6CD5\u6CE8\u97F3`);
   let syllable = "";
   try {
     const result = pinyin(char, { mode: "surname", toneType: "none", type: "array", v: true });
@@ -28476,7 +28834,8 @@ function surnamePinyin(surnameChar) {
   } catch {
     syllable = "";
   }
-  if (!/^[a-z]+$/.test(syllable)) throw fail(`\u59D3\u6C0F\u300C${char}\u300D\u65E0\u6CD5\u6CE8\u97F3\uFF0C\u8BF7\u68C0\u67E5\u8F93\u5165`);
+  if (!/^[a-z]+$/.test(syllable))
+    throw fail(`\u59D3\u6C0F\u300C${char}\u300D\u65E0\u6CD5\u6CE8\u97F3\uFF0C\u8BF7\u68C0\u67E5\u8F93\u5165`);
   return syllable;
 }
 function nextTreeId(meta, surnameChar) {
@@ -28485,7 +28844,8 @@ function nextTreeId(meta, surnameChar) {
   const codePoint = char.codePointAt(0);
   for (let seq = 1; seq < 100; seq++) {
     const candidate = `${pinyin2}_${codePoint}_${String(seq).padStart(2, "0")}`;
-    if (!Object.values(meta.trees || {}).some((t) => t.tree_id === candidate)) return candidate;
+    if (!Object.values(meta.trees || {}).some((t) => t.tree_id === candidate))
+      return candidate;
   }
   throw fail(`\u59D3\u6C0F\u300C${char}\u300D\u4E0B\u652F\u6D3E\u5E8F\u53F7\u5DF2\u7528\u5C3D\uFF08\u226599\uFF09`);
 }
@@ -28503,19 +28863,23 @@ async function createTree({
   onBeforeWrite = null
 }) {
   const char = String(surnameChar || "").trim();
-  if (!/^[\u4e00-\u9fa5]$/.test(char)) throw fail("\u8BF7\u586B\u5199\u5355\u4E2A\u6C49\u5B57\u59D3\u6C0F");
+  if (!/^[\u4e00-\u9fa5]$/.test(char))
+    throw fail("\u8BF7\u586B\u5199\u5355\u4E2A\u6C49\u5B57\u59D3\u6C0F");
   const given = String(founderName || "").trim();
-  if (!given) throw fail("\u8BF7\u586B\u5199\u59CB\u7956\u59D3\u540D");
+  if (!given)
+    throw fail("\u8BF7\u586B\u5199\u59CB\u7956\u59D3\u540D");
   const gender = ["M", "F", "U"].includes(founderGender) ? founderGender : "M";
   const code = String(originCode || "").trim();
-  if (code && !isKnownOriginCode(code)) throw fail(`\u53D1\u6E90\u5730\u884C\u653F\u533A\u5212\u4EE3\u7801\u65E0\u6548\uFF1A${code}`);
+  if (code && !isKnownOriginCode(code))
+    throw fail(`\u53D1\u6E90\u5730\u884C\u653F\u533A\u5212\u4EE3\u7801\u65E0\u6548\uFF1A${code}`);
   const meta = await getMeta();
   const treeId = nextTreeId(meta, char);
   const handle = genHandle();
   const founderGrampsId = await nextPersonId2();
   const founderFullName = `${char}${given}`;
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  if (onBeforeWrite) await onBeforeWrite(treeId);
+  if (onBeforeWrite)
+    await onBeforeWrite(treeId);
   const tree = {
     _schema: "1.0",
     tree_id: treeId,
@@ -28588,15 +28952,18 @@ async function createTree({
 async function splitTree({ treeId, ancestorHandle, ancestorName = "", initiatorPhone }) {
   const meta = await getMeta();
   const entry = Object.values(meta.trees).find((t) => t.tree_id === treeId);
-  if (!entry) throw fail(`\u672A\u627E\u5230 tree: ${treeId}`);
+  if (!entry)
+    throw fail(`\u672A\u627E\u5230 tree: ${treeId}`);
   let newTreeId = null;
   let movedPeople = 0;
   let newTreeSurname = "";
   await updateTree(treeId, async (tree) => {
     const ancestor = tree.people[ancestorHandle];
-    if (!ancestor) throw fail("\u7956\u5148\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u8BE5\u6811");
+    if (!ancestor)
+      throw fail("\u7956\u5148\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u8BE5\u6811");
     const { people, families } = collectSubtree(tree, ancestorHandle);
-    if (people.size <= 0) throw fail("\u65E0\u8282\u70B9\u53EF\u62C6\u5206");
+    if (people.size <= 0)
+      throw fail("\u65E0\u8282\u70B9\u53EF\u62C6\u5206");
     const surnameChar = (ancestor.surname || entry.surname_char || "\u6C0F").slice(0, 1);
     newTreeId = nextTreeId(meta, surnameChar);
     const newTree = {
@@ -28608,25 +28975,31 @@ async function splitTree({ treeId, ancestorHandle, ancestorName = "", initiatorP
       people: {},
       families: {}
     };
-    for (const h of people) newTree.people[h] = { ...tree.people[h] };
-    for (const fh of families) newTree.families[fh] = { ...tree.families[fh] };
+    for (const h of people)
+      newTree.people[h] = { ...tree.people[h] };
+    for (const fh of families)
+      newTree.families[fh] = { ...tree.families[fh] };
     if (newTree.people[ancestorHandle]) {
       newTree.people[ancestorHandle].parent_family = "";
     }
     for (const p of Object.values(newTree.people)) {
-      if (p.parent_family && !newTree.families[p.parent_family]) p.parent_family = "";
+      if (p.parent_family && !newTree.families[p.parent_family])
+        p.parent_family = "";
       p.spouse_families = p.spouse_families.filter((fh) => newTree.families[fh]);
     }
     for (const f of Object.values(newTree.families)) {
-      if (f.father_handle && !newTree.people[f.father_handle]) f.father_handle = "";
-      if (f.mother_handle && !newTree.people[f.mother_handle]) f.mother_handle = "";
+      if (f.father_handle && !newTree.people[f.father_handle])
+        f.father_handle = "";
+      if (f.mother_handle && !newTree.people[f.mother_handle])
+        f.mother_handle = "";
       f.child_handles = f.child_handles.filter((c) => newTree.people[c]);
     }
     for (const h of people) {
       delete tree.people[h];
       await deleteDetail(treeId, h);
     }
-    for (const fh of families) delete tree.families[fh];
+    for (const fh of families)
+      delete tree.families[fh];
     movedPeople = people.size;
     await saveTree(newTree);
     const newEntry = {
@@ -28662,11 +29035,16 @@ function spouseSlots(selfGender, spouseGender) {
   const self = norm5(selfGender);
   const spouse = norm5(spouseGender);
   let selfSlot;
-  if (self === "F") selfSlot = "mother";
-  else if (self === "M") selfSlot = "father";
-  else if (spouse === "F") selfSlot = "father";
-  else if (spouse === "M") selfSlot = "mother";
-  else selfSlot = "father";
+  if (self === "F")
+    selfSlot = "mother";
+  else if (self === "M")
+    selfSlot = "father";
+  else if (spouse === "F")
+    selfSlot = "father";
+  else if (spouse === "M")
+    selfSlot = "mother";
+  else
+    selfSlot = "father";
   return { selfSlot, spouseSlot: selfSlot === "father" ? "mother" : "father" };
 }
 async function addSpouseNode({
@@ -28679,23 +29057,30 @@ async function addSpouseNode({
   childHandle = "",
   extraAttributes = []
 }) {
+  var _a3;
   const tree0 = await getTree(treeId);
-  if (!tree0) throw new Error(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
+  if (!tree0)
+    throw new Error(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
   const person = tree0.people[personHandle];
-  if (!person) throw new Error("\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u8BE5\u6811");
+  if (!person)
+    throw new Error("\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u8BE5\u6811");
   const { selfSlot, spouseSlot } = spouseSlots(person.gender, gender);
   let targetHandle = "";
   if (mode === "attach") {
     targetHandle = childHandle;
-    if (!targetHandle) throw new Error("\u8BF7\u9009\u62E9\u8981\u8BBE\u4E3A\u914D\u5076\u7684\u5DF2\u6709\u8282\u70B9");
-    if (targetHandle === personHandle) throw new Error("\u4E0D\u80FD\u628A\u81EA\u5DF1\u8BBE\u4E3A\u914D\u5076");
+    if (!targetHandle)
+      throw new Error("\u8BF7\u9009\u62E9\u8981\u8BBE\u4E3A\u914D\u5076\u7684\u5DF2\u6709\u8282\u70B9");
+    if (targetHandle === personHandle)
+      throw new Error("\u4E0D\u80FD\u628A\u81EA\u5DF1\u8BBE\u4E3A\u914D\u5076");
     const target = tree0.people[targetHandle];
-    if (!target) throw new Error("\u8BE5\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u8BE5\u6811");
+    if (!target)
+      throw new Error("\u8BE5\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u8BE5\u6811");
     const dup = (person.spouse_families || []).some((fh) => {
       const fam = tree0.families[fh];
       return fam && (fam.father_handle === targetHandle || fam.mother_handle === targetHandle);
     });
-    if (dup) throw new Error(`\u300C${target.name}\u300D\u5DF2\u662F\u672C\u4EBA\u7684\u914D\u5076`);
+    if (dup)
+      throw new Error(`\u300C${target.name}\u300D\u5DF2\u662F\u672C\u4EBA\u7684\u914D\u5076`);
   } else if (!String(name).trim()) {
     throw new Error("\u8BF7\u586B\u5199\u914D\u5076\u59D3\u540D");
   }
@@ -28727,9 +29112,10 @@ async function addSpouseNode({
       created.name = tree.people[spouseHandle].name;
       const attrs = [];
       for (const a of extraAttributes || []) {
-        const key = String(a?.key || "").trim();
-        const value = String(a?.value ?? "").trim();
-        if (key && value) attrs.push({ key, value, type: key });
+        const key = String((a == null ? void 0 : a.key) || "").trim();
+        const value = String((a == null ? void 0 : a.value) ?? "").trim();
+        if (key && value)
+          attrs.push({ key, value, type: key });
       }
       await saveDetail({
         tree_id: treeId,
@@ -28767,7 +29153,7 @@ async function addSpouseNode({
     }
     return { spouseHandle, famHandle, reusedExistingFamily };
   });
-  const spouseName = created.name || tree0.people[result.spouseHandle]?.name || "";
+  const spouseName = created.name || ((_a3 = tree0.people[result.spouseHandle]) == null ? void 0 : _a3.name) || "";
   return {
     ok: true,
     tree_id: treeId,
@@ -28794,11 +29180,13 @@ async function reparentNode({
 }) {
   const tree0 = await getTree(treeId);
   const person = tree0.people[personHandle];
-  if (!person) throw fail("\u8282\u70B9\u4E0D\u5B58\u5728");
+  if (!person)
+    throw fail("\u8282\u70B9\u4E0D\u5B58\u5728");
   const refText = String(newParentRef || "").trim();
   const hit = await resolveNode(refText, treeId, { targetTreeId, listIdsFn });
   if (!hit) {
-    if (targetTreeId) throw fail(`\u76EE\u6807\u5BB6\u65CF\u6811 ${targetTreeId} \u4E2D\u627E\u4E0D\u5230\u7F16\u53F7\u4E3A\u300C${refText}\u300D\u7684\u8282\u70B9`);
+    if (targetTreeId)
+      throw fail(`\u76EE\u6807\u5BB6\u65CF\u6811 ${targetTreeId} \u4E2D\u627E\u4E0D\u5230\u7F16\u53F7\u4E3A\u300C${refText}\u300D\u7684\u8282\u70B9`);
     throw fail(`\u627E\u4E0D\u5230\u7F16\u53F7\u4E3A\u300C${refText}\u300D\u7684\u8282\u70B9`);
   }
   if (hit.tree_id !== treeId) {
@@ -28815,7 +29203,8 @@ async function reparentNode({
     });
   }
   const parentHandle = hit.handle;
-  if (parentHandle === personHandle) throw fail("\u4E0D\u80FD\u628A\u8282\u70B9\u8BBE\u4E3A\u81EA\u5DF1\u7684\u7236\u8282\u70B9");
+  if (parentHandle === personHandle)
+    throw fail("\u4E0D\u80FD\u628A\u8282\u70B9\u8BBE\u4E3A\u81EA\u5DF1\u7684\u7236\u8282\u70B9");
   const parent = tree0.people[parentHandle];
   if (descendantsOf(tree0, personHandle).has(parentHandle)) {
     throw fail(`\u300C${parent.name}\u300D\u662F\u300C${person.name}\u300D\u7684\u540E\u4EE3\uFF0C\u4E0D\u80FD\u4F5C\u4E3A\u5176\u7236\u8282\u70B9\uFF08\u4F1A\u5F62\u6210\u73AF\uFF09`);
@@ -28860,7 +29249,8 @@ async function reparentNode({
       const needFamily = !reusableParentFamily(tree, parentHandle);
       const famId = needFamily ? await nextFamilyId2() : "";
       const { family: target, created: createdFamily } = ensureParentFamily(tree, parentHandle, famId);
-      if (!target.child_handles.includes(personHandle)) target.child_handles.push(personHandle);
+      if (!target.child_handles.includes(personHandle))
+        target.child_handles.push(personHandle);
       p.parent_family = target.handle;
       return {
         family_handle: target.handle,
@@ -28883,13 +29273,16 @@ async function reparentNode({
     const gens = /* @__PURE__ */ new Map();
     for (const d of all) {
       const g = attrMap(d).external_chain_gen;
-      if (g !== void 0 && g !== "") gens.set(d.handle, parseInt(g, 10));
+      if (g !== void 0 && g !== "")
+        gens.set(d.handle, parseInt(g, 10));
     }
     let count = 0;
     for (const h of affected) {
-      if (!gens.has(h)) continue;
+      if (!gens.has(h))
+        continue;
       const detail = await getDetail(treeId, h);
-      if (!detail) continue;
+      if (!detail)
+        continue;
       const next = Math.max(0, gens.get(h) + delta);
       const attrs = (detail.attributes || []).filter((a) => a.key !== "external_chain_gen");
       attrs.push({ key: "external_chain_gen", value: String(next), type: "external_chain_gen" });
@@ -28917,12 +29310,16 @@ async function reparentNode({
 }
 function resolvePersonRef(tree, ref) {
   const s = String(ref || "").trim();
-  if (!s) return null;
-  if (tree.people[s]) return s;
+  if (!s)
+    return null;
+  if (tree.people[s])
+    return s;
   const wantKey = idKey(s);
-  if (!wantKey || !wantKey.startsWith("person:")) return null;
+  if (!wantKey || !wantKey.startsWith("person:"))
+    return null;
   for (const p of Object.values(tree.people)) {
-    if (idKey(p.gramps_id) === wantKey) return p.handle;
+    if (idKey(p.gramps_id) === wantKey)
+      return p.handle;
   }
   return null;
 }
@@ -28930,12 +29327,13 @@ function parentSlot(gender) {
   return gender === "F" ? "mother" : "father";
 }
 function descendantsOf(tree, handle) {
+  var _a3, _b;
   const out = /* @__PURE__ */ new Set();
   const stack = [handle];
   while (stack.length) {
     const h = stack.pop();
-    for (const fh of tree.people[h]?.spouse_families || []) {
-      for (const c of tree.families[fh]?.child_handles || []) {
+    for (const fh of ((_a3 = tree.people[h]) == null ? void 0 : _a3.spouse_families) || []) {
+      for (const c of ((_b = tree.families[fh]) == null ? void 0 : _b.child_handles) || []) {
         if (c && c !== handle && !out.has(c)) {
           out.add(c);
           stack.push(c);
@@ -28948,8 +29346,10 @@ function descendantsOf(tree, handle) {
 async function removeBranchLink(treeId, personHandle) {
   return updateTree(treeId, async (tree) => {
     const person = tree.people[personHandle];
-    if (!person) throw new Error("person not found");
-    for (const k of EXTERNAL_KEYS) person[k] = "";
+    if (!person)
+      throw new Error("person not found");
+    for (const k of EXTERNAL_KEYS)
+      person[k] = "";
     return { ok: true };
   });
 }
@@ -28962,8 +29362,8 @@ function fail(message, status = 400) {
   return e;
 }
 function treeLabelOf(meta, treeId) {
-  const entry = Object.values(meta?.trees || {}).find((t) => t?.tree_id === treeId);
-  return entry?.display_title ? `${entry.display_title}\uFF08${treeId}\uFF09` : treeId;
+  const entry = Object.values((meta == null ? void 0 : meta.trees) || {}).find((t) => (t == null ? void 0 : t.tree_id) === treeId);
+  return (entry == null ? void 0 : entry.display_title) ? `${entry.display_title}\uFF08${treeId}\uFF09` : treeId;
 }
 async function treeLabelFor(treeId) {
   try {
@@ -28974,7 +29374,8 @@ async function treeLabelFor(treeId) {
 }
 function reusableParentFamily(tree, parentHandle) {
   const par = tree.people[parentHandle];
-  if (!par) return "";
+  if (!par)
+    return "";
   const slot = parentSlot(par.gender);
   const slotKey = slot === "father" ? "father_handle" : "mother_handle";
   const otherKey = slot === "father" ? "mother_handle" : "father_handle";
@@ -28984,15 +29385,19 @@ function reusableParentFamily(tree, parentHandle) {
 }
 function ensureParentFamily(tree, parentHandle, allocFamilyId = null) {
   const par = tree.people[parentHandle];
-  if (!par) throw fail("\u7236\u8282\u70B9\u4E0D\u5B58\u5728");
+  if (!par)
+    throw fail("\u7236\u8282\u70B9\u4E0D\u5B58\u5728");
   const slot = parentSlot(par.gender);
   const slotKey = slot === "father" ? "father_handle" : "mother_handle";
   const otherKey = slot === "father" ? "mother_handle" : "father_handle";
-  if (!Array.isArray(par.spouse_families)) par.spouse_families = [];
+  if (!Array.isArray(par.spouse_families))
+    par.spouse_families = [];
   const fams = par.spouse_families.map((h) => tree.families[h]).filter(Boolean);
   let target = fams.find((f) => f[slotKey] === parentHandle && !f[otherKey]) || null;
-  if (!target) target = fams.find((f) => f[slotKey] === parentHandle) || null;
-  if (target) return { family: target, created: false };
+  if (!target)
+    target = fams.find((f) => f[slotKey] === parentHandle) || null;
+  if (target)
+    return { family: target, created: false };
   const fh = genHandle();
   tree.families[fh] = {
     handle: fh,
@@ -29005,14 +29410,15 @@ function ensureParentFamily(tree, parentHandle, allocFamilyId = null) {
   return { family: tree.families[fh], created: true };
 }
 function lineageOrder(tree, rootHandle) {
+  var _a3, _b;
   const out = [];
   const seen = /* @__PURE__ */ new Set([rootHandle]);
   const queue = [rootHandle];
   while (queue.length) {
     const h = queue.shift();
     out.push(h);
-    for (const fh of tree.people[h]?.spouse_families || []) {
-      for (const c of tree.families[fh]?.child_handles || []) {
+    for (const fh of ((_a3 = tree.people[h]) == null ? void 0 : _a3.spouse_families) || []) {
+      for (const c of ((_b = tree.families[fh]) == null ? void 0 : _b.child_handles) || []) {
         if (c && c !== h && !seen.has(c) && tree.people[c]) {
           seen.add(c);
           queue.push(c);
@@ -29023,16 +29429,20 @@ function lineageOrder(tree, rootHandle) {
   return out;
 }
 function subtreeHeight(tree, rootHandle) {
-  if (!tree.people[rootHandle]) return 0;
+  var _a3, _b;
+  if (!tree.people[rootHandle])
+    return 0;
   let max = 1;
   const seen = /* @__PURE__ */ new Set([rootHandle]);
   const queue = [[rootHandle, 1]];
   while (queue.length) {
     const [h, d] = queue.shift();
-    if (d > max) max = d;
-    for (const fh of tree.people[h]?.spouse_families || []) {
-      for (const c of tree.families[fh]?.child_handles || []) {
-        if (!c || c === h || seen.has(c) || !tree.people[c]) continue;
+    if (d > max)
+      max = d;
+    for (const fh of ((_a3 = tree.people[h]) == null ? void 0 : _a3.spouse_families) || []) {
+      for (const c of ((_b = tree.families[fh]) == null ? void 0 : _b.child_handles) || []) {
+        if (!c || c === h || seen.has(c) || !tree.people[c])
+          continue;
         seen.add(c);
         queue.push([c, d + 1]);
       }
@@ -29041,14 +29451,17 @@ function subtreeHeight(tree, rootHandle) {
   return max;
 }
 function generationOf(tree, handle) {
+  var _a3;
   let depth = 1;
   let cur = handle;
   const seen = /* @__PURE__ */ new Set([handle]);
   while (true) {
-    const fam = tree.families[tree.people[cur]?.parent_family || ""];
-    if (!fam) break;
+    const fam = tree.families[((_a3 = tree.people[cur]) == null ? void 0 : _a3.parent_family) || ""];
+    if (!fam)
+      break;
     const up = [fam.father_handle, fam.mother_handle].filter((h) => h && h !== cur && tree.people[h]).find((h) => !seen.has(h));
-    if (!up) break;
+    if (!up)
+      break;
     seen.add(up);
     cur = up;
     depth += 1;
@@ -29058,8 +29471,10 @@ function generationOf(tree, handle) {
 function familyIsDead(fam) {
   const parents = [fam.father_handle, fam.mother_handle].filter(Boolean);
   const kids = (fam.child_handles || []).filter(Boolean);
-  if (parents.length === 0 && kids.length === 0) return true;
-  if (kids.length === 0 && parents.length <= 1) return true;
+  if (parents.length === 0 && kids.length === 0)
+    return true;
+  if (kids.length === 0 && parents.length <= 1)
+    return true;
   return false;
 }
 function repairTreeRefs(tree) {
@@ -29098,17 +29513,21 @@ function checkTreeIntegrity(tree) {
   const problems = [];
   for (const p of Object.values(tree.people || {})) {
     for (const fh of p.spouse_families || []) {
-      if (!tree.families[fh]) problems.push(`\u8282\u70B9 ${p.handle} \u7684 spouse_families \u2192 ${fh} \u4E0D\u5B58\u5728`);
+      if (!tree.families[fh])
+        problems.push(`\u8282\u70B9 ${p.handle} \u7684 spouse_families \u2192 ${fh} \u4E0D\u5B58\u5728`);
     }
     if (p.parent_family && !tree.families[p.parent_family]) {
       problems.push(`\u8282\u70B9 ${p.handle} \u7684 parent_family \u2192 ${p.parent_family} \u4E0D\u5B58\u5728`);
     }
   }
   for (const f of Object.values(tree.families || {})) {
-    if (f.father_handle && !tree.people[f.father_handle]) problems.push(`\u5BB6\u65CF ${f.handle} \u7684\u7236 \u2192 ${f.father_handle} \u4E0D\u5B58\u5728`);
-    if (f.mother_handle && !tree.people[f.mother_handle]) problems.push(`\u5BB6\u65CF ${f.handle} \u7684\u6BCD \u2192 ${f.mother_handle} \u4E0D\u5B58\u5728`);
+    if (f.father_handle && !tree.people[f.father_handle])
+      problems.push(`\u5BB6\u65CF ${f.handle} \u7684\u7236 \u2192 ${f.father_handle} \u4E0D\u5B58\u5728`);
+    if (f.mother_handle && !tree.people[f.mother_handle])
+      problems.push(`\u5BB6\u65CF ${f.handle} \u7684\u6BCD \u2192 ${f.mother_handle} \u4E0D\u5B58\u5728`);
     for (const c of f.child_handles || []) {
-      if (!tree.people[c]) problems.push(`\u5BB6\u65CF ${f.handle} \u7684\u5B50\u5973 \u2192 ${c} \u4E0D\u5B58\u5728`);
+      if (!tree.people[c])
+        problems.push(`\u5BB6\u65CF ${f.handle} \u7684\u5B50\u5973 \u2192 ${c} \u4E0D\u5B58\u5728`);
     }
   }
   return problems;
@@ -29125,30 +29544,40 @@ function removePeopleFromTree(tree, handles) {
   const dead = /* @__PURE__ */ new Set();
   for (const fam of Object.values(tree.families || {})) {
     const touches = [fam.father_handle, fam.mother_handle, ...fam.child_handles || []].some((x) => x && gone.has(x));
-    if (!touches) continue;
-    if (gone.has(fam.father_handle)) fam.father_handle = "";
-    if (gone.has(fam.mother_handle)) fam.mother_handle = "";
+    if (!touches)
+      continue;
+    if (gone.has(fam.father_handle))
+      fam.father_handle = "";
+    if (gone.has(fam.mother_handle))
+      fam.mother_handle = "";
     fam.child_handles = (fam.child_handles || []).filter((c) => !gone.has(c) && tree.people[c]);
-    if (familyIsDead(fam)) dead.add(fam.handle);
+    if (familyIsDead(fam))
+      dead.add(fam.handle);
   }
-  for (const fh of dead) delete tree.families[fh];
+  for (const fh of dead)
+    delete tree.families[fh];
   repairTreeRefs(tree);
   return { removed_people: removedPeople, removed_families: [...dead] };
 }
 function promoteChildrenUp(tree, nodeHandle) {
   const node = tree.people[nodeHandle];
-  if (!node) return { promoted: [], moved_to_family: "" };
+  if (!node)
+    return { promoted: [], moved_to_family: "" };
   const targetFam = node.parent_family && tree.families[node.parent_family] ? tree.families[node.parent_family] : null;
   const promoted = [];
   const dead = /* @__PURE__ */ new Set();
   for (const fh of node.spouse_families || []) {
     const fam = tree.families[fh];
-    if (!fam || targetFam && fam.handle === targetFam.handle) continue;
+    if (!fam || targetFam && fam.handle === targetFam.handle)
+      continue;
     const other = fam.father_handle === nodeHandle ? fam.mother_handle : fam.father_handle;
-    if (fam.father_handle === nodeHandle) fam.father_handle = "";
-    if (fam.mother_handle === nodeHandle) fam.mother_handle = "";
+    if (fam.father_handle === nodeHandle)
+      fam.father_handle = "";
+    if (fam.mother_handle === nodeHandle)
+      fam.mother_handle = "";
     if (other && tree.people[other]) {
-      if (familyIsDead(fam)) dead.add(fam.handle);
+      if (familyIsDead(fam))
+        dead.add(fam.handle);
       continue;
     }
     const kids = (fam.child_handles || []).filter((c) => c && c !== nodeHandle && tree.people[c]);
@@ -29156,8 +29585,10 @@ function promoteChildrenUp(tree, nodeHandle) {
       promoted.push(k);
       const kid = tree.people[k];
       if (targetFam) {
-        if (!targetFam.child_handles.includes(k)) targetFam.child_handles.push(k);
-        if (!kid.parent_family || kid.parent_family === fam.handle) kid.parent_family = targetFam.handle;
+        if (!targetFam.child_handles.includes(k))
+          targetFam.child_handles.push(k);
+        if (!kid.parent_family || kid.parent_family === fam.handle)
+          kid.parent_family = targetFam.handle;
       } else if (!kid.parent_family || kid.parent_family === fam.handle) {
         kid.parent_family = "";
       }
@@ -29165,8 +29596,10 @@ function promoteChildrenUp(tree, nodeHandle) {
     fam.child_handles = (fam.child_handles || []).filter((c) => !kids.includes(c));
     dead.add(fam.handle);
   }
-  for (const fh of dead) delete tree.families[fh];
-  if (targetFam) targetFam.child_handles = (targetFam.child_handles || []).filter((c) => c !== nodeHandle);
+  for (const fh of dead)
+    delete tree.families[fh];
+  if (targetFam)
+    targetFam.child_handles = (targetFam.child_handles || []).filter((c) => c !== nodeHandle);
   delete tree.people[nodeHandle];
   repairTreeRefs(tree);
   return { promoted, moved_to_family: targetFam ? targetFam.handle : "" };
@@ -29181,9 +29614,10 @@ async function scanExternalRefs({ treeId, handles, listIdsFn = listTreeIds, meta
     } catch {
       tree = null;
     }
-    for (const [h, p] of Object.entries(tree?.people || {})) {
-      const target = String(p?.external_person_handle || "");
-      if (!target || !handles.has(target)) continue;
+    for (const [h, p] of Object.entries((tree == null ? void 0 : tree.people) || {})) {
+      const target = String((p == null ? void 0 : p.external_person_handle) || "");
+      if (!target || !handles.has(target))
+        continue;
       hits.set(`${id}:${h}`, {
         tree_id: id,
         handle: h,
@@ -29193,8 +29627,9 @@ async function scanExternalRefs({ treeId, handles, listIdsFn = listTreeIds, meta
       });
     }
   }
-  for (const e of Object.values(meta?.trees || {})) {
-    if (!e?.tree_id || e.tree_id === treeId) continue;
+  for (const e of Object.values((meta == null ? void 0 : meta.trees) || {})) {
+    if (!(e == null ? void 0 : e.tree_id) || e.tree_id === treeId)
+      continue;
     if (e.founder_handle && handles.has(e.founder_handle)) {
       hits.set(`${e.tree_id}:founder-meta`, {
         tree_id: e.tree_id,
@@ -29235,16 +29670,19 @@ async function deleteNode({
   charge = null,
   refund: refund2 = null
 } = {}) {
-  if (!treeId || !personHandle) throw fail("\u7F3A\u5C11 tree_id \u6216 person_handle");
+  if (!treeId || !personHandle)
+    throw fail("\u7F3A\u5C11 tree_id \u6216 person_handle");
   const tree0 = await getTree(treeId);
-  if (!tree0) throw fail(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
+  if (!tree0)
+    throw fail(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
   const modeNorm = mode === DELETE_MODE_PROMOTE ? DELETE_MODE_PROMOTE : DELETE_MODE_SUBTREE;
   const m = meta || await metaEntryOf(treeId);
   if (treeId === masterTreeId || treeKindOf(m) === TREE_KIND.MASTER) {
     throw fail("\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u8282\u70B9\u4E0D\u53EF\u5220\u9664\uFF1A\u603B\u8C31\u662F\u5168\u4F53\u5BB6\u65CF\u6811\u7684\u8BA4\u7956\u771F\u6E90\uFF0C\u8C03\u6574\u8BF7\u8054\u7CFB\u603B\u7F16\u8F91", 403);
   }
   const person = tree0.people[personHandle];
-  if (!person) throw fail("\u8282\u70B9\u4E0D\u5B58\u5728");
+  if (!person)
+    throw fail("\u8282\u70B9\u4E0D\u5B58\u5728");
   if (String(person.external_mirror || "") === "true" || isFounderMirror(person, masterTreeId)) {
     throw fail(
       `\u8BE5\u8282\u70B9\u662F\u5916\u6811\u955C\u50CF\u8282\u70B9\uFF08${LINK_LABEL[person.external_link_type] || "\u8DE8\u6811\u5173\u8054"}\uFF09\uFF0C\u5220\u9664\u8BF7\u5230\u5176\u771F\u8EAB\u6240\u5728\u5BB6\u65CF\u6811\u64CD\u4F5C`,
@@ -29259,7 +29697,8 @@ async function deleteNode({
   }
   if (modeNorm === DELETE_MODE_SUBTREE) {
     for (const h of deleted) {
-      if (h === personHandle) continue;
+      if (h === personHandle)
+        continue;
       const p = tree0.people[h];
       if (p && (String(p.external_mirror || "") === "true" || isFounderMirror(p, masterTreeId))) {
         throw fail(`\u5220\u9664\u8303\u56F4\u5185\u542B\u5916\u6811\u955C\u50CF\u8282\u70B9\u300C${p.name || h}\u300D\uFF08\u5176\u771F\u8EAB\u5728\u522B\u7684\u5BB6\u65CF\u6811\uFF09\uFF0C\u8BF7\u5148\u5904\u7406\u8BE5\u955C\u50CF`, 403);
@@ -29273,17 +29712,27 @@ async function deleteNode({
     metaAll = null;
   }
   const refs = await scanExternalRefs({ treeId, handles: deleted, listIdsFn, meta: metaAll });
-  if (refs.length) throw await externalRefRefusal(refs);
+  if (refs.length)
+    throw await externalRefRefusal(refs);
   const preview = JSON.parse(JSON.stringify(tree0));
   const plan = modeNorm === DELETE_MODE_PROMOTE ? promoteChildrenUp(preview, personHandle) : { promoted: [], moved_to_family: "", ...removePeopleFromTree(preview, deleted) };
-  const peopleList = lineage.filter((h) => deleted.has(h)).map((h) => ({ handle: h, name: tree0.people[h]?.name || "", gramps_id: tree0.people[h]?.gramps_id || "" }));
+  const peopleList = lineage.filter((h) => deleted.has(h)).map((h) => {
+    var _a3, _b;
+    return { handle: h, name: ((_a3 = tree0.people[h]) == null ? void 0 : _a3.name) || "", gramps_id: ((_b = tree0.people[h]) == null ? void 0 : _b.gramps_id) || "" };
+  });
   const familiesCount = Object.keys(tree0.families || {}).length - Object.keys(preview.families || {}).length;
-  const promotedList = (plan.promoted || []).map((h) => ({
-    handle: h,
-    name: tree0.people[h]?.name || "",
-    gramps_id: tree0.people[h]?.gramps_id || ""
-  }));
-  const nameOf = (h) => tree0.people[h]?.name || h;
+  const promotedList = (plan.promoted || []).map((h) => {
+    var _a3, _b;
+    return {
+      handle: h,
+      name: ((_a3 = tree0.people[h]) == null ? void 0 : _a3.name) || "",
+      gramps_id: ((_b = tree0.people[h]) == null ? void 0 : _b.gramps_id) || ""
+    };
+  });
+  const nameOf = (h) => {
+    var _a3;
+    return ((_a3 = tree0.people[h]) == null ? void 0 : _a3.name) || h;
+  };
   const report = {
     ok: true,
     dry_run: !!dryRun,
@@ -29341,7 +29790,8 @@ async function deleteNode({
       }
       const res = modeNorm === DELETE_MODE_PROMOTE ? { ...promoteChildrenUp(tree, personHandle), removed_families: [] } : removePeopleFromTree(tree, deleted);
       const problems = checkTreeIntegrity(tree);
-      if (problems.length) throw fail(`\u5220\u9664\u540E\u7ED3\u6784\u6821\u9A8C\u5931\u8D25\uFF1A${problems.slice(0, 3).join("\uFF1B")}`, 500);
+      if (problems.length)
+        throw fail(`\u5220\u9664\u540E\u7ED3\u6784\u6821\u9A8C\u5931\u8D25\uFF1A${problems.slice(0, 3).join("\uFF1B")}`, 500);
       return res;
     });
   } catch (e) {
@@ -29371,24 +29821,30 @@ async function deleteNode({
   };
 }
 async function resolveCrossTreeParent({ sourceTreeId, ref, targetTreeId = "", listIdsFn = listTreeIds }) {
+  var _a3;
   const refText = String(ref || "").trim();
-  if (!refText) return null;
+  if (!refText)
+    return null;
   const ids = (await listIdsFn()).filter((id) => id && id !== sourceTreeId);
   const candidates = [];
   for (const id of ids) {
-    if (targetTreeId && id !== targetTreeId) continue;
+    if (targetTreeId && id !== targetTreeId)
+      continue;
     let tree = null;
     try {
       tree = await getTree(id);
     } catch {
       tree = null;
     }
-    if (!tree?.people) continue;
+    if (!(tree == null ? void 0 : tree.people))
+      continue;
     const h = resolvePersonRef(tree, refText);
-    if (h) candidates.push({ tree_id: id, handle: h, name: tree.people[h]?.name || "" });
+    if (h)
+      candidates.push({ tree_id: id, handle: h, name: ((_a3 = tree.people[h]) == null ? void 0 : _a3.name) || "" });
   }
   if (!candidates.length) {
-    if (targetTreeId) throw fail(`\u76EE\u6807\u5BB6\u65CF\u6811 ${targetTreeId} \u4E2D\u627E\u4E0D\u5230\u7F16\u53F7\u4E3A\u300C${refText}\u300D\u7684\u8282\u70B9`);
+    if (targetTreeId)
+      throw fail(`\u76EE\u6807\u5BB6\u65CF\u6811 ${targetTreeId} \u4E2D\u627E\u4E0D\u5230\u7F16\u53F7\u4E3A\u300C${refText}\u300D\u7684\u8282\u70B9`);
     return null;
   }
   if (candidates.length > 1) {
@@ -29399,27 +29855,34 @@ async function resolveCrossTreeParent({ sourceTreeId, ref, targetTreeId = "", li
 }
 function moveLineage({ src, dst, rootHandle, targetParentHandle, newFamilyIds = [] }) {
   const root = src.people[rootHandle];
-  if (!root) throw fail("\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u6E90\u5BB6\u65CF\u6811");
-  if (!dst.people[targetParentHandle]) throw fail("\u76EE\u6807\u7236\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u76EE\u6807\u5BB6\u65CF\u6811");
+  if (!root)
+    throw fail("\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u6E90\u5BB6\u65CF\u6811");
+  if (!dst.people[targetParentHandle])
+    throw fail("\u76EE\u6807\u7236\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u76EE\u6807\u5BB6\u65CF\u6811");
   const order = lineageOrder(src, rootHandle);
   const moving = new Set(order);
   const familyHandles = [];
   const srcFamilyIds = new Set(Object.keys(src.families || {}));
   for (const fam of Object.values(src.families || {})) {
-    if (!(fam.child_handles || []).length) continue;
-    if (!moving.has(fam.father_handle) && !moving.has(fam.mother_handle)) continue;
+    if (!(fam.child_handles || []).length)
+      continue;
+    if (!moving.has(fam.father_handle) && !moving.has(fam.mother_handle))
+      continue;
     familyHandles.push(fam.handle);
   }
   const trimmed2 = [];
   for (const [h, p] of Object.entries(dst.people)) {
-    if (moving.has(h)) continue;
+    if (moving.has(h))
+      continue;
     const target = String(p.external_person_handle || "");
-    if (!target || !moving.has(target)) continue;
+    if (!target || !moving.has(target))
+      continue;
     if ((p.spouse_families || []).length === 0) {
       removePeopleFromTree(dst, /* @__PURE__ */ new Set([h]));
       trimmed2.push({ tree_id: dst.tree_id, handle: h, name: p.name || "", action: "deleted" });
     } else {
-      for (const k of EXTERNAL_KEYS) p[k] = "";
+      for (const k of EXTERNAL_KEYS)
+        p[k] = "";
       trimmed2.push({ tree_id: dst.tree_id, handle: h, name: p.name || "", action: "unlinked" });
     }
   }
@@ -29440,13 +29903,16 @@ function moveLineage({ src, dst, rootHandle, targetParentHandle, newFamilyIds = 
     const f = { ...src.families[fh] };
     delete src.families[fh];
     familyIdMap[fh] = f.gramps_id || "";
-    if (f.father_handle && !moving.has(f.father_handle)) f.father_handle = "";
-    if (f.mother_handle && !moving.has(f.mother_handle)) f.mother_handle = "";
+    if (f.father_handle && !moving.has(f.father_handle))
+      f.father_handle = "";
+    if (f.mother_handle && !moving.has(f.mother_handle))
+      f.mother_handle = "";
     f.child_handles = (f.child_handles || []).filter((c) => dst.people[c]);
     dst.families[fh] = f;
     familyIdMap[fh] = f.gramps_id;
   }
-  if (!targetFamily.child_handles.includes(rootHandle)) targetFamily.child_handles.push(rootHandle);
+  if (!targetFamily.child_handles.includes(rootHandle))
+    targetFamily.child_handles.push(rootHandle);
   dst.people[rootHandle].parent_family = targetFamily.handle;
   if (root.parent_family && srcFamilyIds.has(root.parent_family) && src.families[root.parent_family]) {
     src.families[root.parent_family].child_handles = (src.families[root.parent_family].child_handles || []).filter(
@@ -29479,18 +29945,27 @@ async function reparentAcrossTrees({
   charge = null,
   refund: refund2 = null
 } = {}) {
-  if (!targetTreeId) throw fail("\u7F3A\u5C11\u76EE\u6807\u5BB6\u65CF\u6811");
-  if (treeId === targetTreeId) throw fail("\u76EE\u6807\u5BB6\u65CF\u6811\u4E0E\u5F53\u524D\u5BB6\u65CF\u6811\u76F8\u540C\uFF1A\u540C\u6811\u6539\u7236\u8BF7\u76F4\u63A5\u586B\u65B0\u7236\u8282\u70B9\u7F16\u53F7");
-  if (treeId === masterTreeId) throw fail("\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u8282\u70B9\u4E0D\u53EF\u8FC1\u51FA\uFF1A\u8BF7\u5728\u672C\u6811\u5185\u6539\u6302\u7236\u8282\u70B9", 403);
-  if (targetTreeId === masterTreeId) throw fail("\u4E0D\u53EF\u628A\u8282\u70B9\u8FC1\u5165\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\uFF1A\u603B\u8C31\u7531\u603B\u7F16\u8F91\u300C\u7EED\u7F16\u300D\u7EF4\u62A4", 403);
+  var _a3, _b;
+  if (!targetTreeId)
+    throw fail("\u7F3A\u5C11\u76EE\u6807\u5BB6\u65CF\u6811");
+  if (treeId === targetTreeId)
+    throw fail("\u76EE\u6807\u5BB6\u65CF\u6811\u4E0E\u5F53\u524D\u5BB6\u65CF\u6811\u76F8\u540C\uFF1A\u540C\u6811\u6539\u7236\u8BF7\u76F4\u63A5\u586B\u65B0\u7236\u8282\u70B9\u7F16\u53F7");
+  if (treeId === masterTreeId)
+    throw fail("\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u8282\u70B9\u4E0D\u53EF\u8FC1\u51FA\uFF1A\u8BF7\u5728\u672C\u6811\u5185\u6539\u6302\u7236\u8282\u70B9", 403);
+  if (targetTreeId === masterTreeId)
+    throw fail("\u4E0D\u53EF\u628A\u8282\u70B9\u8FC1\u5165\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\uFF1A\u603B\u8C31\u7531\u603B\u7F16\u8F91\u300C\u7EED\u7F16\u300D\u7EF4\u62A4", 403);
   const src0 = await getTree(treeId);
-  if (!src0) throw fail(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
+  if (!src0)
+    throw fail(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
   const dst0 = await getTree(targetTreeId);
-  if (!dst0) throw fail(`\u76EE\u6807\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728: ${targetTreeId}`);
+  if (!dst0)
+    throw fail(`\u76EE\u6807\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728: ${targetTreeId}`);
   const person = src0.people[personHandle];
-  if (!person) throw fail("\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u5F53\u524D\u5BB6\u65CF\u6811");
+  if (!person)
+    throw fail("\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u5F53\u524D\u5BB6\u65CF\u6811");
   const targetParent = dst0.people[targetHandle];
-  if (!targetParent) throw fail("\u76EE\u6807\u7236\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u76EE\u6807\u5BB6\u65CF\u6811");
+  if (!targetParent)
+    throw fail("\u76EE\u6807\u7236\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u76EE\u6807\u5BB6\u65CF\u6811");
   if (String(person.external_mirror || "") === "true" || isFounderMirror(person, masterTreeId)) {
     throw fail(
       `\u8BE5\u8282\u70B9\u662F\u5916\u6811\u955C\u50CF\u8282\u70B9\uFF08${LINK_LABEL[person.external_link_type] || "\u8DE8\u6811\u5173\u8054"}\uFF09\uFF0C\u4E0D\u53EF\u8DE8\u6811\u8FC1\u79FB\uFF0C\u8BF7\u5230\u771F\u8EAB\u6240\u5728\u5BB6\u65CF\u6811\u64CD\u4F5C`,
@@ -29547,7 +30022,8 @@ async function reparentAcrossTrees({
         ...checkTreeIntegrity(trees[treeId]).map((p) => `${treeId}: ${p}`),
         ...checkTreeIntegrity(trees[targetTreeId]).map((p) => `${targetTreeId}: ${p}`)
       ];
-      if (problems.length) throw fail(`\u8DE8\u6811\u8FC1\u79FB\u540E\u7ED3\u6784\u6821\u9A8C\u5931\u8D25\uFF1A${problems.slice(0, 3).join("\uFF1B")}`, 500);
+      if (problems.length)
+        throw fail(`\u8DE8\u6811\u8FC1\u79FB\u540E\u7ED3\u6784\u6821\u9A8C\u5931\u8D25\uFF1A${problems.slice(0, 3).join("\uFF1B")}`, 500);
       return res;
     });
   } catch (e) {
@@ -29570,7 +30046,7 @@ async function reparentAcrossTrees({
           tree_id: targetTreeId,
           handle: h,
           gramps_id: moved.gramps_id_map[h] || detail.gramps_id || "",
-          name: dstAfter?.people?.[h]?.name || detail.name || "",
+          name: ((_b = (_a3 = dstAfter == null ? void 0 : dstAfter.people) == null ? void 0 : _a3[h]) == null ? void 0 : _b.name) || detail.name || "",
           updated_at: (/* @__PURE__ */ new Date()).toISOString()
         });
       }
@@ -29579,7 +30055,8 @@ async function reparentAcrossTrees({
     }
   }
   for (const t of moved.trimmed_mirrors) {
-    if (t.action !== "deleted") continue;
+    if (t.action !== "deleted")
+      continue;
     try {
       await deleteDetail(t.tree_id, t.handle);
     } catch {
@@ -29613,21 +30090,32 @@ async function reparentAcrossTrees({
 }
 async function refreshTreeMetaStats(treeIds) {
   const ids = [...new Set((treeIds || []).filter(Boolean))];
-  if (!ids.length) return false;
+  if (!ids.length)
+    return false;
   const m = await getMeta();
   const changedIds = [];
   for (const id of ids) {
-    const key = Object.keys(m?.trees || {}).find((k) => m.trees[k]?.tree_id === id);
-    if (!key) continue;
+    const key = Object.keys((m == null ? void 0 : m.trees) || {}).find((k) => {
+      var _a3;
+      return ((_a3 = m.trees[k]) == null ? void 0 : _a3.tree_id) === id;
+    });
+    if (!key)
+      continue;
     const entry = m.trees[key];
-    if (!META_STAT_KEYS.some((k) => k in entry)) continue;
+    if (!META_STAT_KEYS.some((k) => k in entry))
+      continue;
     const tree = await getTree(id);
-    if (!tree) continue;
+    if (!tree)
+      continue;
     const patch = {};
-    if ("person_count" in entry) patch.person_count = Object.keys(tree.people || {}).length;
-    if ("people_count" in entry) patch.people_count = Object.keys(tree.people || {}).length;
-    if ("node_count" in entry) patch.node_count = Object.keys(tree.people || {}).length;
-    if ("family_count" in entry) patch.family_count = Object.keys(tree.families || {}).length;
+    if ("person_count" in entry)
+      patch.person_count = Object.keys(tree.people || {}).length;
+    if ("people_count" in entry)
+      patch.people_count = Object.keys(tree.people || {}).length;
+    if ("node_count" in entry)
+      patch.node_count = Object.keys(tree.people || {}).length;
+    if ("family_count" in entry)
+      patch.family_count = Object.keys(tree.families || {}).length;
     await mutateTreeMeta(id, (e) => ({ ...e, ...patch }));
     changedIds.push(id);
   }
@@ -29688,12 +30176,14 @@ function httpError(status, message) {
 }
 function seedsInsufficient(need, current, message) {
   const e = assetInsufficient(need, current, "seed");
-  if (message) e.message = message;
+  if (message)
+    e.message = message;
   return e;
 }
 function bambooInsufficient(need, current, message) {
   const e = assetInsufficient(need, current, "bamboo");
-  if (message) e.message = message;
+  if (message)
+    e.message = message;
   return e;
 }
 function listingId() {
@@ -29721,13 +30211,14 @@ function feeBreakdown(priceSeeds) {
 function lockedPieces(phone, listings) {
   let sum = 0;
   for (const l of listings || []) {
-    if (!l || l.status !== "open" || l.seller_phone !== phone) continue;
+    if (!l || l.status !== "open" || l.seller_phone !== phone)
+      continue;
     sum += toNonNegInt(l.pieces);
   }
   return sum;
 }
 function availablePieces(phone, user, listings) {
-  return Math.max(0, sumLots(user?.bamboos) - lockedPieces(phone, listings));
+  return Math.max(0, sumLots(user == null ? void 0 : user.bamboos) - lockedPieces(phone, listings));
 }
 function sellablePieces(phone, user, listings) {
   return Math.floor(availablePieces(phone, user, listings) / PIECES_PER_BUNDLE) * PIECES_PER_BUNDLE;
@@ -29767,32 +30258,37 @@ function releaseOfficial(official, now = /* @__PURE__ */ new Date()) {
   };
 }
 function byExpiryAsc(a, b) {
-  const av = a?.expires_at ? Date.parse(a.expires_at) : Number.POSITIVE_INFINITY;
-  const bv = b?.expires_at ? Date.parse(b.expires_at) : Number.POSITIVE_INFINITY;
+  const av = (a == null ? void 0 : a.expires_at) ? Date.parse(a.expires_at) : Number.POSITIVE_INFINITY;
+  const bv = (b == null ? void 0 : b.expires_at) ? Date.parse(b.expires_at) : Number.POSITIVE_INFINITY;
   const an = Number.isFinite(av) ? av : Number.POSITIVE_INFINITY;
   const bn = Number.isFinite(bv) ? bv : Number.POSITIVE_INFINITY;
   return an - bn;
 }
 function bambooSlices(sellerUser, pieces, now = /* @__PURE__ */ new Date()) {
   const need = toNonNegInt(pieces);
-  const available = sumLots(sellerUser?.bamboos);
-  if (available < need) throw bambooInsufficient(need, available, ERR_BAMBOO_EXPIRED);
+  const available = sumLots(sellerUser == null ? void 0 : sellerUser.bamboos);
+  if (available < need)
+    throw bambooInsufficient(need, available, ERR_BAMBOO_EXPIRED);
   const taken = [];
   let left = need;
   for (const lot of [...sellerUser.bamboos || []].sort(byExpiryAsc)) {
-    if (left <= 0) break;
+    if (left <= 0)
+      break;
     const qty = toNonNegInt(lot.qty);
-    if (qty <= 0) continue;
+    if (qty <= 0)
+      continue;
     const take = Math.min(qty, left);
     taken.push({ lot_id: lot.id, qty: take, expires_at: lot.expires_at ?? null });
     left -= take;
   }
-  if (left > 0) throw bambooInsufficient(need, need - left, ERR_BAMBOO_EXPIRED);
+  if (left > 0)
+    throw bambooInsufficient(need, need - left, ERR_BAMBOO_EXPIRED);
   const merged = [];
   const index = /* @__PURE__ */ new Map();
   for (const t of taken) {
     const key = t.expires_at ?? "";
-    if (index.has(key)) index.get(key).qty += t.qty;
+    if (index.has(key))
+      index.get(key).qty += t.qty;
     else {
       const row = { qty: t.qty, expires_at: t.expires_at ?? null, source: "market" };
       index.set(key, row);
@@ -29802,13 +30298,14 @@ function bambooSlices(sellerUser, pieces, now = /* @__PURE__ */ new Date()) {
   return { slices: taken, receive: merged, pieces: need, expires_at_inherited: merged.map((m) => m.expires_at) };
 }
 function planTrade({ listing, sellerUser, buyerUser, listings = [], now = /* @__PURE__ */ new Date() } = {}) {
-  const price_seeds = toNonNegInt(listing?.price_seeds);
-  const pieces = toNonNegInt(listing?.pieces);
+  const price_seeds = toNonNegInt(listing == null ? void 0 : listing.price_seeds);
+  const pieces = toNonNegInt(listing == null ? void 0 : listing.pieces);
   const { fee_seeds, seller_got, destroyed, waived } = feeBreakdown(price_seeds);
-  const lockedOthers = lockedPieces(listing?.seller_phone, listings);
-  const sellerAvailable = Math.max(0, sumLots(sellerUser?.bamboos) - lockedOthers);
-  if (sellerAvailable < pieces) throw bambooInsufficient(pieces, sellerAvailable, ERR_BAMBOO_EXPIRED);
-  const buyerAvailable = sumLots(buyerUser?.seeds);
+  const lockedOthers = lockedPieces(listing == null ? void 0 : listing.seller_phone, listings);
+  const sellerAvailable = Math.max(0, sumLots(sellerUser == null ? void 0 : sellerUser.bamboos) - lockedOthers);
+  if (sellerAvailable < pieces)
+    throw bambooInsufficient(pieces, sellerAvailable, ERR_BAMBOO_EXPIRED);
+  const buyerAvailable = sumLots(buyerUser == null ? void 0 : buyerUser.seeds);
   if (buyerAvailable < price_seeds) {
     throw seedsInsufficient(price_seeds, buyerAvailable, `\u77F3\u69B4\u7C7D\u4E0D\u8DB3\uFF1A\u672C\u6B21\u9700 ${price_seeds} \u9897\uFF0C\u5F53\u524D\u53EF\u7528 ${buyerAvailable} \u9897`);
   }
@@ -29847,15 +30344,18 @@ function applySellerSide(sellerUser, plan, trade_id, now = /* @__PURE__ */ new D
   let left = plan.pieces;
   for (const s of plan.slices || []) {
     const lot = byId.get(s.lot_id);
-    const qty = toNonNegInt(lot?.qty);
-    if (!lot || qty < s.qty) throw bambooInsufficient(plan.pieces, sumLots(sellerUser.bamboos), ERR_BAMBOO_EXPIRED);
+    const qty = toNonNegInt(lot == null ? void 0 : lot.qty);
+    if (!lot || qty < s.qty)
+      throw bambooInsufficient(plan.pieces, sumLots(sellerUser.bamboos), ERR_BAMBOO_EXPIRED);
     lot.qty = qty - s.qty;
     left -= s.qty;
   }
-  if (left > 0) throw bambooInsufficient(plan.pieces, sumLots(sellerUser.bamboos), ERR_BAMBOO_EXPIRED);
+  if (left > 0)
+    throw bambooInsufficient(plan.pieces, sumLots(sellerUser.bamboos), ERR_BAMBOO_EXPIRED);
   sellerUser.bamboos = (sellerUser.bamboos || []).filter((l) => toNonNegInt(l.qty) > 0);
   let seed_lot = null;
-  if (plan.seller_got > 0) seed_lot = addLot(sellerUser, "seed", plan.seller_got, { source: "market", now });
+  if (plan.seller_got > 0)
+    seed_lot = addLot(sellerUser, "seed", plan.seller_got, { source: "market", now });
   recordTx(
     sellerUser,
     {
@@ -29886,7 +30386,7 @@ function applyOfficialPurchase(user, { bundles, now = /* @__PURE__ */ new Date()
   return { lot, pieces, bundles: n };
 }
 function listingPayload(listing, now = /* @__PURE__ */ new Date()) {
-  const expMs = listing?.expires_at ? Date.parse(listing.expires_at) : NaN;
+  const expMs = (listing == null ? void 0 : listing.expires_at) ? Date.parse(listing.expires_at) : NaN;
   const days_left = Number.isFinite(expMs) ? Math.max(0, Math.ceil((expMs - toMs2(now)) / DAY_MS2)) : 0;
   return { ...listing, days_left };
 }
@@ -29919,21 +30419,28 @@ async function loadMarketSnapshot() {
   const trades = [];
   let official = null;
   for (const d of await listAll(MARKET_COL)) {
-    if (!d || typeof d._id !== "string") continue;
-    if (d._id === OFFICIAL_ID) official = stripMeta2(d);
-    else if (isListingDoc(d)) listings.push(stripMeta2(d));
-    else if (isTradeDoc(d)) trades.push(stripMeta2(d));
+    if (!d || typeof d._id !== "string")
+      continue;
+    if (d._id === OFFICIAL_ID)
+      official = stripMeta2(d);
+    else if (isListingDoc(d))
+      listings.push(stripMeta2(d));
+    else if (isTradeDoc(d))
+      trades.push(stripMeta2(d));
   }
   return { listings, trades, official: ensureOfficial(official || {}) };
 }
 async function getListingOr404(listingIdValue) {
   const doc = await colGet(MARKET_COL, listingIdValue);
-  if (!isListingDoc(doc)) throw httpError(404, ERR_LISTING_NOT_FOUND);
+  if (!isListingDoc(doc))
+    throw httpError(404, ERR_LISTING_NOT_FOUND);
   return stripMeta2(doc);
 }
 function assertOpen(l) {
-  if (l.status === "expired") throw httpError(409, ERR_LISTING_EXPIRED);
-  if (l.status !== "open") throw httpError(409, ERR_LISTING_CLOSED);
+  if (l.status === "expired")
+    throw httpError(409, ERR_LISTING_EXPIRED);
+  if (l.status !== "open")
+    throw httpError(409, ERR_LISTING_CLOSED);
 }
 async function recordListingExpiryTx(expired, now) {
   for (const l of expired) {
@@ -29962,16 +30469,20 @@ async function sweepExpiredListings(now = /* @__PURE__ */ new Date()) {
   const nowMs = toMs2(now);
   const expired = [];
   for (const l of await loadListings()) {
-    if (!l || l.status !== "open") continue;
+    if (!l || l.status !== "open")
+      continue;
     const expMs = l.expires_at ? Date.parse(l.expires_at) : NaN;
-    if (!Number.isFinite(expMs) || expMs > nowMs) continue;
+    if (!Number.isFinite(expMs) || expMs > nowMs)
+      continue;
     try {
       const written = await mutateDoc(MARKET_COL, l.id, (doc) => {
-        if (doc.status === "open") doc.status = "expired";
+        if (doc.status === "open")
+          doc.status = "expired";
         return doc;
       });
       const rec = stripMeta2(written);
-      if (rec.status === "expired") expired.push(rec);
+      if (rec.status === "expired")
+        expired.push(rec);
     } catch {
     }
   }
@@ -29991,7 +30502,8 @@ async function withMarket(mutator, now = /* @__PURE__ */ new Date()) {
   const run = lock.then(async () => {
     const expired = await sweepExpiredListings(now);
     const { official, release } = await settleOfficial(now);
-    if (expired.length > 0) await recordListingExpiryTx(expired, now);
+    if (expired.length > 0)
+      await recordListingExpiryTx(expired, now);
     return mutator({ now, expired, release, official });
   });
   marketLocks.set(MARKET_LOCK_KEY, run.catch(() => {
@@ -30002,7 +30514,8 @@ async function marketListings(status, now = /* @__PURE__ */ new Date()) {
   let filter = "open";
   if (status !== void 0 && status !== null && String(status).trim() !== "") {
     filter = String(status).trim();
-    if (!LISTING_STATUSES.includes(filter)) throw httpError(400, ERR_STATUS_INVALID);
+    if (!LISTING_STATUSES.includes(filter))
+      throw httpError(400, ERR_STATUS_INVALID);
   }
   return withMarket(async (ctx) => {
     const { listings } = await loadMarketSnapshot();
@@ -30014,7 +30527,8 @@ async function myMarket(phone, status, now = /* @__PURE__ */ new Date()) {
   let filter = null;
   if (status !== void 0 && status !== null && String(status).trim() !== "") {
     filter = String(status).trim();
-    if (!LISTING_STATUSES.includes(filter)) throw httpError(400, ERR_STATUS_INVALID);
+    if (!LISTING_STATUSES.includes(filter))
+      throw httpError(400, ERR_STATUS_INVALID);
   }
   return withMarket(async (ctx) => {
     const { listings } = await loadMarketSnapshot();
@@ -30091,18 +30605,23 @@ async function listBamboo(phone, input = {}, now = /* @__PURE__ */ new Date()) {
 }
 function validateListingInput(input = {}) {
   const bundles = Number(input.bundles);
-  if (!Number.isInteger(bundles) || bundles < 1) throw httpError(400, ERR_BUNDLES_INVALID);
+  if (!Number.isInteger(bundles) || bundles < 1)
+    throw httpError(400, ERR_BUNDLES_INVALID);
   const price_seeds = Number(input.price_seeds);
-  if (!Number.isInteger(price_seeds) || price_seeds < 1) throw httpError(400, ERR_PRICE_INVALID);
+  if (!Number.isInteger(price_seeds) || price_seeds < 1)
+    throw httpError(400, ERR_PRICE_INVALID);
   return { bundles, price_seeds, pieces: bundles * PIECES_PER_BUNDLE };
 }
 async function cancelListing(phone, listingIdValue, now = /* @__PURE__ */ new Date()) {
-  if (!listingIdValue) throw httpError(400, ERR_LISTING_ID_MISSING);
+  if (!listingIdValue)
+    throw httpError(400, ERR_LISTING_ID_MISSING);
   return withMarket(async (ctx) => {
     const existing = await getListingOr404(listingIdValue);
-    if (existing.seller_phone !== phone) throw httpError(403, ERR_NOT_OWNER);
+    if (existing.seller_phone !== phone)
+      throw httpError(403, ERR_NOT_OWNER);
     const written = await mutateDoc(MARKET_COL, listingIdValue, (doc) => {
-      if (doc.seller_phone !== phone) throw httpError(403, ERR_NOT_OWNER);
+      if (doc.seller_phone !== phone)
+        throw httpError(403, ERR_NOT_OWNER);
       assertOpen(doc);
       doc.status = "cancelled";
       doc.cancelled_at = isoOf(now);
@@ -30117,14 +30636,17 @@ async function cancelListing(phone, listingIdValue, now = /* @__PURE__ */ new Da
   }, now);
 }
 async function buyListing(phone, listingIdValue, now = /* @__PURE__ */ new Date()) {
-  if (!listingIdValue) throw httpError(400, ERR_LISTING_ID_MISSING);
+  if (!listingIdValue)
+    throw httpError(400, ERR_LISTING_ID_MISSING);
   return withMarket(async (ctx) => {
     const l = await getListingOr404(listingIdValue);
-    if (l.seller_phone === phone) throw httpError(400, ERR_SELF_TRADE);
+    if (l.seller_phone === phone)
+      throw httpError(400, ERR_SELF_TRADE);
     assertOpen(l);
     const trade_id = tradeId();
     await mutateDoc(MARKET_COL, listingIdValue, (doc) => {
-      if (doc.seller_phone === phone) throw httpError(400, ERR_SELF_TRADE);
+      if (doc.seller_phone === phone)
+        throw httpError(400, ERR_SELF_TRADE);
       assertOpen(doc);
       doc.status = "sold";
       doc.sold_at = isoOf(now);
@@ -30216,13 +30738,16 @@ async function buyListing(phone, listingIdValue, now = /* @__PURE__ */ new Date(
 }
 async function officialPurchase(phone, input = {}, now = /* @__PURE__ */ new Date()) {
   const raw = input.bundles === void 0 || input.bundles === null || String(input.bundles).trim() === "" ? 1 : Number(input.bundles);
-  if (!Number.isInteger(raw) || raw < 1) throw httpError(400, ERR_BUNDLES_INVALID);
+  if (!Number.isInteger(raw) || raw < 1)
+    throw httpError(400, ERR_BUNDLES_INVALID);
   const bundles = raw;
   return withMarket(async (ctx) => {
     const o = ctx.official;
     const rel = ctx.release;
-    if (!rel.is_open) throw httpError(409, ERR_NOT_OPEN_YET);
-    if (rel.stock_left_today < bundles) throw httpError(409, ERR_SOLD_OUT);
+    if (!rel.is_open)
+      throw httpError(409, ERR_NOT_OPEN_YET);
+    if (rel.stock_left_today < bundles)
+      throw httpError(409, ERR_SOLD_OUT);
     const amount_cents = o.price_fen * bundles;
     const balance = await getUserBalance(phone);
     if (balance < amount_cents) {
@@ -30248,7 +30773,8 @@ async function officialPurchase(phone, input = {}, now = /* @__PURE__ */ new Dat
       const updated = await mutateDoc(MARKET_COL, OFFICIAL_ID, (doc) => {
         const rec = ensureOfficial(stripMeta2(doc));
         const left = toNonNegInt(rec.stock ? rec.stock[rel.today] : 0);
-        if (left < bundles) throw httpError(409, ERR_SOLD_OUT);
+        if (left < bundles)
+          throw httpError(409, ERR_SOLD_OUT);
         rec.stock[rel.today] = left - bundles;
         return rec;
       });
@@ -30276,15 +30802,18 @@ async function officialPurchase(phone, input = {}, now = /* @__PURE__ */ new Dat
 }
 async function setOfficialStock(dailyStock, priceFen, now = /* @__PURE__ */ new Date()) {
   const stock = Number(dailyStock);
-  if (!Number.isInteger(stock) || stock < 0) throw httpError(400, ERR_DAILY_STOCK_INVALID);
+  if (!Number.isInteger(stock) || stock < 0)
+    throw httpError(400, ERR_DAILY_STOCK_INVALID);
   const hasPrice = !(priceFen === void 0 || priceFen === null || String(priceFen).trim() === "");
   const price = hasPrice ? Number(priceFen) : null;
-  if (hasPrice && (!Number.isInteger(price) || price < 1)) throw httpError(400, ERR_PRICE_FEN_INVALID);
+  if (hasPrice && (!Number.isInteger(price) || price < 1))
+    throw httpError(400, ERR_PRICE_FEN_INVALID);
   return withMarket(async () => {
     const written = await mutateDoc(MARKET_COL, OFFICIAL_ID, (doc) => {
       const o2 = ensureOfficial(stripMeta2(doc));
       o2.daily_stock = stock;
-      if (hasPrice) o2.price_fen = price;
+      if (hasPrice)
+        o2.price_fen = price;
       return o2;
     });
     const o = ensureOfficial(stripMeta2(written));
@@ -30298,7 +30827,8 @@ async function hasOpenListing(phone, now = /* @__PURE__ */ new Date()) {
   }, now);
 }
 async function openListingGuard(phone, now = /* @__PURE__ */ new Date()) {
-  if (await hasOpenListing(phone, now)) throw httpError(409, ERR_OPEN_LISTING_BLOCK_LOGOUT);
+  if (await hasOpenListing(phone, now))
+    throw httpError(409, ERR_OPEN_LISTING_BLOCK_LOGOUT);
   return { ok: true };
 }
 var MARKET_COL, OFFICIAL_ID, LISTING_PREFIX, TRADE_PREFIX, LISTING_TTL_DAYS, PIECES_PER_BUNDLE, FEE_RATE_PERCENT, FEE_RATE_DENOMINATOR, LISTING_STATUSES, DEFAULT_PRICE_FEN, DEFAULT_DAILY_STOCK, RELEASE_HOUR, RELEASE_AT, OFFICIAL_BAMBOO_TTL_DAYS, WALLET_TX_TYPE, DAY_MS2, toMs2, isoOf, ERR_LISTING_ID_MISSING, ERR_BUNDLES_INVALID, ERR_PRICE_INVALID, ERR_PRICE_FEN_INVALID, ERR_DAILY_STOCK_INVALID, ERR_STATUS_INVALID, ERR_LISTING_NOT_FOUND, ERR_LISTING_CLOSED, ERR_LISTING_EXPIRED, ERR_NOT_OWNER, ERR_SELF_TRADE, ERR_BAMBOO_EXPIRED, ERR_NOT_OPEN_YET, ERR_SOLD_OUT, ERR_OPEN_LISTING_BLOCK_LOGOUT, rand6, marketLocks, MARKET_LOCK_KEY, isListingDoc, isTradeDoc;
@@ -30360,9 +30890,11 @@ function m1Text(kind, days) {
   return M1_TEMPLATE.replace("\u3010\u77F3\u69B4\u7C7D/\u7AF9\u7247\u3011", `\u3010${label}\u3011`).replace("\u5373\u5C06\u4E8EX\u65E5\u540E", `\u5373\u5C06\u4E8E${d}\u65E5\u540E`);
 }
 function daysLeftUntil(expires_at, now = /* @__PURE__ */ new Date()) {
-  if (!expires_at) return NaN;
+  if (!expires_at)
+    return NaN;
   const t = Date.parse(expires_at);
-  if (!Number.isFinite(t)) return NaN;
+  if (!Number.isFinite(t))
+    return NaN;
   return Math.ceil((t - toMs3(now)) / DAY_MS3);
 }
 function messageId() {
@@ -30377,11 +30909,14 @@ function expiringCandidates(phone, user, now = /* @__PURE__ */ new Date()) {
     ["seed", "seeds"],
     ["bamboo", "bamboos"]
   ]) {
-    for (const lot of user?.[bucket] || []) {
-      if (!lot || !lot.id) continue;
-      if (toNonNegInt(lot.qty) <= 0) continue;
+    for (const lot of (user == null ? void 0 : user[bucket]) || []) {
+      if (!lot || !lot.id)
+        continue;
+      if (toNonNegInt(lot.qty) <= 0)
+        continue;
       const d = daysLeftUntil(lot.expires_at, now);
-      if (!Number.isFinite(d) || d <= 0) continue;
+      if (!Number.isFinite(d) || d <= 0)
+        continue;
       if (d <= WARN_DAYS_30) {
         out.push({ key: warnKey.expiring30(phone, lot.id), type: "expiring", title: MESSAGE_TITLES.m1, text: m1Text(kind, WARN_DAYS_30) });
       }
@@ -30394,7 +30929,8 @@ function expiringCandidates(phone, user, now = /* @__PURE__ */ new Date()) {
 }
 function spiritCandidates(phone, treeId, entry, now = /* @__PURE__ */ new Date()) {
   const out = [];
-  if (!phone || !treeId || !entry || !entry.jade) return out;
+  if (!phone || !treeId || !entry || !entry.jade)
+    return out;
   if (entry.status === "active") {
     const d = daysLeftUntil(entry.spirit_expires_at, now);
     if (Number.isFinite(d) && d > 0 && d <= WARN_DAYS_30) {
@@ -30429,7 +30965,8 @@ function trimMessages(items, limit = MESSAGE_KEEP_LIMIT) {
   const list2 = (items || []).slice();
   while (list2.length > limit) {
     const idx = list2.findIndex((m) => m && m.read === true);
-    if (idx < 0) break;
+    if (idx < 0)
+      break;
     list2.splice(idx, 1);
   }
   return list2;
@@ -30456,9 +30993,10 @@ async function withMessages(phone, mutator) {
   return run;
 }
 async function ensureWarnings(viewer, now = /* @__PURE__ */ new Date()) {
-  const phone = typeof viewer === "string" ? viewer : viewer?.phone || "";
-  const role = typeof viewer === "string" ? "" : viewer?.role || "";
-  if (!phone) return { created: [], keys: [] };
+  const phone = typeof viewer === "string" ? viewer : (viewer == null ? void 0 : viewer.phone) || "";
+  const role = typeof viewer === "string" ? "" : (viewer == null ? void 0 : viewer.role) || "";
+  if (!phone)
+    return { created: [], keys: [] };
   const candidates = await withAssets(phone, (user) => {
     sweep(user, now);
     return expiringCandidates(phone, user, now);
@@ -30473,20 +31011,24 @@ async function ensureWarnings(viewer, now = /* @__PURE__ */ new Date()) {
 }
 async function recipientTreeIds(phone, role, entries) {
   const treeIds = [...entries.keys()];
-  if (treeIds.length === 0) return [];
-  if (role === "chief_editor") return treeIds;
+  if (treeIds.length === 0)
+    return [];
+  if (role === "chief_editor")
+    return treeIds;
   const anchor = await getAnchor(phone);
-  const tid = anchor?.tree_id;
+  const tid = anchor == null ? void 0 : anchor.tree_id;
   return tid && treeIds.includes(tid) ? [tid] : [];
 }
 async function putWarnings(phone, candidates, now) {
   const fresh = (candidates || []).filter(Boolean);
-  if (fresh.length === 0) return { created: [], keys: [] };
+  if (fresh.length === 0)
+    return { created: [], keys: [] };
   return withMessages(phone, (rec) => {
     const created = [];
     const keys = [];
     for (const c of fresh) {
-      if (rec.warned[c.key]) continue;
+      if (rec.warned[c.key])
+        continue;
       const item = {
         id: messageId(),
         type: c.type,
@@ -30500,33 +31042,37 @@ async function putWarnings(phone, candidates, now) {
       created.push(item);
       keys.push(c.key);
     }
-    if (created.length > 0) rec.items = trimMessages(rec.items);
+    if (created.length > 0)
+      rec.items = trimMessages(rec.items);
     return { created, keys };
   });
 }
 async function messagesOf(viewer, now = /* @__PURE__ */ new Date(), opts = {}) {
-  const phone = typeof viewer === "string" ? viewer : viewer?.phone || "";
-  if (!phone) throw httpError2(401, ERR_NOT_LOGGED_IN);
+  const phone = typeof viewer === "string" ? viewer : (viewer == null ? void 0 : viewer.phone) || "";
+  if (!phone)
+    throw httpError2(401, ERR_NOT_LOGGED_IN);
   await ensureWarnings(viewer, now);
   const doc = await colGet(MESSAGES_COL, phone);
-  const mine = (Array.isArray(doc?.items) ? doc.items : []).slice();
+  const mine = (Array.isArray(doc == null ? void 0 : doc.items) ? doc.items : []).slice();
   const unread = mine.filter((m) => !m.read).length;
   const list2 = opts.unreadOnly ? mine.filter((m) => !m.read) : mine;
   const ts = (m) => {
-    const t = Date.parse(m?.created_at || "");
+    const t = Date.parse((m == null ? void 0 : m.created_at) || "");
     return Number.isFinite(t) ? t : 0;
   };
   const items = list2.slice().map((m, index) => ({ m, index, ts: ts(m) })).sort((x, y) => y.ts - x.ts || y.index - x.index).map((entry) => entry.m);
   return { items, unread };
 }
 async function readMessages(phone, ids, now = /* @__PURE__ */ new Date()) {
-  if (!phone) throw httpError2(401, ERR_NOT_LOGGED_IN);
+  if (!phone)
+    throw httpError2(401, ERR_NOT_LOGGED_IN);
   const want = Array.isArray(ids) && ids.length > 0 ? new Set(ids.map((x) => String(x))) : null;
   return withMessages(phone, (rec) => {
     const mine = rec.items;
     let marked = 0;
     for (const m of mine) {
-      if (!m || want && !want.has(String(m.id))) continue;
+      if (!m || want && !want.has(String(m.id)))
+        continue;
       if (!m.read) {
         m.read = true;
         marked += 1;
@@ -30537,18 +31083,23 @@ async function readMessages(phone, ids, now = /* @__PURE__ */ new Date()) {
 }
 function normalizeDelta(raw) {
   const src = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : null;
-  if (!src) throw httpError2(400, ERR_DELTA_ZERO);
+  if (!src)
+    throw httpError2(400, ERR_DELTA_ZERO);
   const delta = {};
   let provided = 0;
   for (const k of DELTA_KEYS) {
-    if (src[k] === void 0 || src[k] === null) continue;
+    if (src[k] === void 0 || src[k] === null)
+      continue;
     provided += 1;
     const v = src[k];
-    if (typeof v !== "number" || !Number.isInteger(v)) throw httpError2(400, ERR_DELTA_INT);
+    if (typeof v !== "number" || !Number.isInteger(v))
+      throw httpError2(400, ERR_DELTA_INT);
     delta[k] = v;
   }
-  if (provided === 0) throw httpError2(400, ERR_DELTA_ZERO);
-  if (DELTA_KEYS.every((k) => !delta[k])) throw httpError2(400, ERR_DELTA_ZERO);
+  if (provided === 0)
+    throw httpError2(400, ERR_DELTA_ZERO);
+  if (DELTA_KEYS.every((k) => !delta[k]))
+    throw httpError2(400, ERR_DELTA_ZERO);
   return delta;
 }
 function fragmentsInsufficient(need, current) {
@@ -30571,59 +31122,74 @@ function scrollsInsufficient(needPieces, currentPieces) {
   return e;
 }
 async function grantAssets(operator, input = {}, now = /* @__PURE__ */ new Date()) {
-  const targetPhone = trimmed(input?.target_phone);
-  if (!PHONE_RE.test(targetPhone)) throw httpError2(400, ERR_PHONE_FORMAT);
+  const targetPhone = trimmed(input == null ? void 0 : input.target_phone);
+  if (!PHONE_RE.test(targetPhone))
+    throw httpError2(400, ERR_PHONE_FORMAT);
   const target = await colGet(USERS_COL, targetPhone);
-  if (!target) throw httpError2(404, `${ERR_USER_NOT_FOUND}: ${targetPhone}`);
-  const rawReason = trimmed(input?.reason);
-  if (!rawReason) throw httpError2(400, ERR_REASON_REQUIRED);
-  const evidence = trimmed(input?.evidence);
+  if (!target)
+    throw httpError2(404, `${ERR_USER_NOT_FOUND}: ${targetPhone}`);
+  const rawReason = trimmed(input == null ? void 0 : input.reason);
+  if (!rawReason)
+    throw httpError2(400, ERR_REASON_REQUIRED);
+  const evidence = trimmed(input == null ? void 0 : input.evidence);
   const reason = evidence ? `${rawReason}\uFF5C\u4F9D\u636E\uFF1A${evidence}` : rawReason;
-  const delta = normalizeDelta(input?.delta);
+  const delta = normalizeDelta(input == null ? void 0 : input.delta);
   const log = { id: opsLogId(), ts: isoOf2(now), operator, target_phone: targetPhone, delta: { ...delta }, reason };
   const details = await withAssets(targetPhone, (user) => {
     sweep(user, now);
     if (delta.fragments < 0) {
       const need = -delta.fragments;
       const current = toNonNegInt(user.fragments);
-      if (current < need) throw fragmentsInsufficient(need, current);
+      if (current < need)
+        throw fragmentsInsufficient(need, current);
     }
     let jadeTaken = null;
     if (delta.jades < 0) {
       const need = -delta.jades;
       const chargeable = (user.jades || []).filter((j) => j && !j.mounted_tree_id);
       const current = chargeable.length;
-      if (current < need) throw assetInsufficient(need, current, "jade");
+      if (current < need)
+        throw assetInsufficient(need, current, "jade");
       jadeTaken = chargeable.slice().sort((a, b) => (a.expires_at ? Date.parse(a.expires_at) : Number.POSITIVE_INFINITY) - (b.expires_at ? Date.parse(b.expires_at) : Number.POSITIVE_INFINITY)).slice(0, need).map((j) => j.id);
     }
     let seedsTaken = null;
-    if (delta.seeds < 0) seedsTaken = chargeLots(user.seeds, -delta.seeds, "seed").taken;
+    if (delta.seeds < 0)
+      seedsTaken = chargeLots(user.seeds, -delta.seeds, "seed").taken;
     let bamboosTaken = null;
-    if (delta.bamboos < 0) bamboosTaken = chargeLots(user.bamboos, -delta.bamboos, "bamboo").taken;
+    if (delta.bamboos < 0)
+      bamboosTaken = chargeLots(user.bamboos, -delta.bamboos, "bamboo").taken;
     let scrollsTaken = null;
     if (delta.scrolls < 0) {
       const needPieces = -delta.scrolls;
       const currentPieces = sumLots(user.scrolls);
-      if (currentPieces < needPieces) throw scrollsInsufficient(needPieces, currentPieces);
+      if (currentPieces < needPieces)
+        throw scrollsInsufficient(needPieces, currentPieces);
       scrollsTaken = chargeLots(user.scrolls, needPieces, "scroll").taken;
     }
     if (delta.scroll_fragments < 0) {
       const need = -delta.scroll_fragments;
       const current = toNonNegInt(user.scroll_fragments);
-      if (current < need) throw scrollFragmentsInsufficient(need, current);
+      if (current < need)
+        throw scrollFragmentsInsufficient(need, current);
     }
-    if (delta.seeds > 0) addLot(user, "seed", delta.seeds, { ttl_days: SEED_TTL_DAYS, source: "admin", now });
-    if (delta.bamboos > 0) addLot(user, "bamboo", delta.bamboos, { ttl_days: BAMBOO_TTL_DAYS, source: "admin", now });
+    if (delta.seeds > 0)
+      addLot(user, "seed", delta.seeds, { ttl_days: SEED_TTL_DAYS, source: "admin", now });
+    if (delta.bamboos > 0)
+      addLot(user, "bamboo", delta.bamboos, { ttl_days: BAMBOO_TTL_DAYS, source: "admin", now });
     if (delta.jades > 0) {
-      for (let i = 0; i < delta.jades; i += 1) addLot(user, "jade", 1, { expires_at: null, source: "admin", now });
+      for (let i = 0; i < delta.jades; i += 1)
+        addLot(user, "jade", 1, { expires_at: null, source: "admin", now });
     }
     if (delta.scrolls > 0) {
       addLot(user, "scroll", delta.scrolls, { expires_at: null, source: "admin", now });
     }
     let synthesized = 0;
-    if (delta.fragments > 0) synthesized = addFragments(user, delta.fragments, now).synthesized;
-    if (delta.scroll_fragments > 0) addScrollFragments(user, delta.scroll_fragments, now);
-    if (delta.fragments < 0) user.fragments = Math.max(0, toNonNegInt(user.fragments) + delta.fragments);
+    if (delta.fragments > 0)
+      synthesized = addFragments(user, delta.fragments, now).synthesized;
+    if (delta.scroll_fragments > 0)
+      addScrollFragments(user, delta.scroll_fragments, now);
+    if (delta.fragments < 0)
+      user.fragments = Math.max(0, toNonNegInt(user.fragments) + delta.fragments);
     if (delta.scroll_fragments < 0) {
       user.scroll_fragments = Math.max(0, toNonNegInt(user.scroll_fragments) + delta.scroll_fragments);
     }
@@ -30674,9 +31240,9 @@ async function grantAssets(operator, input = {}, now = /* @__PURE__ */ new Date(
   return { ok: true, summary: details.summary };
 }
 async function appendOpsLog(log) {
-  const tsMs = Date.parse(log?.ts ?? "");
+  const tsMs = Date.parse((log == null ? void 0 : log.ts) ?? "");
   const fallbackId = `${Number.isFinite(tsMs) ? tsMs : Date.now()}-${rand62()}`;
-  const id = String(log?.id || fallbackId);
+  const id = String((log == null ? void 0 : log.id) || fallbackId);
   const entry = {
     id,
     ts: log.ts,
@@ -30685,7 +31251,8 @@ async function appendOpsLog(log) {
     delta: { ...log.delta || {} },
     reason: log.reason
   };
-  if (log.ref && typeof log.ref === "object") entry.ref = { ...log.ref };
+  if (log.ref && typeof log.ref === "object")
+    entry.ref = { ...log.ref };
   await mutateDoc(OPS_LOGS_COL, id, () => entry);
   return entry;
 }
@@ -30701,10 +31268,12 @@ async function opsLogs(filters = {}) {
     delete rec.version;
     return rec;
   });
-  if (operator) logs = logs.filter((l) => l?.operator === operator);
-  if (phone) logs = logs.filter((l) => l?.target_phone === phone);
+  if (operator)
+    logs = logs.filter((l) => (l == null ? void 0 : l.operator) === operator);
+  if (phone)
+    logs = logs.filter((l) => (l == null ? void 0 : l.target_phone) === phone);
   const tsOf = (entry) => {
-    const parsed = Date.parse(entry?.ts || 0);
+    const parsed = Date.parse((entry == null ? void 0 : entry.ts) || 0);
     return Number.isFinite(parsed) ? parsed : 0;
   };
   logs = logs.map((log, index) => ({ log, index, ts: tsOf(log) })).sort((x, y) => y.ts - x.ts || y.index - x.index).map((entry) => entry.log);
@@ -30712,9 +31281,11 @@ async function opsLogs(filters = {}) {
 }
 async function adminUserAssets(phone, now = /* @__PURE__ */ new Date()) {
   const target = trimmed(phone);
-  if (!target) throw httpError2(400, ERR_MISSING_PHONE);
+  if (!target)
+    throw httpError2(400, ERR_MISSING_PHONE);
   const user = await colGet(USERS_COL, target);
-  if (!user) throw httpError2(404, `${ERR_USER_NOT_FOUND}: ${target}`);
+  if (!user)
+    throw httpError2(404, `${ERR_USER_NOT_FOUND}: ${target}`);
   return withAssets(target, (assets) => {
     sweep(assets, now);
     const s = summarize(assets, now, { include_mounted: true });
@@ -30738,7 +31309,8 @@ async function adminUserAssets(phone, now = /* @__PURE__ */ new Date()) {
   });
 }
 async function deleteAccount(phone, now = /* @__PURE__ */ new Date()) {
-  if (!phone) throw httpError2(401, ERR_NOT_LOGGED_IN);
+  if (!phone)
+    throw httpError2(401, ERR_NOT_LOGGED_IN);
   await openListingGuard(phone, now);
   return withAssets(phone, (user) => {
     sweep(user, now);
@@ -30836,7 +31408,8 @@ var init_economy_ops = __esm({
 // cloudfunctions/compat-api/lib/scope.js
 function maskPhone(phone) {
   const s = String(phone || "");
-  if (!s) return "";
+  if (!s)
+    return "";
   return s.length >= 7 ? `${s.slice(0, 3)}****${s.slice(-4)}` : `${s.slice(0, 3)}****`;
 }
 function anchorError(status, message) {
@@ -30849,7 +31422,8 @@ async function allAnchors() {
 }
 async function anchorHolderPhone(personHandle, excludePhone = "") {
   const handle = String(personHandle || "").trim();
-  if (!handle) return null;
+  if (!handle)
+    return null;
   const exclude = String(excludePhone || "").trim();
   const hit = (await allAnchors()).find(
     (a) => a && String(a.person_handle || "").trim() === handle && String(a._id || a.phone || "").trim() !== exclude
@@ -30863,16 +31437,20 @@ async function assertAnchorBindable(personHandle, forPhone, opts = {}) {
   const handle = String(personHandle || "").trim();
   const phone = String(forPhone || "").trim();
   const treeId = String(opts.treeId || "").trim();
-  if (!handle) throw anchorError(400, "\u53C2\u6570\u9519\u8BEF\uFF1Aperson_handle \u5FC5\u586B");
+  if (!handle)
+    throw anchorError(400, "\u53C2\u6570\u9519\u8BEF\uFF1Aperson_handle \u5FC5\u586B");
   const tree = opts.tree || (treeId ? await getTree(treeId) : null);
-  if (!tree) throw anchorError(404, `\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728: ${treeId || "(\u672A\u6307\u5B9A tree_id)"}`);
+  if (!tree)
+    throw anchorError(404, `\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728: ${treeId || "(\u672A\u6307\u5B9A tree_id)"}`);
   if (!tree.people || !tree.people[handle]) {
     throw anchorError(404, `\u8BE5\u5BB6\u65CF\u6811\u4E2D\u627E\u4E0D\u5230\u6B64\u8282\u70B9: ${handle}\uFF08tree_id=${treeId || tree.tree_id || ""}\uFF09`);
   }
   const occupierPhone = await anchorHolderPhone(handle, phone);
-  if (!occupierPhone) return { ok: true, overridden: false, reassigned_from: null };
+  if (!occupierPhone)
+    return { ok: true, overridden: false, reassigned_from: null };
   const force = opts.force === true && opts.role === "chief_editor";
-  if (!force) throw anchorError(409, "\u8BE5\u4EBA\u7269\u8282\u70B9\u5DF2\u88AB\u5176\u4ED6\u7528\u6237\u7ED1\u5B9A\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458\u5904\u7406");
+  if (!force)
+    throw anchorError(409, "\u8BE5\u4EBA\u7269\u8282\u70B9\u5DF2\u88AB\u5176\u4ED6\u7528\u6237\u7ED1\u5B9A\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458\u5904\u7406");
   await clearAnchor(occupierPhone);
   await appendOpsLog({
     id: opsLogId(),
@@ -30897,7 +31475,8 @@ async function setAnchor(phone, treeId, personHandle, extra = null) {
     person_handle: personHandle,
     updated_at: (/* @__PURE__ */ new Date()).toISOString()
   };
-  if (extra && typeof extra === "object") Object.assign(doc, extra);
+  if (extra && typeof extra === "object")
+    Object.assign(doc, extra);
   await colSet("jiapu_anchors", phone, doc);
 }
 async function clearAnchor(phone) {
@@ -30911,19 +31490,23 @@ async function buildScope(families, phone, role) {
     return { person: null, family: null, unrestricted: true };
   }
   const anchor = await getAnchor(phone);
-  if (!anchor) return { person: /* @__PURE__ */ new Set(), family: /* @__PURE__ */ new Set(), unrestricted: false };
+  if (!anchor)
+    return { person: /* @__PURE__ */ new Set(), family: /* @__PURE__ */ new Set(), unrestricted: false };
   const personScope = /* @__PURE__ */ new Set([anchor.person_handle]);
   const familyScope = /* @__PURE__ */ new Set();
   const parentOf = /* @__PURE__ */ new Map();
   const childOf = /* @__PURE__ */ new Map();
   for (const f of families) {
     for (const p of [f.father_handle, f.mother_handle]) {
-      if (!p) continue;
-      if (!parentOf.has(p)) parentOf.set(p, []);
+      if (!p)
+        continue;
+      if (!parentOf.has(p))
+        parentOf.set(p, []);
       parentOf.get(p).push(f.handle);
     }
     for (const ch of f.child_handles || []) {
-      if (!childOf.has(ch)) childOf.set(ch, []);
+      if (!childOf.has(ch))
+        childOf.set(ch, []);
       childOf.get(ch).push(f.handle);
     }
   }
@@ -30933,18 +31516,19 @@ async function buildScope(families, phone, role) {
     while (queue.length) {
       const h = queue.shift();
       const d = depth.get(h) || 0;
-      if (limit !== null && d >= limit) continue;
+      if (limit !== null && d >= limit)
+        continue;
       for (const famHandle of parentOf.get(h) || []) {
         familyScope.add(famHandle);
         const fam = families.find((x) => x.handle === famHandle);
-        for (const ch of fam?.child_handles || []) {
+        for (const ch of (fam == null ? void 0 : fam.child_handles) || []) {
           if (!depth.has(ch)) {
             depth.set(ch, d + 1);
             personScope.add(ch);
             queue.push(ch);
           }
         }
-        if (fam?.father_handle && fam?.mother_handle) {
+        if ((fam == null ? void 0 : fam.father_handle) && (fam == null ? void 0 : fam.mother_handle)) {
           const spouse = fam.father_handle === h ? fam.mother_handle : fam.father_handle;
           if (!depth.has(spouse)) {
             depth.set(spouse, d + 1);
@@ -30959,12 +31543,15 @@ async function buildScope(families, phone, role) {
     let cur = anchor.person_handle;
     for (let i = 0; i < 3; i++) {
       const fams = childOf.get(cur) || [];
-      if (!fams.length) break;
+      if (!fams.length)
+        break;
       const fam = families.find((x) => x.handle === fams[0]);
-      if (!fam) break;
+      if (!fam)
+        break;
       familyScope.add(fam.handle);
       const parent = fam.father_handle || fam.mother_handle;
-      if (!parent) break;
+      if (!parent)
+        break;
       personScope.add(parent);
       cur = parent;
     }
@@ -30975,7 +31562,8 @@ async function buildScope(families, phone, role) {
 }
 async function canEditPerson(families, phone, role, personHandle) {
   const scope = await buildScope(families, phone, role);
-  if (scope.unrestricted) return true;
+  if (scope.unrestricted)
+    return true;
   return scope.person.has(personHandle);
 }
 var init_scope = __esm({
@@ -30996,9 +31584,11 @@ function giftEnabledPlans(env) {
 }
 function giftBundlesOf(plan, env) {
   const P = planOf(plan);
-  if (!P) return 0;
+  if (!P)
+    return 0;
   let bundles = P.gift_bundles;
-  if (P.activity_bundles > 0 && giftEnabledPlans(env).includes(plan)) bundles += P.activity_bundles;
+  if (P.activity_bundles > 0 && giftEnabledPlans(env).includes(plan))
+    bundles += P.activity_bundles;
   return bundles;
 }
 function giftPiecesOf(plan, env) {
@@ -31031,7 +31621,8 @@ function httpError3(status, message) {
 }
 function seedsInsufficient2(need, current, message) {
   const e = assetInsufficient(need, current, "seed");
-  if (message) e.message = message;
+  if (message)
+    e.message = message;
   return e;
 }
 function spiritLogId() {
@@ -31045,12 +31636,14 @@ function stripEntry(doc) {
   return rec;
 }
 function jadeExpired(jade, now) {
-  if (!jade || jade.expires_at === null || jade.expires_at === void 0 || jade.expires_at === "") return false;
+  if (!jade || jade.expires_at === null || jade.expires_at === void 0 || jade.expires_at === "")
+    return false;
   const t = Date.parse(jade.expires_at);
   return Number.isFinite(t) && t <= toMs4(now);
 }
 function settle(entry, now = /* @__PURE__ */ new Date()) {
-  if (!entry || !entry.jade) return false;
+  if (!entry || !entry.jade)
+    return false;
   const nowMs = toMs4(now);
   const expMs = entry.spirit_expires_at ? Date.parse(entry.spirit_expires_at) : NaN;
   let status;
@@ -31103,8 +31696,10 @@ function chargeNextExpiry(spiritExpiresAt, days, now = /* @__PURE__ */ new Date(
 }
 async function isTreeMember(treeId, viewer) {
   const v = viewer || {};
-  if (v.role === "chief_editor") return true;
-  if (!v.phone) return false;
+  if (v.role === "chief_editor")
+    return true;
+  if (!v.phone)
+    return false;
   const anchor = await getAnchor(v.phone);
   return !!(anchor && anchor.tree_id === treeId);
 }
@@ -31122,14 +31717,17 @@ async function viewerPolicy(treeId, viewer) {
   };
 }
 async function treeMetaOf(treeId) {
-  if (!treeId) throw httpError3(400, ERR_MISSING_TREE_ID);
+  var _a3;
+  if (!treeId)
+    throw httpError3(400, ERR_MISSING_TREE_ID);
   const meta = await getMeta();
-  const t = meta?.trees?.[treeId];
-  if (!t) throw httpError3(404, ERR_TREE_NOT_FOUND);
+  const t = (_a3 = meta == null ? void 0 : meta.trees) == null ? void 0 : _a3[treeId];
+  if (!t)
+    throw httpError3(404, ERR_TREE_NOT_FOUND);
   return t;
 }
 function mountableKind(tree) {
-  const kind = tree?.kind || "";
+  const kind = (tree == null ? void 0 : tree.kind) || "";
   return kind === "family" || kind === "clan";
 }
 async function withSpirit(treeId, mutator, now = /* @__PURE__ */ new Date()) {
@@ -31154,9 +31752,11 @@ async function withSpirit(treeId, mutator, now = /* @__PURE__ */ new Date()) {
 async function readSpiritEntry(treeId, now = /* @__PURE__ */ new Date()) {
   const id = String(treeId);
   const doc = await colGet(SPIRIT_COL, id);
-  if (!doc) return null;
+  if (!doc)
+    return null;
   const entry = stripEntry(doc);
-  if (!settle(entry, now)) return JSON.parse(JSON.stringify(entry));
+  if (!settle(entry, now))
+    return JSON.parse(JSON.stringify(entry));
   return withSpirit(id, (e) => e ? JSON.parse(JSON.stringify(e)) : null, now);
 }
 async function settleAllTrees(now = /* @__PURE__ */ new Date()) {
@@ -31164,15 +31764,18 @@ async function settleAllTrees(now = /* @__PURE__ */ new Date()) {
   const changed = [];
   for (const doc of docs) {
     const entry = stripEntry(doc);
-    if (!hasEntryBody(entry)) continue;
+    if (!hasEntryBody(entry))
+      continue;
     const probe = JSON.parse(JSON.stringify(entry));
-    if (settle(probe, now)) changed.push(String(doc._id));
+    if (settle(probe, now))
+      changed.push(String(doc._id));
   }
   for (const id of changed) {
     await withSpirit(
       id,
       (e) => {
-        if (e) settle(e, now);
+        if (e)
+          settle(e, now);
         return null;
       },
       now
@@ -31229,12 +31832,15 @@ async function synthesizeJade(phone, now = /* @__PURE__ */ new Date()) {
   });
 }
 async function decomposeJade(phone, jadeId, now = /* @__PURE__ */ new Date()) {
-  if (!jadeId) throw httpError3(400, ERR_MISSING_JADE_ID);
+  if (!jadeId)
+    throw httpError3(400, ERR_MISSING_JADE_ID);
   return withAssets(phone, async (user) => {
     sweep(user, now);
     const jade = (user.jades || []).find((j) => j.id === jadeId);
-    if (!jade || jadeExpired(jade, now)) throw httpError3(404, ERR_JADE_NOT_FOUND);
-    if (jade.mounted_tree_id) throw httpError3(409, ERR_JADE_MOUNTED_DECOMPOSE);
+    if (!jade || jadeExpired(jade, now))
+      throw httpError3(404, ERR_JADE_NOT_FOUND);
+    if (jade.mounted_tree_id)
+      throw httpError3(409, ERR_JADE_MOUNTED_DECOMPOSE);
     user.jades = (user.jades || []).filter((j) => j.id !== jadeId);
     const lot = addLot(user, "seed", JADE_DECOMPOSE_SEEDS, { ttl_days: SEED_TTL_DAYS, source: "jade_decompose", now });
     recordTx(
@@ -31257,25 +31863,33 @@ async function decomposeJade(phone, jadeId, now = /* @__PURE__ */ new Date()) {
   });
 }
 async function mountJade(phone, treeId, jadeId, now = /* @__PURE__ */ new Date()) {
-  if (!treeId) throw httpError3(400, ERR_MISSING_TREE_ID);
-  if (!jadeId) throw httpError3(400, ERR_MISSING_JADE_ID);
+  if (!treeId)
+    throw httpError3(400, ERR_MISSING_TREE_ID);
+  if (!jadeId)
+    throw httpError3(400, ERR_MISSING_JADE_ID);
   const tree = await treeMetaOf(treeId);
-  if (!mountableKind(tree) || treeId === MASTER_TREE_ID) throw httpError3(400, ERR_MASTER_NO_SLOT);
+  if (!mountableKind(tree) || treeId === MASTER_TREE_ID)
+    throw httpError3(400, ERR_MASTER_NO_SLOT);
   const assets = await getAssets(phone);
   const mine = (assets.jades || []).find((j) => j.id === jadeId);
-  if (!mine || jadeExpired(mine, now)) throw httpError3(404, ERR_JADE_NOT_FOUND);
-  if (mine.mounted_tree_id) throw httpError3(409, ERR_JADE_MOUNTED);
+  if (!mine || jadeExpired(mine, now))
+    throw httpError3(404, ERR_JADE_NOT_FOUND);
+  if (mine.mounted_tree_id)
+    throw httpError3(409, ERR_JADE_MOUNTED);
   const mountedAt = isoOf3(now);
   const slot = { jade_id: jadeId, mounted_at: mountedAt, expires_at: mine.expires_at ?? null };
   const spiritDocs = await listAll(SPIRIT_COL);
   for (const d of spiritDocs) {
-    if (String(d._id) === String(treeId)) continue;
-    if (d && d.jade && d.jade.jade_id === jadeId) throw httpError3(409, ERR_JADE_MOUNTED);
+    if (String(d._id) === String(treeId))
+      continue;
+    if (d && d.jade && d.jade.jade_id === jadeId)
+      throw httpError3(409, ERR_JADE_MOUNTED);
   }
   const mounted = await withSpirit(
     treeId,
     (entry, ctx) => {
-      if (entry && entry.jade) throw httpError3(409, ERR_SLOT_TAKEN);
+      if (entry && entry.jade)
+        throw httpError3(409, ERR_SLOT_TAKEN);
       ctx.entry = {
         jade: { jade_id: slot.jade_id, mounted_at: slot.mounted_at, expires_at: slot.expires_at },
         spirit_expires_at: null,
@@ -31290,7 +31904,8 @@ async function mountJade(phone, treeId, jadeId, now = /* @__PURE__ */ new Date()
   try {
     await withAssets(phone, (user) => {
       const j = (user.jades || []).find((x) => x.id === jadeId);
-      if (!j) throw httpError3(404, ERR_JADE_NOT_FOUND);
+      if (!j)
+        throw httpError3(404, ERR_JADE_NOT_FOUND);
       j.mounted_tree_id = treeId;
       recordTx(
         user,
@@ -31319,13 +31934,16 @@ async function mountJade(phone, treeId, jadeId, now = /* @__PURE__ */ new Date()
   };
 }
 async function chargeSpirit(phone, treeId, plan, now = /* @__PURE__ */ new Date(), opts = {}) {
-  if (!treeId) throw httpError3(400, ERR_MISSING_TREE_ID);
+  if (!treeId)
+    throw httpError3(400, ERR_MISSING_TREE_ID);
   const P = planOf(plan);
-  if (!P) throw httpError3(400, ERR_PLAN_INVALID);
+  if (!P)
+    throw httpError3(400, ERR_PLAN_INVALID);
   await treeMetaOf(treeId);
   const giftPieces = giftPiecesOf(plan, opts.env);
   const entry0 = await readSpiritEntry(treeId, now);
-  if (!entry0 || !entry0.jade) throw httpError3(409, ERR_NO_JADE_ON_TREE);
+  if (!entry0 || !entry0.jade)
+    throw httpError3(409, ERR_NO_JADE_ON_TREE);
   const assetsSnapshot = await getAssets(phone);
   let assetsWritten = false;
   try {
@@ -31363,7 +31981,8 @@ async function chargeSpirit(phone, treeId, plan, now = /* @__PURE__ */ new Date(
     return await withSpirit(
       treeId,
       (entry) => {
-        if (!entry || !entry.jade) throw httpError3(409, ERR_NO_JADE_ON_TREE);
+        if (!entry || !entry.jade)
+          throw httpError3(409, ERR_NO_JADE_ON_TREE);
         const before = entry.spirit_expires_at || null;
         const newExp = chargeNextExpiry(before, P.days, now);
         entry.spirit_expires_at = newExp;
@@ -31411,22 +32030,25 @@ async function chargeSpirit(phone, treeId, plan, now = /* @__PURE__ */ new Date(
 }
 function maskPhone2(phone) {
   const s = String(phone || "");
-  if (!s) return "";
+  if (!s)
+    return "";
   return s.length >= 7 ? `${s.slice(0, 3)}****${s.slice(-4)}` : `${s.slice(0, 3)}****`;
 }
 async function injectorOf(treeId) {
-  if (!treeId) return null;
+  if (!treeId)
+    return null;
   const docs = await listAll(ASSETS_COL);
   let phone = "";
   for (const rec of docs) {
-    if ((rec?.jades || []).some((j) => j && j.mounted_tree_id === treeId)) {
+    if (((rec == null ? void 0 : rec.jades) || []).some((j) => j && j.mounted_tree_id === treeId)) {
       phone = String(rec._id || "");
       break;
     }
   }
-  if (!phone) return null;
+  if (!phone)
+    return null;
   const account = await colGet(USERS_COL2, phone);
-  const nickname = String(account?.nickname || "").trim() || maskPhone2(phone);
+  const nickname = String((account == null ? void 0 : account.nickname) || "").trim() || maskPhone2(phone);
   const anchor = await colGet(ANCHORS_COL, phone);
   const personHandle = anchor && anchor.tree_id === treeId && anchor.person_handle ? anchor.person_handle : null;
   return { nickname, person_handle: personHandle };
@@ -31528,7 +32150,7 @@ function maskPhone3(phone) {
 }
 function countInviteRewardsToday(user, now = /* @__PURE__ */ new Date()) {
   const today = beijingDate(now);
-  const txs = Array.isArray(user?.txs) ? user.txs : [];
+  const txs = Array.isArray(user == null ? void 0 : user.txs) ? user.txs : [];
   return txs.filter(
     (t) => t && t.type === INVITE_TX_TYPE && t.ref && t.ref.kind === INVITE_TX_REF_KIND && t.ts && beijingDate(t.ts) === today
   ).length;
@@ -31536,13 +32158,18 @@ function countInviteRewardsToday(user, now = /* @__PURE__ */ new Date()) {
 async function resolveInvite(rawCode, inviteePhone, required = false) {
   const code = String(rawCode ?? "").trim();
   const invitee = String(inviteePhone || "").trim();
-  if (!code) return required ? fail2(ERR_INVITE_CODE_REQUIRED, MSG_INVITE_CODE_REQUIRED) : { ok: true, kind: "none" };
-  if (!PHONE_RE2.test(code)) return fail2(ERR_INVITE_CODE_FORMAT, MSG_INVITE_CODE_FORMAT);
-  if (code === invitee) return fail2(ERR_FRIEND_SELF_INVITE, MSG_FRIEND_SELF_INVITE);
+  if (!code)
+    return required ? fail2(ERR_INVITE_CODE_REQUIRED, MSG_INVITE_CODE_REQUIRED) : { ok: true, kind: "none" };
+  if (!PHONE_RE2.test(code))
+    return fail2(ERR_INVITE_CODE_FORMAT, MSG_INVITE_CODE_FORMAT);
+  if (code === invitee)
+    return fail2(ERR_FRIEND_SELF_INVITE, MSG_FRIEND_SELF_INVITE);
   const inviter = await colGet(USERS_COL3, code);
-  if (!inviter) return fail2(ERR_INVITE_CODE_UNKNOWN, MSG_INVITE_CODE_UNKNOWN);
+  if (!inviter)
+    return fail2(ERR_INVITE_CODE_UNKNOWN, MSG_INVITE_CODE_UNKNOWN);
   const existing = await colGet(INVITES_COL, invitee);
-  if (existing) return { ok: true, kind: "already", inviter_phone: existing.inviter_phone || code };
+  if (existing)
+    return { ok: true, kind: "already", inviter_phone: existing.inviter_phone || code };
   return { ok: true, kind: "pending", invite_code: code, inviter_phone: code };
 }
 async function grantInviteReward(inviterPhone, inviteePhone, now = /* @__PURE__ */ new Date()) {
@@ -31584,7 +32211,8 @@ async function recordInvite(inviterPhone, inviteePhone, reward, now = /* @__PURE
     created_at: new Date(now).toISOString(),
     rewarded: !!(reward && reward.rewarded)
   };
-  if (reward && reward.tx_id) doc.reward_tx_id = reward.tx_id;
+  if (reward && reward.tx_id)
+    doc.reward_tx_id = reward.tx_id;
   await colSet(INVITES_COL, inviteDocId(inviteePhone), doc);
   return doc;
 }
@@ -31593,7 +32221,8 @@ async function applyInvite(inviteePhone, rawCode, opts = {}) {
   const required = !!opts.required;
   const invitee = String(inviteePhone || "").trim();
   const v = await resolveInvite(rawCode, invitee, required);
-  if (!v.ok) return v;
+  if (!v.ok)
+    return v;
   if (v.kind === "none") {
     return { ok: true, applied: false, reason: "no_code", inviter_phone: null, rewarded: false, reward_tx_id: null };
   }
@@ -31663,25 +32292,32 @@ function normPhone(v) {
 }
 function friendError(code, patch = {}) {
   const spec = FRIEND_ERRORS[code];
-  if (!spec) throw new Error(`\u672A\u77E5\u597D\u53CB\u57DF\u9519\u8BEF\u7801\uFF1A${code}`);
+  if (!spec)
+    throw new Error(`\u672A\u77E5\u597D\u53CB\u57DF\u9519\u8BEF\u7801\uFF1A${code}`);
   const e = new Error(patch.message || spec.message);
   e.status = spec.status;
   e.code = code;
-  if (patch.reason !== void 0) e.reason = patch.reason;
-  if (patch.detail !== void 0) e.detail = patch.detail;
+  if (patch.reason !== void 0)
+    e.reason = patch.reason;
+  if (patch.detail !== void 0)
+    e.detail = patch.detail;
   return e;
 }
 function relationIdOf(phoneA, phoneB) {
   const x = normPhone(phoneA);
   const y = normPhone(phoneB);
-  if (!x || !y) return "";
+  if (!x || !y)
+    return "";
   return x <= y ? `${x}:${y}` : `${y}:${x}`;
 }
 function otherPhoneOf(doc, phone) {
   const p = normPhone(phone);
-  if (!doc || !p) return "";
-  if (doc.a_phone === p) return doc.b_phone || "";
-  if (doc.b_phone === p) return doc.a_phone || "";
+  if (!doc || !p)
+    return "";
+  if (doc.a_phone === p)
+    return doc.b_phone || "";
+  if (doc.b_phone === p)
+    return doc.a_phone || "";
   return "";
 }
 function isParty(doc, phone) {
@@ -31692,11 +32328,13 @@ function baseExpiresAt(createdAt, rewardMonths = 0) {
   return isoPlusDays4(createdAt, BASE_DAYS + RENEWAL_REWARD_DAYS * r);
 }
 function windowOpenAt(doc) {
-  if (!doc || !doc.expires_at) return "";
+  if (!doc || !doc.expires_at)
+    return "";
   return new Date(toMs6(doc.expires_at) - RENEW_WINDOW_DAYS * DAY_MS7).toISOString();
 }
 function lockOf(pending) {
-  if (!pending || pending.kind !== "renew") return null;
+  if (!pending || pending.kind !== "renew")
+    return null;
   return {
     by: pending.locked_by || "",
     pieces: Number(pending.locked_pieces) || 0,
@@ -31718,14 +32356,16 @@ function pushEvent(doc, event) {
   return e;
 }
 function sweepRelation(doc, now = /* @__PURE__ */ new Date()) {
+  var _a3;
   const events = [];
-  if (!doc || typeof doc !== "object") return { relation: null, events, changed: false };
+  if (!doc || typeof doc !== "object")
+    return { relation: null, events, changed: false };
   const relation = JSON.parse(JSON.stringify(doc));
   const at = toIso4(now);
   const nowMs = toMs6(now);
   const status = relation.status;
   if (status === RELATION_STATUS.PENDING) {
-    const deadline = toMs6(relation.pending?.expires_at ?? "") || toMs6(relation.created_at) + INVITE_TTL_DAYS * DAY_MS7;
+    const deadline = toMs6(((_a3 = relation.pending) == null ? void 0 : _a3.expires_at) ?? "") || toMs6(relation.created_at) + INVITE_TTL_DAYS * DAY_MS7;
     if (nowMs >= deadline) {
       relation.status = RELATION_STATUS.DISSOLVED;
       relation.pending = null;
@@ -31786,8 +32426,10 @@ function sweepRelation(doc, now = /* @__PURE__ */ new Date()) {
   return { relation, events, changed: events.length > 0 };
 }
 function isActiveAt(doc, now = /* @__PURE__ */ new Date()) {
-  if (!doc || doc.status !== RELATION_STATUS.ACTIVE) return false;
-  if (!doc.expires_at) return false;
+  if (!doc || doc.status !== RELATION_STATUS.ACTIVE)
+    return false;
+  if (!doc.expires_at)
+    return false;
   return toMs6(now) < toMs6(doc.expires_at);
 }
 function withRelationLock(id, fn) {
@@ -31805,8 +32447,10 @@ async function persistRelation(id, doc) {
 async function createInvite(fromPhone, toPhone, opts = {}) {
   const from = normPhone(fromPhone);
   const to = normPhone(toPhone);
-  if (!from || !to) throw friendError("FRIEND_INVALID_PHONE");
-  if (from === to) throw friendError("FRIEND_SELF_INVITE");
+  if (!from || !to)
+    throw friendError("FRIEND_INVALID_PHONE");
+  if (from === to)
+    throw friendError("FRIEND_SELF_INVITE");
   const id = relationIdOf(from, to);
   return withRelationLock(id, async () => {
     const now = resolveNow(opts);
@@ -31814,7 +32458,8 @@ async function createInvite(fromPhone, toPhone, opts = {}) {
     const base = await colGet(FRIENDS_COL, id);
     if (base) {
       const { relation: swept } = sweepRelation(base, now);
-      if (swept.status !== RELATION_STATUS.DISSOLVED) throw friendError("FRIEND_DUPLICATE");
+      if (swept.status !== RELATION_STATUS.DISSOLVED)
+        throw friendError("FRIEND_DUPLICATE");
     }
     const a = from <= to ? from : to;
     const b = from <= to ? to : from;
@@ -31859,23 +32504,29 @@ async function createInvite(fromPhone, toPhone, opts = {}) {
 }
 async function loadRelation(id) {
   const doc = await colGet(FRIENDS_COL, id);
-  if (!doc) throw friendError("FRIEND_NOT_FOUND");
+  if (!doc)
+    throw friendError("FRIEND_NOT_FOUND");
   return doc;
 }
 async function acceptInvite(relationId, byPhone, opts = {}) {
   const id = requireId(relationId);
   const by = normPhone(byPhone);
-  if (!by) throw friendError("FRIEND_INVALID_PHONE");
+  if (!by)
+    throw friendError("FRIEND_INVALID_PHONE");
   return withRelationLock(id, async () => {
     const now = resolveNow(opts);
     const at = toIso4(now);
     const base = await loadRelation(id);
     const { relation, events } = sweepRelation(base, now);
-    if (relation.status === RELATION_STATUS.DISSOLVED) throw terminalReject("\u63A5\u53D7\u9080\u8BF7");
-    if (relation.status !== RELATION_STATUS.PENDING) throw stateReject(relation);
+    if (relation.status === RELATION_STATUS.DISSOLVED)
+      throw terminalReject("\u63A5\u53D7\u9080\u8BF7");
+    if (relation.status !== RELATION_STATUS.PENDING)
+      throw stateReject(relation);
     const inv = relation.pending;
-    if (!inv || inv.kind !== "invite") throw stateReject(relation);
-    if (inv.to_phone !== by) throw friendError("FRIEND_NOT_PARTY", { message: "\u53EA\u6709\u88AB\u9080\u8BF7\u4EBA\u672C\u4EBA\u53EF\u4EE5\u63A5\u53D7\u9080\u8BF7" });
+    if (!inv || inv.kind !== "invite")
+      throw stateReject(relation);
+    if (inv.to_phone !== by)
+      throw friendError("FRIEND_NOT_PARTY", { message: "\u53EA\u6709\u88AB\u9080\u8BF7\u4EBA\u672C\u4EBA\u53EF\u4EE5\u63A5\u53D7\u9080\u8BF7" });
     relation.status = RELATION_STATUS.ACTIVE;
     relation.created_at = at;
     relation.expires_at = baseExpiresAt(at, relation.reward_months);
@@ -31896,16 +32547,20 @@ async function acceptInvite(relationId, byPhone, opts = {}) {
 async function rejectInvite(relationId, byPhone, opts = {}) {
   const id = requireId(relationId);
   const by = normPhone(byPhone);
-  if (!by) throw friendError("FRIEND_INVALID_PHONE");
+  if (!by)
+    throw friendError("FRIEND_INVALID_PHONE");
   return withRelationLock(id, async () => {
     const now = resolveNow(opts);
     const at = toIso4(now);
     const base = await loadRelation(id);
     const { relation, events } = sweepRelation(base, now);
-    if (relation.status !== RELATION_STATUS.PENDING) throw stateReject(relation);
+    if (relation.status !== RELATION_STATUS.PENDING)
+      throw stateReject(relation);
     const inv = relation.pending;
-    if (!inv || inv.kind !== "invite") throw stateReject(relation);
-    if (inv.to_phone !== by) throw friendError("FRIEND_NOT_PARTY", { message: "\u53EA\u6709\u88AB\u9080\u8BF7\u4EBA\u672C\u4EBA\u53EF\u4EE5\u62D2\u7EDD\u9080\u8BF7" });
+    if (!inv || inv.kind !== "invite")
+      throw stateReject(relation);
+    if (inv.to_phone !== by)
+      throw friendError("FRIEND_NOT_PARTY", { message: "\u53EA\u6709\u88AB\u9080\u8BF7\u4EBA\u672C\u4EBA\u53EF\u4EE5\u62D2\u7EDD\u9080\u8BF7" });
     relation.status = RELATION_STATUS.DISSOLVED;
     relation.pending = null;
     relation.reason = "invite_rejected";
@@ -31924,16 +32579,20 @@ async function rejectInvite(relationId, byPhone, opts = {}) {
 async function cancelInvite(relationId, byPhone, opts = {}) {
   const id = requireId(relationId);
   const by = normPhone(byPhone);
-  if (!by) throw friendError("FRIEND_INVALID_PHONE");
+  if (!by)
+    throw friendError("FRIEND_INVALID_PHONE");
   return withRelationLock(id, async () => {
     const now = resolveNow(opts);
     const at = toIso4(now);
     const base = await loadRelation(id);
     const { relation, events } = sweepRelation(base, now);
-    if (relation.status !== RELATION_STATUS.PENDING) throw stateReject(relation);
+    if (relation.status !== RELATION_STATUS.PENDING)
+      throw stateReject(relation);
     const inv = relation.pending;
-    if (!inv || inv.kind !== "invite") throw stateReject(relation);
-    if (inv.from_phone !== by) throw friendError("FRIEND_NOT_PARTY", { message: "\u53EA\u6709\u53D1\u8D77\u65B9\u672C\u4EBA\u53EF\u4EE5\u64A4\u56DE\u9080\u8BF7" });
+    if (!inv || inv.kind !== "invite")
+      throw stateReject(relation);
+    if (inv.from_phone !== by)
+      throw friendError("FRIEND_NOT_PARTY", { message: "\u53EA\u6709\u53D1\u8D77\u65B9\u672C\u4EBA\u53EF\u4EE5\u64A4\u56DE\u9080\u8BF7" });
     relation.status = RELATION_STATUS.DISSOLVED;
     relation.pending = null;
     relation.reason = "invite_cancelled";
@@ -31952,17 +32611,23 @@ async function cancelInvite(relationId, byPhone, opts = {}) {
 async function renewRequest(relationId, byPhone, opts = {}) {
   const id = requireId(relationId);
   const by = normPhone(byPhone);
-  if (!by) throw friendError("FRIEND_INVALID_PHONE");
+  if (!by)
+    throw friendError("FRIEND_INVALID_PHONE");
   return withRelationLock(id, async () => {
     const now = resolveNow(opts);
     const at = toIso4(now);
     const base = await loadRelation(id);
     const { relation, events } = sweepRelation(base, now);
-    if (relation.status === RELATION_STATUS.DISSOLVED) throw terminalReject("\u53D1\u8D77\u7EED\u7EA6");
-    if (relation.status !== RELATION_STATUS.ACTIVE) throw stateReject(relation);
-    if (!isParty(relation, by)) throw friendError("FRIEND_NOT_PARTY");
-    if (relation.pending && relation.pending.kind === "renew") throw friendError("RENEW_ALREADY_PENDING");
-    if (relation.pending) throw friendError("FRIEND_STATE_INVALID", { message: "\u5DF2\u6709\u5F85\u786E\u8BA4\u7684\u9080\u8BF7\u7533\u8BF7" });
+    if (relation.status === RELATION_STATUS.DISSOLVED)
+      throw terminalReject("\u53D1\u8D77\u7EED\u7EA6");
+    if (relation.status !== RELATION_STATUS.ACTIVE)
+      throw stateReject(relation);
+    if (!isParty(relation, by))
+      throw friendError("FRIEND_NOT_PARTY");
+    if (relation.pending && relation.pending.kind === "renew")
+      throw friendError("RENEW_ALREADY_PENDING");
+    if (relation.pending)
+      throw friendError("FRIEND_STATE_INVALID", { message: "\u5DF2\u6709\u5F85\u786E\u8BA4\u7684\u9080\u8BF7\u7533\u8BF7" });
     const openAt = windowOpenAt(relation);
     if (toMs6(now) < toMs6(openAt)) {
       const daysLeft = Math.ceil((toMs6(relation.expires_at) - toMs6(now)) / DAY_MS7);
@@ -31970,7 +32635,8 @@ async function renewRequest(relationId, byPhone, opts = {}) {
         message: `\u8DDD\u5230\u671F\u8FD8\u6709 ${daysLeft} \u5929\uFF0C\u5230\u671F\u524D ${RENEW_WINDOW_DAYS} \u5929\u5185\u624D\u53EF\u53D1\u8D77\u7EED\u7EA6`
       });
     }
-    if (opts.has_self_scroll === false) throw friendError("SCROLL_INSUFFICIENT");
+    if (opts.has_self_scroll === false)
+      throw friendError("SCROLL_INSUFFICIENT");
     const locked = {
       by,
       pieces: LOCKED_PIECES,
@@ -32011,18 +32677,24 @@ async function renewRequest(relationId, byPhone, opts = {}) {
 async function renewConfirm(relationId, byPhone, opts = {}) {
   const id = requireId(relationId);
   const by = normPhone(byPhone);
-  if (!by) throw friendError("FRIEND_INVALID_PHONE");
+  if (!by)
+    throw friendError("FRIEND_INVALID_PHONE");
   return withRelationLock(id, async () => {
     const now = resolveNow(opts);
     const at = toIso4(now);
     const base = await loadRelation(id);
     const { relation, events } = sweepRelation(base, now);
-    if (relation.status === RELATION_STATUS.DISSOLVED) throw terminalReject("\u786E\u8BA4\u7EED\u7EA6");
-    if (relation.status !== RELATION_STATUS.ACTIVE) throw stateReject(relation);
+    if (relation.status === RELATION_STATUS.DISSOLVED)
+      throw terminalReject("\u786E\u8BA4\u7EED\u7EA6");
+    if (relation.status !== RELATION_STATUS.ACTIVE)
+      throw stateReject(relation);
     const req = relation.pending;
-    if (!req || req.kind !== "renew") throw friendError("FRIEND_STATE_INVALID", { message: "\u6CA1\u6709\u5F85\u786E\u8BA4\u7684\u7EED\u7EA6\u7533\u8BF7" });
-    if (req.from_phone === by) throw friendError("RENEW_SELF_CONFIRM");
-    if (req.to_phone !== by) throw friendError("FRIEND_NOT_PARTY", { message: "\u53EA\u6709\u88AB\u7533\u8BF7\u7684\u5BF9\u65B9\u53EF\u4EE5\u786E\u8BA4\u7EED\u7EA6" });
+    if (!req || req.kind !== "renew")
+      throw friendError("FRIEND_STATE_INVALID", { message: "\u6CA1\u6709\u5F85\u786E\u8BA4\u7684\u7EED\u7EA6\u7533\u8BF7" });
+    if (req.from_phone === by)
+      throw friendError("RENEW_SELF_CONFIRM");
+    if (req.to_phone !== by)
+      throw friendError("FRIEND_NOT_PARTY", { message: "\u53EA\u6709\u88AB\u7533\u8BF7\u7684\u5BF9\u65B9\u53EF\u4EE5\u786E\u8BA4\u7EED\u7EA6" });
     if (opts.has_self_scroll === false || opts.has_initiator_scroll === false) {
       throw friendError("SCROLL_INSUFFICIENT");
     }
@@ -32052,19 +32724,23 @@ async function renewConfirm(relationId, byPhone, opts = {}) {
 async function renewCancel(relationId, byPhone, opts = {}) {
   const id = requireId(relationId);
   const by = normPhone(byPhone);
-  if (!by) throw friendError("FRIEND_INVALID_PHONE");
+  if (!by)
+    throw friendError("FRIEND_INVALID_PHONE");
   return withRelationLock(id, async () => {
     const now = resolveNow(opts);
     const at = toIso4(now);
     const base = await loadRelation(id);
     const { relation, events } = sweepRelation(base, now);
-    if (relation.status === RELATION_STATUS.DISSOLVED) throw stateReject(relation);
+    if (relation.status === RELATION_STATUS.DISSOLVED)
+      throw stateReject(relation);
     if (relation.status !== RELATION_STATUS.ACTIVE && relation.status !== RELATION_STATUS.GRACE) {
       throw stateReject(relation);
     }
-    if (!isParty(relation, by)) throw friendError("FRIEND_NOT_PARTY");
+    if (!isParty(relation, by))
+      throw friendError("FRIEND_NOT_PARTY");
     const req = relation.pending;
-    if (!req || req.kind !== "renew") throw friendError("FRIEND_STATE_INVALID", { message: "\u6CA1\u6709\u5F85\u786E\u8BA4\u7684\u7EED\u7EA6\u7533\u8BF7" });
+    if (!req || req.kind !== "renew")
+      throw friendError("FRIEND_STATE_INVALID", { message: "\u6CA1\u6709\u5F85\u786E\u8BA4\u7684\u7EED\u7EA6\u7533\u8BF7" });
     const unlocked = lockOf(req);
     const isInitiator = req.from_phone === by;
     const reason = isInitiator ? "renew_cancelled" : "renew_rejected";
@@ -32086,14 +32762,17 @@ async function renewCancel(relationId, byPhone, opts = {}) {
 async function dissolve(relationId, byPhone, opts = {}) {
   const id = requireId(relationId);
   const by = normPhone(byPhone);
-  if (!by) throw friendError("FRIEND_INVALID_PHONE");
+  if (!by)
+    throw friendError("FRIEND_INVALID_PHONE");
   return withRelationLock(id, async () => {
     const now = resolveNow(opts);
     const at = toIso4(now);
     const base = await loadRelation(id);
     const { relation, events } = sweepRelation(base, now);
-    if (relation.status === RELATION_STATUS.DISSOLVED) throw stateReject(relation);
-    if (!isParty(relation, by)) throw friendError("FRIEND_NOT_PARTY");
+    if (relation.status === RELATION_STATUS.DISSOLVED)
+      throw stateReject(relation);
+    if (!isParty(relation, by))
+      throw friendError("FRIEND_NOT_PARTY");
     const fromStatus = relation.status;
     relation.status = RELATION_STATUS.DISSOLVED;
     relation.pending = null;
@@ -32112,14 +32791,17 @@ async function dissolve(relationId, byPhone, opts = {}) {
 }
 async function listRelations(phone, opts = {}) {
   const p = normPhone(phone);
-  if (!p) throw friendError("FRIEND_INVALID_PHONE");
+  if (!p)
+    throw friendError("FRIEND_INVALID_PHONE");
   const now = resolveNow(opts);
   const rows = await colWhere(FRIENDS_COL, (d) => !!d && (d.a_phone === p || d.b_phone === p));
   const out = [];
   for (const row of rows) {
     const { relation } = sweepRelation(row, now);
-    if (!relation) continue;
-    if (relation.status === RELATION_STATUS.DISSOLVED && !opts.include_dissolved) continue;
+    if (!relation)
+      continue;
+    if (relation.status === RELATION_STATUS.DISSOLVED && !opts.include_dissolved)
+      continue;
     out.push(relation);
   }
   return out.sort((x, y) => toMs6(x.created_at) - toMs6(y.created_at));
@@ -32167,10 +32849,11 @@ var init_friends = __esm({
     toMs6 = (d) => d instanceof Date ? d.getTime() : new Date(d).getTime();
     isoPlusDays4 = (from, days) => new Date(toMs6(from) + days * DAY_MS7).toISOString();
     relationLocks = /* @__PURE__ */ new Map();
-    resolveNow = (opts) => opts?.now ? new Date(opts.now) : /* @__PURE__ */ new Date();
+    resolveNow = (opts) => (opts == null ? void 0 : opts.now) ? new Date(opts.now) : /* @__PURE__ */ new Date();
     requireId = (relationId) => {
       const id = normPhone(relationId);
-      if (!id) throw friendError("FRIEND_NOT_FOUND");
+      if (!id)
+        throw friendError("FRIEND_NOT_FOUND");
       return id;
     };
     STATE_TEXT = {
@@ -32222,18 +32905,21 @@ __export(friend_ops_exports, {
 });
 function opsError(code, patch = {}) {
   const spec = FRIEND_OPS_ERRORS[code];
-  if (!spec) throw new Error(`\u672A\u77E5\u597D\u53CB\u7F16\u6392\u57DF\u9519\u8BEF\u7801\uFF1A${code}`);
+  if (!spec)
+    throw new Error(`\u672A\u77E5\u597D\u53CB\u7F16\u6392\u57DF\u9519\u8BEF\u7801\uFF1A${code}`);
   const e = new Error(patch.message || spec.message);
   e.status = patch.status || spec.status;
   e.code = code;
-  if (patch.reason !== void 0) e.reason = patch.reason;
-  if (patch.detail !== void 0) e.detail = patch.detail;
+  if (patch.reason !== void 0)
+    e.reason = patch.reason;
+  if (patch.detail !== void 0)
+    e.detail = patch.detail;
   return e;
 }
 function safeReason(e) {
-  const code = norm3(e?.code) || "ASSET_INSUFFICIENT";
-  const raw = norm3(e?.message);
-  const unsafe = SYS_ERRNO_RE.test(norm3(e?.name) || code) || LOCAL_PATH_RE.test(raw) || SYS_ERRNO_RE.test(raw);
+  const code = norm3(e == null ? void 0 : e.code) || "ASSET_INSUFFICIENT";
+  const raw = norm3(e == null ? void 0 : e.message);
+  const unsafe = SYS_ERRNO_RE.test(norm3(e == null ? void 0 : e.name) || code) || LOCAL_PATH_RE.test(raw) || SYS_ERRNO_RE.test(raw);
   return { code, message: unsafe ? "\u8D44\u4EA7\u6263\u51CF\u6216\u56DE\u5199\u5931\u8D25\uFF08\u7CFB\u7EDF\u7EA7\uFF0C\u8BE6\u89C1\u670D\u52A1\u7AEF\u65E5\u5FD7\uFF09" : raw };
 }
 async function runOp(fn, okMessage) {
@@ -32242,26 +32928,31 @@ async function runOp(fn, okMessage) {
     return { ok: true, message: okMessage, ...data || {} };
   } catch (e) {
     const error = {
-      code: e?.code || "FRIEND_OPS_FAILED",
-      status: Number(e?.status) || 409,
-      message: e?.message || "\u597D\u53CB\u57DF\u64CD\u4F5C\u5931\u8D25"
+      code: (e == null ? void 0 : e.code) || "FRIEND_OPS_FAILED",
+      status: Number(e == null ? void 0 : e.status) || 409,
+      message: (e == null ? void 0 : e.message) || "\u597D\u53CB\u57DF\u64CD\u4F5C\u5931\u8D25"
     };
-    if (e?.reason !== void 0) error.reason = e.reason;
-    if (e?.detail !== void 0) error.detail = e.detail;
+    if ((e == null ? void 0 : e.reason) !== void 0)
+      error.reason = e.reason;
+    if ((e == null ? void 0 : e.detail) !== void 0)
+      error.detail = e.detail;
     return { ok: false, error, message: error.message };
   }
 }
 function maskPhone4(phone) {
   const p = norm3(phone);
-  if (!p) return "";
-  if (p.length >= 7) return `${p.slice(0, 3)}****${p.slice(-4)}`;
+  if (!p)
+    return "";
+  if (p.length >= 7)
+    return `${p.slice(0, 3)}****${p.slice(-4)}`;
   return `${p.slice(0, 1)}****`;
 }
 async function nicknameOf(phone) {
   const p = norm3(phone);
-  if (!p) return "";
+  if (!p)
+    return "";
   const doc = await colGet(USERS_COL, p);
-  return norm3(doc?.nickname);
+  return norm3(doc == null ? void 0 : doc.nickname);
 }
 async function displayNameOf(phone) {
   const nickname = await nicknameOf(phone);
@@ -32269,9 +32960,11 @@ async function displayNameOf(phone) {
 }
 async function notify(phone, kind, otherPhone, now) {
   const tpl = FRIEND_NOTICE[kind];
-  if (!tpl) return null;
+  if (!tpl)
+    return null;
   const to = norm3(phone);
-  if (!to) return null;
+  if (!to)
+    return null;
   const name = await displayNameOf(otherPhone);
   const item = {
     id: messageId(),
@@ -32293,7 +32986,8 @@ async function notify(phone, kind, otherPhone, now) {
 function pairOf(relationId) {
   const id = norm3(relationId);
   const parts = id.split(":").map((x) => x.trim()).filter(Boolean);
-  if (parts.length !== 2) throw friendError("FRIEND_NOT_FOUND");
+  if (parts.length !== 2)
+    throw friendError("FRIEND_NOT_FOUND");
   return parts;
 }
 function relationTokenOf(relationId) {
@@ -32302,15 +32996,18 @@ function relationTokenOf(relationId) {
 }
 async function resolveRelationToken(relationToken) {
   const token = norm3(relationToken);
-  if (!RELATION_TOKEN_RE.test(token)) throw friendError("FRIEND_NOT_FOUND");
+  if (!RELATION_TOKEN_RE.test(token))
+    throw friendError("FRIEND_NOT_FOUND");
   const docs = await colAll(FRIENDS_COL);
   for (const doc of docs) {
-    if (doc && typeof doc === "object" && norm3(doc._id) && relationTokenOf(doc._id) === token) return norm3(doc._id);
+    if (doc && typeof doc === "object" && norm3(doc._id) && relationTokenOf(doc._id) === token)
+      return norm3(doc._id);
   }
   throw friendError("FRIEND_NOT_FOUND");
 }
 function projectRelation(relation, me) {
-  if (!relation || typeof relation !== "object") return null;
+  if (!relation || typeof relation !== "object")
+    return null;
   const out = { ...relation };
   out.relation_token = relationTokenOf(relation._id);
   delete out._id;
@@ -32318,22 +33015,24 @@ function projectRelation(relation, me) {
   out.b_phone_masked = maskPhone4(relation.b_phone);
   delete out.a_phone;
   delete out.b_phone;
-  if (out.pending !== void 0) out.pending = projectPending(relation.pending, me);
-  out.history = (Array.isArray(relation.history) ? relation.history : []).map((e) => ({ ...e, by: maskPhone4(e?.by) }));
+  if (out.pending !== void 0)
+    out.pending = projectPending(relation.pending, me);
+  out.history = (Array.isArray(relation.history) ? relation.history : []).map((e) => ({ ...e, by: maskPhone4(e == null ? void 0 : e.by) }));
   return out;
 }
 function projectEvents(events) {
   return (Array.isArray(events) ? events : []).map((e) => ({
-    at: norm3(e?.at),
-    type: norm3(e?.type),
-    from_status: norm3(e?.from_status),
-    to_status: norm3(e?.to_status),
-    by_masked: maskPhone4(e?.by),
-    reason: norm3(e?.reason)
+    at: norm3(e == null ? void 0 : e.at),
+    type: norm3(e == null ? void 0 : e.type),
+    from_status: norm3(e == null ? void 0 : e.from_status),
+    to_status: norm3(e == null ? void 0 : e.to_status),
+    by_masked: maskPhone4(e == null ? void 0 : e.by),
+    reason: norm3(e == null ? void 0 : e.reason)
   }));
 }
 function projectLock(locked, me) {
-  if (!locked || typeof locked !== "object") return null;
+  if (!locked || typeof locked !== "object")
+    return null;
   return {
     pieces: toNonNegInt(locked.pieces),
     lot_id: norm3(locked.lot_id),
@@ -32350,7 +33049,8 @@ async function writeRelationDoc(relation, opts = {}) {
 }
 async function appendRelationAudit(relationId, event, opts = {}) {
   const doc = await colGet(FRIENDS_COL, relationId);
-  if (!doc || typeof doc !== "object" || !norm3(doc._id)) return null;
+  if (!doc || typeof doc !== "object" || !norm3(doc._id))
+    return null;
   const next = JSON.parse(JSON.stringify(doc));
   next.history = Array.isArray(next.history) ? next.history : [];
   const e = {
@@ -32361,13 +33061,15 @@ async function appendRelationAudit(relationId, event, opts = {}) {
     by: event.by || "",
     reason: event.reason || ""
   };
-  if (event.detail !== void 0) e.detail = event.detail;
+  if (event.detail !== void 0)
+    e.detail = event.detail;
   next.history.push(e);
   await writeRelationDoc(next, opts);
   return e;
 }
 function projectPending(pending, me) {
-  if (!pending || typeof pending !== "object") return null;
+  if (!pending || typeof pending !== "object")
+    return null;
   const out = {
     kind: norm3(pending.kind),
     requested_at: norm3(pending.requested_at),
@@ -32386,7 +33088,8 @@ function projectPending(pending, me) {
 async function listFriends(phone, now = /* @__PURE__ */ new Date()) {
   return runOp(async () => {
     const me = norm3(phone);
-    if (!me) throw friendError("FRIEND_INVALID_PHONE");
+    if (!me)
+      throw friendError("FRIEND_INVALID_PHONE");
     const nowMs = toMs7(now);
     const relations = await listRelations(me, { now });
     const friends = [];
@@ -32416,17 +33119,18 @@ async function listFriends(phone, now = /* @__PURE__ */ new Date()) {
 }
 async function sendFriendInvite(from, to, now = /* @__PURE__ */ new Date()) {
   return runOp(async () => {
+    var _a3, _b, _c, _d;
     const res = await createInvite(from, to, { now });
-    const notice = await notify(res.relation.pending?.to_phone, "invite_sent", res.relation.pending?.from_phone, now);
+    const notice = await notify((_a3 = res.relation.pending) == null ? void 0 : _a3.to_phone, "invite_sent", (_b = res.relation.pending) == null ? void 0 : _b.from_phone, now);
     return {
       relation_token: relationTokenOf(res.relation_id),
       relation: projectRelation(res.relation, norm3(from)),
       events: projectEvents(res.events),
       invite: {
-        to_masked: maskPhone4(res.relation.pending?.to_phone),
-        expires_at: norm3(res.relation.pending?.expires_at)
+        to_masked: maskPhone4((_c = res.relation.pending) == null ? void 0 : _c.to_phone),
+        expires_at: norm3((_d = res.relation.pending) == null ? void 0 : _d.expires_at)
       },
-      notice_id: notice?.id || ""
+      notice_id: (notice == null ? void 0 : notice.id) || ""
     };
   }, "\u597D\u53CB\u9080\u8BF7\u5DF2\u53D1\u51FA");
 }
@@ -32440,7 +33144,7 @@ async function acceptFriendInvite(relationToken, by, now = /* @__PURE__ */ new D
       relation_token: relationTokenOf(res.relation_id),
       relation: projectRelation(res.relation, me),
       events: projectEvents(res.events),
-      notice_id: notice?.id || ""
+      notice_id: (notice == null ? void 0 : notice.id) || ""
     };
   }, "\u597D\u53CB\u9080\u8BF7\u5DF2\u63A5\u53D7");
 }
@@ -32473,7 +33177,8 @@ async function cancelFriendInvite(relationToken, by, now = /* @__PURE__ */ new D
 async function requestRenewal(relationToken, by, now = /* @__PURE__ */ new Date()) {
   return runOp(async () => {
     const me = norm3(by);
-    if (!me) throw friendError("FRIEND_INVALID_PHONE");
+    if (!me)
+      throw friendError("FRIEND_INVALID_PHONE");
     const relationId = await resolveRelationToken(relationToken);
     const out = await withAssets(me, async (user) => {
       const total = sumLots(user.scrolls);
@@ -32501,7 +33206,7 @@ async function requestRenewal(relationToken, by, now = /* @__PURE__ */ new Date(
       locked: projectLock(res.locked, me),
       window_open_at: res.window_open_at,
       avail_pieces: held.avail_pieces,
-      notice_id: notice?.id || ""
+      notice_id: (notice == null ? void 0 : notice.id) || ""
     };
   }, "\u7EED\u7EA6\u7533\u8BF7\u5DF2\u53D1\u51FA\uFF08\u5DF2\u9501\u5B9A 1 \u5F20\u5170\u5E16\uFF0C\u672A\u6263\u9664\uFF09");
 }
@@ -32553,15 +33258,20 @@ async function rollbackCharged(entry, ctx) {
 async function renewPlanOf(relationId, me, now) {
   const rows = await listRelations(me, { now, include_dissolved: true });
   const rel = rows.find((r) => r && norm3(r._id) === norm3(relationId));
-  if (!rel) throw friendError("FRIEND_NOT_FOUND");
+  if (!rel)
+    throw friendError("FRIEND_NOT_FOUND");
   if (rel.status === RELATION_STATUS.DISSOLVED) {
     throw friendError("FRIEND_STATE_INVALID", { message: "\u5173\u7CFB\u5DF2\u89E3\u9664\uFF08\u7EC8\u6001\u4E0D\u53EF\u9006\uFF09\uFF0C\u4E0D\u80FD\u786E\u8BA4\u7EED\u7EA6", reason: "dissolved_terminal" });
   }
-  if (rel.status !== RELATION_STATUS.ACTIVE) throw friendError("FRIEND_STATE_INVALID");
+  if (rel.status !== RELATION_STATUS.ACTIVE)
+    throw friendError("FRIEND_STATE_INVALID");
   const req = rel.pending;
-  if (!req || req.kind !== "renew") throw friendError("FRIEND_STATE_INVALID", { message: "\u6CA1\u6709\u5F85\u786E\u8BA4\u7684\u7EED\u7EA6\u7533\u8BF7" });
-  if (norm3(req.from_phone) === me) throw friendError("RENEW_SELF_CONFIRM");
-  if (norm3(req.to_phone) !== me) throw friendError("FRIEND_NOT_PARTY", { message: "\u53EA\u6709\u88AB\u7533\u8BF7\u7684\u5BF9\u65B9\u53EF\u4EE5\u786E\u8BA4\u7EED\u7EA6" });
+  if (!req || req.kind !== "renew")
+    throw friendError("FRIEND_STATE_INVALID", { message: "\u6CA1\u6709\u5F85\u786E\u8BA4\u7684\u7EED\u7EA6\u7533\u8BF7" });
+  if (norm3(req.from_phone) === me)
+    throw friendError("RENEW_SELF_CONFIRM");
+  if (norm3(req.to_phone) !== me)
+    throw friendError("FRIEND_NOT_PARTY", { message: "\u53EA\u6709\u88AB\u7533\u8BF7\u7684\u5BF9\u65B9\u53EF\u4EE5\u786E\u8BA4\u7EED\u7EA6" });
   return {
     initiator: norm3(req.from_phone),
     amount_each: LOCKED_PIECES,
@@ -32577,7 +33287,8 @@ async function renewPlanOf(relationId, me, now) {
 async function confirmRenewal(relationToken, by, now = /* @__PURE__ */ new Date()) {
   return runOp(async () => {
     const me = norm3(by);
-    if (!me) throw friendError("FRIEND_INVALID_PHONE");
+    if (!me)
+      throw friendError("FRIEND_INVALID_PHONE");
     const relationId = await resolveRelationToken(relationToken);
     const token = relationTokenOf(relationId);
     const pair = pairOf(relationId);
@@ -32628,7 +33339,8 @@ async function confirmRenewal(relationToken, by, now = /* @__PURE__ */ new Date(
           tx_id: one.tx_id
         });
       } catch (e) {
-        if (applied.length === 0) throw e;
+        if (applied.length === 0)
+          throw e;
         const reason = safeReason(e);
         const first = applied[0];
         const undone = await rollbackCharged(first, {
@@ -32669,7 +33381,7 @@ async function confirmRenewal(relationToken, by, now = /* @__PURE__ */ new Date(
               charged: applied.map((c) => ({ phone_masked: c.phone_masked, role: c.role, pieces: c.pieces, tx_id: c.tx_id })),
               failed_masked: maskPhone4(p),
               rollback_error: undone.error,
-              audit_at: norm3(audit?.at)
+              audit_at: norm3(audit == null ? void 0 : audit.at)
             }
           });
         }
@@ -32680,7 +33392,7 @@ async function confirmRenewal(relationToken, by, now = /* @__PURE__ */ new Date(
             relation_token: token,
             compensated: { phone_masked: first.phone_masked, pieces, restored: undone.restored, refund_tx_id: undone.refund_tx_id },
             failed_masked: maskPhone4(p),
-            audit_at: norm3(audit?.at)
+            audit_at: norm3(audit == null ? void 0 : audit.at)
           }
         });
       }
@@ -32697,19 +33409,19 @@ async function confirmRenewal(relationToken, by, now = /* @__PURE__ */ new Date(
       const undone = [];
       for (const c of applied) {
         undone.push(
-          await rollbackCharged(c, { now, token, peerMasked: c.phone_masked, reason: norm3(e?.code) || "RENEW_CONFIRM_FAILED" })
+          await rollbackCharged(c, { now, token, peerMasked: c.phone_masked, reason: norm3(e == null ? void 0 : e.code) || "RENEW_CONFIRM_FAILED" })
         );
       }
       const failed = undone.filter((u) => !u.ok);
       if (failed.length > 0) {
         throw opsError("RENEW_DEDUCT_PARTIAL", {
           message: `\u7EED\u7EA6\u5173\u7CFB\u63A8\u8FDB\u5931\u8D25\u4E14\u53CC\u8FB9\u8865\u507F\u5931\u8D25\uFF08\u5DF2\u6263 ${applied.length} \u65B9\uFF0C\u5176\u4E2D ${failed.length} \u65B9\u8865\u507F\u5931\u8D25\uFF09\uFF0C\u9700\u4EBA\u5DE5\u6838\u5BF9`,
-          reason: norm3(e?.code) || "",
+          reason: norm3(e == null ? void 0 : e.code) || "",
           detail: {
             relation_token: token,
             charged: applied.map((c) => ({ phone_masked: c.phone_masked, role: c.role, pieces: c.pieces, tx_id: c.tx_id })),
             rollback_errors: failed.map((u) => u.error),
-            confirm_error: norm3(e?.code) || ""
+            confirm_error: norm3(e == null ? void 0 : e.code) || ""
           }
         });
       }
@@ -32721,7 +33433,8 @@ async function confirmRenewal(relationToken, by, now = /* @__PURE__ */ new Date(
     for (const p of [me, ...others]) {
       const peer = pair.find((x) => x !== p) || "";
       const n = await notify(p, "renew_confirmed", peer, now);
-      if (n?.id) noticeIds.push(n.id);
+      if (n == null ? void 0 : n.id)
+        noticeIds.push(n.id);
     }
     return {
       relation_token: relationTokenOf(res.relation_id),
@@ -32739,6 +33452,7 @@ async function confirmRenewal(relationToken, by, now = /* @__PURE__ */ new Date(
 }
 async function cancelRenewal(relationToken, by, now = /* @__PURE__ */ new Date(), reason = "") {
   return runOp(async () => {
+    var _a3, _b, _c, _d, _e, _f, _g, _h;
     const me = norm3(by);
     const relationId = await resolveRelationToken(relationToken);
     const res = await renewCancel(relationId, me, { now, reason: String(reason || "") });
@@ -32746,16 +33460,18 @@ async function cancelRenewal(relationToken, by, now = /* @__PURE__ */ new Date()
       relation_token: relationTokenOf(res.relation_id),
       relation: projectRelation(res.relation, me),
       events: projectEvents(res.events),
-      unlocked: { pieces: toNonNegInt(res.unlocked?.pieces), lot_id: norm3(res.unlocked?.lot_id), at: norm3(res.unlocked?.at), by_masked: maskPhone4(res.unlocked?.by) },
-      reason: norm3(res.relation?.history?.[res.relation.history.length - 1]?.reason),
-      unlocked_hint: maskPhone4(res.unlocked?.by)
+      unlocked: { pieces: toNonNegInt((_a3 = res.unlocked) == null ? void 0 : _a3.pieces), lot_id: norm3((_b = res.unlocked) == null ? void 0 : _b.lot_id), at: norm3((_c = res.unlocked) == null ? void 0 : _c.at), by_masked: maskPhone4((_d = res.unlocked) == null ? void 0 : _d.by) },
+      reason: norm3((_g = (_f = (_e = res.relation) == null ? void 0 : _e.history) == null ? void 0 : _f[res.relation.history.length - 1]) == null ? void 0 : _g.reason),
+      unlocked_hint: maskPhone4((_h = res.unlocked) == null ? void 0 : _h.by)
     };
   }, "\u7EED\u7EA6\u7533\u8BF7\u5DF2\u53D6\u6D88\uFF08\u9501\u5B9A\u5DF2\u89E3\u9664\uFF0C\u65E0\u6D41\u6C34\uFF09");
 }
 async function dissolveFriend(relationToken, by, now = /* @__PURE__ */ new Date(), reason = "") {
   return runOp(async () => {
+    var _a3;
     const me = norm3(by);
-    if (!me) throw friendError("FRIEND_INVALID_PHONE");
+    if (!me)
+      throw friendError("FRIEND_INVALID_PHONE");
     const relationId = await resolveRelationToken(relationToken);
     const res = await dissolve(relationId, me, { now, ...reason ? { reason: String(reason) } : {} });
     const pair = pairOf(relationId);
@@ -32763,13 +33479,14 @@ async function dissolveFriend(relationToken, by, now = /* @__PURE__ */ new Date(
     for (const p of pair) {
       const peer = pair.find((x) => x !== p) || "";
       const n = await notify(p, "dissolved", peer, now);
-      if (n?.id) noticeIds.push(n.id);
+      if (n == null ? void 0 : n.id)
+        noticeIds.push(n.id);
     }
     return {
       relation_token: relationTokenOf(res.relation_id),
       relation: projectRelation(res.relation, me),
       events: projectEvents(res.events),
-      reason: norm3(res.relation?.reason),
+      reason: norm3((_a3 = res.relation) == null ? void 0 : _a3.reason),
       notice_ids: noticeIds
     };
   }, "\u597D\u53CB\u5173\u7CFB\u5DF2\u89E3\u9664");
@@ -32777,7 +33494,8 @@ async function dissolveFriend(relationToken, by, now = /* @__PURE__ */ new Date(
 function normalizeAmounts(raw) {
   const src = raw && typeof raw === "object" ? raw : {};
   const out = {};
-  for (const k of GRANT_KEYS) out[k] = toNonNegInt(src[k]);
+  for (const k of GRANT_KEYS)
+    out[k] = toNonNegInt(src[k]);
   return out;
 }
 function grantTo(user, per, now, ref, desc) {
@@ -32785,7 +33503,8 @@ function grantTo(user, per, now, ref, desc) {
   for (const k of GRANT_KEYS) {
     const n = toNonNegInt(per[k]);
     delta[GRANT[k].delta] = n;
-    if (n > 0) GRANT[k].add(user, n, now);
+    if (n > 0)
+      GRANT[k].add(user, n, now);
   }
   const tx = recordTx(user, { type: "reward", delta, ref, desc }, now);
   return tx;
@@ -32804,19 +33523,22 @@ function grantRewardBase(user, amounts, now, triggerPhone) {
 async function distributeFriendRewards(triggerPhone, amounts = {}, now = /* @__PURE__ */ new Date(), opts = {}) {
   return runOp(async () => {
     const trigger = norm3(triggerPhone);
-    if (!trigger) throw friendError("FRIEND_INVALID_PHONE");
-    const skipBase = amounts?.base === null;
-    const baseAmt = skipBase ? normalizeAmounts({}) : normalizeAmounts(amounts?.base);
-    const poolAmt = normalizeAmounts(amounts?.pool);
+    if (!trigger)
+      throw friendError("FRIEND_INVALID_PHONE");
+    const skipBase = (amounts == null ? void 0 : amounts.base) === null;
+    const baseAmt = skipBase ? normalizeAmounts({}) : normalizeAmounts(amounts == null ? void 0 : amounts.base);
+    const poolAmt = normalizeAmounts(amounts == null ? void 0 : amounts.pool);
     const triggerMasked = maskPhone4(trigger);
-    const grantKey = norm3(opts?.idempotency_key);
+    const grantKey = norm3(opts == null ? void 0 : opts.idempotency_key);
     const baseTx = skipBase ? null : await withAssets(trigger, (user) => grantRewardBase(user, baseAmt, now, trigger));
     const relations = await listRelations(trigger, { now });
     const actives = [];
     for (const r of relations) {
-      if (!isActiveAt(r, now)) continue;
+      if (!isActiveAt(r, now))
+        continue;
       const peer = otherPhoneOf(r, trigger);
-      if (!peer || peer === trigger) continue;
+      if (!peer || peer === trigger)
+        continue;
       actives.push({ relation_id: r._id, phone: peer });
     }
     const seen = /* @__PURE__ */ new Set();
@@ -32831,7 +33553,7 @@ async function distributeFriendRewards(triggerPhone, amounts = {}, now = /* @__P
         remainder: poolAmt,
         distributed: [],
         pooled: false,
-        base_tx_id: baseTx?.id || "",
+        base_tx_id: (baseTx == null ? void 0 : baseTx.id) || "",
         notice_ids: []
       };
     }
@@ -32867,9 +33589,13 @@ async function distributeFriendRewards(triggerPhone, amounts = {}, now = /* @__P
       const one = await withAssets(phone, (user) => {
         if (grantKey) {
           const seen2 = (Array.isArray(user.txs) ? user.txs : []).find(
-            (t) => t && norm3(t.type) === "reward" && norm3(t.ref?.scope) === "pool" && norm3(t.ref?.[REWARD_GRANT_KEY]) === grantKey && norm3(t.ref?.relation_id) === norm3(relation_id)
+            (t) => {
+              var _a3, _b, _c;
+              return t && norm3(t.type) === "reward" && norm3((_a3 = t.ref) == null ? void 0 : _a3.scope) === "pool" && norm3((_b = t.ref) == null ? void 0 : _b[REWARD_GRANT_KEY]) === grantKey && norm3((_c = t.ref) == null ? void 0 : _c.relation_id) === norm3(relation_id);
+            }
           );
-          if (seen2) return { tx: null, replayed: true, existing_id: norm3(seen2.id) };
+          if (seen2)
+            return { tx: null, replayed: true, existing_id: norm3(seen2.id) };
         }
         const tx = grantTo(
           user,
@@ -32878,7 +33604,7 @@ async function distributeFriendRewards(triggerPhone, amounts = {}, now = /* @__P
           ref,
           `\u597D\u53CB\u5956\u52B1\uFF08\u6C60\uFF09\uFF1A\u751F\u6548\u4E2D\u597D\u53CB ${denominator} \u4EBA\u5747\u5206\uFF0C\u672C\u6B21 +${per.seed_fragments} \u77F3\u69B4\u7C7D\u788E\u7247 / +${per.scroll_fragments} \u5170\u5E16\u6B8B\u9875`
         );
-        return { tx, replayed: false, existing_id: norm3(tx?.id) };
+        return { tx, replayed: false, existing_id: norm3(tx == null ? void 0 : tx.id) };
       });
       distributed.push({
         phone_masked: maskPhone4(phone),
@@ -32898,25 +33624,29 @@ async function distributeFriendRewards(triggerPhone, amounts = {}, now = /* @__P
       remainder,
       distributed,
       pooled: true,
-      base_tx_id: baseTx?.id || "",
+      base_tx_id: (baseTx == null ? void 0 : baseTx.id) || "",
       notice_ids: []
     };
   }, "\u597D\u53CB\u5956\u52B1\u5DF2\u5206\u53D1");
 }
 async function lockedScrollPieces(phone, now = /* @__PURE__ */ new Date()) {
   const me = norm3(phone);
-  if (!me) throw friendError("FRIEND_INVALID_PHONE");
+  if (!me)
+    throw friendError("FRIEND_INVALID_PHONE");
   const at = now instanceof Date ? now : new Date(now);
   return withAssets(me, async () => {
     const rows = await listRelations(me, { now: at });
     let pieces = 0;
     const locks = [];
     for (const r of rows) {
-      const p = r?.pending;
-      if (!p || p.kind !== "renew") continue;
-      if (norm3(p.locked_by) !== me) continue;
+      const p = r == null ? void 0 : r.pending;
+      if (!p || p.kind !== "renew")
+        continue;
+      if (norm3(p.locked_by) !== me)
+        continue;
       const n = toNonNegInt(p.locked_pieces);
-      if (n <= 0) continue;
+      if (n <= 0)
+        continue;
       pieces += n;
       locks.push({ relation_token: relationTokenOf(r._id), pieces: n });
     }
@@ -32925,16 +33655,18 @@ async function lockedScrollPieces(phone, now = /* @__PURE__ */ new Date()) {
 }
 async function sweepFriends(now = /* @__PURE__ */ new Date()) {
   return runOp(async () => {
+    var _a3;
     const docs = await colAll(FRIENDS_COL);
     const changed = [];
     for (const doc of docs) {
       const { relation, events, changed: moved } = sweepRelation(doc, now);
-      if (!moved || !relation) continue;
+      if (!moved || !relation)
+        continue;
       const saved = await writeRelationDoc(relation);
       changed.push({
         relation_id: saved._id,
         status: saved.status,
-        from_status: norm3(events?.[0]?.from_status),
+        from_status: norm3((_a3 = events == null ? void 0 : events[0]) == null ? void 0 : _a3.from_status),
         events: events || []
       });
     }
@@ -33055,19 +33787,23 @@ function taskError(code, patch = {}) {
   const e = new Error(patch.message || spec.message);
   e.status = Number(patch.status) || spec.status;
   e.code = patch.code || code;
-  if (patch.reason !== void 0) e.reason = patch.reason;
-  if (patch.detail !== void 0) e.detail = patch.detail;
+  if (patch.reason !== void 0)
+    e.reason = patch.reason;
+  if (patch.detail !== void 0)
+    e.detail = patch.detail;
   return e;
 }
 function isSigninDayString(v) {
   const s = typeof v === "string" ? v.trim() : "";
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s))
+    return false;
   const ms = Date.parse(`${s}T00:00:00.000Z`);
   return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === s;
 }
 function shiftSigninDay(day, n) {
   const s = norm4(day);
-  if (!isSigninDayString(s)) return "";
+  if (!isSigninDayString(s))
+    return "";
   const step = Math.trunc(Number(n) || 0);
   return new Date(Date.parse(`${s}T00:00:00.000Z`) + step * DAY_MS9).toISOString().slice(0, 10);
 }
@@ -33077,7 +33813,8 @@ function cycleDayOf(streak) {
 }
 function streakFromSigninDays(days, today) {
   const day = norm4(today);
-  if (!isSigninDayString(day)) return 0;
+  if (!isSigninDayString(day))
+    return 0;
   const set = new Set(normalizeSigninDays(days));
   let cursor = set.has(day) ? day : shiftSigninDay(day, -1);
   let n = 0;
@@ -33096,23 +33833,28 @@ function pickSigninPoolItem(pool, random = Math.random) {
     (it) => it && Number.isFinite(Number(it.weight)) && Number(it.weight) > 0 && Number.isFinite(Number(it.qty)) && Number(it.qty) > 0
   );
   const total = list2.reduce((s, it) => s + Math.floor(Number(it.weight)), 0);
-  if (list2.length === 0 || total <= 0) return null;
+  if (list2.length === 0 || total <= 0)
+    return null;
   let r = Number(typeof random === "function" ? random() : random);
-  if (!Number.isFinite(r)) r = 0;
-  if (r < 0) r = 0;
-  if (r >= 1) r = 0.9999999999999999;
+  if (!Number.isFinite(r))
+    r = 0;
+  if (r < 0)
+    r = 0;
+  if (r >= 1)
+    r = 0.9999999999999999;
   let acc = r * total;
   for (const it of list2) {
     acc -= Math.floor(Number(it.weight));
-    if (acc < 0) return { kind: norm4(it.kind), qty: toNonNegInt(it.qty) };
+    if (acc < 0)
+      return { kind: norm4(it.kind), qty: toNonNegInt(it.qty) };
   }
   const last = list2[list2.length - 1];
   return { kind: norm4(last.kind), qty: toNonNegInt(last.qty) };
 }
 function signinCalendarOf(user, now = /* @__PURE__ */ new Date(), opts = {}) {
   const day = beijingDate(now);
-  const days = new Set(normalizeSigninDays(user?.signin_days));
-  const cycle = cycleDayOf(user?.signin_streak);
+  const days = new Set(normalizeSigninDays(user == null ? void 0 : user.signin_days));
+  const cycle = cycleDayOf(user == null ? void 0 : user.signin_streak);
   const start = shiftSigninDay(day, -(cycle - 1));
   const day7 = opts.day7_fragments === void 0 ? DEFAULT_SIGNIN_DAY7_FRAGMENTS : toNonNegInt(opts.day7_fragments);
   const cells = [];
@@ -33151,7 +33893,8 @@ function makeupGateOf(days, date, today) {
 }
 function signinItemsOf(cycle_day, picked, day7_fragments) {
   const items = SIGNIN_BASE_ITEMS.map((it) => ({ ...it }));
-  if (picked) items.push({ kind: picked.kind, qty: toNonNegInt(picked.qty) });
+  if (picked)
+    items.push({ kind: picked.kind, qty: toNonNegInt(picked.qty) });
   if (toNonNegInt(cycle_day) === SIGNIN_CYCLE_DAYS && toNonNegInt(day7_fragments) > 0) {
     items.push({ kind: "fragment", qty: toNonNegInt(day7_fragments) });
   }
@@ -33161,12 +33904,15 @@ function grantSigninItems(user, items, now, me) {
   const amounts = { seed_fragments: 0, bamboo_pieces: 0, scroll_fragments: 0 };
   let scrollPieces = 0;
   for (const it of Array.isArray(items) ? items : []) {
-    const kind = norm4(it?.kind);
-    const qty = toNonNegInt(it?.qty);
-    if (qty <= 0) continue;
+    const kind = norm4(it == null ? void 0 : it.kind);
+    const qty = toNonNegInt(it == null ? void 0 : it.qty);
+    if (qty <= 0)
+      continue;
     const key = SIGNIN_KIND_TO_GRANT[kind];
-    if (key) amounts[key] += qty;
-    else if (kind === "scroll") scrollPieces += qty;
+    if (key)
+      amounts[key] += qty;
+    else if (kind === "scroll")
+      scrollPieces += qty;
   }
   const tx = grantRewardBase(user, amounts, now, me);
   let scrollTxId = "";
@@ -33182,31 +33928,38 @@ function grantSigninItems(user, items, now, me) {
       },
       now
     );
-    scrollTxId = norm4(stx?.id);
+    scrollTxId = norm4(stx == null ? void 0 : stx.id);
   }
-  return { amounts, scroll_pieces: scrollPieces, tx_id: norm4(tx?.id), scroll_tx_id: scrollTxId };
+  return { amounts, scroll_pieces: scrollPieces, tx_id: norm4(tx == null ? void 0 : tx.id), scroll_tx_id: scrollTxId };
 }
 function countWritesToday(user, now = /* @__PURE__ */ new Date()) {
   const today = beijingDate(now);
-  const txs = Array.isArray(user?.txs) ? user.txs : [];
+  const txs = Array.isArray(user == null ? void 0 : user.txs) ? user.txs : [];
   let n = 0;
   for (const t of txs) {
-    if (!t || !WRITE_TX_TYPES.includes(norm4(t.type))) continue;
-    if (!t.ts) continue;
-    if (beijingDate(t.ts) === today) n += 1;
+    if (!t || !WRITE_TX_TYPES.includes(norm4(t.type)))
+      continue;
+    if (!t.ts)
+      continue;
+    if (beijingDate(t.ts) === today)
+      n += 1;
   }
   return n;
 }
 function achievedToday(user, task, now = /* @__PURE__ */ new Date()) {
   const id = norm4(task);
-  if (id === TASK_IDS.SIGNIN) return norm4(user?.signin_date) === beijingDate(now);
-  if (id === TASK_IDS.INVITE) return countInviteRewardsToday(user, now) > 0;
-  if (id === TASK_IDS.WRITE) return countWritesToday(user, now) > 0;
+  if (id === TASK_IDS.SIGNIN)
+    return norm4(user == null ? void 0 : user.signin_date) === beijingDate(now);
+  if (id === TASK_IDS.INVITE)
+    return countInviteRewardsToday(user, now) > 0;
+  if (id === TASK_IDS.WRITE)
+    return countWritesToday(user, now) > 0;
   return false;
 }
 function claimedDayOf(user, task) {
   const id = norm4(task);
-  if (id === TASK_IDS.SIGNIN) return norm4(user?.signin_date);
+  if (id === TASK_IDS.SIGNIN)
+    return norm4(user == null ? void 0 : user.signin_date);
   return norm4(user && user[CLAIMS_FIELD] && user[CLAIMS_FIELD][id] || "");
 }
 function claimedToday(user, task, now = /* @__PURE__ */ new Date()) {
@@ -33237,24 +33990,28 @@ function taskViewsOf(user, now = /* @__PURE__ */ new Date()) {
 }
 async function tasksToday(phone, now = /* @__PURE__ */ new Date()) {
   const me = norm4(phone);
-  if (!me) throw taskError("TASK_INVALID_PHONE");
+  if (!me)
+    throw taskError("TASK_INVALID_PHONE");
   const at = asDate(now);
   const user = await getAssets(me);
   return { day: beijingDate(at), tasks: taskViewsOf(user, at), reward: { ...DAILY_TASK_REWARD } };
 }
 function claimGateOf(user, task, now) {
+  var _a3, _b, _c;
   if (claimedToday(user, task, now)) {
-    return { ok: false, code: "TASK_ALREADY_CLAIMED", message: `\u4ECA\u65E5\u300C${TASK_BY_ID.get(task)?.title || task}\u300D\u5956\u52B1\u5DF2\u9886\u53D6\uFF08\u5317\u4EAC\u65F6\u95F4\u81EA\u7136\u65E5 ${beijingDate(now)} \u6BCF\u9879\u4EFB\u52A1\u53EA\u80FD\u9886\u4E00\u6B21\uFF09` };
+    return { ok: false, code: "TASK_ALREADY_CLAIMED", message: `\u4ECA\u65E5\u300C${((_a3 = TASK_BY_ID.get(task)) == null ? void 0 : _a3.title) || task}\u300D\u5956\u52B1\u5DF2\u9886\u53D6\uFF08\u5317\u4EAC\u65F6\u95F4\u81EA\u7136\u65E5 ${beijingDate(now)} \u6BCF\u9879\u4EFB\u52A1\u53EA\u80FD\u9886\u4E00\u6B21\uFF09` };
   }
-  if (task === TASK_IDS.SIGNIN) return { ok: true };
+  if (task === TASK_IDS.SIGNIN)
+    return { ok: true };
   if (!achievedToday(user, task, now)) {
-    return { ok: false, code: "TASK_NOT_ACHIEVED", message: `\u4ECA\u65E5\u300C${TASK_BY_ID.get(task)?.title || task}\u300D\u5C1A\u672A\u8FBE\u6807\uFF08${TASK_BY_ID.get(task)?.rule || ""}\uFF09` };
+    return { ok: false, code: "TASK_NOT_ACHIEVED", message: `\u4ECA\u65E5\u300C${((_b = TASK_BY_ID.get(task)) == null ? void 0 : _b.title) || task}\u300D\u5C1A\u672A\u8FBE\u6807\uFF08${((_c = TASK_BY_ID.get(task)) == null ? void 0 : _c.rule) || ""}\uFF09` };
   }
   return { ok: true };
 }
 async function claimTask(phone, task, now = /* @__PURE__ */ new Date(), opts = {}) {
   const me = norm4(phone);
-  if (!me) throw taskError("TASK_INVALID_PHONE");
+  if (!me)
+    throw taskError("TASK_INVALID_PHONE");
   const id = norm4(task);
   const def = TASK_BY_ID.get(id);
   if (!def) {
@@ -33264,7 +34021,7 @@ async function claimTask(phone, task, now = /* @__PURE__ */ new Date(), opts = {
   }
   const at = asDate(now);
   const day = beijingDate(at);
-  const random = typeof opts?.random === "function" ? opts.random : Math.random;
+  const random = typeof (opts == null ? void 0 : opts.random) === "function" ? opts.random : Math.random;
   let signinPool = DEFAULT_SIGNIN_POOL;
   let day7Fragments = DEFAULT_SIGNIN_DAY7_FRAGMENTS;
   if (id === TASK_IDS.SIGNIN) {
@@ -33272,7 +34029,8 @@ async function claimTask(phone, task, now = /* @__PURE__ */ new Date(), opts = {
     day7Fragments = await getSigninDay7Fragments();
   }
   const preGate = claimGateOf(await getAssets(me), id, at);
-  if (!preGate.ok) throw taskError(preGate.code, { message: preGate.message, detail: { task: id, day } });
+  if (!preGate.ok)
+    throw taskError(preGate.code, { message: preGate.message, detail: { task: id, day } });
   let pool = null;
   let failure = null;
   try {
@@ -33284,12 +34042,12 @@ async function claimTask(phone, task, now = /* @__PURE__ */ new Date(), opts = {
       { idempotency_key: `${me}:${day}:${id}` }
     );
     if (!res || res.ok === false) {
-      failure = res?.error || { code: "TASK_REWARD_FAILED", message: TASK_ERRORS.TASK_REWARD_FAILED.message };
+      failure = (res == null ? void 0 : res.error) || { code: "TASK_REWARD_FAILED", message: TASK_ERRORS.TASK_REWARD_FAILED.message };
     } else {
       pool = res;
     }
   } catch (e) {
-    failure = { code: norm4(e?.code) || "TASK_REWARD_FAILED", message: norm4(e?.message) || TASK_ERRORS.TASK_REWARD_FAILED.message };
+    failure = { code: norm4(e == null ? void 0 : e.code) || "TASK_REWARD_FAILED", message: norm4(e == null ? void 0 : e.message) || TASK_ERRORS.TASK_REWARD_FAILED.message };
   }
   if (failure) {
     throw taskError("TASK_REWARD_FAILED", {
@@ -33305,13 +34063,15 @@ async function claimTask(phone, task, now = /* @__PURE__ */ new Date(), opts = {
   let claimedCycle = 1;
   try {
     const out = await withAssets(me, (user) => {
+      var _a3;
       const gate = claimGateOf(user, id, at);
-      if (!gate.ok) throw taskError(gate.code, { message: gate.message, detail: { task: id, day } });
+      if (!gate.ok)
+        throw taskError(gate.code, { message: gate.message, detail: { task: id, day } });
       const snap = {
         signin_date: norm4(user.signin_date),
         claims: { ...user && user[CLAIMS_FIELD] || {} },
         fragments: toNonNegInt(user.fragments),
-        seed_ids: (Array.isArray(user.seeds) ? user.seeds : []).map((l) => norm4(l?.id))
+        seed_ids: (Array.isArray(user.seeds) ? user.seeds : []).map((l) => norm4(l == null ? void 0 : l.id))
       };
       let items = SIGNIN_BASE_ITEMS.map((it) => ({ ...it }));
       let txId = "";
@@ -33331,7 +34091,7 @@ async function claimTask(phone, task, now = /* @__PURE__ */ new Date(), opts = {
         claimedCycle = cycle;
       } else {
         user[CLAIMS_FIELD] = { ...user && user[CLAIMS_FIELD] || {}, [id]: day };
-        txId = norm4(grantRewardBase(user, { ...DAILY_TASK_REWARD.base }, at, me)?.id);
+        txId = norm4((_a3 = grantRewardBase(user, { ...DAILY_TASK_REWARD.base }, at, me)) == null ? void 0 : _a3.id);
         claimedItems = items;
       }
       return { snap, tx_id: txId };
@@ -33339,10 +34099,11 @@ async function claimTask(phone, task, now = /* @__PURE__ */ new Date(), opts = {
     before = out.snap;
     baseTxId = out.tx_id;
   } catch (e) {
-    if (e?.code === "TASK_ALREADY_CLAIMED" || e?.code === "TASK_NOT_ACHIEVED") throw e;
+    if ((e == null ? void 0 : e.code) === "TASK_ALREADY_CLAIMED" || (e == null ? void 0 : e.code) === "TASK_NOT_ACHIEVED")
+      throw e;
     throw taskError("TASK_REWARD_FAILED", {
-      message: `\u4EFB\u52A1\u5956\u52B1\u53D1\u653E\u5931\u8D25\uFF08${norm4(e?.code) || "REWARD_FAILED"}\uFF09\uFF1A\u57FA\u7840\u5956\u52B1\u5165\u8D26\u672A\u5B8C\u6210\uFF08\u672C\u4E8B\u52A1\u5DF2\u6574\u4F53\u56DE\u6EDA\uFF0C\u96F6\u5199\u5165\uFF09`,
-      reason: norm4(e?.code) || "TASK_REWARD_FAILED",
+      message: `\u4EFB\u52A1\u5956\u52B1\u53D1\u653E\u5931\u8D25\uFF08${norm4(e == null ? void 0 : e.code) || "REWARD_FAILED"}\uFF09\uFF1A\u57FA\u7840\u5956\u52B1\u5165\u8D26\u672A\u5B8C\u6210\uFF08\u672C\u4E8B\u52A1\u5DF2\u6574\u4F53\u56DE\u6EDA\uFF0C\u96F6\u5199\u5165\uFF09`,
+      reason: norm4(e == null ? void 0 : e.code) || "TASK_REWARD_FAILED",
       detail: { task: id, day, rolled_back: true, stage: "claim_and_base" }
     });
   }
@@ -33373,19 +34134,22 @@ async function claimTask(phone, task, now = /* @__PURE__ */ new Date(), opts = {
 }
 async function signinMakeup(phone, date, now = /* @__PURE__ */ new Date()) {
   const me = norm4(phone);
-  if (!me) throw taskError("TASK_INVALID_PHONE");
+  if (!me)
+    throw taskError("TASK_INVALID_PHONE");
   const at = asDate(now);
   const today = beijingDate(at);
   const target = norm4(date);
   const cost = await getSigninMakeupCostBamboos();
   const day7Fragments = await getSigninDay7Fragments();
   const pre = makeupGateOf(normalizeSigninDays((await getAssets(me)).signin_days), target, today);
-  if (!pre.ok) throw taskError(pre.code, { message: pre.message, detail: { date: target, day: today } });
+  if (!pre.ok)
+    throw taskError(pre.code, { message: pre.message, detail: { date: target, day: today } });
   let charged = null;
   try {
     charged = await withAssets(me, (user) => {
       const gate = makeupGateOf(normalizeSigninDays(user.signin_days), target, today);
-      if (!gate.ok) throw taskError(gate.code, { message: gate.message, detail: { date: target, day: today } });
+      if (!gate.ok)
+        throw taskError(gate.code, { message: gate.message, detail: { date: target, day: today } });
       const c = chargeLots(user.bamboos, cost, "bamboo");
       const tx = recordTx(
         user,
@@ -33400,12 +34164,14 @@ async function signinMakeup(phone, date, now = /* @__PURE__ */ new Date()) {
       );
       user.signin_days = mergeSigninDays(user.signin_days, target);
       user.signin_streak = streakFromSigninDays(user.signin_days, today);
-      return { taken: c.taken, left: c.current, tx_id: norm4(tx?.id), streak: toNonNegInt(user.signin_streak) };
+      return { taken: c.taken, left: c.current, tx_id: norm4(tx == null ? void 0 : tx.id), streak: toNonNegInt(user.signin_streak) };
     });
   } catch (e) {
-    const code = norm4(e?.code);
-    if (code === ASSET_INSUFFICIENT || code === "SIGNIN_MAKEUP_OUT_OF_RANGE" || code === "SIGNIN_MAKEUP_ALREADY") throw e;
-    if (Number.isFinite(Number(e?.status))) throw e;
+    const code = norm4(e == null ? void 0 : e.code);
+    if (code === ASSET_INSUFFICIENT || code === "SIGNIN_MAKEUP_OUT_OF_RANGE" || code === "SIGNIN_MAKEUP_ALREADY")
+      throw e;
+    if (Number.isFinite(Number(e == null ? void 0 : e.status)))
+      throw e;
     throw taskError("SIGNIN_MAKEUP_FAILED", {
       message: `\u8865\u7B7E\u5931\u8D25\uFF08${code || "MAKEUP_FAILED"}\uFF09\uFF1A\u672C\u4E8B\u52A1\u5DF2\u6574\u4F53\u56DE\u6EDA\uFF0C\u96F6\u5199\u5165\u3001\u672A\u6263\u8D39\uFF0C\u53EF\u76F4\u63A5\u91CD\u8BD5`,
       reason: code || "SIGNIN_MAKEUP_FAILED",
@@ -33446,27 +34212,27 @@ function recordSigninAudit(user, now) {
 function summaryOfReward(pool, baseTxId) {
   return {
     base: { seed_fragments: 0, bamboo_pieces: 0, scroll_fragments: 0, ...DAILY_TASK_REWARD.base },
-    pooled: !!pool?.pooled,
-    denominator: toNonNegInt(pool?.denominator),
-    pool_per_friend: pool?.pool_per_friend || {},
-    remainder: pool?.remainder || {},
-    distributed: Array.isArray(pool?.distributed) ? pool.distributed : [],
+    pooled: !!(pool == null ? void 0 : pool.pooled),
+    denominator: toNonNegInt(pool == null ? void 0 : pool.denominator),
+    pool_per_friend: (pool == null ? void 0 : pool.pool_per_friend) || {},
+    remainder: (pool == null ? void 0 : pool.remainder) || {},
+    distributed: Array.isArray(pool == null ? void 0 : pool.distributed) ? pool.distributed : [],
     base_tx_id: norm4(baseTxId)
   };
 }
 function detailOf(before, after) {
-  const seedIds = new Set(before?.seed_ids || []);
-  const fresh = (Array.isArray(after?.seeds) ? after.seeds : []).filter(
+  const seedIds = new Set((before == null ? void 0 : before.seed_ids) || []);
+  const fresh = (Array.isArray(after == null ? void 0 : after.seeds) ? after.seeds : []).filter(
     (l) => l && !seedIds.has(norm4(l.id)) && norm4(l.source) === "fragment_synth"
   );
   return {
-    fragments: toNonNegInt(after?.fragments),
+    fragments: toNonNegInt(after == null ? void 0 : after.fragments),
     synthesized: fresh.length,
     seed_lot: fresh[0] || null,
-    signin_date: norm4(after?.signin_date),
-    scroll_fragments: toNonNegInt(after?.scroll_fragments),
-    bamboos_total_pieces: (Array.isArray(after?.bamboos) ? after.bamboos : []).reduce((s, l) => s + toNonNegInt(l?.qty), 0),
-    fragments_before: toNonNegInt(before?.fragments)
+    signin_date: norm4(after == null ? void 0 : after.signin_date),
+    scroll_fragments: toNonNegInt(after == null ? void 0 : after.scroll_fragments),
+    bamboos_total_pieces: (Array.isArray(after == null ? void 0 : after.bamboos) ? after.bamboos : []).reduce((s, l) => s + toNonNegInt(l == null ? void 0 : l.qty), 0),
+    fragments_before: toNonNegInt(before == null ? void 0 : before.fragments)
   };
 }
 var norm4, asDate, DAY_MS9, TASK_IDS, TASK_STATE, TASK_STATE_TEXT, CLAIMS_FIELD, WRITE_TX_TYPES, DAILY_TASK_REWARD, TASK_DEFS, TASK_BY_ID, TASK_ERRORS, SIGNIN_CYCLE_DAYS, SIGNIN_MAKEUP_MAX_BACK_DAYS, SIGNIN_MAKEUP_MESSAGES, SIGNIN_REWARD_SOURCE, SIGNIN_MAKEUP_SOURCE, SIGNIN_KIND_TO_GRANT, SIGNIN_BASE_ITEMS;
@@ -33554,12 +34320,12 @@ var init_task_center = __esm({
 });
 
 // cloudfunctions/compat-api/index.js
-var index_exports = {};
-__export(index_exports, {
+var compat_api_exports = {};
+__export(compat_api_exports, {
   handleRequest: () => handleRequest,
   main: () => main
 });
-module.exports = __toCommonJS(index_exports);
+module.exports = __toCommonJS(compat_api_exports);
 init_store();
 init_auth();
 init_wallet();
@@ -33615,7 +34381,6 @@ function feeOf(op, ctx = {}) {
       return { unit: "bamboos", pieces: FEE.person_update, tx_type: TX_TYPE_OF_OP.person_update };
     case "reparent":
       return c.cross_tree ? { unit: "bamboos", pieces: FEE.reparent_cross_tree, tx_type: TX_TYPE_OF_OP.reparent_cross_tree, cross_tree: true } : { unit: "bamboos", pieces: FEE.reparent_same_tree, tx_type: TX_TYPE_OF_OP.reparent_same_tree };
-    // 调整同胞排行（POST /admin/sibling-reorder）：1 片 / 次（与被动移位的兄弟数量无关）
     case "sibling_reorder":
       return { unit: "bamboos", pieces: FEE.sibling_reorder, tx_type: TX_TYPE_OF_OP.sibling_reorder };
     case "delete_node": {
@@ -33631,13 +34396,11 @@ function feeOf(op, ctx = {}) {
     }
     case "create_tree":
       return { unit: "seeds", pieces: FEE.tree_create_seeds, tx_type: TX_TYPE_OF_OP.tree_create };
-    // 立支：9999 颗石榴籽（默认单价；`ctx.branch_fee_seeds` 由路由传入后台配置值覆盖，见 lib/wallet.js）
     case "establish_branch": {
       const wanted = Number(c.branch_fee_seeds);
       const pieces = Number.isFinite(wanted) && wanted > 0 ? Math.floor(wanted) : FEE.branch_fee_seeds;
       return { unit: "seeds", pieces, tx_type: TX_TYPE_OF_OP.establish_branch };
     }
-    // 汇宗：0 片 + 0 籽（不接闸门；docs/branch-clan-ops.spec.md §3-13）
     case "converge_clan":
       return { unit: "bamboos", pieces: 0, tx_type: "", free: true, reason: "not_charged" };
     default:
@@ -33647,22 +34410,31 @@ function feeOf(op, ctx = {}) {
 function hasPersonChanges(body) {
   const b = body || {};
   const pn = b.primary_name;
-  if (pn && (pn.first_name || Array.isArray(pn.surname_list) && pn.surname_list.some((s) => s && s.surname))) return true;
-  if (b.gender !== void 0 && b.gender !== null) return true;
+  if (pn && (pn.first_name || Array.isArray(pn.surname_list) && pn.surname_list.some((s) => s && s.surname)))
+    return true;
+  if (b.gender !== void 0 && b.gender !== null)
+    return true;
   for (const k of ["name", "surname", "given", "birth_date", "death_date", "death_place", "is_living"]) {
-    if (b[k] !== void 0 && b[k] !== null && b[k] !== "") return true;
+    if (b[k] !== void 0 && b[k] !== null && b[k] !== "")
+      return true;
   }
-  if (b.birth_place !== void 0 && b.birth_place !== null) return true;
-  if (b.residence_places !== void 0 && b.residence_places !== null) return true;
-  if (Array.isArray(b.attribute_list) && b.attribute_list.length > 0) return true;
+  if (b.birth_place !== void 0 && b.birth_place !== null)
+    return true;
+  if (b.residence_places !== void 0 && b.residence_places !== null)
+    return true;
+  if (Array.isArray(b.attribute_list) && b.attribute_list.length > 0)
+    return true;
   return false;
 }
 var emptyText = (v) => v === void 0 || v === null ? "" : String(v).trim();
 function normGender(v) {
   const s = emptyText(v).toUpperCase();
-  if (s === "1") return "M";
-  if (s === "2") return "F";
-  if (s === "0") return "U";
+  if (s === "1")
+    return "M";
+  if (s === "2")
+    return "F";
+  if (s === "0")
+    return "U";
   return s;
 }
 var normLiving = (v) => v === true || v === "true" || v === 1 || v === "1";
@@ -33671,34 +34443,44 @@ function currentLiving(person) {
   return typeof p.is_living === "boolean" ? p.is_living : !emptyText(p.death_date);
 }
 function attrKeyOf(a) {
-  return typeof a?.type === "string" ? a.type : a?.type?.string || (typeof a?.key === "string" ? a.key : "");
+  var _a3;
+  return typeof (a == null ? void 0 : a.type) === "string" ? a.type : ((_a3 = a == null ? void 0 : a.type) == null ? void 0 : _a3.string) || (typeof (a == null ? void 0 : a.key) === "string" ? a.key : "");
 }
 var STRUCTURAL_ATTR_KEYS = [...EXTERNAL_KEYS, ...CHAIN_ATTR_KEYS];
 function attrMapOf(list2, skipStructural = false) {
   const map2 = /* @__PURE__ */ new Map();
   for (const a of list2 || []) {
     const key = attrKeyOf(a);
-    if (!key) continue;
-    if (skipStructural && STRUCTURAL_ATTR_KEYS.includes(key)) continue;
-    const val = emptyText(a?.value);
-    if (!val) continue;
+    if (!key)
+      continue;
+    if (skipStructural && STRUCTURAL_ATTR_KEYS.includes(key))
+      continue;
+    const val = emptyText(a == null ? void 0 : a.value);
+    if (!val)
+      continue;
     map2.set(key, val);
   }
   return map2;
 }
 function sameAttrMap(a, b) {
-  if (a.size !== b.size) return false;
-  for (const [k, v] of a) if (b.get(k) !== v) return false;
+  if (a.size !== b.size)
+    return false;
+  for (const [k, v] of a)
+    if (b.get(k) !== v)
+      return false;
   return true;
 }
 function effectivePersonValues(person = {}, detail = null) {
   const p = person || {};
   const out = { ...p };
-  for (const a of detail?.attributes || []) {
+  for (const a of (detail == null ? void 0 : detail.attributes) || []) {
     const key = attrKeyOf(a);
-    if (key) out[key] = a.value;
+    if (key)
+      out[key] = a.value;
   }
-  for (const k of EXTERNAL_KEYS) if (p[k]) out[k] = p[k];
+  for (const k of EXTERNAL_KEYS)
+    if (p[k])
+      out[k] = p[k];
   return out;
 }
 function personValueDiff(body = {}, person = {}, detail = null) {
@@ -33716,41 +34498,55 @@ function personValueDiff(body = {}, person = {}, detail = null) {
       surname: b.surname !== void 0 && b.surname !== null ? emptyText(b.surname) : surname,
       given: b.given !== void 0 && b.given !== null ? emptyText(b.given) : given
     };
-    for (const k of ["name", "surname", "given"]) if (cand[k] !== emptyText(p[k])) fields.push(k);
+    for (const k of ["name", "surname", "given"])
+      if (cand[k] !== emptyText(p[k]))
+        fields.push(k);
   }
   if ([0, 1, 2].includes(b.gender)) {
-    if (normGender(b.gender) !== normGender(p.gender)) fields.push("gender");
+    if (normGender(b.gender) !== normGender(p.gender))
+      fields.push("gender");
   }
-  if (b.birth_date !== void 0 && emptyText(b.birth_date) !== emptyText(p.birth_date)) fields.push("birth_date");
-  if (b.birth_place !== void 0 && b.birth_place !== null && !sameBirthPlace(b.birth_place, p.birth_place)) fields.push("birth_place");
+  if (b.birth_date !== void 0 && emptyText(b.birth_date) !== emptyText(p.birth_date))
+    fields.push("birth_date");
+  if (b.birth_place !== void 0 && b.birth_place !== null && !sameBirthPlace(b.birth_place, p.birth_place))
+    fields.push("birth_place");
   if (b.residence_places !== void 0 && b.residence_places !== null && !sameResidencePlaces(b.residence_places, p.residence_places)) {
     fields.push("residence_places");
   }
-  if (b.death_place !== void 0 && emptyText(b.death_place) !== emptyText(p.death_place)) fields.push("death_place");
+  if (b.death_place !== void 0 && emptyText(b.death_place) !== emptyText(p.death_place))
+    fields.push("death_place");
   const hasLiving = typeof b.is_living === "boolean";
   if (b.death_date !== void 0 || hasLiving) {
     const candDeath = b.is_living === true ? "" : emptyText(b.death_date !== void 0 ? b.death_date : p.death_date);
-    if (candDeath !== emptyText(p.death_date)) fields.push("death_date");
+    if (candDeath !== emptyText(p.death_date))
+      fields.push("death_date");
   }
   const curLiving = currentLiving(p);
   if (hasLiving) {
-    if (normLiving(b.is_living) !== curLiving) fields.push("is_living");
+    if (normLiving(b.is_living) !== curLiving)
+      fields.push("is_living");
   } else if (b.death_date !== void 0 && emptyText(b.death_date) !== "" && curLiving) {
     fields.push("is_living");
   }
   if (b.attribute_list !== void 0 && b.attribute_list !== null) {
     const candAttrs = attrMapOf(b.attribute_list, true);
-    const curAttrs = attrMapOf(detail?.attributes, true);
-    if (!sameAttrMap(candAttrs, curAttrs)) fields.push("attributes");
+    const curAttrs = attrMapOf(detail == null ? void 0 : detail.attributes, true);
+    if (!sameAttrMap(candAttrs, curAttrs))
+      fields.push("attributes");
   }
   const eff = effectivePersonValues(p, detail);
   const ext = {};
   for (const a of b.attribute_list || []) {
     const key = attrKeyOf(a);
-    if (key && STRUCTURAL_ATTR_KEYS.includes(key)) ext[key] = emptyText(a?.value);
+    if (key && STRUCTURAL_ATTR_KEYS.includes(key))
+      ext[key] = emptyText(a == null ? void 0 : a.value);
   }
-  for (const k of EXTERNAL_KEYS) if (b[k] !== void 0 && b[k] !== null) ext[k] = emptyText(b[k]);
-  for (const [k, v] of Object.entries(ext)) if (v !== emptyText(eff[k])) fields.push(k);
+  for (const k of EXTERNAL_KEYS)
+    if (b[k] !== void 0 && b[k] !== null)
+      ext[k] = emptyText(b[k]);
+  for (const [k, v] of Object.entries(ext))
+    if (v !== emptyText(eff[k]))
+      fields.push(k);
   return { changed: fields.length > 0, fields };
 }
 function isPersonUnchanged(body, person, detail = null) {
@@ -33771,8 +34567,10 @@ async function quoteSeeds(phone, need) {
 }
 function txRefOf(ref, spent) {
   const out = {};
-  if (ref.tree_id) out.tree_id = ref.tree_id;
-  if (ref.person_handle) out.person_handle = ref.person_handle;
+  if (ref.tree_id)
+    out.tree_id = ref.tree_id;
+  if (ref.person_handle)
+    out.person_handle = ref.person_handle;
   out.lots = spent.map((s) => ({ lot_id: s.lot_id, qty: s.qty, expires_at: s.expires_at, source: s.source, created_at: s.created_at }));
   return out;
 }
@@ -33788,7 +34586,6 @@ function defaultDesc(unit, n, ref) {
       return `\u8DE8\u6811\u8FC1\u79FB${who ? ` ${who}` : ""}\uFF08\u6263 ${unitCn}\uFF09`;
     case "delete_node":
       return `\u5220\u9664\u8282\u70B9${who ? ` ${who}` : ""}${ref.people_count > 1 ? ` \u7B49 ${ref.people_count} \u4EBA` : ""}\uFF08\u6263 ${unitCn}\uFF09`;
-    // 调整同胞排行：字面口径「调整排行：<姓名> 第 <位次> 位」（路由/写路径显式传 desc，此处为兜底）
     case "sibling_reorder":
       return `\u8C03\u6574\u6392\u884C\uFF1A${who}${ref.position ? ` \u7B2C ${ref.position} \u4F4D` : ""}\uFF08\u6263 ${unitCn}\uFF09`;
     case "tree_create":
@@ -33870,7 +34667,8 @@ function charger(phone, op) {
   return fn;
 }
 function feeResponse(charged) {
-  if (!charged) return { unit: "bamboos", pieces: 0, balance: null, balance_after: null };
+  if (!charged)
+    return { unit: "bamboos", pieces: 0, balance: null, balance_after: null };
   return charged.fee;
 }
 async function refund(phone, taken, ref = {}) {
@@ -33882,7 +34680,8 @@ async function refund(phone, taken, ref = {}) {
     source: t && t.source || "",
     created_at: t && t.created_at || ""
   })).filter((t) => t.lot_id && t.qty > 0);
-  if (!items.length) return { ok: true, refunded: 0, unit, txn_id: "", note: "\u65E0\u53EF\u8FD4\u8FD8\u6279\u6B21" };
+  if (!items.length)
+    return { ok: true, refunded: 0, unit, txn_id: "", note: "\u65E0\u53EF\u8FD4\u8FD8\u6279\u6B21" };
   return withAssets(phone, (user) => {
     const now = /* @__PURE__ */ new Date();
     sweep(user, now);
@@ -33898,7 +34697,8 @@ async function refund(phone, taken, ref = {}) {
           source: it.source || "admin",
           now
         });
-        if (it.created_at) lot.created_at = it.created_at;
+        if (it.created_at)
+          lot.created_at = it.created_at;
       }
       lot.qty = norm2(lot.qty) + it.qty;
       refunded += it.qty;
@@ -33918,27 +34718,33 @@ async function refund(phone, taken, ref = {}) {
   });
 }
 async function refundAssets(phone, txn_id, reason = "") {
+  var _a3, _b, _c, _d;
   const id = String(txn_id || "");
-  if (!id) return { ok: false, refunded: 0, error: "\u7F3A\u5C11 txn_id" };
+  if (!id)
+    return { ok: false, refunded: 0, error: "\u7F3A\u5C11 txn_id" };
   const user = await getAssets(phone);
   const orig = (user.txs || []).find((t) => t && t.id === id);
-  if (!orig) return { ok: false, refunded: 0, error: `\u627E\u4E0D\u5230\u539F\u6D41\u6C34 ${id}` };
-  const lots = orig.ref?.lots || [];
-  if (!lots.length) return { ok: false, refunded: 0, error: `\u539F\u6D41\u6C34 ${id} \u672A\u8BB0\u5F55\u6279\u6B21\u660E\u7EC6\uFF0C\u65E0\u6CD5\u539F\u8DEF\u8FD4\u8FD8` };
-  const unit = orig.delta?.seeds !== void 0 ? "seeds" : "bamboos";
+  if (!orig)
+    return { ok: false, refunded: 0, error: `\u627E\u4E0D\u5230\u539F\u6D41\u6C34 ${id}` };
+  const lots = ((_a3 = orig.ref) == null ? void 0 : _a3.lots) || [];
+  if (!lots.length)
+    return { ok: false, refunded: 0, error: `\u539F\u6D41\u6C34 ${id} \u672A\u8BB0\u5F55\u6279\u6B21\u660E\u7EC6\uFF0C\u65E0\u6CD5\u539F\u8DEF\u8FD4\u8FD8` };
+  const unit = ((_b = orig.delta) == null ? void 0 : _b.seeds) !== void 0 ? "seeds" : "bamboos";
   return refund(
     phone,
     lots.map((l) => ({ lot_id: l.lot_id, qty: Math.abs(Number(l.qty) || 0), expires_at: l.expires_at ?? null, source: l.source, created_at: l.created_at })),
-    { unit, txn_id: id, tree_id: orig.ref?.tree_id || "", person_handle: orig.ref?.person_handle || "", reason }
+    { unit, txn_id: id, tree_id: ((_c = orig.ref) == null ? void 0 : _c.tree_id) || "", person_handle: ((_d = orig.ref) == null ? void 0 : _d.person_handle) || "", reason }
   );
 }
 async function refundCharged(phone, charged, reason = "\u843D\u5E93\u5931\u8D25") {
-  if (!charged || !charged.charged) return { ok: false, refunded: 0, error: "\u672C\u6B21\u672A\u6263\u8D39\uFF0C\u65E0\u9700\u51B2\u6B63" };
+  var _a3, _b;
+  if (!charged || !charged.charged)
+    return { ok: false, refunded: 0, error: "\u672C\u6B21\u672A\u6263\u8D39\uFF0C\u65E0\u9700\u51B2\u6B63" };
   return refund(phone, charged.spent, {
     unit: charged.unit,
     txn_id: charged.txn_id,
-    tree_id: charged.ref?.tree_id || "",
-    person_handle: charged.ref?.person_handle || "",
+    tree_id: ((_a3 = charged.ref) == null ? void 0 : _a3.tree_id) || "",
+    person_handle: ((_b = charged.ref) == null ? void 0 : _b.person_handle) || "",
     reason
   });
 }
@@ -33957,8 +34763,10 @@ var INTERNAL_ERROR_TEXT = "\u670D\u52A1\u5185\u90E8\u9519\u8BEF";
 function errorPayload(err, extra = {}) {
   const e = err || {};
   const code = typeof e.code === "string" && e.code ? e.code : "";
-  if (code === ASSET_INSUFFICIENT) return { ...insufficientBody(e), ...extra };
-  if (DOMAIN_ERROR_CODES.includes(code)) return { error: e.message || INTERNAL_ERROR_TEXT, code, ...extra };
+  if (code === ASSET_INSUFFICIENT)
+    return { ...insufficientBody(e), ...extra };
+  if (DOMAIN_ERROR_CODES.includes(code))
+    return { error: e.message || INTERNAL_ERROR_TEXT, code, ...extra };
   const status = Number(e.status);
   if (code || !Number.isFinite(status)) {
     return { error: INTERNAL_ERROR_TEXT, status: Number.isFinite(status) ? status : 500, ...extra };
@@ -33997,18 +34805,23 @@ function normalizeInviteCode(raw) {
 }
 function randomInviteCode(rand = (n) => (0, import_node_crypto4.randomInt)(0, n)) {
   let out = "";
-  for (let i = 0; i < INVITE_CODE_LEN; i += 1) out += INVITE_CODE_ALPHABET[rand(INVITE_CODE_ALPHABET.length)];
+  for (let i = 0; i < INVITE_CODE_LEN; i += 1)
+    out += INVITE_CODE_ALPHABET[rand(INVITE_CODE_ALPHABET.length)];
   return out;
 }
 function isoPlusDays3(now, days) {
   return new Date(new Date(now).getTime() + days * 864e5).toISOString();
 }
 function inviteCodeState(doc, now = /* @__PURE__ */ new Date()) {
-  if (!doc) return "not_found";
-  if (doc.revoked_at) return "revoked";
-  if (doc.expires_at && Date.parse(doc.expires_at) <= new Date(now).getTime()) return "expired";
+  if (!doc)
+    return "not_found";
+  if (doc.revoked_at)
+    return "revoked";
+  if (doc.expires_at && Date.parse(doc.expires_at) <= new Date(now).getTime())
+    return "expired";
   const max = doc.max_uses;
-  if (max !== null && max !== void 0 && Number(doc.used_count || 0) >= Number(max)) return "used";
+  if (max !== null && max !== void 0 && Number(doc.used_count || 0) >= Number(max))
+    return "used";
   return "valid";
 }
 function inviteCodeUsable(doc, now = /* @__PURE__ */ new Date()) {
@@ -34016,13 +34829,16 @@ function inviteCodeUsable(doc, now = /* @__PURE__ */ new Date()) {
 }
 async function getInviteCode(raw) {
   const code = normalizeInviteCode(raw);
-  if (!code) return null;
+  if (!code)
+    return null;
   return colGet(INVITE_CODES_COL, code);
 }
 async function issueInviteCode({ inviterPhone, kind, treeId = null, personHandle = null, now = /* @__PURE__ */ new Date() } = {}) {
   const inviter = String(inviterPhone || "").trim();
-  if (!INVITE_KINDS.includes(kind)) throw Object.assign(new Error("\u53C2\u6570\u9519\u8BEF\uFF1Akind \u2208 node/plain"), { status: 400 });
-  if (!inviter) throw Object.assign(new Error("\u53C2\u6570\u9519\u8BEF\uFF1A\u7B7E\u53D1\u4EBA\u7F3A\u5931"), { status: 400 });
+  if (!INVITE_KINDS.includes(kind))
+    throw Object.assign(new Error("\u53C2\u6570\u9519\u8BEF\uFF1Akind \u2208 node/plain"), { status: 400 });
+  if (!inviter)
+    throw Object.assign(new Error("\u53C2\u6570\u9519\u8BEF\uFF1A\u7B7E\u53D1\u4EBA\u7F3A\u5931"), { status: 400 });
   const isNode = kind === "node";
   const doc = {
     kind,
@@ -34038,7 +34854,8 @@ async function issueInviteCode({ inviterPhone, kind, treeId = null, personHandle
   };
   for (let i = 0; i < INVITE_CODE_MAX_ATTEMPTS; i += 1) {
     const code = randomInviteCode();
-    if (await colGet(INVITE_CODES_COL, code)) continue;
+    if (await colGet(INVITE_CODES_COL, code))
+      continue;
     await colSet(INVITE_CODES_COL, code, doc);
     return { ...doc, _id: code, code };
   }
@@ -34046,40 +34863,43 @@ async function issueInviteCode({ inviterPhone, kind, treeId = null, personHandle
 }
 async function inviterDisplayName(phone) {
   const account = await colGet(USERS_COL3, String(phone || "").trim());
-  return String(account?.nickname || "").trim() || maskPhone3(phone);
+  return String((account == null ? void 0 : account.nickname) || "").trim() || maskPhone3(phone);
 }
 async function treeLabels(treeId) {
   const meta = await getMeta();
-  const entry = Object.values(meta?.trees || {}).find((t) => t && t.tree_id === treeId) || null;
+  const entry = Object.values((meta == null ? void 0 : meta.trees) || {}).find((t) => t && t.tree_id === treeId) || null;
   return {
-    tree_name: String(entry?.display_title || entry?.genealogy_name || "").trim() || treeId,
-    hall_name: String(entry?.hall_name || "").trim() || null
+    tree_name: String((entry == null ? void 0 : entry.display_title) || (entry == null ? void 0 : entry.genealogy_name) || "").trim() || treeId,
+    hall_name: String((entry == null ? void 0 : entry.hall_name) || "").trim() || null
   };
 }
 async function resolveInviteCodeInfo(raw, now = /* @__PURE__ */ new Date()) {
+  var _a3;
   const code = normalizeInviteCode(raw);
   const doc = code ? await getInviteCode(code) : null;
   const state = inviteCodeState(doc, now);
   const out = {
     valid: state === "valid",
-    kind: doc?.kind || null,
+    kind: (doc == null ? void 0 : doc.kind) || null,
     inviter_nickname: null,
-    tree_id: doc?.tree_id || null,
+    tree_id: (doc == null ? void 0 : doc.tree_id) || null,
     tree_name: null,
     hall_name: null,
-    person_handle: doc?.person_handle || null,
+    person_handle: (doc == null ? void 0 : doc.person_handle) || null,
     person_name: null,
     person_gender: null,
     can_bind: false
   };
-  if (state !== "valid") return { ...out, reason: state };
+  if (state !== "valid")
+    return { ...out, reason: state };
   out.inviter_nickname = await inviterDisplayName(doc.inviter_phone);
-  if (doc.kind !== "node" || !doc.tree_id || !doc.person_handle) return out;
+  if (doc.kind !== "node" || !doc.tree_id || !doc.person_handle)
+    return out;
   const labels = await treeLabels(doc.tree_id);
   out.tree_name = labels.tree_name;
   out.hall_name = labels.hall_name;
   const tree = await getTree(doc.tree_id);
-  const person = tree?.people?.[doc.person_handle] || null;
+  const person = ((_a3 = tree == null ? void 0 : tree.people) == null ? void 0 : _a3[doc.person_handle]) || null;
   if (person) {
     out.person_name = person.name || `${person.surname || ""}${person.given || ""}` || doc.person_handle;
     out.person_gender = person.gender || null;
@@ -34089,14 +34909,16 @@ async function resolveInviteCodeInfo(raw, now = /* @__PURE__ */ new Date()) {
 }
 async function inviteCodeGrantsTree(raw, treeId, now = /* @__PURE__ */ new Date()) {
   const code = normalizeInviteCode(raw);
-  if (!code || !treeId) return false;
+  if (!code || !treeId)
+    return false;
   const doc = await getInviteCode(code);
-  if (!inviteCodeUsable(doc, now)) return false;
+  if (!inviteCodeUsable(doc, now))
+    return false;
   return !!doc.tree_id && String(doc.tree_id) === String(treeId);
 }
 async function grantInviteBindRewards(doc, inviteePhone, now = /* @__PURE__ */ new Date()) {
   const invitee = String(inviteePhone || "").trim();
-  const inviter = String(doc?.inviter_phone || "").trim();
+  const inviter = String((doc == null ? void 0 : doc.inviter_phone) || "").trim();
   const out = {
     invitee: { fragments: INVITE_BIND_REWARD_INVITEE_FRAGMENTS, granted: false, reason: "" },
     inviter: {
@@ -34124,7 +34946,7 @@ async function grantInviteBindRewards(doc, inviteePhone, now = /* @__PURE__ */ n
       {
         type: INVITE_TX_TYPE,
         delta: { fragments: INVITE_BIND_REWARD_INVITEE_FRAGMENTS },
-        ref: { kind: INVITE_BIND_TX_REF, code: String(doc?._id || ""), inviter: maskPhone3(inviter) },
+        ref: { kind: INVITE_BIND_TX_REF, code: String((doc == null ? void 0 : doc._id) || ""), inviter: maskPhone3(inviter) },
         desc: `\u9080\u8BF7\u7ED1\u5B9A\u5956\u52B1\uFF1A\u7ED1\u5B9A\u6210\u529F +${INVITE_BIND_REWARD_INVITEE_FRAGMENTS} \u77F3\u69B4\u7C7D\u788E\u7247`,
         operator: invitee
       },
@@ -34162,7 +34984,7 @@ async function grantInviteBindRewards(doc, inviteePhone, now = /* @__PURE__ */ n
           kind: INVITE_TX_REF_KIND,
           source: INVITE_BIND_TX_SOURCE,
           invitee: maskPhone3(invitee),
-          code: String(doc?._id || "")
+          code: String((doc == null ? void 0 : doc._id) || "")
         },
         desc: `\u9080\u8BF7\u7ED1\u5B9A\u52A0\u6210\uFF1A${maskPhone3(invitee)} \u901A\u8FC7\u60A8\u7684\u9080\u8BF7\u7801\u7ED1\u5B9A\u6210\u529F`,
         operator: inviter
@@ -34180,27 +35002,37 @@ async function bindInviteCode(opts = {}) {
   const me = String(opts.phone || "").trim();
   const decision = String(opts.decision || "").trim();
   const code = normalizeInviteCode(opts.c);
-  if (!me) return fail3(401, "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F");
-  if (!code) return fail3(400, "\u53C2\u6570\u9519\u8BEF\uFF1Ac \u5FC5\u586B");
-  if (!DECISIONS.includes(decision)) return fail3(400, "\u53C2\u6570\u9519\u8BEF\uFF1Adecision \u2208 accept/replace/skip");
+  if (!me)
+    return fail3(401, "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F");
+  if (!code)
+    return fail3(400, "\u53C2\u6570\u9519\u8BEF\uFF1Ac \u5FC5\u586B");
+  if (!DECISIONS.includes(decision))
+    return fail3(400, "\u53C2\u6570\u9519\u8BEF\uFF1Adecision \u2208 accept/replace/skip");
   const doc = await getInviteCode(code);
-  if (!doc) return fail3(400, "\u9080\u8BF7\u7801\u4E0D\u5B58\u5728");
+  if (!doc)
+    return fail3(400, "\u9080\u8BF7\u7801\u4E0D\u5B58\u5728");
   const boundBy = Array.isArray(doc.bound_by) ? doc.bound_by : [];
-  if (boundBy.includes(me)) return fail3(400, MSG_ALREADY_HANDLED);
+  if (boundBy.includes(me))
+    return fail3(400, MSG_ALREADY_HANDLED);
   const state = inviteCodeState(doc, now);
-  if (state === "revoked") return fail3(400, "\u9080\u8BF7\u7801\u5DF2\u88AB\u64A4\u9500");
-  if (state === "expired") return fail3(400, "\u9080\u8BF7\u7801\u5DF2\u8FC7\u671F");
-  if (state === "used") return fail3(400, "\u9080\u8BF7\u7801\u5DF2\u4F7F\u7528");
+  if (state === "revoked")
+    return fail3(400, "\u9080\u8BF7\u7801\u5DF2\u88AB\u64A4\u9500");
+  if (state === "expired")
+    return fail3(400, "\u9080\u8BF7\u7801\u5DF2\u8FC7\u671F");
+  if (state === "used")
+    return fail3(400, "\u9080\u8BF7\u7801\u5DF2\u4F7F\u7528");
   let finalTree = null;
   let finalHandle = null;
   if (decision === "accept") {
-    if (doc.kind !== "node") return fail3(400, "\u8BE5\u9080\u8BF7\u7801\u4E0D\u542B\u5EFA\u8BAE\u8282\u70B9\uFF0C\u8BF7\u9009\u62E9\u8282\u70B9\u6216\u6682\u4E0D\u7ED1\u5B9A");
+    if (doc.kind !== "node")
+      return fail3(400, "\u8BE5\u9080\u8BF7\u7801\u4E0D\u542B\u5EFA\u8BAE\u8282\u70B9\uFF0C\u8BF7\u9009\u62E9\u8282\u70B9\u6216\u6682\u4E0D\u7ED1\u5B9A");
     finalTree = String(doc.tree_id || "");
     finalHandle = String(doc.person_handle || "");
   } else if (decision === "replace") {
     finalTree = String(opts.treeId || "").trim();
     finalHandle = String(opts.personHandle || "").trim();
-    if (!finalTree || !finalHandle) return fail3(400, "\u53C2\u6570\u9519\u8BEF\uFF1A\u66F4\u6362\u8282\u70B9\u9700\u63D0\u4F9B tree_id + person_handle");
+    if (!finalTree || !finalHandle)
+      return fail3(400, "\u53C2\u6570\u9519\u8BEF\uFF1A\u66F4\u6362\u8282\u70B9\u9700\u63D0\u4F9B tree_id + person_handle");
   }
   if (finalHandle) {
     try {
@@ -34230,7 +35062,8 @@ async function bindInviteCode(opts = {}) {
     bound: !!finalHandle,
     anchor: finalHandle ? { tree_id: finalTree, person_handle: finalHandle } : null
   };
-  if (rewards) body.rewards = rewards;
+  if (rewards)
+    body.rewards = rewards;
   return { ok: true, status: 200, body };
 }
 
@@ -34252,15 +35085,18 @@ function genHandle2() {
 }
 function normalizeMarriageDate(v) {
   const s = String(v || "").trim();
-  if (!s) return "";
-  if (/^\d{4}$/.test(s)) return s;
+  if (!s)
+    return "";
+  if (/^\d{4}$/.test(s))
+    return s;
   const m = s.match(/^(\d{4})[/\-.](\d{1,2})(?:[/\-.](\d{1,2}))?$/);
-  if (!m) throw new Error("\u65E5\u671F\u683C\u5F0F\u9700\u4E3A 1957 \u6216 1957-12-04");
+  if (!m)
+    throw new Error("\u65E5\u671F\u683C\u5F0F\u9700\u4E3A 1957 \u6216 1957-12-04");
   const mm = m[2].padStart(2, "0");
   return m[3] ? `${m[1]}-${mm}-${String(m[3]).padStart(2, "0")}` : `${m[1]}-${mm}`;
 }
 function nextMarriageNo(person) {
-  const n = Number(person?.external_marriage_no);
+  const n = Number(person == null ? void 0 : person.external_marriage_no);
   return (Number.isFinite(n) && n > 0 ? Math.floor(n) : 0) + 1;
 }
 function marriageLabel(no, direction) {
@@ -34270,20 +35106,24 @@ function marriageLabel(no, direction) {
 }
 function normalizeEndKind(kind) {
   const k = String(kind || "").trim();
-  if (k === "\u7EDD\u5A5A" || k === "\u5408\u79BB") return k;
+  if (k === "\u7EDD\u5A5A" || k === "\u5408\u79BB")
+    return k;
   throw new Error("\u7ED3\u675F\u65B9\u5F0F\u9700\u4E3A\u300C\u7EDD\u5A5A\u300D\u6216\u300C\u5408\u79BB\u300D");
 }
 function slotsFor(selfGender, otherGender) {
   return spouseSlots(selfGender, otherGender);
 }
 function findMarriageSide(tree, person, marriageId) {
-  if (!person || !marriageId) return null;
+  if (!person || !marriageId)
+    return null;
   for (const fh of person.spouse_families || []) {
     const fam = tree.families[fh];
-    if (!fam) continue;
+    if (!fam)
+      continue;
     const selfIsFather = fam.father_handle === person.handle;
     const selfIsMother = fam.mother_handle === person.handle;
-    if (!selfIsFather && !selfIsMother) continue;
+    if (!selfIsFather && !selfIsMother)
+      continue;
     const mirrorHandle = selfIsFather ? fam.mother_handle : fam.father_handle;
     const mirror = mirrorHandle ? tree.people[mirrorHandle] : null;
     if (mirror && mirror.external_marriage_id === marriageId) {
@@ -34295,7 +35135,8 @@ function findMarriageSide(tree, person, marriageId) {
 function ensureFamily(tree, person, selfSlot, otherHandle, famGrampsId = "") {
   const selfKey = selfSlot === "father" ? "father_handle" : "mother_handle";
   const otherKey = selfSlot === "father" ? "mother_handle" : "father_handle";
-  if (!Array.isArray(person.spouse_families)) person.spouse_families = [];
+  if (!Array.isArray(person.spouse_families))
+    person.spouse_families = [];
   const fams = person.spouse_families.map((h) => tree.families[h]).filter(Boolean);
   let fam = fams.find((f) => f[selfKey] === person.handle && !f[otherKey]) || null;
   if (!fam) {
@@ -34314,18 +35155,21 @@ function ensureFamily(tree, person, selfSlot, otherHandle, famGrampsId = "") {
   return fam;
 }
 function dropFamilyIfChildless(tree, fam) {
-  if (!fam) return false;
-  if ((fam.child_handles || []).length > 0) return false;
+  if (!fam)
+    return false;
+  if ((fam.child_handles || []).length > 0)
+    return false;
   delete tree.families[fam.handle];
   for (const p of Object.values(tree.people)) {
-    if (Array.isArray(p.spouse_families)) p.spouse_families = p.spouse_families.filter((h) => h !== fam.handle);
+    if (Array.isArray(p.spouse_families))
+      p.spouse_families = p.spouse_families.filter((h) => h !== fam.handle);
   }
   return true;
 }
 function buildMirror(tree, srcPerson, fromTreeId, marriageId, noOfSrc) {
   return {
     handle: genHandle2(),
-    gramps_id: mirrorGrampsIdOfTrueBody(srcPerson, `\u5A5A\u59FB\u955C\u50CF\u7684\u771F\u8EAB\u300C${srcPerson?.name || ""}\u300D`),
+    gramps_id: mirrorGrampsIdOfTrueBody(srcPerson, `\u5A5A\u59FB\u955C\u50CF\u7684\u771F\u8EAB\u300C${(srcPerson == null ? void 0 : srcPerson.name) || ""}\u300D`),
     name: srcPerson.name || "",
     surname: srcPerson.surname || "",
     given: srcPerson.given || "",
@@ -34358,17 +35202,26 @@ function applyMarriage({
   //   本函数不再接受、也不消费任何「预留人号」。家族编号仍走 allocFamilyId（家族编号不属镜像人号口径）。
   allocFamilyId = null
 }) {
+  var _a3, _b;
   const nextFid = typeof allocFamilyId === "function" ? allocFamilyId : () => "";
-  const A = treeA.people?.[handleA];
-  const B = treeB.people?.[handleB];
-  if (!A) throw new Error("\u53D1\u8D77\u65B9\u8282\u70B9\u4E0D\u5B58\u5728");
-  if (!B) throw new Error("\u5BF9\u65B9\u8282\u70B9\u4E0D\u5B58\u5728");
-  if (direction !== "out" && direction !== "in") throw new Error("\u65B9\u5411\u9700\u4E3A out\uFF08\u5AC1\u51FA\uFF09\u6216 in\uFF08\u5A36\u5165\uFF09");
-  if (A.gender === "F" && direction === "out" && B.gender === "F") throw new Error("\u53CC\u65B9\u5747\u4E3A\u5973\u6027\uFF0C\u65E0\u6CD5\u5EFA\u7ACB\u5A5A\u59FB");
-  if (A.gender === "M" && direction === "in" && B.gender === "M") throw new Error("\u53CC\u65B9\u5747\u4E3A\u7537\u6027\uFF0C\u65E0\u6CD5\u5EFA\u7ACB\u5A5A\u59FB");
-  if (A.gender === "U") throw new Error("\u53D1\u8D77\u65B9\u6027\u522B\u672A\u77E5\uFF0C\u8BF7\u5148\u5728\u6863\u6848\u4E2D\u8BBE\u7F6E\u6027\u522B");
-  if (direction === "out" && A.gender !== "F") throw new Error(`\u300C${A.name}\u300D\u4E0D\u662F\u5973\u6027\uFF0C\u5AC1\u51FA\u8BF7\u7528\u5BF9\u65B9\u8282\u70B9\u53D1\u8D77\uFF0C\u6216\u6539\u9009\u300C\u5A36\u5165\u300D`);
-  if (direction === "in" && A.gender !== "M") throw new Error(`\u300C${A.name}\u300D\u4E0D\u662F\u7537\u6027\uFF0C\u5A36\u5165\u8BF7\u7528\u5BF9\u65B9\u8282\u70B9\u53D1\u8D77\uFF0C\u6216\u6539\u9009\u300C\u5AC1\u51FA\u300D`);
+  const A = (_a3 = treeA.people) == null ? void 0 : _a3[handleA];
+  const B = (_b = treeB.people) == null ? void 0 : _b[handleB];
+  if (!A)
+    throw new Error("\u53D1\u8D77\u65B9\u8282\u70B9\u4E0D\u5B58\u5728");
+  if (!B)
+    throw new Error("\u5BF9\u65B9\u8282\u70B9\u4E0D\u5B58\u5728");
+  if (direction !== "out" && direction !== "in")
+    throw new Error("\u65B9\u5411\u9700\u4E3A out\uFF08\u5AC1\u51FA\uFF09\u6216 in\uFF08\u5A36\u5165\uFF09");
+  if (A.gender === "F" && direction === "out" && B.gender === "F")
+    throw new Error("\u53CC\u65B9\u5747\u4E3A\u5973\u6027\uFF0C\u65E0\u6CD5\u5EFA\u7ACB\u5A5A\u59FB");
+  if (A.gender === "M" && direction === "in" && B.gender === "M")
+    throw new Error("\u53CC\u65B9\u5747\u4E3A\u7537\u6027\uFF0C\u65E0\u6CD5\u5EFA\u7ACB\u5A5A\u59FB");
+  if (A.gender === "U")
+    throw new Error("\u53D1\u8D77\u65B9\u6027\u522B\u672A\u77E5\uFF0C\u8BF7\u5148\u5728\u6863\u6848\u4E2D\u8BBE\u7F6E\u6027\u522B");
+  if (direction === "out" && A.gender !== "F")
+    throw new Error(`\u300C${A.name}\u300D\u4E0D\u662F\u5973\u6027\uFF0C\u5AC1\u51FA\u8BF7\u7528\u5BF9\u65B9\u8282\u70B9\u53D1\u8D77\uFF0C\u6216\u6539\u9009\u300C\u5A36\u5165\u300D`);
+  if (direction === "in" && A.gender !== "M")
+    throw new Error(`\u300C${A.name}\u300D\u4E0D\u662F\u7537\u6027\uFF0C\u5A36\u5165\u8BF7\u7528\u5BF9\u65B9\u8282\u70B9\u53D1\u8D77\uFF0C\u6216\u6539\u9009\u300C\u5AC1\u51FA\u300D`);
   if (A.external_marriage_id && B.external_marriage_id === A.external_marriage_id) {
     throw new Error(`\u300C${A.name}\u300D\u4E0E\u300C${B.name}\u300D\u5DF2\u5EFA\u7ACB\u5A5A\u59FB\u5173\u7CFB`);
   }
@@ -34414,12 +35267,15 @@ function applyMarriage({
   };
 }
 function applyMarriageEnd({ treeA, treeB, handleA, handleB, marriageId, kind, endDate = "", createdBy = "" }) {
+  var _a3, _b;
   const k = normalizeEndKind(kind);
   const end = normalizeMarriageDate(endDate);
-  const A = treeA.people?.[handleA];
-  const B = treeB.people?.[handleB];
-  if (!A || !B) throw new Error("\u5A5A\u59FB\u4E00\u65B9\u8282\u70B9\u4E0D\u5B58\u5728");
-  if (!marriageId) throw new Error("\u7F3A\u5C11 marriage_id");
+  const A = (_a3 = treeA.people) == null ? void 0 : _a3[handleA];
+  const B = (_b = treeB.people) == null ? void 0 : _b[handleB];
+  if (!A || !B)
+    throw new Error("\u5A5A\u59FB\u4E00\u65B9\u8282\u70B9\u4E0D\u5B58\u5728");
+  if (!marriageId)
+    throw new Error("\u7F3A\u5C11 marriage_id");
   if (A.external_marriage_id !== marriageId || B.external_marriage_id !== marriageId) {
     throw new Error("\u8BE5\u6BB5\u5A5A\u59FB\u5DF2\u7ED3\u675F\u6216\u4E0D\u5B58\u5728");
   }
@@ -34467,7 +35323,8 @@ function applyLegacyMarriageEnd({ tree, person, otherTree, otherPerson, kind, en
     external_marriage_end_by: k === "\u7EDD\u5A5A" ? "husband_side" : "mutual"
   };
   Object.assign(person, endInfo);
-  if (otherPerson) Object.assign(otherPerson, endInfo);
+  if (otherPerson)
+    Object.assign(otherPerson, endInfo);
   return { kind: k, end_date: end, legacy: true, cleared_other: !!otherPerson };
 }
 
@@ -34479,9 +35336,12 @@ init_tree_write();
 
 // cloudfunctions/compat-api/lib/family-population.js
 function treeKind(entry) {
-  if (!entry) return "family";
-  if (entry.is_master === true || String(entry.kind || "") === "master") return "master";
-  if (String(entry.kind || "") === "clan") return "clan";
+  if (!entry)
+    return "family";
+  if (entry.is_master === true || String(entry.kind || "") === "master")
+    return "master";
+  if (String(entry.kind || "") === "clan")
+    return "clan";
   return "family";
 }
 function isMirrorNode(person) {
@@ -34499,40 +35359,51 @@ function analyzeFamilyGraph(tree) {
   const motherOf = /* @__PURE__ */ new Map();
   for (const f of families) {
     for (const c of f.child_handles || []) {
-      if (!inPeople(c)) continue;
-      if (inPeople(f.father_handle) && !fatherOf.has(c)) fatherOf.set(c, f.father_handle);
-      if (inPeople(f.mother_handle) && !motherOf.has(c)) motherOf.set(c, f.mother_handle);
+      if (!inPeople(c))
+        continue;
+      if (inPeople(f.father_handle) && !fatherOf.has(c))
+        fatherOf.set(c, f.father_handle);
+      if (inPeople(f.mother_handle) && !motherOf.has(c))
+        motherOf.set(c, f.mother_handle);
     }
   }
   const roots = /* @__PURE__ */ new Set();
-  for (const h of Object.keys(people)) if (!fatherOf.has(h)) roots.add(h);
+  for (const h of Object.keys(people))
+    if (!fatherOf.has(h))
+      roots.add(h);
   const inLawRoots = /* @__PURE__ */ new Set();
   for (const f of families) {
     const fa = inPeople(f.father_handle) ? f.father_handle : "";
     const mo = inPeople(f.mother_handle) ? f.mother_handle : "";
     for (const [x, y] of [[fa, mo], [mo, fa]]) {
-      if (!x || !y) continue;
-      if (!roots.has(x)) continue;
-      if (!fatherOf.has(y)) continue;
+      if (!x || !y)
+        continue;
+      if (!roots.has(x))
+        continue;
+      if (!fatherOf.has(y))
+        continue;
       inLawRoots.add(x);
     }
   }
   const kidsOf = /* @__PURE__ */ new Map();
   for (const [c, fa] of fatherOf) {
-    if (!kidsOf.has(fa)) kidsOf.set(fa, []);
+    if (!kidsOf.has(fa))
+      kidsOf.set(fa, []);
     kidsOf.get(fa).push(c);
   }
   const clan = /* @__PURE__ */ new Set();
   const queue = [];
   for (const h of roots) {
-    if (inLawRoots.has(h)) continue;
+    if (inLawRoots.has(h))
+      continue;
     clan.add(h);
     queue.push(h);
   }
   while (queue.length) {
     const h = queue.shift();
     for (const c of kidsOf.get(h) || []) {
-      if (clan.has(c)) continue;
+      if (clan.has(c))
+        continue;
       clan.add(c);
       queue.push(c);
     }
@@ -34542,9 +35413,12 @@ function analyzeFamilyGraph(tree) {
     const fa = inPeople(f.father_handle) ? f.father_handle : "";
     const mo = inPeople(f.mother_handle) ? f.mother_handle : "";
     for (const [sp, other] of [[mo, fa], [fa, mo]]) {
-      if (!sp || !other) continue;
-      if (clan.has(sp) || !clan.has(other)) continue;
-      if (genderOf(people[sp]) === "M") continue;
+      if (!sp || !other)
+        continue;
+      if (clan.has(sp) || !clan.has(other))
+        continue;
+      if (genderOf(people[sp]) === "M")
+        continue;
       marriedIn.add(sp);
     }
   }
@@ -34566,7 +35440,8 @@ function resolveKind(entry, kindOrOptions) {
 function countFamilyMembers(tree, entry, kindOrOptions) {
   const kind = resolveKind(entry, kindOrOptions);
   const people = tree && tree.people || {};
-  if (kind !== "family") return Object.keys(people).length;
+  if (kind !== "family")
+    return Object.keys(people).length;
   return analyzeFamilyGraph(tree).counted.size;
 }
 
@@ -34578,33 +35453,42 @@ function genderOf2(person) {
   return g || "U";
 }
 function firstSpouseFamily(tree, person) {
-  const fh = (person?.spouse_families || [])[0] || "";
-  return fh ? tree?.families?.[fh] || null : null;
+  var _a3;
+  const fh = ((person == null ? void 0 : person.spouse_families) || [])[0] || "";
+  return fh ? ((_a3 = tree == null ? void 0 : tree.families) == null ? void 0 : _a3[fh]) || null : null;
 }
 function hasSpouseInTree(tree, handle) {
-  if (!handle) return false;
-  const people = tree?.people || {};
-  for (const fam of Object.values(tree?.families || {})) {
-    if (!fam) continue;
+  if (!handle)
+    return false;
+  const people = (tree == null ? void 0 : tree.people) || {};
+  for (const fam of Object.values((tree == null ? void 0 : tree.families) || {})) {
+    if (!fam)
+      continue;
     const fa = fam.father_handle || "";
     const mo = fam.mother_handle || "";
-    if (fa === handle && mo && people[mo]) return true;
-    if (mo === handle && fa && people[fa]) return true;
+    if (fa === handle && mo && people[mo])
+      return true;
+    if (mo === handle && fa && people[fa])
+      return true;
   }
   return false;
 }
 function withMaternalSuccessionAttribute(attributes, maternalSuccession) {
   const out = Array.isArray(attributes) ? [...attributes] : [];
-  if (!maternalSuccession) return out;
-  if (out.some((a) => a && a.key === MATERNAL_SUCCESSION_KEY)) return out;
+  if (!maternalSuccession)
+    return out;
+  if (out.some((a) => a && a.key === MATERNAL_SUCCESSION_KEY))
+    return out;
   out.push({ key: MATERNAL_SUCCESSION_KEY, value: MATERNAL_SUCCESSION_VALUE, type: MATERNAL_SUCCESSION_KEY });
   return out;
 }
 function assertChildWriteAllowed({ tree, kind = "family", personHandle, maternalSuccession = false }) {
-  if (kind !== "family") return;
-  const people = tree?.people || {};
+  if (kind !== "family")
+    return;
+  const people = (tree == null ? void 0 : tree.people) || {};
   const attached = people[personHandle];
-  if (!attached) return;
+  if (!attached)
+    return;
   const { clan } = analyzeFamilyGraph(tree);
   const family = firstSpouseFamily(tree, attached);
   const fatherRef = family && people[family.father_handle] ? family.father_handle : "";
@@ -34626,8 +35510,10 @@ function assertChildWriteAllowed({ tree, kind = "family", personHandle, maternal
 // cloudfunctions/compat-api/lib/child-write.js
 var MIRROR_CHILD_LINK_TYPE = "child";
 async function deceasedLockedTree(treeId, masterTreeId) {
-  if (!treeId) return false;
-  if (masterTreeId && treeId === masterTreeId) return true;
+  if (!treeId)
+    return false;
+  if (masterTreeId && treeId === masterTreeId)
+    return true;
   return treeKindOf(await metaEntryOf(treeId)) === "clan";
 }
 function genHandle3() {
@@ -34661,24 +35547,29 @@ function newPerson({ handle, grampsId, name, surname, given, gender, parentFamil
 function cleanAttributes(attrs) {
   const out = [];
   for (const a of attrs || []) {
-    const key = String(a?.key || "").trim();
-    const value = String(a?.value ?? "").trim();
-    if (key && value) out.push({ key, value, type: key });
+    const key = String((a == null ? void 0 : a.key) || "").trim();
+    const value = String((a == null ? void 0 : a.value) ?? "").trim();
+    if (key && value)
+      out.push({ key, value, type: key });
   }
   return out;
 }
 function isFounderAncestorMirror(person) {
-  return String(person?.external_link_type || "") === FOUNDER_LINK_TYPE;
+  return String((person == null ? void 0 : person.external_link_type) || "") === FOUNDER_LINK_TYPE;
 }
 function mirrorParentOf(family, people) {
-  const isMirror = (p) => p?.external_mirror === "true";
-  const father = family?.father_handle ? people[family.father_handle] || null : null;
-  const mother = family?.mother_handle ? people[family.mother_handle] || null : null;
-  if (father && !isMirror(father)) return null;
-  if (father && isFounderAncestorMirror(father)) return null;
+  const isMirror = (p) => (p == null ? void 0 : p.external_mirror) === "true";
+  const father = (family == null ? void 0 : family.father_handle) ? people[family.father_handle] || null : null;
+  const mother = (family == null ? void 0 : family.mother_handle) ? people[family.mother_handle] || null : null;
+  if (father && !isMirror(father))
+    return null;
+  if (father && isFounderAncestorMirror(father))
+    return null;
   const owner2 = father || mother;
-  if (!isMirror(owner2)) return null;
-  if (isFounderAncestorMirror(owner2)) return null;
+  if (!isMirror(owner2))
+    return null;
+  if (isFounderAncestorMirror(owner2))
+    return null;
   if (isMirror(father) && isMirror(mother)) {
     throw new Error("\u8BE5\u5BB6\u5EAD\u7236\u6BCD\u53CC\u65B9\u5747\u4E3A\u5916\u6811\u955C\u50CF\u8282\u70B9\uFF0C\u65E0\u6CD5\u786E\u5B9A\u5B50\u5973\u5F52\u5C5E\uFF0C\u8BF7\u8054\u7CFB\u603B\u7F16\u8F91");
   }
@@ -34687,40 +35578,49 @@ function mirrorParentOf(family, people) {
 var DEFAULT_MASTER_TREE_ID = process.env.MASTER_TREE_ID || "zhonghua";
 function clanOfMasterNode(metaTrees, personHandle) {
   const h = String(personHandle || "").trim();
-  if (!h) return null;
+  if (!h)
+    return null;
   const hits = Object.values(metaTrees || {}).filter(
-    (e) => treeKindOf(e) === TREE_KIND.CLAN && String(e?.master_handle || "").trim() === h
+    (e) => treeKindOf(e) === TREE_KIND.CLAN && String((e == null ? void 0 : e.master_handle) || "").trim() === h
   );
-  if (!hits.length) return null;
+  if (!hits.length)
+    return null;
   return hits.sort((a, b) => String(a.tree_id || "").localeCompare(String(b.tree_id || "")))[0];
 }
 function clanFounderChildBlockMessage(clanEntry) {
-  const title = String(clanEntry?.display_title || clanEntry?.tree_id || "").trim() || "\u8BE5\u7956\u8C31";
+  const title = String((clanEntry == null ? void 0 : clanEntry.display_title) || (clanEntry == null ? void 0 : clanEntry.tree_id) || "").trim() || "\u8BE5\u7956\u8C31";
   return `\u8BE5\u8282\u70B9\u5DF2\u4F5C\u4E3A\u300A${title}\u300B\u7684\u59CB\u7956\uFF0C\u8BF7\u5230\u8BE5\u7956\u8C31\u5185\u6DFB\u52A0\u5B50\u55E3`;
 }
 async function assertMasterChildAddAllowed({ treeId, masterTreeId, personHandle }) {
+  var _a3;
   const masterId = String(masterTreeId || DEFAULT_MASTER_TREE_ID);
-  if (!treeId || treeId !== masterId) return;
-  const clan = clanOfMasterNode((await getMeta())?.trees, personHandle);
-  if (!clan) return;
+  if (!treeId || treeId !== masterId)
+    return;
+  const clan = clanOfMasterNode((_a3 = await getMeta()) == null ? void 0 : _a3.trees, personHandle);
+  if (!clan)
+    return;
   const e = new Error(clanFounderChildBlockMessage(clan));
   e.status = 400;
   throw e;
 }
 function findRealFamily(tree, parentHandle, mirror, localTreeId) {
   const parent = tree.people[parentHandle];
-  if (!parent) return null;
+  if (!parent)
+    return null;
   const mid = mirror.external_marriage_id || "";
   if (mid) {
     const side = findMarriageSide(tree, parent, mid);
-    if (side) return side.family;
+    if (side)
+      return side.family;
   }
   for (const fh of parent.spouse_families || []) {
     const fam = tree.families[fh];
-    if (!fam) continue;
+    if (!fam)
+      continue;
     const other = fam.father_handle === parentHandle ? fam.mother_handle : fam.father_handle;
     const otherPerson = other ? tree.people[other] : null;
-    if (otherPerson?.external_mirror === "true" && otherPerson.external_tree === localTreeId) return fam;
+    if ((otherPerson == null ? void 0 : otherPerson.external_mirror) === "true" && otherPerson.external_tree === localTreeId)
+      return fam;
   }
   return null;
 }
@@ -34738,15 +35638,18 @@ async function addChildNode({
   maternalSuccession = false
 }) {
   const tree0 = await getTree(treeId);
-  if (!tree0) throw new Error(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
+  if (!tree0)
+    throw new Error(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
   const person = tree0.people[personHandle];
-  if (!person) throw new Error("\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u8BE5\u6811");
+  if (!person)
+    throw new Error("\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u8BE5\u6811");
   await assertMasterChildAddAllowed({ treeId, masterTreeId, personHandle });
   const famHandle = (person.spouse_families || [])[0] || "";
   const family = famHandle ? tree0.families[famHandle] || null : null;
   const mirror = mirrorParentOf(family, tree0.people);
   const attach = String(childHandle || "").trim();
-  if (attach && !tree0.people[attach]) throw new Error("\u6240\u9009\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u8BE5\u6811");
+  if (attach && !tree0.people[attach])
+    throw new Error("\u6240\u9009\u8282\u70B9\u4E0D\u5B58\u5728\u4E8E\u8BE5\u6811");
   if (family && attach && (family.child_handles || []).includes(attach)) {
     throw new Error("\u8BE5\u5B50\u8282\u70B9\u5DF2\u5728\u5BB6\u65CF\u8BB0\u5F55\u4E2D");
   }
@@ -34755,7 +35658,8 @@ async function addChildNode({
   const surnameClean = String(surname || "").trim();
   const childGender = normalizeGender(gender);
   const attributes = withMaternalSuccessionAttribute(cleanAttributes(extraAttributes), maternalSuccession);
-  if (!mirror && !attach && !given) throw new Error("\u8BF7\u586B\u5199\u5B50\u8282\u70B9\u59D3\u540D");
+  if (!mirror && !attach && !given)
+    throw new Error("\u8BF7\u586B\u5199\u5B50\u8282\u70B9\u59D3\u540D");
   if (!mirror) {
     assertChildWriteAllowed({
       tree: tree0,
@@ -34774,7 +35678,8 @@ async function addChildNode({
       throw new Error(`\u5916\u6811\u955C\u50CF\u8282\u70B9\u300C${mirror.name}\u300D\u7F3A\u5C11\u771F\u8EAB\u4FE1\u606F\uFF0C\u65E0\u6CD5\u5199\u5165`);
     }
     const remote0 = await getTree(remoteTreeId);
-    if (!remote0) throw new Error(`\u771F\u8EAB\u6240\u5728\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728: ${remoteTreeId}`);
+    if (!remote0)
+      throw new Error(`\u771F\u8EAB\u6240\u5728\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728: ${remoteTreeId}`);
     if (!remote0.people[remoteParentHandle]) {
       throw new Error(`\u771F\u8EAB\u6240\u5728\u5BB6\u65CF\u6811 ${remoteTreeId} \u4E2D\u627E\u4E0D\u5230\u300C${mirror.name}\u300D`);
     }
@@ -34787,7 +35692,8 @@ async function addChildNode({
       }
     }
     const realFam = findRealFamily(remote0, remoteParentHandle, mirror, treeId);
-    if (!realFam) throw new Error(`\u300C${mirror.name}\u300D\u5728 ${remoteTreeId} \u4E2D\u6CA1\u6709\u5BF9\u5E94\u7684\u5A5A\u59FB\u5BB6\u65CF\uFF0C\u65E0\u6CD5\u627F\u63A5\u5B50\u5973`);
+    if (!realFam)
+      throw new Error(`\u300C${mirror.name}\u300D\u5728 ${remoteTreeId} \u4E2D\u6CA1\u6709\u5BF9\u5E94\u7684\u5A5A\u59FB\u5BB6\u65CF\uFF0C\u65E0\u6CD5\u627F\u63A5\u5B50\u5973`);
     remoteFamilyHandle = realFam.handle;
     if (attach) {
       const moved = tree0.people[attach];
@@ -34805,7 +35711,8 @@ async function addChildNode({
   const result = await updateTrees(ids, async (trees) => {
     const tree = trees[treeId];
     const parent = tree.people[personHandle];
-    if (!Array.isArray(parent.spouse_families)) parent.spouse_families = [];
+    if (!Array.isArray(parent.spouse_families))
+      parent.spouse_families = [];
     let fam = famHandle ? tree.families[famHandle] || null : null;
     if (!fam) {
       const slot = parentSlot(parent.gender);
@@ -34851,8 +35758,10 @@ async function addChildNode({
         });
       }
       fam.child_handles = fam.child_handles || [];
-      if (!fam.child_handles.includes(childKey)) fam.child_handles.push(childKey);
-      if (!tree.people[childKey].parent_family) tree.people[childKey].parent_family = fam.handle;
+      if (!fam.child_handles.includes(childKey))
+        fam.child_handles.push(childKey);
+      if (!tree.people[childKey].parent_family)
+        tree.people[childKey].parent_family = fam.handle;
       return { child_handle: childKey, family_handle: fam.handle, mirror_handle: "", landed_tree_id: treeId };
     }
     const remote = trees[remoteTreeId];
@@ -34863,7 +35772,8 @@ async function addChildNode({
       const moved = tree.people[attach];
       realKey = genHandle3();
       const real = { ...moved, handle: realKey, parent_family: remoteFam.handle };
-      for (const k of ["external_tree", "external_person_handle", "external_link_type", "external_mirror"]) delete real[k];
+      for (const k of ["external_tree", "external_person_handle", "external_link_type", "external_mirror"])
+        delete real[k];
       remote.people[realKey] = real;
       delete tree.people[attach];
       staleDetailHandle = attach;
@@ -34987,36 +35897,46 @@ function notFound2(message) {
   return e;
 }
 function entryOf(meta, treeId) {
-  if (!meta?.trees) return null;
-  return meta.trees[treeId] || Object.values(meta.trees).find((t) => t?.tree_id === treeId) || null;
+  if (!(meta == null ? void 0 : meta.trees))
+    return null;
+  return meta.trees[treeId] || Object.values(meta.trees).find((t) => (t == null ? void 0 : t.tree_id) === treeId) || null;
 }
 function isClanEntry(entry) {
   return treeKindOf(entry) === TREE_KIND.CLAN;
 }
 function clanSurnameOf(entry) {
-  return String(entry?.surname || entry?.surname_char || "").trim();
+  return String((entry == null ? void 0 : entry.surname) || (entry == null ? void 0 : entry.surname_char) || "").trim();
 }
 function genClanTreeId(meta, surnameChar) {
   const char = String(surnameChar || "").trim();
-  if (!char) throw badRequest2("\u7F3A\u5C11\u59D3\u6C0F\uFF0C\u65E0\u6CD5\u751F\u6210\u7956\u8C31\u7F16\u53F7");
+  if (!char)
+    throw badRequest2("\u7F3A\u5C11\u59D3\u6C0F\uFF0C\u65E0\u6CD5\u751F\u6210\u7956\u8C31\u7F16\u53F7");
   const base = `${surnamePinyin(char)}_${char.codePointAt(0)}`;
-  const used = new Set(Object.values(meta?.trees || {}).map((t) => t?.tree_id).filter(Boolean));
-  if (!used.has(base)) return base;
+  const used = new Set(Object.values((meta == null ? void 0 : meta.trees) || {}).map((t) => t == null ? void 0 : t.tree_id).filter(Boolean));
+  if (!used.has(base))
+    return base;
   for (let i = 1; i < 100; i++) {
     const candidate = `${base}_${String(i).padStart(2, "0")}`;
-    if (!used.has(candidate)) return candidate;
+    if (!used.has(candidate))
+      return candidate;
   }
   throw badRequest2(`\u59D3\u6C0F\u300C${char}\u300D\u7684\u7956\u8C31\u7F16\u53F7\u5DF2\u7528\u5C3D\uFF08\u226599\uFF09`);
 }
 function assertClanFounderUnique({ entries, surname, masterTreeId, masterHandle, excludeTreeId = "" }) {
   const char = String(surname || "").trim();
-  if (!char || !masterHandle) return null;
+  if (!char || !masterHandle)
+    return null;
   for (const e of Object.values(entries || {})) {
-    if (!e || e.tree_id === excludeTreeId) continue;
-    if (treeKindOf(e) !== TREE_KIND.CLAN) continue;
-    if (clanSurnameOf(e) !== char) continue;
-    if (String(e.master_tree_id || "") !== String(masterTreeId || "")) continue;
-    if (String(e.master_handle || "") !== String(masterHandle)) continue;
+    if (!e || e.tree_id === excludeTreeId)
+      continue;
+    if (treeKindOf(e) !== TREE_KIND.CLAN)
+      continue;
+    if (clanSurnameOf(e) !== char)
+      continue;
+    if (String(e.master_tree_id || "") !== String(masterTreeId || ""))
+      continue;
+    if (String(e.master_handle || "") !== String(masterHandle))
+      continue;
     throw badRequest2(
       `\u300C${e.display_title || e.tree_id}\u300D\u5DF2\u8BA4\u8BE5\u4E16\u672C\u8282\u70B9\u4E3A\u59CB\u7956\uFF08\u540C\u59D3\u7956\u8C31\u552F\u4E00\uFF09\uFF0C\u8BF7\u5148\u89E3\u9664\u6302\u8F7D\u6216\u6539\u8BA4\u5176\u4ED6\u8282\u70B9`
     );
@@ -35024,16 +35944,20 @@ function assertClanFounderUnique({ entries, surname, masterTreeId, masterHandle,
   return null;
 }
 function isClanTopMirrorNode(person, treeId = "", upperTreeId = "") {
-  if (!isReadonlyMirror(person, treeId)) return false;
-  if (upperTreeId) return String(person.external_tree || "") === String(upperTreeId);
+  if (!isReadonlyMirror(person, treeId))
+    return false;
+  if (upperTreeId)
+    return String(person.external_tree || "") === String(upperTreeId);
   return String(person.handle || "") === `${CLAN_MIRROR_PREFIX}${String(person.external_person_handle || "")}`;
 }
 function clanMirrorNodes(tree, upperTreeId = "") {
-  if (!tree?.people) return [];
+  if (!(tree == null ? void 0 : tree.people))
+    return [];
   return Object.values(tree.people).filter((p) => isClanTopMirrorNode(p, tree.tree_id, upperTreeId)).sort((a, b) => String(a.gramps_id || "").localeCompare(String(b.gramps_id || "")));
 }
 function clanOwnNodes(tree) {
-  if (!tree?.people) return [];
+  if (!(tree == null ? void 0 : tree.people))
+    return [];
   return Object.values(tree.people).filter((p) => !isReadonlyMirror(p, tree.tree_id)).sort((a, b) => String(a.gramps_id || "").localeCompare(String(b.gramps_id || "")));
 }
 function clanStats(tree, upperTreeId = "") {
@@ -35042,25 +35966,32 @@ function clanStats(tree, upperTreeId = "") {
   return { own_count: own, mirror_count: mirrors, total: own + mirrors };
 }
 function firstChainChild(tree, handle) {
-  if (!tree?.families) return "";
+  var _a3;
+  if (!(tree == null ? void 0 : tree.families))
+    return "";
   for (const f of Object.values(tree.families)) {
-    if (!f) continue;
+    if (!f)
+      continue;
     if (f.father_handle === handle || f.mother_handle === handle) {
       const c = (f.child_handles || [])[0];
-      if (c && tree.people?.[c]) return c;
+      if (c && ((_a3 = tree.people) == null ? void 0 : _a3[c]))
+        return c;
     }
   }
   return "";
 }
 function planClanTopMirrors({ masterTree, masterHandle, depth = DEFAULT_CHAIN_DEPTH }) {
-  const master = masterTree?.people?.[masterHandle];
-  if (!master) throw notFound2("\u6240\u9009\u4E0A\u5C42\u8282\u70B9\u4E0D\u5B58\u5728");
+  var _a3;
+  const master = (_a3 = masterTree == null ? void 0 : masterTree.people) == null ? void 0 : _a3[masterHandle];
+  if (!master)
+    throw notFound2("\u6240\u9009\u4E0A\u5C42\u8282\u70B9\u4E0D\u5B58\u5728");
   const chain = [masterHandle];
   let cur = masterHandle;
   const want = Math.max(0, Math.min(Number(depth) || 0, MAX_CHAIN_DEPTH));
   for (let i = 0; i < want; i++) {
     const next = firstChainChild(masterTree, cur);
-    if (!next) break;
+    if (!next)
+      break;
     chain.push(next);
     cur = next;
   }
@@ -35097,30 +36028,42 @@ function planClanMirrorPerson({ handle, grampsId, masterPerson, masterTreeId, li
 }
 function clearClanTopMirror(tree, upperTreeId = "") {
   const mirrors = clanMirrorNodes(tree, upperTreeId);
-  if (!mirrors.length) return { removed_handles: [], removed_families: [], kept_families: [], degraded_landings: [] };
+  if (!mirrors.length)
+    return { removed_handles: [], removed_families: [], kept_families: [], degraded_landings: [] };
   const rm = new Set(mirrors.map((p) => p.handle));
-  const ownMirror = (h) => !rm.has(h) && isReadonlyMirror(tree.people?.[h], tree.tree_id);
+  const ownMirror = (h) => {
+    var _a3;
+    return !rm.has(h) && isReadonlyMirror((_a3 = tree.people) == null ? void 0 : _a3[h], tree.tree_id);
+  };
   const removedFamilies = [];
   const keptFamilies = [];
   const degradedLandings = [];
   for (const [fh, fam] of Object.entries(tree.families || {})) {
-    if (!fam) continue;
+    if (!fam)
+      continue;
     const touched = rm.has(fam.father_handle) || rm.has(fam.mother_handle) || (fam.child_handles || []).some((c) => rm.has(c));
-    if (!touched) continue;
+    if (!touched)
+      continue;
     const keptRegs = (fam.child_handles || []).filter((c) => ownMirror(c));
     if (!keptRegs.length) {
       for (const c of fam.child_handles || []) {
-        if (rm.has(c)) continue;
-        if (tree.people[c] && tree.people[c].parent_family === fh) tree.people[c].parent_family = "";
+        if (rm.has(c))
+          continue;
+        if (tree.people[c] && tree.people[c].parent_family === fh)
+          tree.people[c].parent_family = "";
       }
       delete tree.families[fh];
       removedFamilies.push(fh);
       continue;
     }
-    const ownChildren = (fam.child_handles || []).filter((c) => !rm.has(c) && !ownMirror(c) && tree.people?.[c]).sort();
+    const ownChildren = (fam.child_handles || []).filter((c) => {
+      var _a3;
+      return !rm.has(c) && !ownMirror(c) && ((_a3 = tree.people) == null ? void 0 : _a3[c]);
+    }).sort();
     const landing = ownChildren[0] || "";
     for (const c of ownChildren) {
-      if (tree.people[c].parent_family === fh) tree.people[c].parent_family = "";
+      if (tree.people[c].parent_family === fh)
+        tree.people[c].parent_family = "";
     }
     const selfKey = landing && tree.people[landing].gender === "F" ? "mother_handle" : "father_handle";
     fam.father_handle = selfKey === "father_handle" ? landing : "";
@@ -35128,16 +36071,19 @@ function clearClanTopMirror(tree, upperTreeId = "") {
     fam.child_handles = keptRegs;
     if (landing) {
       const p = tree.people[landing];
-      if (!(p.spouse_families || []).includes(fh)) p.spouse_families = [...p.spouse_families || [], fh];
+      if (!(p.spouse_families || []).includes(fh))
+        p.spouse_families = [...p.spouse_families || [], fh];
     }
     keptFamilies.push(fh);
     degradedLandings.push({ family: fh, landing, registration_handles: keptRegs });
   }
   for (const p of Object.values(tree.people)) {
-    if (rm.has(p.handle)) continue;
+    if (rm.has(p.handle))
+      continue;
     p.spouse_families = (p.spouse_families || []).filter((fh) => !removedFamilies.includes(fh));
   }
-  for (const h of rm) delete tree.people[h];
+  for (const h of rm)
+    delete tree.people[h];
   return {
     removed_handles: [...rm],
     removed_families: removedFamilies,
@@ -35147,10 +36093,12 @@ function clearClanTopMirror(tree, upperTreeId = "") {
 }
 function freeGrampsId(tree, prefer = "") {
   const used = /* @__PURE__ */ new Set();
-  for (const p of Object.values(tree?.people || {})) {
-    if (p?.gramps_id) used.add(String(p.gramps_id));
+  for (const p of Object.values((tree == null ? void 0 : tree.people) || {})) {
+    if (p == null ? void 0 : p.gramps_id)
+      used.add(String(p.gramps_id));
   }
-  if (prefer && !used.has(prefer)) return prefer;
+  if (prefer && !used.has(prefer))
+    return prefer;
   return nextGrampsId(tree, "I");
 }
 function planClanTopMirrorIds(masters, masterTreeId = "") {
@@ -35173,7 +36121,9 @@ function applyClanTopMirror({
   // 家族号铸号器（`cfam_*` 是本树**新记录**，家族编号 = 记录级，不在本单口径内）
   allocFamilyId = null
 }) {
-  if (!tree?.people) throw badRequest2("\u7956\u8C31\u6811\u6570\u636E\u4E0D\u53EF\u7528");
+  var _a3;
+  if (!(tree == null ? void 0 : tree.people))
+    throw badRequest2("\u7956\u8C31\u6811\u6570\u636E\u4E0D\u53EF\u7528");
   const masters = planClanTopMirrors({ masterTree, masterHandle, depth });
   const mirrorIds = planClanTopMirrorIds(masters, masterTreeId);
   clearClanTopMirror(tree, masterTreeId);
@@ -35230,7 +36180,7 @@ function applyClanTopMirror({
     const fam = useFamily(`cfam_own_${tree.tree_id || ""}`, prevHandle, ownRootHandle);
     tree.people[ownRootHandle].parent_family = fam.handle;
   }
-  tree.founder_gramps_id = founderMirror ? String(tree.people[founderMirror]?.gramps_id || "") : tree.founder_gramps_id || "";
+  tree.founder_gramps_id = founderMirror ? String(((_a3 = tree.people[founderMirror]) == null ? void 0 : _a3.gramps_id) || "") : tree.founder_gramps_id || "";
   return {
     founder_mirror_handle: founderMirror,
     deepest_mirror_handle: prevHandle,
@@ -35288,12 +36238,14 @@ async function safeTree(getTreeFn, treeId) {
   }
 }
 async function listClanBranches({ clanTreeId, meta = null, getTreeFn = getTree, listIdsFn = listTreeIds } = {}) {
+  var _a3, _b, _c;
   const m = meta || await safeMeta2();
   const attachments = await listAttachedTrees({ masterTreeId: clanTreeId, meta: m, getTreeFn, listIdsFn });
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   const push = (row) => {
-    if (!row?.tree_id || seen.has(row.tree_id)) return;
+    if (!(row == null ? void 0 : row.tree_id) || seen.has(row.tree_id))
+      return;
     seen.add(row.tree_id);
     out.push(row);
   };
@@ -35302,30 +36254,31 @@ async function listClanBranches({ clanTreeId, meta = null, getTreeFn = getTree, 
     const entry = reg.entry;
     const t = await safeTree(getTreeFn, reg.tree_id);
     const founderHandle = resolveFounderHandle(t, entry);
-    const founder = founderHandle ? t?.people?.[founderHandle] : null;
+    const founder = founderHandle ? (_a3 = t == null ? void 0 : t.people) == null ? void 0 : _a3[founderHandle] : null;
     push({
       tree_id: reg.tree_id,
       kind: treeKindOf(entry),
       tree_title: entry.display_title || reg.tree_id,
-      surname_char: entry.surname_char || (founder?.surname || "").slice(0, 1),
+      surname_char: entry.surname_char || ((founder == null ? void 0 : founder.surname) || "").slice(0, 1),
       founder_handle: founderHandle || "",
-      founder_gramps_id: founder?.gramps_id || entry.founder_gramps_id || "",
-      founder_name: founder?.name || entry.founder_name || reg.name || "",
-      master_handle: String(reg.person?.external_person_handle || ""),
-      relation_note: reg.person?.external_relation_note || "",
-      person_count: t?.people ? Object.keys(t.people).length : 0,
+      founder_gramps_id: (founder == null ? void 0 : founder.gramps_id) || entry.founder_gramps_id || "",
+      founder_name: (founder == null ? void 0 : founder.name) || entry.founder_name || reg.name || "",
+      master_handle: String(((_b = reg.person) == null ? void 0 : _b.external_person_handle) || ""),
+      relation_note: ((_c = reg.person) == null ? void 0 : _c.external_relation_note) || "",
+      person_count: (t == null ? void 0 : t.people) ? Object.keys(t.people).length : 0,
       via: "branch_register"
     });
   }
   for (const a of attachments) {
-    if (seen.has(a.tree_id)) continue;
+    if (seen.has(a.tree_id))
+      continue;
     const entry = entryOf(m, a.tree_id) || { tree_id: a.tree_id };
     const t = await safeTree(getTreeFn, a.tree_id);
     push({
       ...a,
       kind: treeKindOf(entry),
       tree_title: entry.display_title || a.tree_title || a.tree_id,
-      person_count: t?.people ? Object.keys(t.people).length : 0
+      person_count: (t == null ? void 0 : t.people) ? Object.keys(t.people).length : 0
     });
   }
   out.sort((a, b) => String(a.tree_id).localeCompare(String(b.tree_id)));
@@ -35334,13 +36287,17 @@ async function listClanBranches({ clanTreeId, meta = null, getTreeFn = getTree, 
 function clanBranchRegistrations(tree, clanTreeId, meta = null) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
-  for (const p of Object.values(tree?.people || {})) {
-    if (String(p?.external_mirror || "") !== "true") continue;
-    if (p.external_link_type !== FOUNDER_LINK_TYPE) continue;
+  for (const p of Object.values((tree == null ? void 0 : tree.people) || {})) {
+    if (String((p == null ? void 0 : p.external_mirror) || "") !== "true")
+      continue;
+    if (p.external_link_type !== FOUNDER_LINK_TYPE)
+      continue;
     const tid = String(p.external_tree || "");
-    if (!tid || tid === clanTreeId || seen.has(tid)) continue;
+    if (!tid || tid === clanTreeId || seen.has(tid))
+      continue;
     const entry = entryOf(meta, tid);
-    if (!entry || treeKindOf(entry) !== TREE_KIND.FAMILY) continue;
+    if (!entry || treeKindOf(entry) !== TREE_KIND.FAMILY)
+      continue;
     seen.add(tid);
     out.push({ tree_id: tid, handle: p.handle, name: p.name || "", person: p, entry });
   }
@@ -35348,7 +36305,7 @@ function clanBranchRegistrations(tree, clanTreeId, meta = null) {
 }
 async function listClans({ meta = null, getTreeFn = getTree, listIdsFn = listTreeIds } = {}) {
   const m = meta || await safeMeta2();
-  const entries = Object.values(m?.trees || {}).filter((e) => isClanEntry(e));
+  const entries = Object.values((m == null ? void 0 : m.trees) || {}).filter((e) => isClanEntry(e));
   const out = [];
   for (const e of entries) {
     const tree = await safeTree(getTreeFn, e.tree_id);
@@ -35359,9 +36316,9 @@ async function listClans({ meta = null, getTreeFn = getTree, listIdsFn = listTre
       tree_id: e.tree_id,
       tree_title: e.display_title || e.tree_id,
       surname: clanSurnameOf(e),
-      master_tree_id: e.master_tree_id || founderMirror?.external_tree || "",
-      master_handle: e.master_handle || founderMirror?.external_person_handle || "",
-      master_name: e.master_name || founderMirror?.name || "",
+      master_tree_id: e.master_tree_id || (founderMirror == null ? void 0 : founderMirror.external_tree) || "",
+      master_handle: e.master_handle || (founderMirror == null ? void 0 : founderMirror.external_person_handle) || "",
+      master_name: e.master_name || (founderMirror == null ? void 0 : founderMirror.name) || "",
       founder_handle: e.founder_handle || "",
       attached_to_master: !!founderMirror,
       ...stats
@@ -35388,9 +36345,9 @@ async function clanInfo({ treeId, meta = null, getTreeFn = getTree, listIdsFn = 
     genealogy_name: entry.genealogy_name || "",
     surname: clanSurnameOf(entry),
     founder_handle: entry.founder_handle || "",
-    master_tree_id: entry.master_tree_id || founderMirror?.external_tree || "",
-    master_handle: entry.master_handle || founderMirror?.external_person_handle || "",
-    master_name: entry.master_name || founderMirror?.name || "",
+    master_tree_id: entry.master_tree_id || (founderMirror == null ? void 0 : founderMirror.external_tree) || "",
+    master_handle: entry.master_handle || (founderMirror == null ? void 0 : founderMirror.external_person_handle) || "",
+    master_name: entry.master_name || (founderMirror == null ? void 0 : founderMirror.name) || "",
     attached_to_master: !!founderMirror,
     notice: founderMirror ? "" : NO_MASTER_MESSAGE,
     mirrors: mirrors.map((p) => ({
@@ -35433,19 +36390,26 @@ async function createClanTree({
   initiatorPhone = "",
   onBeforeWrite = null
 }) {
+  var _a3, _b;
   const char = String(surname || "").trim();
-  if (!/^[\u4e00-\u9fa5]$/.test(char)) throw badRequest2("\u8BF7\u586B\u5199\u5355\u4E2A\u6C49\u5B57\u59D3\u6C0F");
-  if (!masterTreeId || !masterHandle) throw badRequest2("\u8BF7\u9009\u62E9\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u4E2D\u7684\u59CB\u7956\u8282\u70B9");
+  if (!/^[\u4e00-\u9fa5]$/.test(char))
+    throw badRequest2("\u8BF7\u586B\u5199\u5355\u4E2A\u6C49\u5B57\u59D3\u6C0F");
+  if (!masterTreeId || !masterHandle)
+    throw badRequest2("\u8BF7\u9009\u62E9\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u4E2D\u7684\u59CB\u7956\u8282\u70B9");
   const code = String(originCode || "").trim();
-  if (code && !isKnownOriginCode(code)) throw badRequest2(`\u53D1\u6E90\u5730\u884C\u653F\u533A\u5212\u4EE3\u7801\u65E0\u6548\uFF1A${code}`);
+  if (code && !isKnownOriginCode(code))
+    throw badRequest2(`\u53D1\u6E90\u5730\u884C\u653F\u533A\u5212\u4EE3\u7801\u65E0\u6548\uFF1A${code}`);
   const meta = await getMeta();
   const masterEntry = entryOf(meta, masterTreeId);
-  if (treeKindOf(masterEntry) !== TREE_KIND.MASTER) throw badRequest2("\u7956\u8C31\u59CB\u7956\u5FC5\u987B\u6307\u5411\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u8282\u70B9");
+  if (treeKindOf(masterEntry) !== TREE_KIND.MASTER)
+    throw badRequest2("\u7956\u8C31\u59CB\u7956\u5FC5\u987B\u6307\u5411\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u8282\u70B9");
   assertClanFounderUnique({ entries: meta.trees, surname: char, masterTreeId, masterHandle });
   const masterTree = await getTree(masterTreeId);
-  const masterPerson = masterTree?.people?.[masterHandle];
-  if (!masterPerson) throw notFound2("\u6240\u9009\u4E2D\u534E\u4E16\u672C\u8282\u70B9\u4E0D\u5B58\u5728");
-  if (onBeforeWrite) await onBeforeWrite();
+  const masterPerson = (_a3 = masterTree == null ? void 0 : masterTree.people) == null ? void 0 : _a3[masterHandle];
+  if (!masterPerson)
+    throw notFound2("\u6240\u9009\u4E2D\u534E\u4E16\u672C\u8282\u70B9\u4E0D\u5B58\u5728");
+  if (onBeforeWrite)
+    await onBeforeWrite();
   const treeId = genClanTreeId(meta, char);
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const tree = {
@@ -35506,7 +36470,7 @@ async function createClanTree({
     await saveDetail({
       tree_id: treeId,
       handle: applied.founder_mirror_handle,
-      gramps_id: tree.people[applied.founder_mirror_handle]?.gramps_id || "",
+      gramps_id: ((_b = tree.people[applied.founder_mirror_handle]) == null ? void 0 : _b.gramps_id) || "",
       name: masterPerson.name || "",
       events: [],
       media: [],
@@ -35566,19 +36530,26 @@ async function attachClanToMaster({
   ownRootHandle = "",
   requestedBy = ""
 }) {
-  if (!treeId) throw badRequest2("\u7F3A\u5C11 tree_id");
-  if (!masterTreeId || !masterHandle) throw badRequest2("\u8BF7\u9009\u62E9\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u4E2D\u7684\u59CB\u7956\u8282\u70B9");
+  var _a3, _b;
+  if (!treeId)
+    throw badRequest2("\u7F3A\u5C11 tree_id");
+  if (!masterTreeId || !masterHandle)
+    throw badRequest2("\u8BF7\u9009\u62E9\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u4E2D\u7684\u59CB\u7956\u8282\u70B9");
   const meta = await getMeta();
   const clanEntry = entryOf(meta, treeId);
-  if (!clanEntry) throw notFound2(`tree-meta \u4E2D\u627E\u4E0D\u5230\u6811: ${treeId}`);
-  if (!isClanEntry(clanEntry)) throw badRequest2("\u4EC5\u7956\u8C31\u53EF\u8BA4\u7956\u5230\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09");
+  if (!clanEntry)
+    throw notFound2(`tree-meta \u4E2D\u627E\u4E0D\u5230\u6811: ${treeId}`);
+  if (!isClanEntry(clanEntry))
+    throw badRequest2("\u4EC5\u7956\u8C31\u53EF\u8BA4\u7956\u5230\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09");
   const masterEntry = entryOf(meta, masterTreeId);
-  if (treeKindOf(masterEntry) !== TREE_KIND.MASTER) throw badRequest2("\u7956\u8C31\u53EA\u80FD\u8BA4\u7956\u5230\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09");
+  if (treeKindOf(masterEntry) !== TREE_KIND.MASTER)
+    throw badRequest2("\u7956\u8C31\u53EA\u80FD\u8BA4\u7956\u5230\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09");
   const surname = clanSurnameOf(clanEntry);
   assertClanFounderUnique({ entries: meta.trees, surname, masterTreeId, masterHandle, excludeTreeId: treeId });
   const masterTree = await getTree(masterTreeId);
-  const masterPerson = masterTree?.people?.[masterHandle];
-  if (!masterPerson) throw notFound2("\u6240\u9009\u4E2D\u534E\u4E16\u672C\u8282\u70B9\u4E0D\u5B58\u5728");
+  const masterPerson = (_a3 = masterTree == null ? void 0 : masterTree.people) == null ? void 0 : _a3[masterHandle];
+  if (!masterPerson)
+    throw notFound2("\u6240\u9009\u4E2D\u534E\u4E16\u672C\u8282\u70B9\u4E0D\u5B58\u5728");
   const rootHandle = String(ownRootHandle || clanEntry.founder_handle || "").trim();
   const founderMissing = isFounderMissing(clanEntry);
   const mirrorPlan = planClanTopMirrors({ masterTree, masterHandle, depth: chainDepth });
@@ -35600,7 +36571,7 @@ async function attachClanToMaster({
   let registered = null;
   let founderSync = null;
   {
-    const fresh = (await getTree(treeId))?.people || {};
+    const fresh = ((_b = await getTree(treeId)) == null ? void 0 : _b.people) || {};
     if (founderMissing) {
       registered = planFounderRegister(clanEntry, fresh[rootHandle] || { handle: rootHandle });
     } else {
@@ -35615,7 +36586,8 @@ async function attachClanToMaster({
     entry.master_tree_id = masterTreeId;
     entry.master_handle = masterHandle;
     entry.master_name = masterPerson.name || "";
-    if (rootHandle) entry.founder_handle = rootHandle;
+    if (rootHandle)
+      entry.founder_handle = rootHandle;
     if (registered) {
       delete entry.founder_state;
       entry.founder_handle = registered.founder_handle;
@@ -35643,16 +36615,21 @@ async function attachClanToMaster({
   };
 }
 async function detachClanFromMaster({ treeId }) {
-  if (!treeId) throw badRequest2("\u7F3A\u5C11 tree_id");
+  if (!treeId)
+    throw badRequest2("\u7F3A\u5C11 tree_id");
   const meta = await getMeta();
   const entry = entryOf(meta, treeId);
-  if (!entry) throw notFound2(`tree-meta \u4E2D\u627E\u4E0D\u5230\u6811: ${treeId}`);
-  if (!isClanEntry(entry)) throw badRequest2("\u8BE5\u5BB6\u65CF\u6811\u4E0D\u662F\u7956\u8C31");
+  if (!entry)
+    throw notFound2(`tree-meta \u4E2D\u627E\u4E0D\u5230\u6811: ${treeId}`);
+  if (!isClanEntry(entry))
+    throw badRequest2("\u8BE5\u5BB6\u65CF\u6811\u4E0D\u662F\u7956\u8C31");
   const tree0 = await getTree(treeId);
-  if (!tree0) throw notFound2(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
+  if (!tree0)
+    throw notFound2(`\u6811\u4E0D\u5B58\u5728: ${treeId}`);
   const upperTreeId = String(entry.master_tree_id || "");
   const mirrors = clanMirrorNodes(tree0, upperTreeId);
-  if (!mirrors.length) throw badRequest2(NO_MASTER_MESSAGE);
+  if (!mirrors.length)
+    throw badRequest2(NO_MASTER_MESSAGE);
   const removed = await updateTrees([treeId], (trees) => clearClanTopMirror(trees[treeId], upperTreeId));
   for (const h of removed.removed_handles) {
     try {
@@ -35702,19 +36679,24 @@ function fail4(message, status = 400) {
   return e;
 }
 function missingDetailWarning(person, handle) {
-  const name = person?.name || handle;
-  const gramps = String(person?.gramps_id || "") || handle;
+  const name = (person == null ? void 0 : person.name) || handle;
+  const gramps = String((person == null ? void 0 : person.gramps_id) || "") || handle;
   return `\u8282\u70B9\u300C${name}\u300D\uFF08${gramps} \xB7 ${handle}\uFF09\u8BE6\u60C5\u6587\u6863\u7F3A\u5931\uFF0C\u4EC5\u7ED3\u6784\u771F\u6E90\u5DF2\u8FC1\u79FB`;
 }
 function entryOf2(meta, treeId) {
-  if (!meta?.trees) return null;
-  return meta.trees[treeId] || Object.values(meta.trees).find((t) => t?.tree_id === treeId) || null;
+  if (!(meta == null ? void 0 : meta.trees))
+    return null;
+  return meta.trees[treeId] || Object.values(meta.trees).find((t) => (t == null ? void 0 : t.tree_id) === treeId) || null;
 }
 function keyOf(meta, treeId) {
-  const trees = meta?.trees || {};
-  return Object.keys(trees).find((k) => trees[k]?.tree_id === treeId) || "";
+  const trees = (meta == null ? void 0 : meta.trees) || {};
+  return Object.keys(trees).find((k) => {
+    var _a3;
+    return ((_a3 = trees[k]) == null ? void 0 : _a3.tree_id) === treeId;
+  }) || "";
 }
 function planAncestorChainMove({ tree, personHandle, founderHandle = "" }) {
+  var _a3, _b;
   const movedPeople = [];
   const movedFamilies = [];
   let topFamilyHandle = "";
@@ -35722,11 +36704,13 @@ function planAncestorChainMove({ tree, personHandle, founderHandle = "" }) {
   const seen = /* @__PURE__ */ new Set([personHandle]);
   let ok = false;
   while (true) {
-    const node = tree?.people?.[cur];
-    const fam = tree?.families?.[node?.parent_family || ""];
-    if (!fam) break;
+    const node = (_a3 = tree == null ? void 0 : tree.people) == null ? void 0 : _a3[cur];
+    const fam = (_b = tree == null ? void 0 : tree.families) == null ? void 0 : _b[(node == null ? void 0 : node.parent_family) || ""];
+    if (!fam)
+      break;
     const up = [fam.father_handle, fam.mother_handle].find((h) => h && h !== cur && tree.people[h]) || "";
-    if (!up || seen.has(up)) break;
+    if (!up || seen.has(up))
+      break;
     seen.add(up);
     if (founderHandle && up === founderHandle) {
       ok = true;
@@ -35774,15 +36758,15 @@ function planBranchRegistrations({
       handle: handles[0],
       gramps_id: grampsIds[0],
       external_tree: sourceTreeId,
-      external_person_handle: String(person?.handle || ""),
-      external_relation_note: `\u300C${person?.name || ""}\u300D\uFF08${sourceTreeTitle || sourceTreeId} \xB7 \u7ACB\u652F\u767B\u8BB0\uFF09`
+      external_person_handle: String((person == null ? void 0 : person.handle) || ""),
+      external_relation_note: `\u300C${(person == null ? void 0 : person.name) || ""}\u300D\uFF08${sourceTreeTitle || sourceTreeId} \xB7 \u7ACB\u652F\u767B\u8BB0\uFF09`
     },
     {
       handle: handles[1],
       gramps_id: grampsIds[1],
       external_tree: newTreeId,
       external_person_handle: mirrorHandle,
-      external_relation_note: `\u300C${person?.name || ""}\u300D\uFF08${newTreeTitle || newTreeId} \xB7 \u7ACB\u652F\u767B\u8BB0\uFF09`
+      external_relation_note: `\u300C${(person == null ? void 0 : person.name) || ""}\u300D\uFF08${newTreeTitle || newTreeId} \xB7 \u7ACB\u652F\u767B\u8BB0\uFF09`
     }
   ];
   return rows.map((r) => ({
@@ -35806,10 +36790,10 @@ function planBranchFounderMirror({ person, sourceTreeId, sourceTreeTitle = "", h
     parent_family: "",
     spouse_families: [],
     external_tree: sourceTreeId,
-    external_person_handle: String(person?.handle || ""),
+    external_person_handle: String((person == null ? void 0 : person.handle) || ""),
     external_link_type: FOUNDER_LINK_TYPE,
     external_mirror: "true",
-    external_relation_note: `\u300C${person?.name || ""}\u300D\uFF08${sourceTreeTitle || sourceTreeId} \xB7 \u7ACB\u652F\u59CB\u7956\uFF09`
+    external_relation_note: `\u300C${(person == null ? void 0 : person.name) || ""}\u300D\uFF08${sourceTreeTitle || sourceTreeId} \xB7 \u7ACB\u652F\u59CB\u7956\uFF09`
   };
 }
 function applyAncestorChainMove({
@@ -35821,34 +36805,47 @@ function applyAncestorChainMove({
   registrations = [],
   allocFamilyId = null
 }) {
+  var _a3, _b, _c, _d;
   const moved = new Set(plan.moved_people);
   const takenPeople = {};
   const takenFamilies = {};
-  for (const h of plan.moved_people) if (src.people?.[h]) takenPeople[h] = JSON.parse(JSON.stringify(src.people[h]));
-  for (const fh of plan.moved_families) if (src.families?.[fh]) takenFamilies[fh] = JSON.parse(JSON.stringify(src.families[fh]));
-  for (const fh of Object.keys(takenFamilies)) delete src.families[fh];
-  for (const h of Object.keys(takenPeople)) delete src.people[h];
-  const topFam = plan.top_family_handle ? src.families?.[plan.top_family_handle] : null;
-  if (topFam) topFam.child_handles = (topFam.child_handles || []).filter((c) => !moved.has(c));
+  for (const h of plan.moved_people)
+    if ((_a3 = src.people) == null ? void 0 : _a3[h])
+      takenPeople[h] = JSON.parse(JSON.stringify(src.people[h]));
+  for (const fh of plan.moved_families)
+    if ((_b = src.families) == null ? void 0 : _b[fh])
+      takenFamilies[fh] = JSON.parse(JSON.stringify(src.families[fh]));
+  for (const fh of Object.keys(takenFamilies))
+    delete src.families[fh];
+  for (const h of Object.keys(takenPeople))
+    delete src.people[h];
+  const topFam = plan.top_family_handle ? (_c = src.families) == null ? void 0 : _c[plan.top_family_handle] : null;
+  if (topFam)
+    topFam.child_handles = (topFam.child_handles || []).filter((c) => !moved.has(c));
   const repair = repairTreeRefs(src);
-  const newFounder = newFounderHandle ? src.people?.[newFounderHandle] : null;
-  if (newFounder) src.founder_gramps_id = String(newFounder.gramps_id || "");
-  for (const [fh, fam] of Object.entries(takenFamilies)) clan.families[fh] = fam;
-  for (const [h, p] of Object.entries(takenPeople)) clan.people[h] = p;
+  const newFounder = newFounderHandle ? (_d = src.people) == null ? void 0 : _d[newFounderHandle] : null;
+  if (newFounder)
+    src.founder_gramps_id = String(newFounder.gramps_id || "");
+  for (const [fh, fam] of Object.entries(takenFamilies))
+    clan.families[fh] = fam;
+  for (const [h, p] of Object.entries(takenPeople))
+    clan.people[h] = p;
   let clanFamily = null;
   let createdFamily = false;
   if (plan.chain_top_handle && clan.people[plan.chain_top_handle]) {
     const r = ensureParentFamily(clan, clanFounderHandle, allocFamilyId);
     clanFamily = r.family;
     createdFamily = r.created;
-    if (!clanFamily.child_handles.includes(plan.chain_top_handle)) clanFamily.child_handles.push(plan.chain_top_handle);
+    if (!clanFamily.child_handles.includes(plan.chain_top_handle))
+      clanFamily.child_handles.push(plan.chain_top_handle);
     clan.people[plan.chain_top_handle].parent_family = clanFamily.handle;
   }
   let registrationFamily = "";
   if (registrations.length && clan.people[clanFounderHandle]) {
     const fh = genHandle5();
     const grampsId = typeof allocFamilyId === "function" ? allocFamilyId() : "";
-    if (!grampsId) throw fail4("\u5BB6\u65CF\u7F16\u53F7\u9884\u7559\u4E0D\u8DB3\uFF1A\u7ACB\u652F\u767B\u8BB0\u5BB6\u65CF\u65E0\u6CD5\u94F8\u53F7", 500);
+    if (!grampsId)
+      throw fail4("\u5BB6\u65CF\u7F16\u53F7\u9884\u7559\u4E0D\u8DB3\uFF1A\u7ACB\u652F\u767B\u8BB0\u5BB6\u65CF\u65E0\u6CD5\u94F8\u53F7", 500);
     clan.families[fh] = {
       handle: fh,
       gramps_id: grampsId,
@@ -35875,10 +36872,10 @@ function applyAncestorChainMove({
   };
 }
 function planConvergeMove({ src, dst, targetHandle, newFamilyIds = [] }) {
-  const real = Object.values(src.people || {}).filter((p) => String(p?.external_mirror || "") !== "true");
+  const real = Object.values(src.people || {}).filter((p) => String((p == null ? void 0 : p.external_mirror) || "") !== "true");
   const moving = new Set(real.map((p) => p.handle));
   const movedFamilies = Object.values(src.families || {}).filter((f) => moving.has(f.father_handle) || moving.has(f.mother_handle)).map((f) => f.handle);
-  const discardedMirrors = Object.values(src.people || {}).filter((p) => String(p?.external_mirror || "") === "true").map((p) => p.handle);
+  const discardedMirrors = Object.values(src.people || {}).filter((p) => String((p == null ? void 0 : p.external_mirror) || "") === "true").map((p) => p.handle);
   const { family: targetFamily, created: createdFamily } = ensureParentFamily(dst, targetHandle, idAllocator(newFamilyIds));
   const people = {};
   const families = {};
@@ -35890,15 +36887,19 @@ function planConvergeMove({ src, dst, targetHandle, newFamilyIds = [] }) {
     families[fh] = JSON.parse(JSON.stringify(src.families[fh]));
     delete src.families[fh];
   }
-  for (const [h, p] of Object.entries(people)) dst.people[h] = p;
-  for (const [fh, f] of Object.entries(families)) dst.families[fh] = f;
+  for (const [h, p] of Object.entries(people))
+    dst.people[h] = p;
+  for (const [fh, f] of Object.entries(families))
+    dst.families[fh] = f;
   const roots = [];
   for (const h of moving) {
     const p = dst.people[h];
-    if (!p.parent_family || !dst.families[p.parent_family]) roots.push(h);
+    if (!p.parent_family || !dst.families[p.parent_family])
+      roots.push(h);
   }
   for (const h of roots) {
-    if (!targetFamily.child_handles.includes(h)) targetFamily.child_handles.push(h);
+    if (!targetFamily.child_handles.includes(h))
+      targetFamily.child_handles.push(h);
     dst.people[h].parent_family = targetFamily.handle;
   }
   repairTreeRefs(dst);
@@ -35915,13 +36916,16 @@ function planConvergeMove({ src, dst, targetHandle, newFamilyIds = [] }) {
 function applyConvergeMove({ src, dst, targetHandle, newFamilyIds = [] }) {
   const moved = planConvergeMove({ src, dst, targetHandle, newFamilyIds });
   const problems = [...checkTreeIntegrity(dst), ...checkTreeIntegrity(src)];
-  if (problems.length) throw fail4(`\u6C47\u5B97\u540E\u7ED3\u6784\u6821\u9A8C\u5931\u8D25\uFF1A${problems.slice(0, 3).join("\uFF1B")}`, 500);
+  if (problems.length)
+    throw fail4(`\u6C47\u5B97\u540E\u7ED3\u6784\u6821\u9A8C\u5931\u8D25\uFF1A${problems.slice(0, 3).join("\uFF1B")}`, 500);
   return moved;
 }
 function spiritDaysLeft(spiritExpiresAt, now = /* @__PURE__ */ new Date()) {
-  if (!spiritExpiresAt) return 0;
+  if (!spiritExpiresAt)
+    return 0;
   const ms = Date.parse(spiritExpiresAt);
-  if (!Number.isFinite(ms)) return 0;
+  if (!Number.isFinite(ms))
+    return 0;
   return Math.ceil(Math.max(0, ms - new Date(now).getTime()) / DAY_MS5);
 }
 function computeSpiritTransfer({ sourceExpiresAt = null, now = /* @__PURE__ */ new Date(), ratio = DEFAULT_CONVERGE_SPIRIT_RATIO2 }) {
@@ -35938,7 +36942,7 @@ async function applySpiritTransfer({
 }) {
   const source = await readSpiritEntry(sourceTreeId, now);
   const target = await readSpiritEntry(targetTreeId, now);
-  const transfer = computeSpiritTransfer({ sourceExpiresAt: source?.spirit_expires_at || null, now, ratio });
+  const transfer = computeSpiritTransfer({ sourceExpiresAt: (source == null ? void 0 : source.spirit_expires_at) || null, now, ratio });
   let skippedReason = "";
   if (!source || !source.jade) {
     skippedReason = "\u6E90\u6811\u672A\u9576\u5D4C\u77F3\u69B4\u7C7D\u7389\uFF0C\u65E0\u7075\u6C14\u53EF\u6298\u635F";
@@ -35951,7 +36955,8 @@ async function applySpiritTransfer({
     await withSpirit(
       sourceTreeId,
       (entry) => {
-        if (entry) entry.status = "expired";
+        if (entry)
+          entry.status = "expired";
         return null;
       },
       now
@@ -35962,7 +36967,8 @@ async function applySpiritTransfer({
     targetExp = await withSpirit(
       targetTreeId,
       (entry) => {
-        if (!entry) return null;
+        if (!entry)
+          return null;
         const base = chargeBase(entry.spirit_expires_at, now);
         entry.spirit_expires_at = new Date(base + transfer.transferred_days * DAY_MS5).toISOString();
         entry.buffer_until = null;
@@ -35992,9 +36998,11 @@ function refRefusal(hits, op, status, meta) {
   );
 }
 async function assertNoExternalRefs({ treeId, handles, listIdsFn, meta, op, status }) {
-  if (!handles.size) return [];
+  if (!handles.size)
+    return [];
   const hits = await scanExternalRefs({ treeId, handles, listIdsFn, meta });
-  if (hits.length) throw refRefusal(hits, op, status, meta);
+  if (hits.length)
+    throw refRefusal(hits, op, status, meta);
   return hits;
 }
 async function establishBranch({
@@ -36008,45 +37016,62 @@ async function establishBranch({
   meta = null,
   now = /* @__PURE__ */ new Date()
 } = {}) {
-  if (!treeId) throw fail4("\u7F3A\u5C11 tree_id");
+  var _a3;
+  if (!treeId)
+    throw fail4("\u7F3A\u5C11 tree_id");
   const refText = String(personRef || "").trim();
-  if (!refText) throw fail4("\u7F3A\u5C11 person_handle");
+  if (!refText)
+    throw fail4("\u7F3A\u5C11 person_handle");
   const amount = Number.isFinite(Number(feeSeeds)) && Number(feeSeeds) > 0 ? Math.floor(Number(feeSeeds)) : DEFAULT_BRANCH_FEE_SEEDS2;
   const m = meta || await getMeta();
   const entry = entryOf2(m, treeId);
-  if (!entry) throw fail4("\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728", 404);
+  if (!entry)
+    throw fail4("\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728", 404);
   const kind = treeKindOf(entry);
-  if (kind === TREE_KIND.MASTER) throw fail4("\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u4E0D\u53EF\u7ACB\u652F");
-  if (kind === TREE_KIND.CLAN) throw fail4("\u7956\u8C31\u4E0D\u53EF\u7ACB\u652F");
+  if (kind === TREE_KIND.MASTER)
+    throw fail4("\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u4E0D\u53EF\u7ACB\u652F");
+  if (kind === TREE_KIND.CLAN)
+    throw fail4("\u7956\u8C31\u4E0D\u53EF\u7ACB\u652F");
   const tree0 = await getTree(treeId);
-  if (!tree0) throw fail4("\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728", 404);
+  if (!tree0)
+    throw fail4("\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728", 404);
   const hit = await resolveNode(refText, treeId, { listIdsFn });
-  if (!hit) throw fail4("\u8282\u70B9\u4E0D\u5B58\u5728", 404);
-  if (hit.tree_id !== treeId) throw fail4(`\u8BE5\u8282\u70B9\u5C5E\u4E8E\u5BB6\u65CF\u6811 ${hit.tree_id}\uFF0C\u8BF7\u5728\u6240\u5C5E\u5BB6\u65CF\u6811\u5185\u7ACB\u652F`);
+  if (!hit)
+    throw fail4("\u8282\u70B9\u4E0D\u5B58\u5728", 404);
+  if (hit.tree_id !== treeId)
+    throw fail4(`\u8BE5\u8282\u70B9\u5C5E\u4E8E\u5BB6\u65CF\u6811 ${hit.tree_id}\uFF0C\u8BF7\u5728\u6240\u5C5E\u5BB6\u65CF\u6811\u5185\u7ACB\u652F`);
   const personHandle = hit.handle;
   const person = tree0.people[personHandle];
-  if (!person) throw fail4("\u8282\u70B9\u4E0D\u5B58\u5728", 404);
+  if (!person)
+    throw fail4("\u8282\u70B9\u4E0D\u5B58\u5728", 404);
   if (String(person.external_mirror || "") === "true") {
     throw fail4("\u8BE5\u8282\u70B9\u662F\u5916\u6811\u955C\u50CF\u8282\u70B9\uFF0C\u8BF7\u5230\u5176\u771F\u8EAB\u6240\u5728\u5BB6\u65CF\u6811\u64CD\u4F5C");
   }
   const founderHandle = resolveFounderHandle(tree0, entry);
-  if (founderHandle && founderHandle === personHandle) throw fail4("\u59CB\u7956\u8282\u70B9\u672C\u8EAB\u4E0D\u53EF\u7ACB\u652F");
+  if (founderHandle && founderHandle === personHandle)
+    throw fail4("\u59CB\u7956\u8282\u70B9\u672C\u8EAB\u4E0D\u53EF\u7ACB\u652F");
   const clanTreeId = clanAffiliationOf({ meta: m, entry, tree: tree0, founderHandle });
-  if (!clanTreeId) throw fail4("\u8BF7\u5148\u4E3A\u8BE5\u5BB6\u65CF\u5EFA\u7ACB\u6216\u8BA4\u7956\u5B97\u8C31");
+  if (!clanTreeId)
+    throw fail4("\u8BF7\u5148\u4E3A\u8BE5\u5BB6\u65CF\u5EFA\u7ACB\u6216\u8BA4\u7956\u5B97\u8C31");
   const clanEntry = entryOf2(m, clanTreeId);
   const clanTree = await getTree(clanTreeId);
-  if (!clanTree || treeKindOf(clanEntry) !== TREE_KIND.CLAN) throw fail4("\u8BF7\u5148\u4E3A\u8BE5\u5BB6\u65CF\u5EFA\u7ACB\u6216\u8BA4\u7956\u5B97\u8C31");
-  const clanFounderHandle = String(clanEntry?.founder_handle || "");
+  if (!clanTree || treeKindOf(clanEntry) !== TREE_KIND.CLAN)
+    throw fail4("\u8BF7\u5148\u4E3A\u8BE5\u5BB6\u65CF\u5EFA\u7ACB\u6216\u8BA4\u7956\u5B97\u8C31");
+  const clanFounderHandle = String((clanEntry == null ? void 0 : clanEntry.founder_handle) || "");
   if (!clanFounderHandle || !clanTree.people[clanFounderHandle]) {
     throw fail4("\u8BE5\u7956\u8C31\u5C1A\u672A\u8BBE\u7F6E\u8BA4\u7956\u843D\u70B9\uFF08founder_handle \u4E3A\u7A7A\uFF09\uFF0C\u8BF7\u5148\u5728\u7956\u8C31\u5185\u6307\u5B9A\u843D\u70B9\u540E\u518D\u7ACB\u652F");
   }
   const plan = planAncestorChainMove({ tree: tree0, personHandle, founderHandle });
-  if (!plan.ok) throw fail4("\u8BE5\u8282\u70B9\u4E0D\u5728\u672C\u6811\u59CB\u7956\u94FE\u4E0A\uFF08\u65E0\u4E0A\u7EA7\u7956\u5148\uFF09\uFF0C\u65E0\u6CD5\u7ACB\u652F");
+  if (!plan.ok)
+    throw fail4("\u8BE5\u8282\u70B9\u4E0D\u5728\u672C\u6811\u59CB\u7956\u94FE\u4E0A\uFF08\u65E0\u4E0A\u7EA7\u7956\u5148\uFF09\uFF0C\u65E0\u6CD5\u7ACB\u652F");
   const movedInfo = new Map(
-    plan.moved_people.map((h) => [
-      h,
-      { name: tree0.people[h]?.name || h, gramps_id: String(tree0.people[h]?.gramps_id || "") }
-    ])
+    plan.moved_people.map((h) => {
+      var _a4, _b;
+      return [
+        h,
+        { name: ((_a4 = tree0.people[h]) == null ? void 0 : _a4.name) || h, gramps_id: String(((_b = tree0.people[h]) == null ? void 0 : _b.gramps_id) || "") }
+      ];
+    })
   );
   await assertNoExternalRefs({
     treeId,
@@ -36056,7 +37081,7 @@ async function establishBranch({
     op: "\u7ACB\u652F",
     status: 400
   });
-  const surnameChar = (person.surname || entry.surname_char || tree0.people[founderHandle]?.surname || "\u6C0F").slice(0, 1);
+  const surnameChar = (person.surname || entry.surname_char || ((_a3 = tree0.people[founderHandle]) == null ? void 0 : _a3.surname) || "\u6C0F").slice(0, 1);
   const newTreeId = nextTreeId(m, surnameChar);
   const sourceTitle = entry.display_title || treeId;
   const newTreeTitle = `${sourceTitle} \xB7 ${person.name || ""}\u652F`;
@@ -36102,7 +37127,7 @@ async function establishBranch({
   const fee = {
     unit: "seed",
     amount,
-    balance_after: charged?.fee ? charged.fee.balance_after : null
+    balance_after: (charged == null ? void 0 : charged.fee) ? charged.fee.balance_after : null
   };
   try {
     await createTreeFile(newTree);
@@ -36156,7 +37181,8 @@ async function establishBranch({
     }
     const m2 = await getMeta();
     const srcKey = keyOf(m2, treeId) || keyOf(m, treeId);
-    if (!srcKey) throw fail4("tree-meta \u4E2D\u627E\u4E0D\u5230\u539F\u6811\u6761\u76EE", 500);
+    if (!srcKey)
+      throw fail4("tree-meta \u4E2D\u627E\u4E0D\u5230\u539F\u6811\u6761\u76EE", 500);
     await mutateTreeMeta(treeId, (entry2) => {
       const next = {
         ...entry2,
@@ -36202,7 +37228,8 @@ async function establishBranch({
       founder: { handle: personHandle, gramps_id: String(person.gramps_id || ""), name: person.name || "" },
       fee
     };
-    if (warnings.length) out.warnings = warnings;
+    if (warnings.length)
+      out.warnings = warnings;
     return out;
   } catch (e) {
     try {
@@ -36219,11 +37246,13 @@ async function establishBranch({
   }
 }
 function clanAffiliationOf({ meta, entry, tree, founderHandle = "" }) {
-  const explicit = String(entry?.clan_tree_id || "").trim();
-  const founder = founderHandle ? tree?.people?.[founderHandle] : null;
+  var _a3;
+  const explicit = String((entry == null ? void 0 : entry.clan_tree_id) || "").trim();
+  const founder = founderHandle ? (_a3 = tree == null ? void 0 : tree.people) == null ? void 0 : _a3[founderHandle] : null;
   const mirrorClan = founder && founder.external_link_type === FOUNDER_LINK_TYPE ? String(founder.external_tree || "") : "";
   for (const id of [explicit, mirrorClan]) {
-    if (id && treeKindOf(entryOf2(meta, id)) === TREE_KIND.CLAN) return id;
+    if (id && treeKindOf(entryOf2(meta, id)) === TREE_KIND.CLAN)
+      return id;
   }
   return "";
 }
@@ -36236,38 +37265,49 @@ async function convergeClan({
   meta = null,
   now = /* @__PURE__ */ new Date()
 } = {}) {
-  if (!treeId) throw fail4("\u7F3A\u5C11 tree_id");
+  var _a3, _b, _c, _d, _e;
+  if (!treeId)
+    throw fail4("\u7F3A\u5C11 tree_id");
   const refText = String(targetRef || "").trim();
-  if (!refText) throw fail4("\u7F3A\u5C11 target_person_id");
+  if (!refText)
+    throw fail4("\u7F3A\u5C11 target_person_id");
   if (confirmPeople === null || confirmPeople === void 0 || String(confirmPeople).trim() === "") {
     throw fail4("\u7F3A\u5C11 confirm_people\uFF08\u8BF7\u5148\u5C55\u793A\u5C06\u8FC1\u79FB\u7684\u4EBA\u6570\u540E\u518D\u786E\u8BA4\uFF09");
   }
   const m = meta || await getMeta();
   const srcEntry = entryOf2(m, treeId);
-  if (!srcEntry) throw fail4("\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728", 404);
+  if (!srcEntry)
+    throw fail4("\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728", 404);
   const srcKind = treeKindOf(srcEntry);
-  if (srcKind === TREE_KIND.MASTER) throw fail4("\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u4E0D\u53EF\u6C47\u5B97");
-  if (srcKind === TREE_KIND.CLAN) throw fail4("\u7956\u8C31\u4E0D\u53EF\u6C47\u5B97");
+  if (srcKind === TREE_KIND.MASTER)
+    throw fail4("\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u4E0D\u53EF\u6C47\u5B97");
+  if (srcKind === TREE_KIND.CLAN)
+    throw fail4("\u7956\u8C31\u4E0D\u53EF\u6C47\u5B97");
   const src0 = await getTree(treeId);
-  if (!src0) throw fail4("\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728", 404);
+  if (!src0)
+    throw fail4("\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728", 404);
   const srcFounderHandle = currentFounderHandle(src0, srcEntry);
   const srcFounder = srcFounderHandle ? src0.people[srcFounderHandle] : null;
-  if (!srcFounder) throw fail4("\u8BE5\u5BB6\u65CF\u6811\u5F53\u524D\u6CA1\u6709\u59CB\u7956\u8282\u70B9\uFF0C\u65E0\u6CD5\u6C47\u5B97");
+  if (!srcFounder)
+    throw fail4("\u8BE5\u5BB6\u65CF\u6811\u5F53\u524D\u6CA1\u6709\u59CB\u7956\u8282\u70B9\uFF0C\u65E0\u6CD5\u6C47\u5B97");
   const hit = await resolveNode(refText, treeId, { listIdsFn });
-  if (!hit) throw fail4(`\u627E\u4E0D\u5230\u7F16\u53F7/\u53E5\u67C4\u4E3A\u300C${refText}\u300D\u7684\u8282\u70B9`, 404);
-  if (hit.tree_id === treeId) throw fail4("\u6C47\u5B97\u76EE\u6807\u987B\u662F\u53E6\u4E00\u68F5\u666E\u901A\u5BB6\u65CF\u6811\u4E2D\u7684\u666E\u901A\u8282\u70B9");
+  if (!hit)
+    throw fail4(`\u627E\u4E0D\u5230\u7F16\u53F7/\u53E5\u67C4\u4E3A\u300C${refText}\u300D\u7684\u8282\u70B9`, 404);
+  if (hit.tree_id === treeId)
+    throw fail4("\u6C47\u5B97\u76EE\u6807\u987B\u662F\u53E6\u4E00\u68F5\u666E\u901A\u5BB6\u65CF\u6811\u4E2D\u7684\u666E\u901A\u8282\u70B9");
   if (treeKindOf(entryOf2(m, hit.tree_id)) !== TREE_KIND.FAMILY) {
     throw fail4("\u6C47\u5B97\u76EE\u6807\u987B\u662F\u53E6\u4E00\u68F5\u666E\u901A\u5BB6\u65CF\u6811\u4E2D\u7684\u666E\u901A\u8282\u70B9");
   }
   const dst0 = await getTree(hit.tree_id);
-  const target = dst0?.people?.[hit.handle];
+  const target = (_a3 = dst0 == null ? void 0 : dst0.people) == null ? void 0 : _a3[hit.handle];
   if (!target || String(target.external_mirror || "") === "true" || String(target.external_link_type || "")) {
     throw fail4("\u6C47\u5B97\u76EE\u6807\u987B\u662F\u53E6\u4E00\u68F5\u666E\u901A\u5BB6\u65CF\u6811\u4E2D\u7684\u666E\u901A\u8282\u70B9");
   }
   const movedHandles = new Set(
-    Object.values(src0.people || {}).filter((p) => String(p?.external_mirror || "") !== "true").map((p) => p.handle)
+    Object.values(src0.people || {}).filter((p) => String((p == null ? void 0 : p.external_mirror) || "") !== "true").map((p) => p.handle)
   );
-  if (!movedHandles.size) throw fail4("\u8BE5\u5BB6\u65CF\u6811\u6CA1\u6709\u53EF\u8FC1\u79FB\u7684\u771F\u5B9E\u8282\u70B9\uFF0C\u65E0\u6CD5\u6C47\u5B97");
+  if (!movedHandles.size)
+    throw fail4("\u8BE5\u5BB6\u65CF\u6811\u6CA1\u6709\u53EF\u8FC1\u79FB\u7684\u771F\u5B9E\u8282\u70B9\uFF0C\u65E0\u6CD5\u6C47\u5B97");
   await assertNoExternalRefs({ treeId, handles: movedHandles, listIdsFn, meta: m, op: "\u6C47\u5B97", status: 409 });
   if (Number(confirmPeople) !== movedHandles.size) {
     const e = fail4(
@@ -36297,8 +37337,8 @@ async function convergeClan({
           _id: `${hit.tree_id}:${h}`,
           tree_id: hit.tree_id,
           handle: h,
-          gramps_id: dstAfter?.people?.[h]?.gramps_id || detail.gramps_id || "",
-          name: dstAfter?.people?.[h]?.name || detail.name || "",
+          gramps_id: ((_c = (_b = dstAfter == null ? void 0 : dstAfter.people) == null ? void 0 : _b[h]) == null ? void 0 : _c.gramps_id) || detail.gramps_id || "",
+          name: ((_e = (_d = dstAfter == null ? void 0 : dstAfter.people) == null ? void 0 : _d[h]) == null ? void 0 : _e.name) || detail.name || "",
           updated_at: now.toISOString()
         });
       }
@@ -36340,7 +37380,8 @@ async function convergeClan({
     transferred_days: spiritResult.transferred_days,
     target_spirit_expires_at: spiritResult.target_spirit_expires_at
   };
-  if (spiritResult.skipped_reason) spirit.skipped_reason = spiritResult.skipped_reason;
+  if (spiritResult.skipped_reason)
+    spirit.skipped_reason = spiritResult.skipped_reason;
   return {
     ok: true,
     source_tree_id: treeId,
@@ -36360,11 +37401,11 @@ async function markShellSource(treeId, entrySnapshot, cause) {
       ...base,
       kind: base.kind || TREE_KIND.FAMILY,
       reconcile_state: SHELL_RECONCILE_STATE,
-      reconcile_note: `\u6C47\u5B97\u540E\u6E05\u7406\u5931\u8D25\uFF08${cause?.message || cause}\uFF09\uFF0C\u8BE5\u6811\u5DF2\u65E0\u771F\u5B9E\u8282\u70B9\uFF0C\u5F85 reconcile`,
+      reconcile_note: `\u6C47\u5B97\u540E\u6E05\u7406\u5931\u8D25\uFF08${(cause == null ? void 0 : cause.message) || cause}\uFF09\uFF0C\u8BE5\u6811\u5DF2\u65E0\u771F\u5B9E\u8282\u70B9\uFF0C\u5F85 reconcile`,
       reconcile_at: (/* @__PURE__ */ new Date()).toISOString()
     }));
   } catch {
-    console.log(`[branch-clan-ops] \u6C47\u5B97\u540E\u6E90\u6811 ${treeId} \u767B\u8BB0 reconcile \u5931\u8D25\uFF08\u539F\u59CB\u9519\u8BEF\uFF1A${cause?.message || cause}\uFF09`);
+    console.log(`[branch-clan-ops] \u6C47\u5B97\u540E\u6E90\u6811 ${treeId} \u767B\u8BB0 reconcile \u5931\u8D25\uFF08\u539F\u59CB\u9519\u8BEF\uFF1A${(cause == null ? void 0 : cause.message) || cause}\uFF09`);
   }
 }
 
@@ -36389,7 +37430,8 @@ function groupOf4(d) {
   for (let i = 0; i < 4; i += 1) {
     const v = Number(s[i]);
     if (v === 0) {
-      if (out) zeroPending = true;
+      if (out)
+        zeroPending = true;
       continue;
     }
     if (zeroPending) {
@@ -36401,11 +37443,13 @@ function groupOf4(d) {
   return out;
 }
 function core(n) {
-  if (n < 1e4) return groupOf4(n);
+  if (n < 1e4)
+    return groupOf4(n);
   const high = Math.floor(n / 1e4);
   const low = n % 1e4;
   let out = `${core(high)}\u842C`;
-  if (low) out += (low < 1e3 ? "\u96F6" : "") + groupOf4(low);
+  if (low)
+    out += (low < 1e3 ? "\u96F6" : "") + groupOf4(low);
   return out;
 }
 function amountToChineseUpper(value) {
@@ -36413,7 +37457,8 @@ function amountToChineseUpper(value) {
   if (!Number.isFinite(n) || n < 0 || Math.floor(n) !== n) {
     throw new Error(`\u91D1\u989D\u5FC5\u987B\u4E3A\u975E\u8D1F\u6574\u6570\uFF1A${value}`);
   }
-  if (n === 0) return "\u96F6\u5143";
+  if (n === 0)
+    return "\u96F6\u5143";
   return `${core(n)}\u5143`;
 }
 
@@ -36427,59 +37472,70 @@ function maskPhoneDigits(phone) {
   return /^\d{11}$/.test(s) ? `${s.slice(0, 3)}****${s.slice(-4)}` : "";
 }
 async function resolveDisplayName(phone, treeId) {
+  var _a3, _b;
   const p = String(phone == null ? "" : phone).trim();
-  if (!p) return "";
+  if (!p)
+    return "";
   const id = String(treeId == null ? "" : treeId).trim();
   try {
     if (id) {
       const anchor = await colGet(ANCHORS_COL2, p);
-      const handle = String(anchor?.person_handle || "").trim();
+      const handle = String((anchor == null ? void 0 : anchor.person_handle) || "").trim();
       if (anchor && handle && String(anchor.tree_id || "").trim() === id) {
         const tree = await getTree(id);
-        const name = String(tree?.people?.[handle]?.name || "").trim();
-        if (name) return name;
+        const name = String(((_b = (_a3 = tree == null ? void 0 : tree.people) == null ? void 0 : _a3[handle]) == null ? void 0 : _b.name) || "").trim();
+        if (name)
+          return name;
       }
     }
   } catch {
   }
   try {
     const u = await colGet(USERS_COL4, p);
-    const nickname = String(u?.nickname || "").trim();
-    if (nickname) return nickname;
+    const nickname = String((u == null ? void 0 : u.nickname) || "").trim();
+    if (nickname)
+      return nickname;
   } catch {
   }
   const masked = maskPhoneDigits(p);
-  if (masked) return masked;
+  if (masked)
+    return masked;
   return "";
 }
 function masterPhoneOf(round) {
-  const candidates = [round?.operator, round?.fee_ref?.paid_by, round?.paid_by];
+  var _a3;
+  const candidates = [round == null ? void 0 : round.operator, (_a3 = round == null ? void 0 : round.fee_ref) == null ? void 0 : _a3.paid_by, round == null ? void 0 : round.paid_by];
   for (const c of candidates) {
-    if (c === void 0 || c === null) continue;
+    if (c === void 0 || c === null)
+      continue;
     const s = String(c).trim();
-    if (s) return s;
+    if (s)
+      return s;
   }
   return "";
 }
 async function treeCreatedBy(treeId) {
+  var _a3, _b;
   try {
     const meta = await getMeta();
-    const v = meta?.trees?.[String(treeId || "").trim()]?.created_by;
+    const v = (_b = (_a3 = meta == null ? void 0 : meta.trees) == null ? void 0 : _a3[String(treeId || "").trim()]) == null ? void 0 : _b.created_by;
     return v === void 0 || v === null ? "" : String(v);
   } catch {
     return "";
   }
 }
 async function masterNameOfRound(round, treeId) {
+  var _a3, _b;
   const id = String(treeId == null ? "" : treeId).trim();
   try {
-    const helpers = Array.isArray(round?.helpers) ? round.helpers : [];
-    const master = helpers.find((h) => String(h?.duty || "").trim() === MASTER_DUTY);
-    const handle = String(master?.person_handle || "").trim();
+    const helpers = Array.isArray(round == null ? void 0 : round.helpers) ? round.helpers : [];
+    const master = helpers.find((h) => String((h == null ? void 0 : h.duty) || "").trim() === MASTER_DUTY);
+    const handle = String((master == null ? void 0 : master.person_handle) || "").trim();
     if (handle) {
       const tree = await getTree(id);
-      const name = String(tree?.people?.[handle]?.name || "").trim();
-      if (name) return name;
+      const name = String(((_b = (_a3 = tree == null ? void 0 : tree.people) == null ? void 0 : _a3[handle]) == null ? void 0 : _b.name) || "").trim();
+      if (name)
+        return name;
     }
   } catch {
   }
@@ -36504,7 +37560,7 @@ async function buildPostscript(treeId, revisions) {
     } catch {
       name = "";
     }
-    masters.push({ seq: Number(r?.seq) || 0, name });
+    masters.push({ seq: Number(r == null ? void 0 : r.seq) || 0, name });
   }
   return { created_by, created_by_name, masters };
 }
@@ -36540,7 +37596,8 @@ var S2T = (() => {
   const map2 = /* @__PURE__ */ new Map();
   const sc = Array.from(S2T_SOURCE);
   const tc = Array.from(S2T_TARGET);
-  for (let i = 0; i < sc.length && i < tc.length; i += 1) map2.set(sc[i], tc[i]);
+  for (let i = 0; i < sc.length && i < tc.length; i += 1)
+    map2.set(sc[i], tc[i]);
   return map2;
 })();
 function revisionError(status, message, code = "", extra = {}) {
@@ -36556,14 +37613,16 @@ function revisionError(status, message, code = "", extra = {}) {
 var toIso2 = (d) => (d instanceof Date ? d : new Date(d)).toISOString();
 function addYears(iso, years) {
   const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return "";
+  if (!Number.isFinite(d.getTime()))
+    return "";
   const out = new Date(d.getTime());
   out.setFullYear(out.getFullYear() + Number(years));
   return out.toISOString();
 }
 function addDays(iso, days) {
   const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return "";
+  if (!Number.isFinite(d.getTime()))
+    return "";
   const out = new Date(d.getTime());
   out.setDate(out.getDate() + Number(days));
   return out.toISOString();
@@ -36571,36 +37630,44 @@ function addDays(iso, days) {
 function intervalFor(count, table = DEFAULT_REVISION_INTERVAL_YEARS2) {
   const t = Array.isArray(table) && table.length ? table : DEFAULT_REVISION_INTERVAL_YEARS2;
   const m = Math.floor(Number(count) || 0);
-  if (m <= 0) return 0;
+  if (m <= 0)
+    return 0;
   return t[Math.min(m, t.length) - 1];
 }
 function allRevisions(revisions) {
   return (revisions || []).filter(Boolean);
 }
 function lockAtOf(rev) {
-  return addDays(rev?.effective_at, REVISION_EDIT_DAYS);
+  return addDays(rev == null ? void 0 : rev.effective_at, REVISION_EDIT_DAYS);
 }
 function isLocked(rev, now = /* @__PURE__ */ new Date()) {
-  if (!rev || !rev.effective_at) return false;
+  if (!rev || !rev.effective_at)
+    return false;
   return toIso2(now) > lockAtOf(rev);
 }
 function daysOf(rev, now = /* @__PURE__ */ new Date()) {
-  const eff = rev?.effective_at ? new Date(rev.effective_at).getTime() : NaN;
-  if (!Number.isFinite(eff)) return 0;
+  const eff = (rev == null ? void 0 : rev.effective_at) ? new Date(rev.effective_at).getTime() : NaN;
+  if (!Number.isFinite(eff))
+    return 0;
   const t = now instanceof Date ? now.getTime() : new Date(now).getTime();
-  if (!Number.isFinite(t)) return 0;
+  if (!Number.isFinite(t))
+    return 0;
   return Math.ceil((t - eff) / 864e5);
 }
 function feeTierOf(days) {
   const d = Number(days);
   const n = Number.isFinite(d) ? d : 0;
-  if (n <= REVISION_EDIT_DAYS) return FEE_TIER_EDIT_WINDOW;
-  if (n < REVISION_LONG_LOCKED_DAYS) return FEE_TIER_LOCKED;
+  if (n <= REVISION_EDIT_DAYS)
+    return FEE_TIER_EDIT_WINDOW;
+  if (n < REVISION_LONG_LOCKED_DAYS)
+    return FEE_TIER_LOCKED;
   return FEE_TIER_LONG_LOCKED;
 }
 function feeNextBamboosOf(tier) {
-  if (tier === FEE_TIER_LOCKED) return REVISION_FEE_LOCKED_EDIT_BAMBOOS;
-  if (tier === FEE_TIER_LONG_LOCKED) return REVISION_FEE_LOCKED_LONG_BAMBOOS;
+  if (tier === FEE_TIER_LOCKED)
+    return REVISION_FEE_LOCKED_EDIT_BAMBOOS;
+  if (tier === FEE_TIER_LONG_LOCKED)
+    return REVISION_FEE_LOCKED_LONG_BAMBOOS;
   return 0;
 }
 function tierOfRevision(rev, now = /* @__PURE__ */ new Date()) {
@@ -36618,26 +37685,31 @@ function activeRevision(revisions, now = /* @__PURE__ */ new Date()) {
 }
 function canStartRevision({ revisions = [], now = /* @__PURE__ */ new Date(), intervalYears = DEFAULT_REVISION_INTERVAL_YEARS2 } = {}) {
   const all = allRevisions(revisions);
-  if (!all.length) return { ok: true, reason: "first", next_start_at: "" };
+  if (!all.length)
+    return { ok: true, reason: "first", next_start_at: "" };
   const last = all[all.length - 1];
   const next = addYears(last.effective_at, intervalFor(all.length, intervalYears));
-  if (toIso2(now) >= next) return { ok: true, reason: "", next_start_at: "" };
+  if (toIso2(now) >= next)
+    return { ok: true, reason: "", next_start_at: "" };
   return { ok: false, reason: "cooldown", next_start_at: next };
 }
 function firstSimplifiedChar(text2) {
   for (const ch of String(text2 == null ? "" : text2)) {
     const t = S2T.get(ch);
-    if (t !== void 0 && t !== ch) return ch;
+    if (t !== void 0 && t !== ch)
+      return ch;
   }
   return "";
 }
 function assertTraditional(text2) {
   const ch = firstSimplifiedChar(text2);
-  if (ch) throw revisionError(400, `\u65CF\u52D9\u7D00\u6587\u9808\u4EE5\u7E41\u9AD4\u5B57\u9304\u5165\uFF08\u9996\u500B\u7C21\u9AD4\u5B57\uFF1A${ch}\uFF09`);
+  if (ch)
+    throw revisionError(400, `\u65CF\u52D9\u7D00\u6587\u9808\u4EE5\u7E41\u9AD4\u5B57\u9304\u5165\uFF08\u9996\u500B\u7C21\u9AD4\u5B57\uFF1A${ch}\uFF09`);
 }
 function isHanziCodePoint(cp) {
   const n = Number(cp);
-  if (!Number.isFinite(n)) return false;
+  if (!Number.isFinite(n))
+    return false;
   return n >= 13312 && n <= 19903 || n >= 19968 && n <= 40959 || n >= 63744 && n <= 64255 || n >= 131072 && n <= 195103 || n >= 196608 && n <= 201551;
 }
 function isArticlePunct(ch) {
@@ -36645,8 +37717,10 @@ function isArticlePunct(ch) {
 }
 function firstIllegalArticleChar(text2) {
   for (const ch of String(text2 == null ? "" : text2)) {
-    if (isArticlePunct(ch)) continue;
-    if (isHanziCodePoint(ch.codePointAt(0))) continue;
+    if (isArticlePunct(ch))
+      continue;
+    if (isHanziCodePoint(ch.codePointAt(0)))
+      continue;
     return ch;
   }
   return "";
@@ -36655,21 +37729,25 @@ function hasConsecutiveArticlePunct(text2) {
   let prevPunct = false;
   for (const ch of String(text2 == null ? "" : text2)) {
     const isP = isArticlePunct(ch);
-    if (isP && prevPunct) return true;
+    if (isP && prevPunct)
+      return true;
     prevPunct = isP;
   }
   return false;
 }
 function assertArticleText(text2) {
-  if (firstIllegalArticleChar(text2)) throw revisionError(400, ARTICLE_MSG_CHARSET);
-  if (hasConsecutiveArticlePunct(text2)) throw revisionError(400, ARTICLE_MSG_PUNCT_REPEAT);
+  if (firstIllegalArticleChar(text2))
+    throw revisionError(400, ARTICLE_MSG_CHARSET);
+  if (hasConsecutiveArticlePunct(text2))
+    throw revisionError(400, ARTICLE_MSG_PUNCT_REPEAT);
 }
 function normalizeArticle(payload) {
   const p = payload || {};
   const out = {};
   for (const k of ARTICLE_FIELDS) {
     const raw = p[k];
-    if (typeof raw !== "string" || !raw.trim()) throw revisionError(400, `${ARTICLE_LABEL[k]}\u4E0D\u5F97\u70BA\u7A7A`);
+    if (typeof raw !== "string" || !raw.trim())
+      throw revisionError(400, `${ARTICLE_LABEL[k]}\u4E0D\u5F97\u70BA\u7A7A`);
     assertTraditional(raw);
     assertArticleText(raw);
     out[k] = raw;
@@ -36678,42 +37756,57 @@ function normalizeArticle(payload) {
 }
 var nodeExists = (tree, handle) => !!(tree && tree.people && tree.people[handle]);
 function normalizeHelpers(payload, tree) {
-  if (!Array.isArray(payload)) throw revisionError(400, "\u65CF\u52D9\u5354\u52A9\u8005\u9808\u70BA\u9663\u5217");
-  if (!payload.length) throw revisionError(400, "\u8ACB\u586B\u5BEB\u4E3B\u53F8");
+  if (!Array.isArray(payload))
+    throw revisionError(400, "\u65CF\u52D9\u5354\u52A9\u8005\u9808\u70BA\u9663\u5217");
+  if (!payload.length)
+    throw revisionError(400, "\u8ACB\u586B\u5BEB\u4E3B\u53F8");
   const list2 = payload.map((it, i) => {
-    const h = String(it?.person_handle || "").trim();
-    const duty = String(it?.duty || "").trim();
-    if (!h) throw revisionError(400, `\u7B2C ${i + 1} \u4F4D\u5354\u52A9\u8005\u7F3A\u5C11 person_handle`);
-    if (!nodeExists(tree, h)) throw revisionError(400, `\u7B2C ${i + 1} \u4F4D\u5354\u52A9\u8005\u7684\u7BC0\u9EDE\u4E0D\u5B58\u5728\u65BC\u672C\u6A39\uFF1A${h}`);
-    if (!HELPER_DUTIES.includes(duty)) throw revisionError(400, "\u8077\u52D9\u53EA\u80FD\u662F\u4E3B\u53F8\u6216\u526F\u53F8");
+    const h = String((it == null ? void 0 : it.person_handle) || "").trim();
+    const duty = String((it == null ? void 0 : it.duty) || "").trim();
+    if (!h)
+      throw revisionError(400, `\u7B2C ${i + 1} \u4F4D\u5354\u52A9\u8005\u7F3A\u5C11 person_handle`);
+    if (!nodeExists(tree, h))
+      throw revisionError(400, `\u7B2C ${i + 1} \u4F4D\u5354\u52A9\u8005\u7684\u7BC0\u9EDE\u4E0D\u5B58\u5728\u65BC\u672C\u6A39\uFF1A${h}`);
+    if (!HELPER_DUTIES.includes(duty))
+      throw revisionError(400, "\u8077\u52D9\u53EA\u80FD\u662F\u4E3B\u53F8\u6216\u526F\u53F8");
     return { person_handle: h, duty };
   });
   const seen = /* @__PURE__ */ new Set();
   for (const it of list2) {
-    if (seen.has(it.person_handle)) throw revisionError(400, "\u540C\u4E00\u4F4D\u65CF\u4EBA\u4E0D\u53EF\u91CD\u8907\u9304\u5165");
+    if (seen.has(it.person_handle))
+      throw revisionError(400, "\u540C\u4E00\u4F4D\u65CF\u4EBA\u4E0D\u53EF\u91CD\u8907\u9304\u5165");
     seen.add(it.person_handle);
   }
   const masters = list2.filter((it) => it.duty === HELPER_DUTY_MASTER);
   const vices = list2.filter((it) => it.duty === HELPER_DUTY_VICE);
-  if (!masters.length) throw revisionError(400, "\u8ACB\u586B\u5BEB\u4E3B\u53F8");
-  if (vices.length > HELPER_MAX_VICE) throw revisionError(400, "\u526F\u53F8\u6700\u591A\u5169\u4F4D");
-  if (list2.length > HELPER_MAX_TOTAL) throw revisionError(400, "\u8944\u4E8B\u6700\u591A\u4E09\u4F4D");
-  if (masters.length > 1) throw revisionError(400, "\u4E3B\u53F8\u53EA\u80FD\u6709\u4E00\u4F4D");
+  if (!masters.length)
+    throw revisionError(400, "\u8ACB\u586B\u5BEB\u4E3B\u53F8");
+  if (vices.length > HELPER_MAX_VICE)
+    throw revisionError(400, "\u526F\u53F8\u6700\u591A\u5169\u4F4D");
+  if (list2.length > HELPER_MAX_TOTAL)
+    throw revisionError(400, "\u8944\u4E8B\u6700\u591A\u4E09\u4F4D");
+  if (masters.length > 1)
+    throw revisionError(400, "\u4E3B\u53F8\u53EA\u80FD\u6709\u4E00\u4F4D");
   return list2;
 }
 function normalizeDonations(payload, tree) {
-  if (!Array.isArray(payload)) throw revisionError(400, "\u65CF\u52D9\u6350\u8F38\u9808\u70BA\u9663\u5217");
+  if (!Array.isArray(payload))
+    throw revisionError(400, "\u65CF\u52D9\u6350\u8F38\u9808\u70BA\u9663\u5217");
   return payload.map((it, i) => {
-    const h = String(it?.person_handle || "").trim();
-    if (!h) throw revisionError(400, `\u7B2C ${i + 1} \u7B46\u6350\u8F38\u7F3A\u5C11 person_handle`);
-    if (!nodeExists(tree, h)) throw revisionError(400, `\u7B2C ${i + 1} \u7B46\u6350\u8F38\u7684\u7BC0\u9EDE\u4E0D\u5B58\u5728\u65BC\u672C\u6A39\uFF1A${h}`);
-    const amount = Number(it?.amount);
-    if (!Number.isInteger(amount) || amount <= 0) throw revisionError(400, `\u7B2C ${i + 1} \u7B46\u6350\u8F38\u91D1\u984D\u9808\u70BA\u6B63\u6574\u6578\uFF08\u5143\uFF09`);
+    const h = String((it == null ? void 0 : it.person_handle) || "").trim();
+    if (!h)
+      throw revisionError(400, `\u7B2C ${i + 1} \u7B46\u6350\u8F38\u7F3A\u5C11 person_handle`);
+    if (!nodeExists(tree, h))
+      throw revisionError(400, `\u7B2C ${i + 1} \u7B46\u6350\u8F38\u7684\u7BC0\u9EDE\u4E0D\u5B58\u5728\u65BC\u672C\u6A39\uFF1A${h}`);
+    const amount = Number(it == null ? void 0 : it.amount);
+    if (!Number.isInteger(amount) || amount <= 0)
+      throw revisionError(400, `\u7B2C ${i + 1} \u7B46\u6350\u8F38\u91D1\u984D\u9808\u70BA\u6B63\u6574\u6578\uFF08\u5143\uFF09`);
     return { person_handle: h, amount };
   });
 }
 function resolveName(tree, handle) {
-  const p = tree?.people?.[handle];
+  var _a3;
+  const p = (_a3 = tree == null ? void 0 : tree.people) == null ? void 0 : _a3[handle];
   return p && p.name || "\uFF08\u7BC0\u9EDE\u5DF2\u522A\u9664\uFF09";
 }
 function decorateHelpers(helpers, tree) {
@@ -36745,8 +37838,8 @@ async function loadRevisions(treeId) {
   try {
     const doc = await colGet(REVISION_COL, String(treeId));
     return {
-      seq: Number(doc?.seq) || 0,
-      revisions: Array.isArray(doc?.revisions) ? doc.revisions : []
+      seq: Number(doc == null ? void 0 : doc.seq) || 0,
+      revisions: Array.isArray(doc == null ? void 0 : doc.revisions) ? doc.revisions : []
     };
   } catch {
     return { seq: 0, revisions: [] };
@@ -36757,7 +37850,7 @@ async function writeRevisions(treeId, mutator) {
   let written;
   try {
     written = await mutateDoc(REVISION_COL, id, async (doc) => {
-      const rec = { seq: Number(doc?.seq) || 0, revisions: Array.isArray(doc?.revisions) ? doc.revisions : [] };
+      const rec = { seq: Number(doc == null ? void 0 : doc.seq) || 0, revisions: Array.isArray(doc == null ? void 0 : doc.revisions) ? doc.revisions : [] };
       const next = await mutator(rec);
       if (!next || typeof next !== "object" || !Array.isArray(next.revisions)) {
         throw new Error("[revision] mutator \u5FC5\u987B\u8FD4\u56DE { seq, revisions }");
@@ -36765,56 +37858,67 @@ async function writeRevisions(treeId, mutator) {
       return { _id: id, seq: Number(next.seq) || 0, revisions: next.revisions };
     });
   } catch (e) {
-    if (e && e.status) throw e;
+    if (e && e.status)
+      throw e;
     throw revisionError(503, "\u4FEE\u8B5C\u96C6\u5408\u5C1A\u672A\u5C31\u7DD2\uFF0C\u8ACB\u7A0D\u5F8C\u91CD\u8A66");
   }
-  return { seq: Number(written?.seq) || 0, revisions: Array.isArray(written?.revisions) ? written.revisions : [] };
+  return { seq: Number(written == null ? void 0 : written.seq) || 0, revisions: Array.isArray(written == null ? void 0 : written.revisions) ? written.revisions : [] };
 }
 function cloudApp() {
   return getApp();
 }
 async function cloudUpload(cloudPath, buffer) {
   const r = await cloudApp().uploadFile({ cloudPath, fileContent: buffer });
-  if (!r?.fileID) throw new Error("\u96F2\u5B58\u5132\u4E0A\u50B3\u672A\u8FD4\u56DE fileID");
+  if (!(r == null ? void 0 : r.fileID))
+    throw new Error("\u96F2\u5B58\u5132\u4E0A\u50B3\u672A\u8FD4\u56DE fileID");
   return r.fileID;
 }
 async function cloudDelete(fileID) {
-  if (!fileID) return;
+  var _a3, _b, _c;
+  if (!fileID)
+    return;
   const r = await cloudApp().deleteFile({ fileList: [fileID] });
-  if (r?.fileList?.[0]?.code !== "SUCCESS") {
-    throw new Error(`\u4E91\u5B58\u50A8\u5220\u9664\u672A\u6210\u529F\uFF08fileID=${fileID}\uFF09\uFF1A${JSON.stringify(r?.fileList?.[0] || r || null)}`);
+  if (((_b = (_a3 = r == null ? void 0 : r.fileList) == null ? void 0 : _a3[0]) == null ? void 0 : _b.code) !== "SUCCESS") {
+    throw new Error(`\u4E91\u5B58\u50A8\u5220\u9664\u672A\u6210\u529F\uFF08fileID=${fileID}\uFF09\uFF1A${JSON.stringify(((_c = r == null ? void 0 : r.fileList) == null ? void 0 : _c[0]) || r || null)}`);
   }
 }
 async function coverTempUrl(fileID) {
-  if (!fileID) return "";
+  if (!fileID)
+    return "";
   try {
     const r = await cloudApp().getTempFileURL({ fileList: [fileID] });
-    const f = (r?.fileList || [])[0];
-    return f?.tempFileURL || "";
+    const f = ((r == null ? void 0 : r.fileList) || [])[0];
+    return (f == null ? void 0 : f.tempFileURL) || "";
   } catch {
     return "";
   }
 }
 function decodeBase64(dataBase64) {
   const s = String(dataBase64 == null ? "" : dataBase64).trim();
-  if (!s) throw revisionError(400, "\u7F3A\u5C11\u5716\u7247\u6578\u64DA data_base64");
+  if (!s)
+    throw revisionError(400, "\u7F3A\u5C11\u5716\u7247\u6578\u64DA data_base64");
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(s) || s.length % 4 !== 0) {
     throw revisionError(400, "\u5716\u7247\u6578\u64DA\u4E0D\u662F\u5408\u6CD5\u7684 base64");
   }
   return Buffer.from(s, "base64");
 }
 function normalizeCover(payload) {
-  const e = String(payload?.ext || "").toLowerCase().replace(/^\./, "").trim();
-  if (!COVER_EXTS.includes(e)) throw revisionError(400, "\u5C01\u9762\u50C5\u652F\u63F4 jpg / png / webp");
-  const buf = decodeBase64(payload?.data_base64);
-  if (buf.length > MAX_COVER_BYTES) throw revisionError(400, "\u5C01\u9762\u5716\u7247\u4E0D\u5F97\u8D85\u904E 2 MiB");
-  if (buf.length === 0) throw revisionError(400, "\u5C01\u9762\u5716\u7247\u70BA\u7A7A");
+  const e = String((payload == null ? void 0 : payload.ext) || "").toLowerCase().replace(/^\./, "").trim();
+  if (!COVER_EXTS.includes(e))
+    throw revisionError(400, "\u5C01\u9762\u50C5\u652F\u63F4 jpg / png / webp");
+  const buf = decodeBase64(payload == null ? void 0 : payload.data_base64);
+  if (buf.length > MAX_COVER_BYTES)
+    throw revisionError(400, "\u5C01\u9762\u5716\u7247\u4E0D\u5F97\u8D85\u904E 2 MiB");
+  if (buf.length === 0)
+    throw revisionError(400, "\u5C01\u9762\u5716\u7247\u70BA\u7A7A");
   return { ext: e, buffer: buf };
 }
 async function setRevisionIntervalYears(arr) {
-  if (!Array.isArray(arr) || !arr.length) throw revisionError(400, "\u4FEE\u8B5C\u9593\u9694\u8868\u5FC5\u9808\u70BA\u975E\u7A7A\u6578\u7D44\uFF08\u5E74\uFF09");
+  if (!Array.isArray(arr) || !arr.length)
+    throw revisionError(400, "\u4FEE\u8B5C\u9593\u9694\u8868\u5FC5\u9808\u70BA\u975E\u7A7A\u6578\u7D44\uFF08\u5E74\uFF09");
   const ok = arr.every((v) => Number.isFinite(Number(v)) && Number(v) > 0 && Math.floor(Number(v)) === Number(v));
-  if (!ok) throw revisionError(400, "\u4FEE\u8B5C\u9593\u9694\u8868\u6BCF\u9805\u5FC5\u9808\u70BA\u6B63\u6574\u6578\uFF08\u5E74\uFF09");
+  if (!ok)
+    throw revisionError(400, "\u4FEE\u8B5C\u9593\u9694\u8868\u6BCF\u9805\u5FC5\u9808\u70BA\u6B63\u6574\u6578\uFF08\u5E74\uFF09");
   const table = arr.map((v) => Number(v));
   await mutateDoc(WALLET_COL, CONFIG_ID, (doc) => {
     const rec = { ...doc || {} };
@@ -36845,14 +37949,16 @@ async function writeRevisionLockedEditLog({ treeId, seq, phone, amountPieces, tx
 }
 async function startRevision({ treeId, phone, role, now = /* @__PURE__ */ new Date(), intervalYears } = {}) {
   const id = String(treeId || "").trim();
-  if (!id) throw revisionError(400, "\u7F3A\u5C11 tree_id");
+  if (!id)
+    throw revisionError(400, "\u7F3A\u5C11 tree_id");
   await assertRevisionWritable({ role, treeId: id, phone });
   const nowIso = toIso2(now);
   const interval = intervalYears || await getRevisionIntervalYears();
   const feePieces = REVISION_FEE_START_BAMBOOS;
   const base = await loadRevisions(id);
   const active = activeRevision(base.revisions, now);
-  if (active) throw revisionError(409, `\u5DF2\u6709\u9032\u884C\u4E2D\u7684\u4FEE\u8B5C\uFF08\u7B2C ${active.seq} \u6B21\uFF09\uFF0C\u8ACB\u65BC\u5176\u56FA\u5316\u5F8C\u518D\u958B\u65B0\u4E00\u8F2A`, ERR_REVISION_ACTIVE, { seq: active.seq });
+  if (active)
+    throw revisionError(409, `\u5DF2\u6709\u9032\u884C\u4E2D\u7684\u4FEE\u8B5C\uFF08\u7B2C ${active.seq} \u6B21\uFF09\uFF0C\u8ACB\u65BC\u5176\u56FA\u5316\u5F8C\u518D\u958B\u65B0\u4E00\u8F2A`, ERR_REVISION_ACTIVE, { seq: active.seq });
   const cs = canStartRevision({ revisions: base.revisions, now, intervalYears: interval });
   if (!cs.ok) {
     throw revisionError(409, `\u51B7\u537B\u671F\u672A\u5230\uFF0C\u6700\u65E9\u53EF\u65BC ${cs.next_start_at} \u958B\u59CB\u4E0B\u4E00\u6B21\u4FEE\u8B5C`, ERR_REVISION_COOLDOWN, { next_start_at: cs.next_start_at });
@@ -36901,13 +38007,17 @@ async function startRevision({ treeId, phone, role, now = /* @__PURE__ */ new Da
   };
 }
 async function saveRevision({ treeId, seq, items, role, phone, now = /* @__PURE__ */ new Date() } = {}) {
+  var _a3;
   const id = String(treeId || "").trim();
-  if (!id) throw revisionError(400, "\u7F3A\u5C11 tree_id");
+  if (!id)
+    throw revisionError(400, "\u7F3A\u5C11 tree_id");
   const targetSeq = Number(seq);
-  if (!Number.isFinite(targetSeq) || targetSeq <= 0) throw revisionError(400, "\u7F3A\u5C11 seq");
-  if (!Array.isArray(items) || !items.length) throw revisionError(400, "\u4FEE\u8B5C\u5167\u5BB9\u4E0D\u5F97\u70BA\u7A7A\uFF08items \u9808\u70BA\u975E\u7A7A\u6578\u7D44\uFF09");
+  if (!Number.isFinite(targetSeq) || targetSeq <= 0)
+    throw revisionError(400, "\u7F3A\u5C11 seq");
+  if (!Array.isArray(items) || !items.length)
+    throw revisionError(400, "\u4FEE\u8B5C\u5167\u5BB9\u4E0D\u5F97\u70BA\u7A7A\uFF08items \u9808\u70BA\u975E\u7A7A\u6578\u7D44\uFF09");
   const plans = items.map((it) => {
-    const kind = String(it?.kind || "").trim();
+    const kind = String((it == null ? void 0 : it.kind) || "").trim();
     if (!REVISION_ITEM_KINDS.includes(kind)) {
       throw revisionError(400, `\u4FEE\u8B5C\u5167\u5BB9\u985E\u578B\u4E0D\u5408\u6CD5\uFF08article / helpers / donations / cover\uFF09`);
     }
@@ -36916,13 +38026,18 @@ async function saveRevision({ treeId, seq, items, role, phone, now = /* @__PURE_
   const base = await loadRevisions(id);
   const target = base.revisions.find((r) => Number(r.seq) === targetSeq);
   await assertRevisionWritable({ role, treeId: id, phone });
-  if (!target) throw revisionError(404, `\u627E\u4E0D\u5230\u7B2C ${targetSeq} \u6B21\u4FEE\u8B5C`);
+  if (!target)
+    throw revisionError(404, `\u627E\u4E0D\u5230\u7B2C ${targetSeq} \u6B21\u4FEE\u8B5C`);
   const tree = await getTree(id);
-  if (!tree) throw revisionError(400, `\u5BB6\u65CF\u6A39\u4E0D\u5B58\u5728\uFF1A${id}`);
+  if (!tree)
+    throw revisionError(400, `\u5BB6\u65CF\u6A39\u4E0D\u5B58\u5728\uFF1A${id}`);
   const prepared = plans.map((p) => {
-    if (p.kind === "article") return { kind: "article", value: { ...normalizeArticle(p.payload), updated_at: toIso2(now) } };
-    if (p.kind === "helpers") return { kind: "helpers", value: normalizeHelpers(p.payload, tree) };
-    if (p.kind === "donations") return { kind: "donations", value: normalizeDonations(p.payload, tree) };
+    if (p.kind === "article")
+      return { kind: "article", value: { ...normalizeArticle(p.payload), updated_at: toIso2(now) } };
+    if (p.kind === "helpers")
+      return { kind: "helpers", value: normalizeHelpers(p.payload, tree) };
+    if (p.kind === "donations")
+      return { kind: "donations", value: normalizeDonations(p.payload, tree) };
     return { kind: "cover", value: normalizeCover(p.payload) };
   });
   const tier = tierOfRevision(target, now);
@@ -36943,12 +38058,12 @@ async function saveRevision({ treeId, seq, items, role, phone, now = /* @__PURE_
     for (const p of prepared) {
       if (p.kind === "cover") {
         const fileID = await cloudUpload(`revisions/${id}/${targetSeq}/cover.${p.value.ext}`, p.value.buffer);
-        const oldFileID = target.cover?.fileID || "";
+        const oldFileID = ((_a3 = target.cover) == null ? void 0 : _a3.fileID) || "";
         if (oldFileID && oldFileID !== fileID) {
           try {
             await cloudDelete(oldFileID);
           } catch (e) {
-            console.log(`[revision] \u522A\u9664\u820A\u5C01\u9762\u672A\u6210\u529F\uFF08best-effort \u4E0D\u963B\u65B7\uFF0C\u50C5\u7559\u5B64\u5152\u5C0D\u8C61\uFF09\uFF1Atree=${id} seq=${targetSeq} fileID=${oldFileID} \u539F\u59CB\u932F\u8AA4\uFF1A${e?.message || e}`);
+            console.log(`[revision] \u522A\u9664\u820A\u5C01\u9762\u672A\u6210\u529F\uFF08best-effort \u4E0D\u963B\u65B7\uFF0C\u50C5\u7559\u5B64\u5152\u5C0D\u8C61\uFF09\uFF1Atree=${id} seq=${targetSeq} fileID=${oldFileID} \u539F\u59CB\u932F\u8AA4\uFF1A${(e == null ? void 0 : e.message) || e}`);
           }
         }
         newCover = { fileID, ext: p.value.ext, width: null, height: null, updated_at: nowIso };
@@ -36993,7 +38108,8 @@ async function saveRevision({ treeId, seq, items, role, phone, now = /* @__PURE_
 }
 async function getRevisionView(treeId, now = /* @__PURE__ */ new Date()) {
   const id = String(treeId || "").trim();
-  if (!id) throw revisionError(400, "\u7F3A\u5C11 tree_id");
+  if (!id)
+    throw revisionError(400, "\u7F3A\u5C11 tree_id");
   const nowIso = toIso2(now);
   const [interval, tree, base] = await Promise.all([getRevisionIntervalYears(), getTree(id), loadRevisions(id)]);
   const decorate = async (r) => {
@@ -37012,7 +38128,8 @@ async function getRevisionView(treeId, now = /* @__PURE__ */ new Date()) {
     };
   };
   const revisions = [];
-  for (const r of base.revisions) revisions.push(await decorate(r));
+  for (const r of base.revisions)
+    revisions.push(await decorate(r));
   const postscript = await buildPostscript(id, base.revisions);
   const current = lastRevision(base.revisions);
   let active = null;
@@ -37063,7 +38180,8 @@ var ROUND_VAR_SET = new Set(POSTSCRIPT_ROUND_VARS);
 function wenpuConfigError(status, message, code = "") {
   const e = new Error(message);
   e.status = status;
-  if (code) e.code = code;
+  if (code)
+    e.code = code;
   return e;
 }
 function positionsOf(t, sub) {
@@ -37071,7 +38189,8 @@ function positionsOf(t, sub) {
   let i = 0;
   for (; ; ) {
     const j = t.indexOf(sub, i);
-    if (j < 0) break;
+    if (j < 0)
+      break;
     out.push(j);
     i = j + 1;
   }
@@ -37080,10 +38199,12 @@ function positionsOf(t, sub) {
 function bracesBalanced(s) {
   let depth = 0;
   for (const ch of s) {
-    if (ch === "{") depth += 1;
+    if (ch === "{")
+      depth += 1;
     else if (ch === "}") {
       depth -= 1;
-      if (depth < 0) return false;
+      if (depth < 0)
+        return false;
     }
   }
   return depth === 0;
@@ -37101,13 +38222,15 @@ function splitLoopBlock(template) {
   const openIdx = opens[0];
   let closeIdx = -1;
   for (const c of closes) {
-    if (c <= openIdx) continue;
+    if (c <= openIdx)
+      continue;
     if (bracesBalanced(t.slice(openIdx + LOOP_OPEN.length, c))) {
       closeIdx = c;
       break;
     }
   }
-  if (closeIdx < 0) throw wenpuConfigError(400, `\u5FAA\u73AF\u5757\u672A\u95ED\u5408\uFF1A\u7F3A\u5C11\u914D\u5BF9\u7684 ${LOOP_CLOSE}`);
+  if (closeIdx < 0)
+    throw wenpuConfigError(400, `\u5FAA\u73AF\u5757\u672A\u95ED\u5408\uFF1A\u7F3A\u5C11\u914D\u5BF9\u7684 ${LOOP_CLOSE}`);
   const blockBody = t.slice(openIdx + LOOP_OPEN.length, closeIdx);
   if (blockBody.includes(LOOP_OPEN) || blockBody.includes(LOOP_CLOSE)) {
     throw wenpuConfigError(400, "\u5FAA\u73AF\u5757\u4E0D\u5F97\u5D4C\u5957");
@@ -37125,11 +38248,13 @@ function validatePostscriptTemplate(template) {
     if (ROUND_VAR_SET.has(name)) {
       throw wenpuConfigError(400, `\u8F6E\u6BB5\u4E13\u7528\u53D8\u91CF {${name}} \u53EA\u80FD\u51FA\u73B0\u5728\u5FAA\u73AF\u5757 ${LOOP_OPEN}\u2026${LOOP_CLOSE} \u5185`);
     }
-    if (!MAIN_VAR_SET.has(name)) throw wenpuConfigError(400, `\u672A\u77E5\u53D8\u91CF {${name}}`);
+    if (!MAIN_VAR_SET.has(name))
+      throw wenpuConfigError(400, `\u672A\u77E5\u53D8\u91CF {${name}}`);
   }
   if (hasBlock) {
     for (const name of placeholdersOf(blockBody)) {
-      if (!MAIN_VAR_SET.has(name) && !ROUND_VAR_SET.has(name)) throw wenpuConfigError(400, `\u672A\u77E5\u53D8\u91CF {${name}}`);
+      if (!MAIN_VAR_SET.has(name) && !ROUND_VAR_SET.has(name))
+        throw wenpuConfigError(400, `\u672A\u77E5\u53D8\u91CF {${name}}`);
     }
   }
   return true;
@@ -37147,20 +38272,20 @@ function templateOr(raw, fallback) {
 async function getWenpuConfig() {
   const doc = await loadWenpuConfigDoc();
   return {
-    postscript_template: templateOr(doc?.postscript_template, DEFAULT_POSTSCRIPT_TEMPLATE)
+    postscript_template: templateOr(doc == null ? void 0 : doc.postscript_template, DEFAULT_POSTSCRIPT_TEMPLATE)
   };
 }
 async function getAdminWenpuConfig() {
   const doc = await loadWenpuConfigDoc();
-  const postscript_template = templateOr(doc?.postscript_template, DEFAULT_POSTSCRIPT_TEMPLATE);
+  const postscript_template = templateOr(doc == null ? void 0 : doc.postscript_template, DEFAULT_POSTSCRIPT_TEMPLATE);
   return {
     ok: true,
     postscript_template,
     is_default: postscript_template === DEFAULT_POSTSCRIPT_TEMPLATE,
     defaults: { postscript_template: DEFAULT_POSTSCRIPT_TEMPLATE },
-    version: Number(doc?.version) || 0,
-    updated_at: typeof doc?.updated_at === "string" ? doc.updated_at : "",
-    updated_by: typeof doc?.updated_by === "string" ? doc.updated_by : ""
+    version: Number(doc == null ? void 0 : doc.version) || 0,
+    updated_at: typeof (doc == null ? void 0 : doc.updated_at) === "string" ? doc.updated_at : "",
+    updated_by: typeof (doc == null ? void 0 : doc.updated_by) === "string" ? doc.updated_by : ""
   };
 }
 async function setWenpuConfig({ postscript_template, version, phone, now = /* @__PURE__ */ new Date() } = {}) {
@@ -37178,7 +38303,7 @@ async function setWenpuConfig({ postscript_template, version, phone, now = /* @_
   }
   const updated_at = (now instanceof Date ? now : new Date(now)).toISOString();
   const written = await mutateDoc(WENPU_CONFIG_COL, WENPU_CONFIG_ID, (doc) => {
-    const curVersion = Number(doc?.version) || 0;
+    const curVersion = Number(doc == null ? void 0 : doc.version) || 0;
     if (hasVersion && want !== curVersion) {
       throw wenpuConfigError(409, "\u5F8C\u8A18\u6587\u6848\u5DF2\u88AB\u4ED6\u4EBA\u4FEE\u6539\uFF08\u7248\u672C\u885D\u7A81\uFF09\uFF0C\u8ACB\u91CD\u65B0\u8B80\u53D6\u5F8C\u518D\u8A66");
     }
@@ -37189,7 +38314,7 @@ async function setWenpuConfig({ postscript_template, version, phone, now = /* @_
       updated_by: String(phone == null ? "" : phone)
     };
   });
-  return { ok: true, version: Number(written?.version) || 0 };
+  return { ok: true, version: Number(written == null ? void 0 : written.version) || 0 };
 }
 
 // cloudfunctions/compat-api/lib/tree-rename.js
@@ -37225,21 +38350,28 @@ var nowMsOf = (now) => {
   return Number.isFinite(t) ? t : Date.now();
 };
 function renameDaysSince(lastUpdatedAt, now = /* @__PURE__ */ new Date()) {
-  if (lastUpdatedAt === null || lastUpdatedAt === void 0 || lastUpdatedAt === "") return null;
+  if (lastUpdatedAt === null || lastUpdatedAt === void 0 || lastUpdatedAt === "")
+    return null;
   const t0 = new Date(lastUpdatedAt).getTime();
-  if (!Number.isFinite(t0)) return null;
+  if (!Number.isFinite(t0))
+    return null;
   return Math.ceil((nowMsOf(now) - t0) / 864e5);
 }
 function renameTierOf(days) {
-  if (days === null || days === void 0 || !Number.isFinite(Number(days))) return TREE_RENAME_TIER_FIRST_OR_EXPIRED;
+  if (days === null || days === void 0 || !Number.isFinite(Number(days)))
+    return TREE_RENAME_TIER_FIRST_OR_EXPIRED;
   const d = Number(days);
-  if (d >= TREE_RENAME_EXPIRED_DAYS) return TREE_RENAME_TIER_FIRST_OR_EXPIRED;
-  if (d >= TREE_RENAME_WITHIN_30D_MAX_DAYS) return TREE_RENAME_TIER_WITHIN_360D;
+  if (d >= TREE_RENAME_EXPIRED_DAYS)
+    return TREE_RENAME_TIER_FIRST_OR_EXPIRED;
+  if (d >= TREE_RENAME_WITHIN_30D_MAX_DAYS)
+    return TREE_RENAME_TIER_WITHIN_360D;
   return TREE_RENAME_TIER_WITHIN_30D;
 }
 function renamePiecesOfTier(tier) {
-  if (tier === TREE_RENAME_TIER_WITHIN_30D) return TREE_RENAME_FEE_WITHIN_30D;
-  if (tier === TREE_RENAME_TIER_WITHIN_360D) return TREE_RENAME_FEE_WITHIN_360D;
+  if (tier === TREE_RENAME_TIER_WITHIN_30D)
+    return TREE_RENAME_FEE_WITHIN_30D;
+  if (tier === TREE_RENAME_TIER_WITHIN_360D)
+    return TREE_RENAME_FEE_WITHIN_360D;
   return TREE_RENAME_FEE_FIRST_OR_EXPIRED;
 }
 function renameFeeOf(lastUpdatedAt, now = /* @__PURE__ */ new Date()) {
@@ -37251,29 +38383,34 @@ function sameGenealogyName(a, b) {
   return String(a === null || a === void 0 ? "" : a).trim() === String(b === null || b === void 0 ? "" : b).trim();
 }
 function normalizeGenealogyName(raw) {
-  if (typeof raw !== "string") throw treeRenameError(400, ERR_TREE_RENAME_NAME_REQUIRED);
+  if (typeof raw !== "string")
+    throw treeRenameError(400, ERR_TREE_RENAME_NAME_REQUIRED);
   const s = raw.trim();
-  if (!s) throw treeRenameError(400, ERR_TREE_RENAME_NAME_REQUIRED);
-  if (Array.from(s).length > TREE_RENAME_MAX_NAME_LEN) throw treeRenameError(400, ERR_TREE_RENAME_NAME_TOO_LONG);
+  if (!s)
+    throw treeRenameError(400, ERR_TREE_RENAME_NAME_REQUIRED);
+  if (Array.from(s).length > TREE_RENAME_MAX_NAME_LEN)
+    throw treeRenameError(400, ERR_TREE_RENAME_NAME_TOO_LONG);
   return s;
 }
 async function assertTreeRenameWritable({ role, treeId = "", phone = "" } = {}) {
   try {
     return await assertRevisionWritable({ role, treeId, phone });
   } catch (e) {
-    if (e && Number(e.status) === 403) throw treeRenameError(403, ERR_TREE_RENAME_FORBIDDEN);
+    if (e && Number(e.status) === 403)
+      throw treeRenameError(403, ERR_TREE_RENAME_FORBIDDEN);
     throw e;
   }
 }
 function findTreeEntry(meta, treeId) {
   const id = String(treeId || "").trim();
-  if (!id) return null;
-  return Object.values(meta?.trees || {}).find((t) => t && String(t.tree_id || "") === id) || null;
+  if (!id)
+    return null;
+  return Object.values((meta == null ? void 0 : meta.trees) || {}).find((t) => t && String(t.tree_id || "") === id) || null;
 }
 function decorateTreeMetaForRead(meta, now = /* @__PURE__ */ new Date()) {
   const out = { ...meta || {} };
   const trees = {};
-  for (const [key, entry] of Object.entries(meta?.trees || {})) {
+  for (const [key, entry] of Object.entries((meta == null ? void 0 : meta.trees) || {})) {
     if (!entry || typeof entry !== "object") {
       trees[key] = entry;
       continue;
@@ -37305,12 +38442,14 @@ async function writeTreeRenameLog({ treeId, phone, amountPieces, txId, now = /* 
 }
 async function renameTreeGenealogy({ treeId, genealogyName, role, phone, now = /* @__PURE__ */ new Date() } = {}) {
   const id = String(treeId || "").trim();
-  if (!id) throw treeRenameError(400, ERR_TREE_RENAME_MISSING_TREE);
+  if (!id)
+    throw treeRenameError(400, ERR_TREE_RENAME_MISSING_TREE);
   const name = normalizeGenealogyName(genealogyName);
   await assertTreeRenameWritable({ role, treeId: id, phone });
   const meta = await getMeta();
   const entry = findTreeEntry(meta, id);
-  if (!entry) throw treeRenameError(404, `\u672A\u627E\u5230 tree: ${id}`);
+  if (!entry)
+    throw treeRenameError(404, `\u672A\u627E\u5230 tree: ${id}`);
   const current = String(entry[GENEALOGY_NAME_KEY] ?? "");
   const fee = renameFeeOf(entry[GENEALOGY_NAME_UPDATED_AT], now);
   if (sameGenealogyName(name, current)) {
@@ -37342,7 +38481,7 @@ async function renameTreeGenealogy({ treeId, genealogyName, role, phone, now = /
   const out = {
     ok: true,
     tree_id: id,
-    genealogy_name: String(written?.[GENEALOGY_NAME_KEY] ?? name),
+    genealogy_name: String((written == null ? void 0 : written[GENEALOGY_NAME_KEY]) ?? name),
     fee: { pieces: fee.pieces, tier: fee.tier }
   };
   if (fee.pieces > 0) {
@@ -37373,56 +38512,72 @@ var TIME_FIELDS = ["created_at", "ts", "handled_at", "decided_at"];
 function eventTrees(rec) {
   const out = [];
   for (const key of ["tree_id", "from_tree", "to_tree"]) {
-    const raw = rec?.[key];
-    if (raw === void 0 || raw === null) continue;
+    const raw = rec == null ? void 0 : rec[key];
+    if (raw === void 0 || raw === null)
+      continue;
     const id = String(raw).trim();
-    if (id && !out.includes(id)) out.push(id);
+    if (id && !out.includes(id))
+      out.push(id);
   }
   return out;
 }
 function eventTimeMs(rec) {
   for (const field of TIME_FIELDS) {
-    const raw = rec?.[field];
-    if (raw === void 0 || raw === null || raw === "") continue;
+    const raw = rec == null ? void 0 : rec[field];
+    if (raw === void 0 || raw === null || raw === "")
+      continue;
     if (typeof raw === "number") {
-      if (Number.isFinite(raw)) return raw;
+      if (Number.isFinite(raw))
+        return raw;
       continue;
     }
     const ms = Date.parse(String(raw));
-    if (Number.isFinite(ms)) return ms;
+    if (Number.isFinite(ms))
+      return ms;
   }
   return null;
 }
 function toMs5(now) {
-  if (now instanceof Date) return now.getTime();
-  if (typeof now === "number") return Number.isFinite(now) ? now : NaN;
-  if (now === void 0 || now === null || now === "") return Date.now();
+  if (now instanceof Date)
+    return now.getTime();
+  if (typeof now === "number")
+    return Number.isFinite(now) ? now : NaN;
+  if (now === void 0 || now === null || now === "")
+    return Date.now();
   return Date.parse(String(now));
 }
 function countRecentEvents(records, treeId, now, windowDays = 30) {
   const id = String(treeId ?? "").trim();
-  if (!id) return 0;
+  if (!id)
+    return 0;
   const nowMs = toMs5(now);
-  if (!Number.isFinite(nowMs)) return 0;
+  if (!Number.isFinite(nowMs))
+    return 0;
   const days = Number.isFinite(Number(windowDays)) ? Number(windowDays) : 30;
   const from = nowMs - days * DAY_MS6;
   let n = 0;
   for (const rec of records || []) {
-    if (!rec || typeof rec !== "object") continue;
-    if (!eventTrees(rec).includes(id)) continue;
+    if (!rec || typeof rec !== "object")
+      continue;
+    if (!eventTrees(rec).includes(id))
+      continue;
     const t = eventTimeMs(rec);
-    if (t === null) continue;
-    if (t >= from) n += 1;
+    if (t === null)
+      continue;
+    if (t >= from)
+      n += 1;
   }
   return n;
 }
 async function treeActivity(treeId, { now } = {}) {
   try {
     const id = String(treeId ?? "").trim();
-    if (!id) return 0;
+    if (!id)
+      return 0;
     const at = now === void 0 ? /* @__PURE__ */ new Date() : now;
     const atMs = toMs5(at);
-    if (!Number.isFinite(atMs)) return 0;
+    if (!Number.isFinite(atMs))
+      return 0;
     let total = 0;
     for (const col of EVENT_COLLECTIONS) {
       let records = [];
@@ -37431,7 +38586,8 @@ async function treeActivity(treeId, { now } = {}) {
       } catch {
         records = [];
       }
-      if (!Array.isArray(records) || records.length === 0) continue;
+      if (!Array.isArray(records) || records.length === 0)
+        continue;
       try {
         total += countRecentEvents(records, id, atMs, WINDOW_DAYS);
       } catch {
@@ -37454,21 +38610,28 @@ function computePersonDepth(people, families) {
     const parents = [f.father_handle, f.mother_handle].filter(Boolean);
     const kids = f.child_handles || [];
     for (const c of kids) {
-      if (!childOf.has(c)) childOf.set(c, /* @__PURE__ */ new Set());
-      for (const p of parents) childOf.get(c).add(p);
+      if (!childOf.has(c))
+        childOf.set(c, /* @__PURE__ */ new Set());
+      for (const p of parents)
+        childOf.get(c).add(p);
     }
     for (const p of parents) {
-      if (!parentOf.has(p)) parentOf.set(p, /* @__PURE__ */ new Set());
-      for (const c of kids) parentOf.get(p).add(c);
+      if (!parentOf.has(p))
+        parentOf.set(p, /* @__PURE__ */ new Set());
+      for (const c of kids)
+        parentOf.get(p).add(c);
     }
   }
   const allPeople = new Set(Object.keys(people));
-  for (const p of childOf.keys()) allPeople.add(p);
-  for (const p of parentOf.keys()) allPeople.add(p);
+  for (const p of childOf.keys())
+    allPeople.add(p);
+  for (const p of parentOf.keys())
+    allPeople.add(p);
   const depth = /* @__PURE__ */ new Map();
   const roots = [...allPeople].filter((p) => !childOf.has(p) || childOf.get(p).size === 0);
   let maxDepth = 1;
-  for (const r of roots) depth.set(r, 1);
+  for (const r of roots)
+    depth.set(r, 1);
   const queue = [...roots];
   let guard = 0;
   while (queue.length && guard < 1e5) {
@@ -37484,7 +38647,9 @@ function computePersonDepth(people, families) {
       }
     }
   }
-  for (const p of allPeople) if (!depth.has(p)) depth.set(p, 1);
+  for (const p of allPeople)
+    if (!depth.has(p))
+      depth.set(p, 1);
   return { depth, maxDepth };
 }
 function computeAccess(opts) {
@@ -37510,7 +38675,9 @@ function computeAccess(opts) {
   const visibleMaxDepth = clamped ? FLOOR_VISIBLE_DEPTH : visibleRaw;
   const hiddenPeople = /* @__PURE__ */ new Set();
   if (depth) {
-    for (const [h, d] of depth) if (d > visibleMaxDepth) hiddenPeople.add(h);
+    for (const [h, d] of depth)
+      if (d > visibleMaxDepth)
+        hiddenPeople.add(h);
   } else {
   }
   return {
@@ -37558,41 +38725,72 @@ var EMPTY_STATS = Object.freeze({
 function prefixCodes(code) {
   const out = [];
   for (const c of [code, `${code.slice(0, 2)}0000`, `${code.slice(0, 4)}00`]) {
-    if (out.includes(c) || !isKnownOriginCode(c)) continue;
+    if (out.includes(c) || !isKnownOriginCode(c))
+      continue;
     out.push(c);
   }
   return out;
 }
 function countTicket(counts, direct, raw) {
-  if (!isKnownOriginCode(raw)) return;
+  if (!isKnownOriginCode(raw))
+    return;
   const code = String(raw).trim();
   direct.set(code, (direct.get(code) || 0) + 1);
-  for (const c of prefixCodes(code)) counts.set(c, (counts.get(c) || 0) + 1);
+  for (const c of prefixCodes(code))
+    counts.set(c, (counts.get(c) || 0) + 1);
 }
 function toCountsObject(map2) {
   const rows = [...map2.entries()].filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
   const out = {};
-  for (const [code, n] of rows) out[code] = n;
+  for (const [code, n] of rows)
+    out[code] = n;
   return out;
 }
 function normCode(raw) {
   return isKnownOriginCode(raw) ? String(raw).trim() : null;
 }
 function metaEntryOf2(metaTrees, id) {
-  const direct = metaTrees?.[id];
-  if (direct) return direct;
-  for (const entry of Object.values(metaTrees || {})) if (entry && entry.tree_id === id) return entry;
+  const direct = metaTrees == null ? void 0 : metaTrees[id];
+  if (direct)
+    return direct;
+  for (const entry of Object.values(metaTrees || {}))
+    if (entry && entry.tree_id === id)
+      return entry;
   return null;
 }
-function createGeoStatsReader({ listTreeIds: listIds, getTree: readTree, getMeta: readMeta, now = Date.now } = {}) {
+function createSnapshotCache({ scan, build, empty, now = Date.now, ttlMs = GEO_STATS_TTL_MS }) {
   let cached = null;
   let cachedAt = 0;
   let inflight = null;
+  return {
+    async get() {
+      if (cached && now() - cachedAt < ttlMs)
+        return cached;
+      if (inflight)
+        return inflight;
+      inflight = (async () => {
+        try {
+          const r = await scan();
+          cached = build(r);
+          cachedAt = now();
+          return cached;
+        } catch {
+          return cached || empty;
+        } finally {
+          inflight = null;
+        }
+      })();
+      return inflight;
+    }
+  };
+}
+function createGeoStatsReader({ listTreeIds: listIds, getTree: readTree, getMeta: readMeta, now = Date.now } = {}) {
   async function scan() {
+    var _a3, _b;
     const ids = await listIds();
     let metaTrees = null;
     try {
-      metaTrees = (await readMeta())?.trees || {};
+      metaTrees = ((_a3 = await readMeta()) == null ? void 0 : _a3.trees) || {};
     } catch {
       metaTrees = null;
     }
@@ -37609,20 +38807,25 @@ function createGeoStatsReader({ listTreeIds: listIds, getTree: readTree, getMeta
         failed.push(id);
         continue;
       }
-      if (!tree) continue;
+      if (!tree)
+        continue;
       const people = tree.people || {};
       const residenceCodes = /* @__PURE__ */ new Set();
       for (const handle of Object.keys(people)) {
         const person = people[handle];
-        if (!person) continue;
-        countTicket(counts, direct, person.birth_place?.origin_code);
+        if (!person)
+          continue;
+        countTicket(counts, direct, (_b = person.birth_place) == null ? void 0 : _b.origin_code);
         const residences = person.residence_places;
-        if (!Array.isArray(residences)) continue;
+        if (!Array.isArray(residences))
+          continue;
         for (const item of residences) {
-          countTicket(counts, direct, item?.origin_code);
-          if (!item || typeof item !== "object") continue;
+          countTicket(counts, direct, item == null ? void 0 : item.origin_code);
+          if (!item || typeof item !== "object")
+            continue;
           const code = normCode(item.origin_code);
-          if (code) residenceCodes.add(code);
+          if (code)
+            residenceCodes.add(code);
         }
       }
       const entry = metaTrees ? metaEntryOf2(metaTrees, id) : null;
@@ -37633,36 +38836,29 @@ function createGeoStatsReader({ listTreeIds: listIds, getTree: readTree, getMeta
       };
     }
     if (metaTrees) {
-      for (const entry of Object.values(metaTrees)) if (entry) countTicket(counts, direct, entry.origin_code);
+      for (const entry of Object.values(metaTrees))
+        if (entry)
+          countTicket(counts, direct, entry.origin_code);
     }
     return { counts: toCountsObject(counts), direct: toCountsObject(direct), trees, failed };
   }
+  const cache = createSnapshotCache({
+    scan,
+    now,
+    ttlMs: GEO_STATS_TTL_MS,
+    empty: EMPTY_STATS,
+    build: (r) => ({
+      v: GEO_STATS_VERSION,
+      generated_at: new Date(now()).toISOString(),
+      counts: r.counts,
+      direct: r.direct,
+      trees: r.trees,
+      ...r.failed.length ? { failed: r.failed } : {}
+    })
+  });
   return {
     /** 取值入口：TTL 内直接返回缓存快照，过期才重扫（并发单飞） */
-    async getStats() {
-      if (cached && now() - cachedAt < GEO_STATS_TTL_MS) return cached;
-      if (inflight) return inflight;
-      inflight = (async () => {
-        try {
-          const r = await scan();
-          cached = {
-            v: GEO_STATS_VERSION,
-            generated_at: new Date(now()).toISOString(),
-            counts: r.counts,
-            direct: r.direct,
-            trees: r.trees,
-            ...r.failed.length ? { failed: r.failed } : {}
-          };
-          cachedAt = now();
-          return cached;
-        } catch {
-          return cached || EMPTY_STATS;
-        } finally {
-          inflight = null;
-        }
-      })();
-      return inflight;
-    }
+    getStats: () => cache.get()
   };
 }
 function createStatsView(getStats, project) {
@@ -37728,24 +38924,32 @@ var BADGE_ATTR_KEYS = (
 );
 var BADGE_FORBIDDEN_MESSAGE = "\u79F0\u53F7\u4EC5\u6811\u4E3B\u7406\u4EBA\uFF08tree_steward\uFF09\u53CA\u4EE5\u4E0A\u53EF\u7F16\u8F91\uFF1B\u4E2D\u534E\u4E16\u672C\u603B\u8C31\u4EC5\u603B\u7F16\u8F91\uFF08chief_editor\uFF09\u53EF\u7F16\u8F91";
 function attrKeyOf2(a) {
-  if (!a) return "";
-  if (typeof a.type === "string") return a.type;
-  if (a.type && typeof a.type.string === "string") return a.type.string;
-  if (typeof a.key === "string") return a.key;
+  if (!a)
+    return "";
+  if (typeof a.type === "string")
+    return a.type;
+  if (a.type && typeof a.type.string === "string")
+    return a.type.string;
+  if (typeof a.key === "string")
+    return a.key;
   return "";
 }
 function hasBadgeAttr(attributeList) {
-  if (!Array.isArray(attributeList)) return false;
+  if (!Array.isArray(attributeList))
+    return false;
   return attributeList.some((a) => BADGE_ATTR_KEYS.includes(attrKeyOf2(a)));
 }
 function canEditBadge(role, treeId, masterTreeId) {
   const r = String(role || "").trim();
-  if (!r || r === "guest") return false;
-  if (treeId === masterTreeId) return r === "chief_editor";
+  if (!r || r === "guest")
+    return false;
+  if (treeId === masterTreeId)
+    return r === "chief_editor";
   return r === "tree_steward" || r === "chief_editor";
 }
 function assertBadgeWritable(role, treeId, masterTreeId, attributeList) {
-  if (!hasBadgeAttr(attributeList)) return;
+  if (!hasBadgeAttr(attributeList))
+    return;
   if (!canEditBadge(role, treeId, masterTreeId)) {
     const e = new Error(BADGE_FORBIDDEN_MESSAGE);
     e.status = 403;
@@ -37753,21 +38957,8 @@ function assertBadgeWritable(role, treeId, masterTreeId, attributeList) {
   }
 }
 
-// cloudfunctions/compat-api/index.js
-var MASTER_TREE_ID2 = process.env.MASTER_TREE_ID || "zhonghua";
+// cloudfunctions/compat-api/lib/tree-rank.js
 var MAX_DEPTH = 72;
-function httpError4(status, message) {
-  const e = new Error(message);
-  e.status = status;
-  return e;
-}
-function parseBody(event) {
-  try {
-    return event.body ? JSON.parse(event.body) : {};
-  } catch {
-    return {};
-  }
-}
 var RANKS = {
   family: { key: "family_rank", label: "\u5BB6\u4E58\u7EA7", en: "Family-Rank", desc: "\u77ED\u7A0B\u4EB2\u5C5E\u8C31\u7CFB\uFF0C\u5408\u8BA1\u603B\u4E16\u4EE3 \u22649 \u4E16" },
   clan: { key: "clan_rank", label: "\u65CF\u4E58\u7EA7", en: "Clan-Rank", desc: "\u4E2D\u7A0B\u4EB2\u5C5E\u8C31\u7CFB\uFF0C\u5408\u8BA1\u603B\u4E16\u4EE3 10-18 \u4E16" },
@@ -37783,20 +38974,26 @@ function computeTreeDepth(tree, explicitGens) {
   for (const f of Object.values(tree.families)) {
     const parents = [f.father_handle, f.mother_handle].filter(Boolean);
     for (const c of f.child_handles || []) {
-      if (!childOf.has(c)) childOf.set(c, /* @__PURE__ */ new Set());
-      for (const p of parents) childOf.get(c).add(p);
+      if (!childOf.has(c))
+        childOf.set(c, /* @__PURE__ */ new Set());
+      for (const p of parents)
+        childOf.get(c).add(p);
     }
     for (const p of parents) {
-      if (!parentOf.has(p)) parentOf.set(p, /* @__PURE__ */ new Set());
-      for (const c of f.child_handles || []) parentOf.get(p).add(c);
+      if (!parentOf.has(p))
+        parentOf.set(p, /* @__PURE__ */ new Set());
+      for (const c of f.child_handles || [])
+        parentOf.get(p).add(c);
     }
   }
   const allPeople = /* @__PURE__ */ new Set([...Object.keys(tree.people), ...childOf.keys(), ...parentOf.keys()]);
   const roots = [...allPeople].filter((p) => !childOf.has(p) || childOf.get(p).size === 0);
-  if (roots.length === 0) return { totalGenerations: 1, personCount: allPeople.size, explicit: false };
+  if (roots.length === 0)
+    return { totalGenerations: 1, personCount: allPeople.size, explicit: false };
   const depth = /* @__PURE__ */ new Map();
   const queue = [...roots];
-  for (const r of roots) depth.set(r, 1);
+  for (const r of roots)
+    depth.set(r, 1);
   let maxDepth = 1;
   let guard = 0;
   while (queue.length && guard < 1e5) {
@@ -37815,10 +39012,148 @@ function computeTreeDepth(tree, explicitGens) {
   return { totalGenerations: maxDepth, personCount: allPeople.size, explicit: false };
 }
 function rankFromDepth(total) {
-  if (total <= 9) return RANKS.family;
-  if (total <= 18) return RANKS.clan;
-  if (total <= 72) return RANKS.lineage;
+  if (total <= 9)
+    return RANKS.family;
+  if (total <= 18)
+    return RANKS.clan;
+  if (total <= 72)
+    return RANKS.lineage;
   return RANKS.stemma;
+}
+function explicitGensOf(details) {
+  const gens = /* @__PURE__ */ new Map();
+  for (const d of details || []) {
+    const g = ((d == null ? void 0 : d.attributes) || []).find((a) => a && a.key === "external_chain_gen");
+    if (g)
+      gens.set(d.handle, parseInt(g.value, 10) || 0);
+  }
+  return gens;
+}
+function treeRankFields(tree, { metaEntry = null, explicitGens = null, activity = 0 } = {}) {
+  const { totalGenerations, explicit } = computeTreeDepth(tree, explicitGens);
+  const rank = rankFromDepth(totalGenerations);
+  const people = tree.people || {};
+  const values = Object.values(people);
+  return {
+    total_generations: totalGenerations,
+    rank_key: rank.key,
+    rank_label: rank.label,
+    rank_en: rank.en,
+    rank_desc: rank.desc,
+    over_limit: totalGenerations > MAX_DEPTH,
+    max_depth: MAX_DEPTH,
+    root_count: values.filter((p) => !p.parent_family).length,
+    // 人数真源 = lib/family-population.js（纯血缘图口径；分层按 tree-meta 的 kind / is_master）
+    person_count: countFamilyMembers(tree, metaEntry, { kind: metaEntry == null ? void 0 : metaEntry.kind, is_master: !!(metaEntry == null ? void 0 : metaEntry.is_master) }),
+    // 镜像数：严格字面判据（'true' / 布尔 true 都命中）—— 与全站镜像口径一致
+    mirror_count: values.filter((p) => String(p.external_mirror) === "true").length,
+    explicit,
+    activity,
+    updated_at: tree.updated_at === void 0 || tree.updated_at === null ? "" : String(tree.updated_at)
+  };
+}
+
+// cloudfunctions/compat-api/lib/tree-rank-index.js
+init_store();
+var TREE_RANK_INDEX_TTL_MS = GEO_STATS_TTL_MS;
+var TREE_RANK_INDEX_VERSION = 1;
+var EMPTY_INDEX = Object.freeze({
+  v: TREE_RANK_INDEX_VERSION,
+  generated_at: null,
+  trees: Object.freeze({})
+});
+function createTreeRankIndexReader({
+  listTreeIds: listIds,
+  getTree: readTree,
+  getMeta: readMeta,
+  getAllDetails: readDetails,
+  treeActivity: activityOf,
+  now = Date.now
+} = {}) {
+  async function scan() {
+    var _a3;
+    const ids = await listIds();
+    let metaTrees = null;
+    try {
+      metaTrees = ((_a3 = await readMeta()) == null ? void 0 : _a3.trees) || {};
+    } catch {
+      metaTrees = null;
+    }
+    const trees = {};
+    const failed = [];
+    const uniqueIds = [...new Set((ids || []).map((id) => String(id)))].sort();
+    for (const id of uniqueIds) {
+      let tree;
+      try {
+        tree = await readTree(id);
+      } catch {
+        failed.push(id);
+        continue;
+      }
+      if (!tree)
+        continue;
+      try {
+        const metaEntry = metaTrees ? metaEntryOf2(metaTrees, id) : null;
+        let explicitGens = null;
+        try {
+          explicitGens = explicitGensOf(await readDetails(id));
+        } catch {
+          explicitGens = null;
+        }
+        let activity = 0;
+        try {
+          activity = await activityOf(id, { now: /* @__PURE__ */ new Date() });
+        } catch {
+          activity = 0;
+        }
+        trees[id] = { tree_id: id, ...treeRankFields(tree, { metaEntry, explicitGens, activity }) };
+      } catch {
+        failed.push(id);
+      }
+    }
+    return { trees, failed };
+  }
+  const cache = createSnapshotCache({
+    scan,
+    now,
+    ttlMs: TREE_RANK_INDEX_TTL_MS,
+    empty: EMPTY_INDEX,
+    build: (r) => ({
+      v: TREE_RANK_INDEX_VERSION,
+      generated_at: new Date(now()).toISOString(),
+      trees: r.trees,
+      ...r.failed.length ? { failed: r.failed } : {}
+    })
+  });
+  return {
+    /** 取值入口：TTL 内直接返回缓存快照，过期才重扫（并发单飞） */
+    getRankIndex: () => cache.get()
+  };
+}
+var defaultTreeRankIndex = createTreeRankIndexReader({
+  listTreeIds,
+  getTree,
+  getMeta,
+  getAllDetails,
+  treeActivity
+});
+function getTreeRankIndex() {
+  return defaultTreeRankIndex.getRankIndex();
+}
+
+// cloudfunctions/compat-api/index.js
+var MASTER_TREE_ID2 = process.env.MASTER_TREE_ID || "zhonghua";
+function httpError4(status, message) {
+  const e = new Error(message);
+  e.status = status;
+  return e;
+}
+function parseBody(event) {
+  try {
+    return event.body ? JSON.parse(event.body) : {};
+  } catch {
+    return {};
+  }
 }
 var GENDER_NUM = { M: 1, F: 2, U: 0 };
 function attrEntry(key, value) {
@@ -37826,43 +39161,52 @@ function attrEntry(key, value) {
 }
 function profilePerson(tree, handle) {
   const p = tree.people[handle];
-  if (!p) return null;
+  if (!p)
+    return null;
   const out = { handle: p.handle, gramps_id: p.gramps_id, name_given: p.given, name_surname: p.surname, sex: p.gender };
   out.is_living = p.is_living !== void 0 ? p.is_living : !p.death_date;
-  if (p.birth_date) out.birth = { date: p.birth_date };
-  if (p.death_date) out.death = { date: p.death_date };
+  if (p.birth_date)
+    out.birth = { date: p.birth_date };
+  if (p.death_date)
+    out.death = { date: p.death_date };
   return out;
 }
 function profileFamily(tree, fam) {
-  if (!fam) return null;
+  if (!fam)
+    return null;
   const out = { handle: fam.handle, gramps_id: fam.gramps_id || "" };
-  if (fam.father_handle) out.father = profilePerson(tree, fam.father_handle);
-  if (fam.mother_handle) out.mother = profilePerson(tree, fam.mother_handle);
+  if (fam.father_handle)
+    out.father = profilePerson(tree, fam.father_handle);
+  if (fam.mother_handle)
+    out.mother = profilePerson(tree, fam.mother_handle);
   out.children = (fam.child_handles || []).map((c) => profilePerson(tree, c)).filter(Boolean);
   return out;
 }
 var MIRROR_TITLE_ATTR_KEYS = ["\u5C01\u53F7", "\u8C25\u53F7", "\u53F7", "\u79F0\u53F7", "\u79F0\u53F7\u8272"];
 function mergeMirrorTitleAttributes(mirrorDetail, realDetail) {
   const keys = new Set(MIRROR_TITLE_ATTR_KEYS);
-  const base = Array.isArray(mirrorDetail?.attributes) ? mirrorDetail.attributes : [];
+  const base = Array.isArray(mirrorDetail == null ? void 0 : mirrorDetail.attributes) ? mirrorDetail.attributes : [];
   const kept = base.filter((a) => a && !keys.has(a.key));
-  const realTitles = (Array.isArray(realDetail?.attributes) ? realDetail.attributes : []).filter(
+  const realTitles = (Array.isArray(realDetail == null ? void 0 : realDetail.attributes) ? realDetail.attributes : []).filter(
     (a) => a && keys.has(a.key)
   );
   return { ...mirrorDetail || {}, attributes: [...kept, ...realTitles] };
 }
 async function buildMirrorRealBodies(tree, onlyHandles) {
   const out = /* @__PURE__ */ new Map();
-  const people = tree?.people || {};
+  const people = (tree == null ? void 0 : tree.people) || {};
   const mirrors = Object.values(people).filter(
     (p) => p && String(p.external_mirror) === "true" && p.external_person_handle && (!onlyHandles || onlyHandles.has(p.handle))
   );
-  if (!mirrors.length) return out;
+  if (!mirrors.length)
+    return out;
   const byRealTree = /* @__PURE__ */ new Map();
   for (const m of mirrors) {
     const tid = String(m.external_tree || "").trim();
-    if (!tid) continue;
-    if (!byRealTree.has(tid)) byRealTree.set(tid, []);
+    if (!tid)
+      continue;
+    if (!byRealTree.has(tid))
+      byRealTree.set(tid, []);
     byRealTree.get(tid).push(m);
   }
   for (const [tid, list2] of byRealTree) {
@@ -37872,7 +39216,8 @@ async function buildMirrorRealBodies(tree, onlyHandles) {
     } catch {
       realTree = null;
     }
-    if (!realTree || !realTree.people) continue;
+    if (!realTree || !realTree.people)
+      continue;
     let realDetailMap = /* @__PURE__ */ new Map();
     try {
       const ds = await getAllDetails(tid);
@@ -37882,7 +39227,8 @@ async function buildMirrorRealBodies(tree, onlyHandles) {
     }
     for (const m of list2) {
       const real = realTree.people[m.external_person_handle];
-      if (!real) continue;
+      if (!real)
+        continue;
       out.set(m.handle, { person: real, detail: realDetailMap.get(real.handle) || null });
     }
   }
@@ -37904,9 +39250,11 @@ function toRawPerson(tree, person, detail, realBody) {
     detail = mergeMirrorTitleAttributes(detail, realBody.detail);
   }
   const attributes = [];
-  for (const a of detail?.attributes || []) attributes.push(attrEntry(a.key, a.value));
+  for (const a of (detail == null ? void 0 : detail.attributes) || [])
+    attributes.push(attrEntry(a.key, a.value));
   for (const k of EXTERNAL_KEYS) {
-    if (person[k]) attributes.push(attrEntry(k, person[k]));
+    if (person[k])
+      attributes.push(attrEntry(k, person[k]));
   }
   const raw = {
     handle: person.handle,
@@ -37916,7 +39264,7 @@ function toRawPerson(tree, person, detail, realBody) {
     is_living: person.is_living !== void 0 ? person.is_living : !person.death_date,
     primary_name: { first_name: person.given || "", surname_list: [{ surname: person.surname || "", primary: true }] },
     attribute_list: attributes,
-    event_ref_list: (detail?.events || []).map((e) => ({ ref: e.handle })),
+    event_ref_list: ((detail == null ? void 0 : detail.events) || []).map((e) => ({ ref: e.handle })),
     family_list: person.spouse_families || [],
     parent_family_list: person.parent_family ? [person.parent_family] : [],
     // 居住地（契约 v2 C7）：顶层数组，`{ place, place_code, place_note }`，顺序即展示顺序，无则 `[]`
@@ -37932,9 +39280,11 @@ function toRawPerson(tree, person, detail, realBody) {
       place_note: birthPlace.place_note
     };
   }
-  if (person.death_date) raw.profile.death = { date: person.death_date, place: person.death_place || "" };
+  if (person.death_date)
+    raw.profile.death = { date: person.death_date, place: person.death_place || "" };
   const spouseFams = (person.spouse_families || []).map((fh) => profileFamily(tree, tree.families[fh])).filter(Boolean);
-  if (spouseFams.length) raw.profile.families = spouseFams;
+  if (spouseFams.length)
+    raw.profile.families = spouseFams;
   if (person.parent_family && tree.families[person.parent_family]) {
     raw.profile.primary_parent_family = profileFamily(tree, tree.families[person.parent_family]);
   }
@@ -37942,13 +39292,17 @@ function toRawPerson(tree, person, detail, realBody) {
 }
 async function requireWriteUser(headers, treeId, pathname, targetHandle, isAddNode) {
   const u = await authUser(headers);
-  if (!u) throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
+  if (!u)
+    throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
   const user = await colGet("jiapu_users", u.phone);
-  if (!user) throw httpError4(401, "\u7528\u6237\u4E0D\u5B58\u5728");
+  if (!user)
+    throw httpError4(401, "\u7528\u6237\u4E0D\u5B58\u5728");
   const role = user.role;
-  if (role === "guest") throw httpError4(403, "\u6E38\u5BA2\u65E0\u7F16\u8F91\u6743\u9650\uFF0C\u8BF7\u6CE8\u518C\u540E\u7F16\u8F91");
+  if (role === "guest")
+    throw httpError4(403, "\u6E38\u5BA2\u65E0\u7F16\u8F91\u6743\u9650\uFF0C\u8BF7\u6CE8\u518C\u540E\u7F16\u8F91");
   const isMaster = treeId === MASTER_TREE_ID2;
-  if (isMaster && role !== "chief_editor") throw httpError4(403, "\u4E2D\u534E\u4E16\u672C\u603B\u8C31\u4EC5\u603B\u7F16\u8F91\uFF08chief_editor\uFF09\u53EF\u7F16\u8F91");
+  if (isMaster && role !== "chief_editor")
+    throw httpError4(403, "\u4E2D\u534E\u4E16\u672C\u603B\u8C31\u4EC5\u603B\u7F16\u8F91\uFF08chief_editor\uFF09\u53EF\u7F16\u8F91");
   if (!isMaster && (role === "user" || role === "branch_curator") && targetHandle) {
     const tree = await getTree(treeId);
     const families = Object.values(tree.families).map((f) => ({
@@ -37975,7 +39329,8 @@ async function requireWriteUser(headers, treeId, pathname, targetHandle, isAddNo
   return u;
 }
 async function refundQuietly(phone, charged, reason = "\u843D\u5E93\u5931\u8D25") {
-  if (!charged || !charged.charged) return false;
+  if (!charged || !charged.charged)
+    return false;
   try {
     const r = await refundCharged(phone, charged, reason);
     return !!r.ok;
@@ -37987,7 +39342,8 @@ function feeGate(phone, op) {
   const gate = { charge: charger(phone, op), refunded: false };
   gate.refund = async (charged) => {
     const ok = await refundQuietly(phone, charged, "\u843D\u5E93\u5931\u8D25\uFF0C\u5DF2\u539F\u8DEF\u8FD4\u8FD8");
-    if (ok) gate.refunded = true;
+    if (ok)
+      gate.refunded = true;
     return ok;
   };
   return gate;
@@ -38025,15 +39381,18 @@ function isSystemFailure(e) {
 }
 function safeError(e, fallbackStatus = 400, prefix = "") {
   const err = e || {};
-  if (isSystemFailure(err)) return send(500, { error: INTERNAL_ERROR_TEXT, status: 500 });
+  if (isSystemFailure(err))
+    return send(500, { error: INTERNAL_ERROR_TEXT, status: 500 });
   const status = Number(err.status);
   const text2 = String(err.message || "");
   return send(Number.isFinite(status) ? status : fallbackStatus, { error: prefix ? `${prefix}: ${text2}` : text2 });
 }
 function errorStatusOf(e, payload) {
   const own = Number((e || {}).status);
-  if (Number.isFinite(own)) return own;
-  if (isSystemFailure(e)) return Number(payload?.status) || 500;
+  if (Number.isFinite(own))
+    return own;
+  if (isSystemFailure(e))
+    return Number(payload == null ? void 0 : payload.status) || 500;
   return 400;
 }
 async function resolveTreeAccess(headers, treeId, tree) {
@@ -38042,30 +39401,35 @@ async function resolveTreeAccess(headers, treeId, tree) {
   return computeAccess({
     treeId,
     isMaster: treeId === MASTER_TREE_ID2,
-    role: u?.role || null,
-    anchorTreeId: anchor?.tree_id || null,
-    people: tree?.people || {},
-    families: tree?.families || {}
+    role: (u == null ? void 0 : u.role) || null,
+    anchorTreeId: (anchor == null ? void 0 : anchor.tree_id) || null,
+    people: (tree == null ? void 0 : tree.people) || {},
+    families: (tree == null ? void 0 : tree.families) || {}
   });
 }
 async function resolveInviteCodeAccess(rawCode, treeId, tree) {
   const code = String(rawCode || "").trim();
-  if (!code) return null;
-  if (!await inviteCodeGrantsTree(code, treeId, /* @__PURE__ */ new Date())) return null;
+  if (!code)
+    return null;
+  if (!await inviteCodeGrantsTree(code, treeId, /* @__PURE__ */ new Date()))
+    return null;
   return computeAccess({
     treeId,
     isMaster: false,
     role: null,
     anchorTreeId: treeId,
-    people: tree?.people || {},
-    families: tree?.families || {}
+    people: (tree == null ? void 0 : tree.people) || {},
+    families: (tree == null ? void 0 : tree.families) || {}
   });
 }
 async function handleRequest(event) {
+  var _a3, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v;
   let pathname = (event.path || "").split("?")[0].replace(/\/+$/, "");
-  if (pathname.startsWith("/api")) pathname = pathname.slice(4) || "/";
+  if (pathname.startsWith("/api"))
+    pathname = pathname.slice(4) || "/";
   const method = (event.httpMethod || "GET").toUpperCase();
-  if (method === "OPTIONS") return { statusCode: 204, headers: CORS_HEADERS, body: "" };
+  if (method === "OPTIONS")
+    return { statusCode: 204, headers: CORS_HEADERS, body: "" };
   const query = event.queryStringParameters || {};
   const headers = event.headers || {};
   const header = (name) => {
@@ -38078,7 +39442,8 @@ async function handleRequest(event) {
     if (pathname === "/auth/send-code" && method === "POST") {
       const body = parseBody(event);
       const phone = String(body.phone || "").trim();
-      if (!/^1\d{10}$/.test(phone)) return send(400, { error: "\u624B\u673A\u53F7\u683C\u5F0F\u4E0D\u6B63\u786E" });
+      if (!/^1\d{10}$/.test(phone))
+        return send(400, { error: "\u624B\u673A\u53F7\u683C\u5F0F\u4E0D\u6B63\u786E" });
       const existing = await colGet("jiapu_sms_codes", phone);
       if (existing && existing.expires_at > Date.now()) {
         const { requestCode: rc } = await Promise.resolve().then(() => (init_auth(), auth_exports));
@@ -38093,9 +39458,11 @@ async function handleRequest(event) {
       const phone = String(body.phone || "").trim();
       const code = String(body.code || "").trim();
       const user = await colGet("jiapu_users", phone);
-      if (!user) return send(404, { error: "\u8BE5\u624B\u673A\u53F7\u672A\u6CE8\u518C\uFF0C\u8BF7\u5148\u6CE8\u518C" });
+      if (!user)
+        return send(404, { error: "\u8BE5\u624B\u673A\u53F7\u672A\u6CE8\u518C\uFF0C\u8BF7\u5148\u6CE8\u518C" });
       const v = await verifyCode(phone, code);
-      if (!v.ok) return send(401, { error: v.message });
+      if (!v.ok)
+        return send(401, { error: v.message });
       const token = signJwt({ sub: phone, phone, role: user.role }, 7 * 24 * 3600);
       return send(200, { token, phone, nickname: user.nickname, role: user.role });
     }
@@ -38104,13 +39471,17 @@ async function handleRequest(event) {
       const phone = String(body.phone || "").trim();
       const code = String(body.code || "").trim();
       const nickname = String(body.nickname || "").trim().slice(0, 30);
-      if (!/^1\d{10}$/.test(phone)) return send(400, { error: "\u624B\u673A\u53F7\u683C\u5F0F\u4E0D\u6B63\u786E" });
-      if (await colGet("jiapu_users", phone)) return send(409, { error: "\u8BE5\u624B\u673A\u53F7\u5DF2\u6CE8\u518C\uFF0C\u8BF7\u76F4\u63A5\u767B\u5F55" });
+      if (!/^1\d{10}$/.test(phone))
+        return send(400, { error: "\u624B\u673A\u53F7\u683C\u5F0F\u4E0D\u6B63\u786E" });
+      if (await colGet("jiapu_users", phone))
+        return send(409, { error: "\u8BE5\u624B\u673A\u53F7\u5DF2\u6CE8\u518C\uFF0C\u8BF7\u76F4\u63A5\u767B\u5F55" });
       const inviteCode = body.invite_code;
       const inviteCheck = await resolveInvite(inviteCode, phone);
-      if (!inviteCheck.ok) return send(inviteCheck.status, { error: inviteCheck.error, code: inviteCheck.code });
+      if (!inviteCheck.ok)
+        return send(inviteCheck.status, { error: inviteCheck.error, code: inviteCheck.code });
       const v = await verifyCode(phone, code);
-      if (!v.ok) return send(401, { error: v.message });
+      if (!v.ok)
+        return send(401, { error: v.message });
       const user = await findOrCreateUser(phone, nickname || void 0);
       await applyInvite(phone, inviteCode, { now: /* @__PURE__ */ new Date() });
       const token = signJwt({ sub: phone, phone, role: user.role }, 7 * 24 * 3600);
@@ -38118,30 +39489,37 @@ async function handleRequest(event) {
     }
     if (pathname === "/invite/me" && method === "GET") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       return send(200, await inviteStats(u.phone, /* @__PURE__ */ new Date()));
     }
     if (pathname === "/invite/accept" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const r = await applyInvite(u.phone, parseBody(event).invite_code, { required: true, now: /* @__PURE__ */ new Date() });
-      if (!r.ok) return send(r.status, { error: r.error, code: r.code });
+      if (!r.ok)
+        return send(r.status, { error: r.error, code: r.code });
       return send(200, r);
     }
     if (pathname === "/invite/code" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const body = parseBody(event);
       const kind = String(body.kind || "").trim();
-      if (!INVITE_KINDS.includes(kind)) return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Akind \u2208 node/plain" });
+      if (!INVITE_KINDS.includes(kind))
+        return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Akind \u2208 node/plain" });
       let issueTree = null;
       let issueHandle = null;
       if (kind === "node") {
         issueTree = String(body.tree_id || "").trim();
         issueHandle = String(body.person_handle || "").trim();
-        if (!issueTree || !issueHandle) return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Anode \u578B\u9700\u63D0\u4F9B tree_id + person_handle" });
+        if (!issueTree || !issueHandle)
+          return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Anode \u578B\u9700\u63D0\u4F9B tree_id + person_handle" });
         const issueTargetTree = await getTree(issueTree);
-        if (!issueTargetTree) return send(404, { error: `\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728: ${issueTree}` });
+        if (!issueTargetTree)
+          return send(404, { error: `\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728: ${issueTree}` });
         if (!issueTargetTree.people || !issueTargetTree.people[issueHandle]) {
           return send(404, { error: `\u8BE5\u5BB6\u65CF\u6811\u4E2D\u627E\u4E0D\u5230\u6B64\u8282\u70B9: ${issueHandle}\uFF08tree_id=${issueTree}\uFF09` });
         }
@@ -38151,7 +39529,8 @@ async function handleRequest(event) {
         try {
           await assertAnchorBindable(issueHandle, "", { tree: issueTargetTree, treeId: issueTree, role: u.role });
         } catch (e) {
-          if (e.status === 409) return send(409, { error: "\u8BE5\u4EBA\u7269\u8282\u70B9\u5DF2\u88AB\u7ED1\u5B9A\uFF0C\u65E0\u6CD5\u7B7E\u53D1\u9080\u8BF7" });
+          if (e.status === 409)
+            return send(409, { error: "\u8BE5\u4EBA\u7269\u8282\u70B9\u5DF2\u88AB\u7ED1\u5B9A\uFF0C\u65E0\u6CD5\u7B7E\u53D1\u9080\u8BF7" });
           return send(e.status || 400, { error: e.message });
         }
         if (u.role !== "chief_editor") {
@@ -38187,7 +39566,8 @@ async function handleRequest(event) {
     }
     if (pathname === "/invite/bind" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const body = parseBody(event);
       const r = await bindInviteCode({
         phone: u.phone,
@@ -38202,42 +39582,56 @@ async function handleRequest(event) {
     }
     if (pathname === "/auth/me" && method === "GET") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const user = await colGet("jiapu_users", u.phone);
-      if (!user) return send(404, { error: "\u7528\u6237\u4E0D\u5B58\u5728" });
+      if (!user)
+        return send(404, { error: "\u7528\u6237\u4E0D\u5B58\u5728" });
       return send(200, { phone: user.phone, nickname: user.nickname, role: user.role });
     }
     if (pathname === "/tree-meta" && method === "GET") {
       const meta = await getMeta();
-      if (!meta) return send(500, { error: "tree-meta \u7F3A\u5931" });
+      if (!meta)
+        return send(500, { error: "tree-meta \u7F3A\u5931" });
       return send(200, decorateTreeMetaForRead(meta, /* @__PURE__ */ new Date()));
     }
     if (pathname === "/tree-meta" && method === "PUT") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const user = await colGet("jiapu_users", u.phone);
-      if (!user || user.role !== "chief_editor") return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
+      if (!user || user.role !== "chief_editor")
+        return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
       const body = parseBody(event);
       const { tree_id, display_title, genealogy_name, archive_url, hall_name, origin, origin_code, description } = body;
-      if (!tree_id) return send(400, { error: "\u7F3A\u5C11 tree_id" });
+      if (!tree_id)
+        return send(400, { error: "\u7F3A\u5C11 tree_id" });
       const code = origin_code === void 0 ? void 0 : String(origin_code ?? "").trim();
-      if (code && !isKnownOriginCode(code)) return send(400, { error: `\u53D1\u6E90\u5730\u884C\u653F\u533A\u5212\u4EE3\u7801\u65E0\u6548\uFF1A${code}` });
+      if (code && !isKnownOriginCode(code))
+        return send(400, { error: `\u53D1\u6E90\u5730\u884C\u653F\u533A\u5212\u4EE3\u7801\u65E0\u6548\uFF1A${code}` });
       const meta = await getMeta();
       const found = Object.values(meta.trees).find((t) => t.tree_id === tree_id);
-      if (!found) return send(404, { error: `\u672A\u627E\u5230 tree: ${tree_id}` });
+      if (!found)
+        return send(404, { error: `\u672A\u627E\u5230 tree: ${tree_id}` });
       if (genealogy_name !== void 0 && !sameGenealogyName(genealogy_name, found.genealogy_name)) {
         return send(400, { error: TREE_RENAME_HINT });
       }
       const entry = await mutateTreeMeta(tree_id, (e) => {
-        if (display_title !== void 0) e.display_title = display_title;
-        if (archive_url !== void 0) e.archive_url = archive_url;
-        if (hall_name !== void 0) e.hall_name = hall_name;
-        if (origin !== void 0) e.origin = origin;
+        if (display_title !== void 0)
+          e.display_title = display_title;
+        if (archive_url !== void 0)
+          e.archive_url = archive_url;
+        if (hall_name !== void 0)
+          e.hall_name = hall_name;
+        if (origin !== void 0)
+          e.origin = origin;
         if (code !== void 0) {
           e.origin_code = code;
-          if (code) e.origin = resolveOrigin(code).display;
+          if (code)
+            e.origin = resolveOrigin(code).display;
         }
-        if (description !== void 0) e.description = description;
+        if (description !== void 0)
+          e.description = description;
         return e;
       });
       return send(200, { ok: true, entry });
@@ -38245,7 +39639,8 @@ async function handleRequest(event) {
     if (pathname === "/admin/tree-rename" && method === "POST") {
       try {
         const u = await authUser(headers);
-        if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+        if (!u)
+          return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
         const body = parseBody(event);
         const r = await renameTreeGenealogy({
           treeId: body.tree_id,
@@ -38267,26 +39662,35 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/set-tree-origin" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const user = await colGet("jiapu_users", u.phone);
-      if (!user || user.role !== "chief_editor") return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
+      if (!user || user.role !== "chief_editor")
+        return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
       const body = parseBody(event);
       const wantTreeId = String(body.tree_id || "").trim();
       const wantHandle = String(body.person_handle || "").trim();
       const meta = await getMeta();
-      const entry = Object.values(meta?.trees || {}).find((t) => t && t.tree_id === wantTreeId);
-      if (!entry) return send(404, { error: `\u672A\u627E\u5230 tree: ${wantTreeId}` });
+      const entry = Object.values((meta == null ? void 0 : meta.trees) || {}).find((t) => t && t.tree_id === wantTreeId);
+      if (!entry)
+        return send(404, { error: `\u672A\u627E\u5230 tree: ${wantTreeId}` });
       const srcTree = await getTree(wantTreeId);
-      if (!srcTree) return send(404, { error: `\u6811\u4E0D\u5B58\u5728: ${wantTreeId}` });
-      const person = wantHandle ? srcTree.people?.[wantHandle] : null;
-      if (!person) return send(400, { error: "\u8BE5\u8282\u70B9\u4E0D\u5C5E\u4E8E\u672C\u6811" });
+      if (!srcTree)
+        return send(404, { error: `\u6811\u4E0D\u5B58\u5728: ${wantTreeId}` });
+      const person = wantHandle ? (_a3 = srcTree.people) == null ? void 0 : _a3[wantHandle] : null;
+      if (!person)
+        return send(400, { error: "\u8BE5\u8282\u70B9\u4E0D\u5C5E\u4E8E\u672C\u6811" });
       const founderHit = resolveOriginFounder(srcTree, entry);
-      if (!founderHit) return send(400, { error: founderUndecidedMessage(srcTree) });
+      if (!founderHit)
+        return send(400, { error: founderUndecidedMessage(srcTree) });
       const inScope = founderThreeGenerations(srcTree, founderHit.handle).some((c) => c.handle === wantHandle);
-      if (!inScope) return send(400, { error: "\u8BE5\u8282\u70B9\u4E0D\u5728\u672C\u6811\u59CB\u7956\u4E09\u4EE3\u8303\u56F4\u5185\uFF08\u4EC5\u59CB\u7956\u53CA\u5176\u4E0B\u4E24\u4EE3\u53EF\u4F5C\u4E3A\u53D1\u6E90\u5730\uFF09" });
+      if (!inScope)
+        return send(400, { error: "\u8BE5\u8282\u70B9\u4E0D\u5728\u672C\u6811\u59CB\u7956\u4E09\u4EE3\u8303\u56F4\u5185\uFF08\u4EC5\u59CB\u7956\u53CA\u5176\u4E0B\u4E24\u4EE3\u53EF\u4F5C\u4E3A\u53D1\u6E90\u5730\uFF09" });
       const srcCode = placeViewOf(person.birth_place).place_code;
-      if (!srcCode) return send(400, { error: "\u8BE5\u8282\u70B9\u672A\u586B\u5199\u51FA\u751F\u5730\u884C\u653F\u533A\u5212\u4EE3\u7801" });
-      if (!isKnownOriginCode(srcCode)) return send(400, { error: unknownOriginCodeMessage(srcCode) });
+      if (!srcCode)
+        return send(400, { error: "\u8BE5\u8282\u70B9\u672A\u586B\u5199\u51FA\u751F\u5730\u884C\u653F\u533A\u5212\u4EE3\u7801" });
+      if (!isKnownOriginCode(srcCode))
+        return send(400, { error: unknownOriginCodeMessage(srcCode) });
       const patch = treeOriginPatchOf(person.birth_place);
       await mutateTreeMeta(wantTreeId, (e) => ({ ...e, origin_code: patch.origin_code, origin: patch.origin }));
       return send(200, {
@@ -38302,54 +39706,41 @@ async function handleRequest(event) {
     if (pathname === "/geo/tree-index" && method === "GET") {
       return send(200, await getTreeIndex());
     }
+    if (pathname === "/tree/rank-index" && method === "GET") {
+      return send(200, await getTreeRankIndex());
+    }
     if (pathname === "/tree/rank" && method === "GET") {
-      if (!treeId) return send(400, { error: "\u7F3A\u5C11 X-Tree-Id" });
+      if (!treeId)
+        return send(400, { error: "\u7F3A\u5C11 X-Tree-Id" });
       const tree2 = await getTree(treeId);
-      if (!tree2) return send(404, { error: `\u6811\u4E0D\u5B58\u5728: ${treeId}` });
-      const gens = /* @__PURE__ */ new Map();
-      const details = await getAllDetails(treeId);
-      for (const d of details) {
-        const g = d.attributes?.find((a) => a.key === "external_chain_gen");
-        if (g) gens.set(d.handle, parseInt(g.value, 10) || 0);
-      }
-      const { totalGenerations, explicit } = computeTreeDepth(tree2, gens);
-      const rank = rankFromDepth(totalGenerations);
+      if (!tree2)
+        return send(404, { error: `\u6811\u4E0D\u5B58\u5728: ${treeId}` });
       const access = await resolveTreeAccess(headers, treeId, tree2);
+      const gens = explicitGensOf(await getAllDetails(treeId));
       const rankMeta = await getMeta();
-      const metaEntry = Object.values(rankMeta?.trees || {}).find((t) => t && t.tree_id === treeId) || null;
-      const personCount = countFamilyMembers(tree2, metaEntry, { kind: metaEntry?.kind, is_master: !!metaEntry?.is_master });
+      const metaEntry = Object.values((rankMeta == null ? void 0 : rankMeta.trees) || {}).find((t) => t && t.tree_id === treeId) || null;
       const activity = await treeActivity(treeId, { now: /* @__PURE__ */ new Date() });
+      const fields = treeRankFields(tree2, { metaEntry, explicitGens: gens, activity });
       return send(200, {
         tree_id: treeId,
-        total_generations: totalGenerations,
-        rank_key: rank.key,
-        rank_label: rank.label,
-        rank_en: rank.en,
-        rank_desc: rank.desc,
-        over_limit: totalGenerations > MAX_DEPTH,
-        max_depth: MAX_DEPTH,
-        root_count: Object.values(tree2.people).filter((p) => !p.parent_family).length,
-        person_count: personCount,
-        // mirror_count：本树 people 中「外树镜像」节点数（`String(external_mirror) === 'true'`，
-        // 纯计数、不涉权限裁剪）。**保留字段**：首页卡片已不再使用「N 人（含外树 M）」说明，
-        // 新前端只读 person_count；三档排序归一化继续用 person_count（新口径）。
-        mirror_count: Object.values(tree2.people).filter((p) => String(p.external_mirror) === "true").length,
-        explicit,
-        activity,
-        updated_at: tree2.updated_at === void 0 || tree2.updated_at === null ? "" : String(tree2.updated_at),
-        access: accessToPayload(access, totalGenerations)
+        ...fields,
+        // access：本树权限档（**仅本口下发**；排序聚合口 `/tree/rank-index` 不含该字段）
+        access: accessToPayload(access, fields.total_generations)
       });
     }
     if (pathname === "/wallet/balance" && method === "GET") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       return send(200, await getWalletOverview(u.phone));
     }
     if (pathname === "/wallet/recharge" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const amount = Number(parseBody(event).amount);
-      if (!amount || amount <= 0) return send(400, { error: "\u8BF7\u8F93\u5165\u6B63\u786E\u7684\u5145\u503C\u91D1\u989D" });
+      if (!amount || amount <= 0)
+        return send(400, { error: "\u8BF7\u8F93\u5165\u6B63\u786E\u7684\u5145\u503C\u91D1\u989D" });
       try {
         const balance = await recharge(u.phone, Math.round(amount * 100));
         return send(200, { ok: true, balance_yuan: (balance / 100).toFixed(2), payment: "mock" });
@@ -38365,13 +39756,15 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/wallet-fee" && method === "PUT") {
       const u = await authUser(headers);
-      if (!u || u.role !== "chief_editor") return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
+      if (!u || u.role !== "chief_editor")
+        return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
       const body = parseBody(event);
       const has = (k) => body[k] !== void 0 && body[k] !== null && String(body[k]).trim() !== "";
       const out = { ok: true };
       if (has("fee")) {
         const fee = Number(body.fee);
-        if (!fee || fee <= 0) return send(400, { error: "\u8BF7\u8F93\u5165\u6B63\u786E\u7684\u8D39\u7528" });
+        if (!fee || fee <= 0)
+          return send(400, { error: "\u8BF7\u8F93\u5165\u6B63\u786E\u7684\u8D39\u7528" });
         const cents = await setTreeCreateFeeCents(Math.round(fee * 100));
         out.tree_create_fee_yuan = (cents / 100).toFixed(2);
       }
@@ -38393,7 +39786,7 @@ async function handleRequest(event) {
         try {
           out.signin_pool = await setSigninPool(body.signin_pool);
         } catch (e) {
-          return send(400, { error: e?.message || "\u8BF7\u8F93\u5165\u6B63\u786E\u7684\u7B7E\u5230\u5956\u52B1\u6C60\uFF08\u975E\u7A7A\u6570\u7EC4\uFF0C\u542B kind / qty / weight\uFF09" });
+          return send(400, { error: (e == null ? void 0 : e.message) || "\u8BF7\u8F93\u5165\u6B63\u786E\u7684\u7B7E\u5230\u5956\u52B1\u6C60\uFF08\u975E\u7A7A\u6570\u7EC4\uFF0C\u542B kind / qty / weight\uFF09" });
         }
       }
       if (has("signin_makeup_cost_bamboos")) {
@@ -38414,15 +39807,17 @@ async function handleRequest(event) {
         try {
           out.revision_interval_years = await setRevisionIntervalYears(body.revision_interval_years);
         } catch (e) {
-          return send(400, { error: e?.message || "\u8BF7\u8F93\u5165\u6B63\u786E\u7684\u4FEE\u8C31\u95F4\u9694\u8868\uFF08\u975E\u7A7A\u6B63\u6574\u6570\u6570\u7EC4\uFF0C\u5E74\uFF09" });
+          return send(400, { error: (e == null ? void 0 : e.message) || "\u8BF7\u8F93\u5165\u6B63\u786E\u7684\u4FEE\u8C31\u95F4\u9694\u8868\uFF08\u975E\u7A7A\u6B63\u6574\u6570\u6570\u7EC4\uFF0C\u5E74\uFF09" });
         }
       }
-      if (Object.keys(out).length === 1) return send(400, { error: "\u8BF7\u8F93\u5165\u6B63\u786E\u7684\u8D39\u7528" });
+      if (Object.keys(out).length === 1)
+        return send(400, { error: "\u8BF7\u8F93\u5165\u6B63\u786E\u7684\u8D39\u7528" });
       return send(200, out);
     }
     if (pathname === "/assets/summary" && method === "GET") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const now = /* @__PURE__ */ new Date();
       const tc = await Promise.resolve().then(() => (init_task_center(), task_center_exports));
       const day7 = await getSigninDay7Fragments();
@@ -38438,7 +39833,8 @@ async function handleRequest(event) {
     }
     if (pathname === "/assets/expiring" && method === "GET") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const now = /* @__PURE__ */ new Date();
       const rawDays = query.days;
       const days = rawDays === void 0 || String(rawDays).trim() === "" ? EXPIRING_DEFAULT_DAYS : Number(rawDays);
@@ -38451,7 +39847,8 @@ async function handleRequest(event) {
     }
     if (pathname === "/assets/signin" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       try {
         const tc = await Promise.resolve().then(() => (init_task_center(), task_center_exports));
         const r = await tc.claimTask(u.phone, "signin", /* @__PURE__ */ new Date());
@@ -38472,14 +39869,17 @@ async function handleRequest(event) {
           calendar: r.calendar
         });
       } catch (e) {
-        if (isSystemFailure(e)) return send(500, { error: INTERNAL_ERROR_TEXT, status: 500 });
-        if (e?.code === "TASK_ALREADY_CLAIMED") return send(409, { error: "\u4ECA\u65E5\u5DF2\u7B7E\u5230" });
-        return send(Number(e?.status) || 409, { error: e?.message || "\u7B7E\u5230\u5931\u8D25" });
+        if (isSystemFailure(e))
+          return send(500, { error: INTERNAL_ERROR_TEXT, status: 500 });
+        if ((e == null ? void 0 : e.code) === "TASK_ALREADY_CLAIMED")
+          return send(409, { error: "\u4ECA\u65E5\u5DF2\u7B7E\u5230" });
+        return send(Number(e == null ? void 0 : e.status) || 409, { error: (e == null ? void 0 : e.message) || "\u7B7E\u5230\u5931\u8D25" });
       }
     }
     if (pathname === "/assets/signin/makeup" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       try {
         const tc = await Promise.resolve().then(() => (init_task_center(), task_center_exports));
         const r = await tc.signinMakeup(u.phone, parseBody(event).date, /* @__PURE__ */ new Date());
@@ -38492,9 +39892,11 @@ async function handleRequest(event) {
           calendar: r.calendar
         });
       } catch (e) {
-        if (isSystemFailure(e)) return send(500, { error: INTERNAL_ERROR_TEXT, status: 500 });
-        if (e?.code === "ASSET_INSUFFICIENT") return send(Number(e?.status) || 409, errorPayload(e));
-        return send(Number(e?.status) || 400, { error: e?.message || "\u8865\u7B7E\u5931\u8D25" });
+        if (isSystemFailure(e))
+          return send(500, { error: INTERNAL_ERROR_TEXT, status: 500 });
+        if ((e == null ? void 0 : e.code) === "ASSET_INSUFFICIENT")
+          return send(Number(e == null ? void 0 : e.status) || 409, errorPayload(e));
+        return send(Number(e == null ? void 0 : e.status) || 400, { error: (e == null ? void 0 : e.message) || "\u8865\u7B7E\u5931\u8D25" });
       }
     }
     if (pathname === "/spirit" && method === "GET") {
@@ -38508,7 +39910,8 @@ async function handleRequest(event) {
     if (pathname === "/spirit/mount-jade" && method === "POST") {
       try {
         const u = await authUser(headers);
-        if (!u) throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
+        if (!u)
+          throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
         const body = parseBody(event);
         return send(200, await mountJade(u.phone, body.tree_id || treeId, body.jade_id, /* @__PURE__ */ new Date()));
       } catch (e) {
@@ -38518,7 +39921,8 @@ async function handleRequest(event) {
     if (pathname === "/spirit/charge" && method === "POST") {
       try {
         const u = await authUser(headers);
-        if (!u) throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
+        if (!u)
+          throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
         const body = parseBody(event);
         return send(200, await chargeSpirit(u.phone, body.tree_id || treeId, body.plan, /* @__PURE__ */ new Date()));
       } catch (e) {
@@ -38528,7 +39932,8 @@ async function handleRequest(event) {
     if (pathname === "/assets/synthesize-jade" && method === "POST") {
       try {
         const u = await authUser(headers);
-        if (!u) throw httpError4(401, "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F");
+        if (!u)
+          throw httpError4(401, "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F");
         return send(200, await synthesizeJade(u.phone, /* @__PURE__ */ new Date()));
       } catch (e) {
         return send(e.status || 400, errorPayload(e));
@@ -38537,7 +39942,8 @@ async function handleRequest(event) {
     if (pathname === "/assets/decompose-jade" && method === "POST") {
       try {
         const u = await authUser(headers);
-        if (!u) throw httpError4(401, "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F");
+        if (!u)
+          throw httpError4(401, "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F");
         return send(200, await decomposeJade(u.phone, parseBody(event).jade_id, /* @__PURE__ */ new Date()));
       } catch (e) {
         return send(e.status || 400, errorPayload(e));
@@ -38555,7 +39961,8 @@ async function handleRequest(event) {
     if (pathname === "/market/my" && method === "GET") {
       try {
         const u = await authUser(headers);
-        if (!u) throw httpError4(401, "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F");
+        if (!u)
+          throw httpError4(401, "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F");
         const rawStatus = query.status;
         const status = rawStatus === void 0 || String(rawStatus).trim() === "" ? void 0 : String(rawStatus).trim();
         return send(200, await myMarket(u.phone, status, /* @__PURE__ */ new Date()));
@@ -38566,7 +39973,8 @@ async function handleRequest(event) {
     if (pathname === "/market/list" && method === "POST") {
       try {
         const u = await authUser(headers);
-        if (!u) throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
+        if (!u)
+          throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
         const body = parseBody(event);
         return send(200, await listBamboo(u.phone, { bundles: body.bundles, price_seeds: body.price_seeds }, /* @__PURE__ */ new Date()));
       } catch (e) {
@@ -38576,7 +39984,8 @@ async function handleRequest(event) {
     if (pathname === "/market/cancel" && method === "POST") {
       try {
         const u = await authUser(headers);
-        if (!u) throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
+        if (!u)
+          throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
         return send(200, await cancelListing(u.phone, parseBody(event).listing_id, /* @__PURE__ */ new Date()));
       } catch (e) {
         return send(e.status || 400, errorPayload(e));
@@ -38585,7 +39994,8 @@ async function handleRequest(event) {
     if (pathname === "/market/buy" && method === "POST") {
       try {
         const u = await authUser(headers);
-        if (!u) throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
+        if (!u)
+          throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
         return send(200, await buyListing(u.phone, parseBody(event).listing_id, /* @__PURE__ */ new Date()));
       } catch (e) {
         return send(e.status || 400, errorPayload(e));
@@ -38594,7 +40004,8 @@ async function handleRequest(event) {
     if (pathname === "/market/official-buy" && method === "POST") {
       try {
         const u = await authUser(headers);
-        if (!u) throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
+        if (!u)
+          throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
         return send(200, await officialPurchase(u.phone, { bundles: parseBody(event).bundles }, /* @__PURE__ */ new Date()));
       } catch (e) {
         return send(e.status || 400, errorPayload(e));
@@ -38603,8 +40014,10 @@ async function handleRequest(event) {
     if (pathname === "/admin/market/official-stock" && method === "PUT") {
       try {
         const u = await authUser(headers);
-        if (!u) throw httpError4(401, "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F");
-        if (u.role !== "chief_editor") throw httpError4(403, "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650");
+        if (!u)
+          throw httpError4(401, "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F");
+        if (u.role !== "chief_editor")
+          throw httpError4(403, "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650");
         const body = parseBody(event);
         return send(200, await setOfficialStock(body.daily_stock, body.price_fen, /* @__PURE__ */ new Date()));
       } catch (e) {
@@ -38621,18 +40034,21 @@ async function handleRequest(event) {
         const err = res && res.error || {};
         const status = Number(err.status) || 400;
         const body = { ok: false, error: { code: err.code || "FRIEND_OPS_FAILED", status, message: err.message || "\u597D\u53CB\u57DF\u64CD\u4F5C\u5931\u8D25" } };
-        if (err.reason !== void 0) body.error.reason = err.reason;
+        if (err.reason !== void 0)
+          body.error.reason = err.reason;
         return send(status, body);
       };
       if (pathname === "/friends" && method === "GET") {
         const u = await authUser(headers);
-        if (!u) return send(401, { ok: false, error: { code: "FRIEND_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
+        if (!u)
+          return send(401, { ok: false, error: { code: "FRIEND_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
         await friendOps.sweepFriends(/* @__PURE__ */ new Date());
         return friendShell(await friendOps.listFriends(u.phone, /* @__PURE__ */ new Date()));
       }
       if (pathname === "/friends/invite" && method === "POST") {
         const u = await authUser(headers);
-        if (!u) return send(401, { ok: false, error: { code: "FRIEND_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
+        if (!u)
+          return send(401, { ok: false, error: { code: "FRIEND_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
         return friendShell(await friendOps.sendFriendInvite(u.phone, parseBody(event).to, /* @__PURE__ */ new Date()));
       }
       const FRIEND_TOKEN_ROUTES = {
@@ -38646,12 +40062,14 @@ async function handleRequest(event) {
       };
       if (method === "POST" && FRIEND_TOKEN_ROUTES[pathname]) {
         const u = await authUser(headers);
-        if (!u) return send(401, { ok: false, error: { code: "FRIEND_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
+        if (!u)
+          return send(401, { ok: false, error: { code: "FRIEND_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
         return friendShell(await FRIEND_TOKEN_ROUTES[pathname](friendOps, u, parseBody(event).relation_token));
       }
       if (pathname === "/assets/scroll/decompose" && method === "POST") {
         const u = await authUser(headers);
-        if (!u) return send(401, { ok: false, error: { code: "FRIEND_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
+        if (!u)
+          return send(401, { ok: false, error: { code: "FRIEND_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
         const raw = parseBody(event).count;
         const count = raw === void 0 || String(raw).trim() === "" ? 1 : Number(raw);
         if (!Number.isInteger(count) || count <= 0) {
@@ -38671,7 +40089,7 @@ async function handleRequest(event) {
               error: { code: "SCROLL_LOCKED_CHECK_FAILED", status: 409, message: "\u65E0\u6CD5\u6821\u9A8C\u7EED\u7EA6\u9501\u5B9A\u72B6\u6001\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5" }
             });
           }
-          const lockedPieces2 = Math.max(0, Math.floor(Number(locked?.pieces) || 0));
+          const lockedPieces2 = Math.max(0, Math.floor(Number(locked == null ? void 0 : locked.pieces) || 0));
           const r = await mutateAssets(u.phone, (user) => {
             sweep(user, now);
             const totalPieces = sumLots(user.scrolls || []);
@@ -38696,15 +40114,17 @@ async function handleRequest(event) {
           }
           const body = {
             ok: false,
-            error: { code: e?.code || "SCROLL_DECOMPOSE_FAILED", status: Number(e?.status) || 409, message: e?.message || "\u5170\u5E16\u5206\u89E3\u5931\u8D25" }
+            error: { code: (e == null ? void 0 : e.code) || "SCROLL_DECOMPOSE_FAILED", status: Number(e == null ? void 0 : e.status) || 409, message: (e == null ? void 0 : e.message) || "\u5170\u5E16\u5206\u89E3\u5931\u8D25" }
           };
-          if (e?.detail !== void 0) body.error.detail = e.detail;
-          return send(Number(e?.status) || 409, body);
+          if ((e == null ? void 0 : e.detail) !== void 0)
+            body.error.detail = e.detail;
+          return send(Number(e == null ? void 0 : e.status) || 409, body);
         }
       }
       if (pathname === "/assets/scroll/synthesize" && method === "POST") {
         const u = await authUser(headers);
-        if (!u) return send(401, { ok: false, error: { code: "FRIEND_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
+        if (!u)
+          return send(401, { ok: false, error: { code: "FRIEND_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
         const raw = parseBody(event).count;
         const count = raw === void 0 || String(raw).trim() === "" ? 1 : Number(raw);
         if (!Number.isInteger(count) || count <= 0) {
@@ -38723,10 +40143,11 @@ async function handleRequest(event) {
           }
           const body = {
             ok: false,
-            error: { code: e?.code || "SCROLL_SYNTHESIZE_FAILED", status: Number(e?.status) || 409, message: e?.message || "\u5170\u5E16\u5408\u6210\u5931\u8D25" }
+            error: { code: (e == null ? void 0 : e.code) || "SCROLL_SYNTHESIZE_FAILED", status: Number(e == null ? void 0 : e.status) || 409, message: (e == null ? void 0 : e.message) || "\u5170\u5E16\u5408\u6210\u5931\u8D25" }
           };
-          if (e?.detail !== void 0) body.error.detail = e.detail;
-          return send(Number(e?.status) || 409, body);
+          if ((e == null ? void 0 : e.detail) !== void 0)
+            body.error.detail = e.detail;
+          return send(Number(e == null ? void 0 : e.status) || 409, body);
         }
       }
       return send(404, { ok: false, error: { code: "FRIEND_ROUTE_NOT_FOUND", status: 404, message: `\u672A\u77E5\u597D\u53CB\u57DF\u8DEF\u7531\uFF1A${method} ${pathname}` } });
@@ -38737,15 +40158,18 @@ async function handleRequest(event) {
         if (isSystemFailure(e)) {
           return send(500, { ok: false, error: { code: "INTERNAL_ERROR", status: 500, message: INTERNAL_ERROR_TEXT } });
         }
-        const status = Number(e?.status) || 409;
-        const body = { ok: false, error: { code: e?.code || fallbackCode, status, message: e?.message || fallbackMessage } };
-        if (e?.reason !== void 0) body.error.reason = e.reason;
-        if (e?.detail !== void 0) body.error.detail = e.detail;
+        const status = Number(e == null ? void 0 : e.status) || 409;
+        const body = { ok: false, error: { code: (e == null ? void 0 : e.code) || fallbackCode, status, message: (e == null ? void 0 : e.message) || fallbackMessage } };
+        if ((e == null ? void 0 : e.reason) !== void 0)
+          body.error.reason = e.reason;
+        if ((e == null ? void 0 : e.detail) !== void 0)
+          body.error.detail = e.detail;
         return send(status, body);
       };
       if (pathname === "/tasks/today" && method === "GET") {
         const u = await authUser(headers);
-        if (!u) return send(401, { ok: false, error: { code: "TASK_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
+        if (!u)
+          return send(401, { ok: false, error: { code: "TASK_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
         try {
           const view = await tc.tasksToday(u.phone, /* @__PURE__ */ new Date());
           return send(200, { ok: true, message: "\u5F53\u65E5\u4EFB\u52A1\u5DF2\u8BFB\u53D6", data: view });
@@ -38755,7 +40179,8 @@ async function handleRequest(event) {
       }
       if (pathname === "/tasks/claim" && method === "POST") {
         const u = await authUser(headers);
-        if (!u) return send(401, { ok: false, error: { code: "TASK_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
+        if (!u)
+          return send(401, { ok: false, error: { code: "TASK_UNAUTHORIZED", status: 401, message: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" } });
         try {
           const r = await tc.claimTask(u.phone, parseBody(event).task, /* @__PURE__ */ new Date());
           return send(200, { ok: true, message: `\u4EFB\u52A1\u300C${r.title}\u300D\u5956\u52B1\u5DF2\u9886\u53D6`, data: r });
@@ -38768,7 +40193,8 @@ async function handleRequest(event) {
     if (pathname === "/messages" && method === "GET") {
       try {
         const u = await authUser(headers);
-        if (!u) throw httpError4(401, ERR_NOT_LOGGED_IN);
+        if (!u)
+          throw httpError4(401, ERR_NOT_LOGGED_IN);
         const unreadFlag = query.unread;
         const unreadOnly = unreadFlag !== void 0 && ["1", "true", "yes"].includes(String(unreadFlag).trim().toLowerCase());
         return send(200, await messagesOf(u, /* @__PURE__ */ new Date(), { unreadOnly }));
@@ -38779,7 +40205,8 @@ async function handleRequest(event) {
     if (pathname === "/messages/read" && method === "POST") {
       try {
         const u = await authUser(headers);
-        if (!u) throw httpError4(401, ERR_NOT_LOGGED_IN);
+        if (!u)
+          throw httpError4(401, ERR_NOT_LOGGED_IN);
         const body = parseBody(event);
         return send(200, await readMessages(u.phone, body.ids, /* @__PURE__ */ new Date()));
       } catch (e) {
@@ -38789,8 +40216,10 @@ async function handleRequest(event) {
     if (pathname === "/admin/assets/grant" && method === "POST") {
       try {
         const u = await authUser(headers);
-        if (!u) throw httpError4(401, ERR_NOT_LOGGED_IN);
-        if (u.role !== "chief_editor") throw httpError4(403, ERR_CHIEF_ONLY);
+        if (!u)
+          throw httpError4(401, ERR_NOT_LOGGED_IN);
+        if (u.role !== "chief_editor")
+          throw httpError4(403, ERR_CHIEF_ONLY);
         const body = parseBody(event);
         return send(
           200,
@@ -38808,8 +40237,10 @@ async function handleRequest(event) {
     if (pathname === "/admin/assets/logs" && method === "GET") {
       try {
         const u = await authUser(headers);
-        if (!u) throw httpError4(401, ERR_NOT_LOGGED_IN);
-        if (u.role !== "chief_editor") throw httpError4(403, ERR_CHIEF_ONLY);
+        if (!u)
+          throw httpError4(401, ERR_NOT_LOGGED_IN);
+        if (u.role !== "chief_editor")
+          throw httpError4(403, ERR_CHIEF_ONLY);
         return send(200, await opsLogs({ operator: query.operator, phone: query.phone, limit: query.limit }));
       } catch (e) {
         return send(e.status || 400, errorPayload(e));
@@ -38818,8 +40249,10 @@ async function handleRequest(event) {
     if (pathname === "/admin/assets/user" && method === "GET") {
       try {
         const u = await authUser(headers);
-        if (!u) throw httpError4(401, ERR_NOT_LOGGED_IN);
-        if (u.role !== "chief_editor") throw httpError4(403, ERR_CHIEF_ONLY);
+        if (!u)
+          throw httpError4(401, ERR_NOT_LOGGED_IN);
+        if (u.role !== "chief_editor")
+          throw httpError4(403, ERR_CHIEF_ONLY);
         return send(200, await adminUserAssets(query.phone, /* @__PURE__ */ new Date()));
       } catch (e) {
         return send(e.status || 400, errorPayload(e));
@@ -38828,7 +40261,8 @@ async function handleRequest(event) {
     if (pathname === "/account/delete" && method === "POST") {
       try {
         const u = await authUser(headers);
-        if (!u) throw httpError4(401, ERR_NOT_LOGGED_IN);
+        if (!u)
+          throw httpError4(401, ERR_NOT_LOGGED_IN);
         return send(200, await deleteAccount(u.phone, /* @__PURE__ */ new Date()));
       } catch (e) {
         return send(e.status || 400, errorPayload(e));
@@ -38836,14 +40270,17 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/users" && method === "GET") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward) return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward)
+        return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
       const list2 = (await colAll("jiapu_users")).map((usr) => ({ phone: usr.phone, nickname: usr.nickname, role: usr.role, created_at: usr.created_at }));
       return send(200, list2);
     }
     if (pathname === "/admin/set-role" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const body = parseBody(event);
       const targetPhone = String(body.phone || "").trim();
       const newRole = String(body.role || "").trim();
@@ -38851,12 +40288,16 @@ async function handleRequest(event) {
         return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Aphone + role \u5FC5\u586B\uFF0Crole \u2208 user/branch_curator/tree_steward/chief_editor" });
       }
       const target = await colGet("jiapu_users", targetPhone);
-      if (!target) return send(404, { error: `\u7528\u6237\u4E0D\u5B58\u5728: ${targetPhone}` });
+      if (!target)
+        return send(404, { error: `\u7528\u6237\u4E0D\u5B58\u5728: ${targetPhone}` });
       const myLevel = ROLE_LEVEL[u.role] ?? 0;
       const targetLevel = ROLE_LEVEL[target.role] ?? 0;
-      if (targetPhone === u.phone) return send(400, { error: "\u4E0D\u80FD\u4FEE\u6539\u81EA\u5DF1\u7684\u89D2\u8272" });
-      if (ROLE_LEVEL[newRole] >= myLevel) return send(403, { error: `\u65E0\u6743\u6388\u4E88 ${newRole}\uFF08\u9700\u8981\u9AD8\u4E8E\u8BE5\u7EA7\u522B\u7684\u6743\u9650\uFF09` });
-      if (targetLevel >= myLevel) return send(403, { error: "\u65E0\u6743\u4FEE\u6539\u7EA7\u522B\u4E0D\u4F4E\u4E8E\u81EA\u5DF1\u7684\u7528\u6237" });
+      if (targetPhone === u.phone)
+        return send(400, { error: "\u4E0D\u80FD\u4FEE\u6539\u81EA\u5DF1\u7684\u89D2\u8272" });
+      if (ROLE_LEVEL[newRole] >= myLevel)
+        return send(403, { error: `\u65E0\u6743\u6388\u4E88 ${newRole}\uFF08\u9700\u8981\u9AD8\u4E8E\u8BE5\u7EA7\u522B\u7684\u6743\u9650\uFF09` });
+      if (targetLevel >= myLevel)
+        return send(403, { error: "\u65E0\u6743\u4FEE\u6539\u7EA7\u522B\u4E0D\u4F4E\u4E8E\u81EA\u5DF1\u7684\u7528\u6237" });
       if (u.role === "tree_steward" && !["guest", "user"].includes(target.role)) {
         return send(403, { error: "\u65CF\u8C31\u4E3B\u7406\u4EBA\u4EC5\u53EF\u7BA1\u7406\u666E\u901A\u7528\u6237\u4E0E\u652F\u7CFB\u8BB0\u5F55\u5B98" });
       }
@@ -38868,14 +40309,18 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/set-anchor" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward) return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward)
+        return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
       const body = parseBody(event);
       const targetPhone = String(body.phone || "").trim();
       const targetTree = String(body.tree_id || "").trim();
       const personHandle = String(body.person_handle || "").trim();
-      if (!targetPhone || !targetTree || !personHandle) return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Aphone + tree_id + person_handle \u5FC5\u586B" });
-      if (!await colGet("jiapu_users", targetPhone)) return send(404, { error: `\u7528\u6237\u4E0D\u5B58\u5728: ${targetPhone}` });
+      if (!targetPhone || !targetTree || !personHandle)
+        return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Aphone + tree_id + person_handle \u5FC5\u586B" });
+      if (!await colGet("jiapu_users", targetPhone))
+        return send(404, { error: `\u7528\u6237\u4E0D\u5B58\u5728: ${targetPhone}` });
       let bindable;
       try {
         bindable = await assertAnchorBindable(personHandle, targetPhone, {
@@ -38892,7 +40337,8 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/get-anchor" && method === "GET") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const targetPhone = query.phone || u.phone;
       if (targetPhone !== u.phone && (ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward) {
         return send(403, { error: "\u65E0\u6743\u67E5\u770B\u4ED6\u4EBA\u951A\u70B9" });
@@ -38902,16 +40348,21 @@ async function handleRequest(event) {
     }
     if (pathname === "/join-request" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const body = parseBody(event);
       const targetTree = String(body.tree_id || "").trim();
       const referenceHandle = String(body.reference_handle || "").trim();
       const selfName = String(body.self_name || "").trim().slice(0, 30);
       const note = String(body.note || "").trim().slice(0, 200);
-      if (!targetTree || !referenceHandle) return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Atree_id + reference_handle \u5FC5\u586B" });
-      if (!selfName && !note) return send(400, { error: "\u8BF7\u586B\u5199\u60A8\u7684\u59D3\u540D\u6216\u8865\u5145\u8BF4\u660E\uFF08\u8BA4\u9886\u7EBF\u7D22\uFF09" });
-      if (targetTree === MASTER_TREE_ID2) return send(403, { error: "\u4E2D\u534E\u4E16\u672C\u603B\u8C31\u4E0D\u53EF\u52A0\u5165\uFF0C\u4EC5\u53EF\u52A0\u5165\u666E\u901A\u5BB6\u65CF\u6811" });
-      if (await getAnchor(u.phone)) return send(400, { error: "\u60A8\u5DF2\u7ED1\u5B9A\u5BB6\u65CF\u6811\uFF0C\u5982\u9700\u6539\u7ED1\u8BF7\u5148\u7533\u8BF7\u89E3\u7ED1\u5E76\u7B49\u5F85\u5BA1\u6279" });
+      if (!targetTree || !referenceHandle)
+        return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Atree_id + reference_handle \u5FC5\u586B" });
+      if (!selfName && !note)
+        return send(400, { error: "\u8BF7\u586B\u5199\u60A8\u7684\u59D3\u540D\u6216\u8865\u5145\u8BF4\u660E\uFF08\u8BA4\u9886\u7EBF\u7D22\uFF09" });
+      if (targetTree === MASTER_TREE_ID2)
+        return send(403, { error: "\u4E2D\u534E\u4E16\u672C\u603B\u8C31\u4E0D\u53EF\u52A0\u5165\uFF0C\u4EC5\u53EF\u52A0\u5165\u666E\u901A\u5BB6\u65CF\u6811" });
+      if (await getAnchor(u.phone))
+        return send(400, { error: "\u60A8\u5DF2\u7ED1\u5B9A\u5BB6\u65CF\u6811\uFF0C\u5982\u9700\u6539\u7ED1\u8BF7\u5148\u7533\u8BF7\u89E3\u7ED1\u5E76\u7B49\u5F85\u5BA1\u6279" });
       const meta = await getMeta();
       if (!Object.values(meta.trees).some((t) => t.tree_id === targetTree)) {
         return send(404, { error: `\u5BB6\u65CF\u6811\u4E0D\u5B58\u5728: ${targetTree}` });
@@ -38921,9 +40372,11 @@ async function handleRequest(event) {
         return send(400, { error: "\u60A8\u5DF2\u63D0\u4EA4\u52A0\u5165\u7533\u8BF7\uFF0C\u8BF7\u7B49\u5F85\u65CF\u8C31\u4E3B\u7406\u4EBA\u5BA1\u6838" });
       }
       const tree2 = await getTree(targetTree);
-      if (!tree2) return send(404, { error: `\u6811\u4E0D\u5B58\u5728: ${targetTree}` });
-      const refPerson = tree2.people?.[referenceHandle];
-      if (!refPerson) return send(400, { error: "\u8BE5\u5BB6\u65CF\u6811\u4E2D\u627E\u4E0D\u5230\u6B64\u8282\u70B9" });
+      if (!tree2)
+        return send(404, { error: `\u6811\u4E0D\u5B58\u5728: ${targetTree}` });
+      const refPerson = (_b = tree2.people) == null ? void 0 : _b[referenceHandle];
+      if (!refPerson)
+        return send(400, { error: "\u8BE5\u5BB6\u65CF\u6811\u4E2D\u627E\u4E0D\u5230\u6B64\u8282\u70B9" });
       const access = await resolveTreeAccess(headers, targetTree, tree2);
       if (access.isHiddenPerson(referenceHandle)) {
         return send(400, { error: "\u6240\u9009\u652F\u7CFB\u8282\u70B9\u5F53\u524D\u4E0D\u53EF\u89C1\uFF0C\u8BF7\u5728\u516C\u5F00\u8C31\u7CFB\u4E2D\u9009\u62E9\u4E00\u4E2A\u4EE3\u8868\u60A8\u652F\u7CFB\u7684\u8282\u70B9" });
@@ -38944,14 +40397,17 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/join-requests" && method === "GET") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward) return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
-      const myTree = u.role === "chief_editor" ? null : (await getAnchor(u.phone))?.tree_id || null;
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward)
+        return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
+      const myTree = u.role === "chief_editor" ? null : ((_c = await getAnchor(u.phone)) == null ? void 0 : _c.tree_id) || null;
       const list2 = await colAll("jiapu_join_requests");
       const out = list2.filter((r) => myTree === null || r.tree_id === myTree).map((r) => ({ id: r._id, ...r }));
       const depthCache = /* @__PURE__ */ new Map();
       for (const item of out) {
-        if (!item.reference_handle || !item.tree_id) continue;
+        if (!item.reference_handle || !item.tree_id)
+          continue;
         if (!depthCache.has(item.tree_id)) {
           try {
             const t = await getTree(item.tree_id);
@@ -38962,26 +40418,34 @@ async function handleRequest(event) {
           }
         }
         const depth = depthCache.get(item.tree_id);
-        if (depth) item.reference_depth = depth.get(item.reference_handle) ?? null;
+        if (depth)
+          item.reference_depth = depth.get(item.reference_handle) ?? null;
       }
       return send(200, out);
     }
     if (pathname === "/admin/approve-join" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward) return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward)
+        return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
       const body = parseBody(event);
       const id = String(body.id || "").trim();
-      if (!id) return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Aid \u5FC5\u586B" });
+      if (!id)
+        return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1Aid \u5FC5\u586B" });
       const jr = await colGet("jiapu_join_requests", id);
-      if (!jr) return send(404, { error: "\u7533\u8BF7\u4E0D\u5B58\u5728" });
-      if (jr.status !== "pending") return send(400, { error: "\u8BE5\u7533\u8BF7\u5DF2\u5904\u7406" });
+      if (!jr)
+        return send(404, { error: "\u7533\u8BF7\u4E0D\u5B58\u5728" });
+      if (jr.status !== "pending")
+        return send(400, { error: "\u8BE5\u7533\u8BF7\u5DF2\u5904\u7406" });
       if (u.role !== "chief_editor") {
-        const myTree = (await getAnchor(u.phone))?.tree_id;
-        if (myTree && jr.tree_id !== myTree) return send(403, { error: "\u53EA\u80FD\u5BA1\u6279\u81EA\u5DF1\u5BB6\u65CF\u6811\u7684\u52A0\u5165\u7533\u8BF7" });
+        const myTree = (_d = await getAnchor(u.phone)) == null ? void 0 : _d.tree_id;
+        if (myTree && jr.tree_id !== myTree)
+          return send(403, { error: "\u53EA\u80FD\u5BA1\u6279\u81EA\u5DF1\u5BB6\u65CF\u6811\u7684\u52A0\u5165\u7533\u8BF7" });
       }
       const personHandle = String(body.person_handle || "").trim() || String(jr.reference_handle || "").trim();
-      if (!personHandle) return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1A\u8BE5\u7533\u8BF7\u7F3A\u5C11 reference_handle\uFF0C\u8BF7\u663E\u5F0F\u6307\u5B9A person_handle" });
+      if (!personHandle)
+        return send(400, { error: "\u53C2\u6570\u9519\u8BEF\uFF1A\u8BE5\u7533\u8BF7\u7F3A\u5C11 reference_handle\uFF0C\u8BF7\u663E\u5F0F\u6307\u5B9A person_handle" });
       let bindable;
       try {
         bindable = await assertAnchorBindable(personHandle, jr.phone, {
@@ -38993,7 +40457,8 @@ async function handleRequest(event) {
       } catch (e) {
         return send(e.status || 400, { error: e.message });
       }
-      if (await getAnchor(jr.phone)) return send(400, { error: "\u7533\u8BF7\u4EBA\u5DF2\u7ED1\u5B9A\u5BB6\u65CF\u6811\uFF0C\u65E0\u6CD5\u91CD\u590D\u7ED1\u5B9A" });
+      if (await getAnchor(jr.phone))
+        return send(400, { error: "\u7533\u8BF7\u4EBA\u5DF2\u7ED1\u5B9A\u5BB6\u65CF\u6811\uFF0C\u65E0\u6CD5\u91CD\u590D\u7ED1\u5B9A" });
       await setAnchor(jr.phone, jr.tree_id, personHandle);
       jr.status = "approved";
       jr.handled_by = u.phone;
@@ -39003,15 +40468,20 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/reject-join" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward) return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward)
+        return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
       const body = parseBody(event);
       const jr = await colGet("jiapu_join_requests", String(body.id || ""));
-      if (!jr) return send(404, { error: "\u7533\u8BF7\u4E0D\u5B58\u5728" });
-      if (jr.status !== "pending") return send(400, { error: "\u8BE5\u7533\u8BF7\u5DF2\u5904\u7406" });
+      if (!jr)
+        return send(404, { error: "\u7533\u8BF7\u4E0D\u5B58\u5728" });
+      if (jr.status !== "pending")
+        return send(400, { error: "\u8BE5\u7533\u8BF7\u5DF2\u5904\u7406" });
       if (u.role !== "chief_editor") {
-        const myTree = (await getAnchor(u.phone))?.tree_id;
-        if (myTree && jr.tree_id !== myTree) return send(403, { error: "\u53EA\u80FD\u5BA1\u6279\u81EA\u5DF1\u5BB6\u65CF\u6811\u7684\u52A0\u5165\u7533\u8BF7" });
+        const myTree = (_e = await getAnchor(u.phone)) == null ? void 0 : _e.tree_id;
+        if (myTree && jr.tree_id !== myTree)
+          return send(403, { error: "\u53EA\u80FD\u5BA1\u6279\u81EA\u5DF1\u5BB6\u65CF\u6811\u7684\u52A0\u5165\u7533\u8BF7" });
       }
       jr.status = "rejected";
       jr.reject_reason = String(body.reason || "").slice(0, 200);
@@ -39022,9 +40492,11 @@ async function handleRequest(event) {
     }
     if (pathname === "/leave-request" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const anchor = await getAnchor(u.phone);
-      if (!anchor) return send(400, { error: "\u60A8\u5C1A\u672A\u7ED1\u5B9A\u5BB6\u65CF\u6811" });
+      if (!anchor)
+        return send(400, { error: "\u60A8\u5C1A\u672A\u7ED1\u5B9A\u5BB6\u65CF\u6811" });
       const all = await colAll("jiapu_leave_requests");
       if (all.some((r) => r.phone === u.phone && r.status === "pending")) {
         return send(400, { error: "\u5DF2\u6709\u5F85\u5BA1\u6279\u7684\u89E3\u7ED1\u7533\u8BF7\uFF0C\u8BF7\u7B49\u5F85\u5904\u7406" });
@@ -39042,31 +40514,39 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/leave-requests" && method === "GET") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward) return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward)
+        return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
       const list2 = await colAll("jiapu_leave_requests");
-      const myTree = u.role === "chief_editor" ? null : (await getAnchor(u.phone))?.tree_id;
+      const myTree = u.role === "chief_editor" ? null : (_f = await getAnchor(u.phone)) == null ? void 0 : _f.tree_id;
       const out = list2.filter((r) => myTree === null || r.tree_id === myTree).map((r) => ({ id: r._id, ...r }));
       return send(200, out);
     }
     if (pathname === "/admin/approve-leave" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward) return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if ((ROLE_LEVEL[u.role] ?? 0) < ROLE_LEVEL.tree_steward)
+        return send(403, { error: "\u9700\u8981\u65CF\u8C31\u4E3B\u7406\u4EBA\u6216\u4EE5\u4E0A\u6743\u9650" });
       const body = parseBody(event);
       const req = await colGet("jiapu_leave_requests", String(body.id || ""));
-      if (!req) return send(404, { error: "\u7533\u8BF7\u4E0D\u5B58\u5728" });
-      if (req.status !== "pending") return send(400, { error: "\u8BE5\u7533\u8BF7\u5DF2\u5904\u7406" });
+      if (!req)
+        return send(404, { error: "\u7533\u8BF7\u4E0D\u5B58\u5728" });
+      if (req.status !== "pending")
+        return send(400, { error: "\u8BE5\u7533\u8BF7\u5DF2\u5904\u7406" });
       req.status = body.approve ? "approved" : "rejected";
       req.handled_by = u.phone;
       req.handled_at = (/* @__PURE__ */ new Date()).toISOString();
       await colSet("jiapu_leave_requests", req._id, req);
-      if (body.approve) await clearAnchor(req.phone);
+      if (body.approve)
+        await clearAnchor(req.phone);
       return send(200, { ok: true, status: req.status });
     }
     if (pathname === "/admin/add-spouse" && method === "POST") {
       const body = parseBody(event);
-      if (!body.person_handle) return send(400, { error: "\u7F3A\u5C11 person_handle" });
+      if (!body.person_handle)
+        return send(400, { error: "\u7F3A\u5C11 person_handle" });
       const spouseTreeId = body.tree_id || treeId || MASTER_TREE_ID2;
       try {
         await requireWriteUser(headers, spouseTreeId, pathname, body.person_handle, false);
@@ -39088,7 +40568,8 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/add-child" && method === "POST") {
       const body = parseBody(event);
-      if (!body.person_handle) return send(400, { error: "\u7F3A\u5C11 person_handle" });
+      if (!body.person_handle)
+        return send(400, { error: "\u7F3A\u5C11 person_handle" });
       const childTreeId = body.tree_id || treeId || MASTER_TREE_ID2;
       try {
         await requireWriteUser(headers, childTreeId, pathname, body.person_handle, true);
@@ -39114,29 +40595,36 @@ async function handleRequest(event) {
     if (pathname === "/marriage-request" && method === "POST") {
       const body = parseBody(event);
       const fromTree = body.tree_id || treeId;
-      if (!body.person_handle) return send(400, { error: "\u7F3A\u5C11 person_handle" });
+      if (!body.person_handle)
+        return send(400, { error: "\u7F3A\u5C11 person_handle" });
       try {
         const u = await authUser(headers);
-        if (!u) return send(401, { error: "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C" });
+        if (!u)
+          return send(401, { error: "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C" });
         await requireWriteUser(headers, fromTree, pathname, body.person_handle, false);
         const myTree = await getTree(fromTree);
         const me = myTree.people[body.person_handle];
-        if (!me) return send(404, { error: "\u53D1\u8D77\u65B9\u8282\u70B9\u4E0D\u5B58\u5728" });
+        if (!me)
+          return send(404, { error: "\u53D1\u8D77\u65B9\u8282\u70B9\u4E0D\u5B58\u5728" });
         const now = (/* @__PURE__ */ new Date()).toISOString();
         const note = String(body.note || "").slice(0, 200);
         if (body.action !== "divorce") {
           const spouseRef = String(body.spouse_handle || body.spouse_ref || "").trim();
-          if (!spouseRef) return send(400, { error: "\u8BF7\u586B\u5199\u914D\u5076\u7684\u5168\u5C40\u7F16\u53F7\uFF08\u5982 000052\uFF09\u6216 handle" });
+          if (!spouseRef)
+            return send(400, { error: "\u8BF7\u586B\u5199\u914D\u5076\u7684\u5168\u5C40\u7F16\u53F7\uFF08\u5982 000052\uFF09\u6216 handle" });
           const spouseHit = await resolveNode(spouseRef, "", {
             targetTreeId: String(body.spouse_tree_id || "").trim()
           });
-          if (!spouseHit) return send(404, { error: `\u627E\u4E0D\u5230\u7F16\u53F7/\u53E5\u67C4\u4E3A\u300C${spouseRef}\u300D\u7684\u914D\u5076\u8282\u70B9` });
+          if (!spouseHit)
+            return send(404, { error: `\u627E\u4E0D\u5230\u7F16\u53F7/\u53E5\u67C4\u4E3A\u300C${spouseRef}\u300D\u7684\u914D\u5076\u8282\u70B9` });
           const toTree2 = spouseHit.tree_id;
           const toHandle2 = spouseHit.handle;
-          if (toTree2 === fromTree) return send(400, { error: "\u540C\u6811\u5A5A\u914D\u8BF7\u7528\u6863\u6848\u91CC\u7684\u300C\uFF0B \u6DFB\u52A0\u914D\u5076\u300D" });
+          if (toTree2 === fromTree)
+            return send(400, { error: "\u540C\u6811\u5A5A\u914D\u8BF7\u7528\u6863\u6848\u91CC\u7684\u300C\uFF0B \u6DFB\u52A0\u914D\u5076\u300D" });
           const otherTree2 = await getTree(toTree2);
           const other2 = otherTree2.people[toHandle2];
-          if (!other2) return send(404, { error: "\u5BF9\u65B9\u8282\u70B9\u4E0D\u5B58\u5728" });
+          if (!other2)
+            return send(404, { error: "\u5BF9\u65B9\u8282\u70B9\u4E0D\u5B58\u5728" });
           const mid2 = genMarriageId();
           const date = normalizeMarriageDate(body.marriage_date || "");
           if (me.external_marriage_id && me.external_marriage_id === other2.external_marriage_id) {
@@ -39164,13 +40652,16 @@ async function handleRequest(event) {
           return send(200, { ok: true, request_id: mid2, status: "pending", to_tree: toTree2, to_person_name: other2.name });
         }
         const mid = me.external_marriage_id || "";
-        if (!mid) return send(400, { error: "\u8BE5\u8282\u70B9\u5F53\u524D\u6CA1\u6709\u6709\u6548\u7684\u8DE8\u6811\u5A5A\u59FB\uFF08\u65E7\u7248\u51FA\u5AC1\u94FE\u63A5\u8BF7\u7528\u300C\u7EDD\u5A5A/\u5408\u79BB\u300D\u5165\u53E3\uFF09" });
+        if (!mid)
+          return send(400, { error: "\u8BE5\u8282\u70B9\u5F53\u524D\u6CA1\u6709\u6709\u6548\u7684\u8DE8\u6811\u5A5A\u59FB\uFF08\u65E7\u7248\u51FA\u5AC1\u94FE\u63A5\u8BF7\u7528\u300C\u7EDD\u5A5A/\u5408\u79BB\u300D\u5165\u53E3\uFF09" });
         const toTree = me.external_tree || "";
         const toHandle = me.external_person_handle || "";
-        if (!toTree || !toHandle) return send(400, { error: "\u5A5A\u59FB\u5BF9\u65B9\u4FE1\u606F\u7F3A\u5931" });
+        if (!toTree || !toHandle)
+          return send(400, { error: "\u5A5A\u59FB\u5BF9\u65B9\u4FE1\u606F\u7F3A\u5931" });
         const otherTree = await getTree(toTree);
         const other = otherTree.people[toHandle];
-        if (!other) return send(404, { error: "\u5A5A\u59FB\u5BF9\u65B9\u8282\u70B9\u5728\u5176\u5BB6\u65CF\u6811\u4E2D\u4E0D\u5B58\u5728" });
+        if (!other)
+          return send(404, { error: "\u5A5A\u59FB\u5BF9\u65B9\u8282\u70B9\u5728\u5176\u5BB6\u65CF\u6811\u4E2D\u4E0D\u5B58\u5728" });
         const rid = genMarriageId();
         const endDate = normalizeMarriageDate(body.end_date || "");
         const request = {
@@ -39199,12 +40690,14 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/marriage-requests" && method === "GET") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const user = await colGet("jiapu_users", u.phone);
-      if (!user) return send(401, { error: "\u7528\u6237\u4E0D\u5B58\u5728" });
+      if (!user)
+        return send(401, { error: "\u7528\u6237\u4E0D\u5B58\u5728" });
       const chief = user.role === "chief_editor";
       const anchor = chief ? null : await getAnchor(u.phone);
-      const myTree = anchor?.tree_id || "";
+      const myTree = (anchor == null ? void 0 : anchor.tree_id) || "";
       const all = await colAll("jiapu_marriage_requests");
       const list2 = all.filter((r) => r.status === "pending").filter((r) => chief || r.to_tree === myTree).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
       return send(200, { list: list2, can_approve_all: chief, my_tree: myTree });
@@ -39213,12 +40706,15 @@ async function handleRequest(event) {
       const approve = pathname === "/admin/approve-marriage";
       const body = parseBody(event);
       const rid = String(body.request_id || "").trim();
-      if (!rid) return send(400, { error: "\u7F3A\u5C11 request_id" });
+      if (!rid)
+        return send(400, { error: "\u7F3A\u5C11 request_id" });
       try {
         const u = await authUser(headers);
-        if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+        if (!u)
+          return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
         const request = await colGet("jiapu_marriage_requests", rid);
-        if (!request) return send(404, { error: "\u7533\u8BF7\u4E0D\u5B58\u5728" });
+        if (!request)
+          return send(404, { error: "\u7533\u8BF7\u4E0D\u5B58\u5728" });
         if (request.status !== "pending") {
           return send(400, { error: request.status === "approved" ? "\u8BE5\u7533\u8BF7\u5DF2\u901A\u8FC7" : "\u8BE5\u7533\u8BF7\u5DF2\u9A73\u56DE" });
         }
@@ -39278,23 +40774,29 @@ async function handleRequest(event) {
     if (pathname === "/admin/marry-end" && method === "POST") {
       const body = parseBody(event);
       const fromTree = body.tree_id || treeId;
-      if (!body.person_handle) return send(400, { error: "\u7F3A\u5C11 person_handle" });
+      if (!body.person_handle)
+        return send(400, { error: "\u7F3A\u5C11 person_handle" });
       try {
         const u = await authUser(headers);
-        if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+        if (!u)
+          return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
         const myTree = await getTree(fromTree);
         const me = myTree.people[body.person_handle];
-        if (!me) return send(404, { error: "\u8282\u70B9\u4E0D\u5B58\u5728" });
+        if (!me)
+          return send(404, { error: "\u8282\u70B9\u4E0D\u5B58\u5728" });
         const otherTreeId = me.external_tree || "";
         const otherHandle = me.external_person_handle || "";
-        if (!otherTreeId || !otherHandle) return send(400, { error: "\u8BE5\u8282\u70B9\u6CA1\u6709\u8DE8\u6811\u5A5A\u59FB\u8BB0\u5F55" });
-        if (!me.gender || me.gender === "U") return send(400, { error: "\u672C\u4EBA\u6027\u522B\u672A\u77E5\uFF0C\u65E0\u6CD5\u5224\u5B9A\u7537\u65B9\uFF08\u4E3B\u52A8\uFF09\u4E00\u4FA7" });
+        if (!otherTreeId || !otherHandle)
+          return send(400, { error: "\u8BE5\u8282\u70B9\u6CA1\u6709\u8DE8\u6811\u5A5A\u59FB\u8BB0\u5F55" });
+        if (!me.gender || me.gender === "U")
+          return send(400, { error: "\u672C\u4EBA\u6027\u522B\u672A\u77E5\uFF0C\u65E0\u6CD5\u5224\u5B9A\u7537\u65B9\uFF08\u4E3B\u52A8\uFF09\u4E00\u4FA7" });
         const husbandTree = me.gender === "M" ? fromTree : otherTreeId;
         const husbandHandle = me.gender === "M" ? me.handle : otherHandle;
         await requireWriteUser(headers, husbandTree, pathname, husbandHandle, false);
         const otherTree = await getTree(otherTreeId);
         const other = otherTree.people[otherHandle];
-        if (!other) return send(404, { error: "\u5A5A\u59FB\u5BF9\u65B9\u8282\u70B9\u5728\u5176\u5BB6\u65CF\u6811\u4E2D\u4E0D\u5B58\u5728" });
+        if (!other)
+          return send(404, { error: "\u5A5A\u59FB\u5BF9\u65B9\u8282\u70B9\u5728\u5176\u5BB6\u65CF\u6811\u4E2D\u4E0D\u5B58\u5728" });
         const mid = me.external_marriage_id || "";
         const result = mid ? await updateTrees(
           [fromTree, otherTreeId],
@@ -39328,40 +40830,50 @@ async function handleRequest(event) {
     if (pathname === "/admin/founder-request" && method === "POST") {
       const body = parseBody(event);
       const reqTree = body.tree_id || treeId;
-      if (!reqTree) return send(400, { error: "\u7F3A\u5C11 X-Tree-Id" });
-      if (!body.person_handle) return send(400, { error: "\u7F3A\u5C11 person_handle" });
+      if (!reqTree)
+        return send(400, { error: "\u7F3A\u5C11 X-Tree-Id" });
+      if (!body.person_handle)
+        return send(400, { error: "\u7F3A\u5C11 person_handle" });
       try {
         const u = await requireWriteUser(headers, reqTree, pathname, body.person_handle, false);
         const meta = await getMeta();
         const entry = entryOf(meta, reqTree);
         const reqKind = treeKindOf(entry);
-        if (reqKind === TREE_KIND.MASTER) return send(400, { error: "\u4E2D\u534E\u4E16\u672C\u603B\u8C31\u672C\u8EAB\u4E0D\u53EF\u8BA4\u7956" });
+        if (reqKind === TREE_KIND.MASTER)
+          return send(400, { error: "\u4E2D\u534E\u4E16\u672C\u603B\u8C31\u672C\u8EAB\u4E0D\u53EF\u8BA4\u7956" });
         const targetTreeId = String(
           body.target_tree_id || body.master_tree_id || (reqKind === TREE_KIND.CLAN ? MASTER_TREE_ID2 : "")
         ).trim();
-        if (!targetTreeId) return send(400, { error: "\u8BF7\u9009\u62E9\u8BA4\u7956\u76EE\u6807\uFF08\u7956\u8C31 / \u4E2D\u534E\u4E16\u672C\uFF09" });
+        if (!targetTreeId)
+          return send(400, { error: "\u8BF7\u9009\u62E9\u8BA4\u7956\u76EE\u6807\uFF08\u7956\u8C31 / \u4E2D\u534E\u4E16\u672C\uFF09" });
         const targetEntry = entryOf(meta, targetTreeId);
         const masterRef = String(body.target_handle || body.master_handle || body.target_ref || "").trim();
-        if (!masterRef) return send(400, { error: "\u8BF7\u9009\u62E9\u76EE\u6807\u6811\u4E2D\u7684\u771F\u8EAB\u8282\u70B9" });
+        if (!masterRef)
+          return send(400, { error: "\u8BF7\u9009\u62E9\u76EE\u6807\u6811\u4E2D\u7684\u771F\u8EAB\u8282\u70B9" });
         const masterHit = await resolveNode(masterRef, targetTreeId, { targetTreeId });
-        if (!masterHit) return send(404, { error: `\u76EE\u6807\u6811 ${targetTreeId} \u4E2D\u627E\u4E0D\u5230\u7F16\u53F7/\u53E5\u67C4\u4E3A\u300C${masterRef}\u300D\u7684\u8282\u70B9` });
+        if (!masterHit)
+          return send(404, { error: `\u76EE\u6807\u6811 ${targetTreeId} \u4E2D\u627E\u4E0D\u5230\u7F16\u53F7/\u53E5\u67C4\u4E3A\u300C${masterRef}\u300D\u7684\u8282\u70B9` });
         const masterHandle = masterHit.handle;
         const tree2 = await getTree(reqTree);
-        if (!tree2) return send(404, { error: `\u6811\u4E0D\u5B58\u5728: ${reqTree}` });
+        if (!tree2)
+          return send(404, { error: `\u6811\u4E0D\u5B58\u5728: ${reqTree}` });
         const founder = tree2.people[body.person_handle];
-        if (!founder) return send(404, { error: "\u8BE5\u5BB6\u65CF\u6811\u4E2D\u627E\u4E0D\u5230\u59CB\u7956\u8282\u70B9" });
+        if (!founder)
+          return send(404, { error: "\u8BE5\u5BB6\u65CF\u6811\u4E2D\u627E\u4E0D\u5230\u59CB\u7956\u8282\u70B9" });
         if (!canInitiateAttach({ tree: tree2, person: founder, entry, treeId: reqTree })) {
           return send(400, { error: "\u4EC5\u672C\u5BB6\u65CF\u6811/\u7956\u8C31\u7684\u59CB\u7956\u8282\u70B9\u53EF\u53D1\u8D77\u8BA4\u7956" });
         }
         assertOneAttachPerTree(founder);
         assertAttachTarget({ sourceTreeId: reqTree, sourceEntry: entry, targetTreeId, targetEntry });
         const targetTree = await getTree(targetTreeId);
-        const masterPerson = targetTree?.people?.[masterHandle];
-        if (!masterPerson) return send(404, { error: "\u6240\u9009\u76EE\u6807\u6811\u8282\u70B9\u4E0D\u5B58\u5728" });
+        const masterPerson = (_g = targetTree == null ? void 0 : targetTree.people) == null ? void 0 : _g[masterHandle];
+        if (!masterPerson)
+          return send(404, { error: "\u6240\u9009\u76EE\u6807\u6811\u8282\u70B9\u4E0D\u5B58\u5728" });
         const pending = (await colAll(FOUNDER_REQUEST_COLLECTION)).find(
           (r) => r.status === "pending" && r.tree_id === reqTree
         );
-        if (pending) return send(400, { error: "\u8BE5\u5BB6\u65CF\u6811\u5DF2\u6709\u5F85\u5BA1\u6279\u7684\u8BA4\u7956\u7533\u8BF7\uFF0C\u8BF7\u7B49\u5F85\u603B\u7F16\u5BA1\u6279" });
+        if (pending)
+          return send(400, { error: "\u8BE5\u5BB6\u65CF\u6811\u5DF2\u6709\u5F85\u5BA1\u6279\u7684\u8BA4\u7956\u7533\u8BF7\uFF0C\u8BF7\u7B49\u5F85\u603B\u7F16\u5BA1\u6279" });
         const id = genRequestId();
         const targetKind = treeKindOf(targetEntry);
         const request = buildFounderRequest({
@@ -39390,12 +40902,14 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/founder-requests" && method === "GET") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const user = await colGet("jiapu_users", u.phone);
-      if (!user) return send(401, { error: "\u7528\u6237\u4E0D\u5B58\u5728" });
+      if (!user)
+        return send(401, { error: "\u7528\u6237\u4E0D\u5B58\u5728" });
       const chief = user.role === "chief_editor";
       const anchor = chief ? null : await getAnchor(u.phone);
-      const myTree = anchor?.tree_id || "";
+      const myTree = (anchor == null ? void 0 : anchor.tree_id) || "";
       const list2 = filterPendingRequests(await colAll(FOUNDER_REQUEST_COLLECTION), { chief, myTree });
       const masterHandle = String(query.master_handle || "").trim();
       const attachments = masterHandle ? attachedTreesOf(await listAttachedTrees({ masterTreeId: MASTER_TREE_ID2 }), masterHandle) : [];
@@ -39405,13 +40919,16 @@ async function handleRequest(event) {
     if (pathname === "/admin/decide-founder" && method === "POST") {
       const body = parseBody(event);
       const rid = String(body.request_id || "").trim();
-      if (!rid) return send(400, { error: "\u7F3A\u5C11 request_id" });
+      if (!rid)
+        return send(400, { error: "\u7F3A\u5C11 request_id" });
       const approve = !(body.approve === false || body.action === "reject");
       try {
         const u = await authUser(headers);
-        if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+        if (!u)
+          return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
         const request = await colGet(FOUNDER_REQUEST_COLLECTION, rid);
-        if (!request) return send(404, { error: "\u7533\u8BF7\u4E0D\u5B58\u5728" });
+        if (!request)
+          return send(404, { error: "\u7533\u8BF7\u4E0D\u5B58\u5728" });
         if (request.status !== "pending") {
           return send(400, { error: request.status === "approved" ? "\u8BE5\u7533\u8BF7\u5DF2\u901A\u8FC7" : "\u8BE5\u7533\u8BF7\u5DF2\u9A73\u56DE" });
         }
@@ -39464,10 +40981,13 @@ async function handleRequest(event) {
       const attachTree = String(body.tree_id || "").trim();
       const targetTreeId = String(body.target_tree_id || treeId || MASTER_TREE_ID2).trim();
       const masterRef = String(body.target_handle || body.master_handle || body.target_ref || "").trim();
-      if (!attachTree) return send(400, { error: "\u8BF7\u9009\u62E9\u8981\u6302\u8F7D\u7684\u4E0B\u5C42\u6811\uFF08\u7956\u8C31 / \u5BB6\u65CF\u6811\uFF09" });
-      if (!masterRef) return send(400, { error: "\u7F3A\u5C11 target_handle" });
+      if (!attachTree)
+        return send(400, { error: "\u8BF7\u9009\u62E9\u8981\u6302\u8F7D\u7684\u4E0B\u5C42\u6811\uFF08\u7956\u8C31 / \u5BB6\u65CF\u6811\uFF09" });
+      if (!masterRef)
+        return send(400, { error: "\u7F3A\u5C11 target_handle" });
       const masterHit = await resolveNode(masterRef, targetTreeId, { targetTreeId });
-      if (!masterHit) return send(404, { error: `\u76EE\u6807\u6811 ${targetTreeId} \u4E2D\u627E\u4E0D\u5230\u7F16\u53F7/\u53E5\u67C4\u4E3A\u300C${masterRef}\u300D\u7684\u8282\u70B9` });
+      if (!masterHit)
+        return send(404, { error: `\u76EE\u6807\u6811 ${targetTreeId} \u4E2D\u627E\u4E0D\u5230\u7F16\u53F7/\u53E5\u67C4\u4E3A\u300C${masterRef}\u300D\u7684\u8282\u70B9` });
       const masterHandle = masterHit.handle;
       try {
         const u = await requireWriteUser(headers, targetTreeId, pathname, masterHandle, false);
@@ -39475,7 +40995,8 @@ async function handleRequest(event) {
         const srcEntry = entryOf(meta, attachTree);
         const targetEntry = entryOf(meta, targetTreeId);
         const tree2 = await getTree(attachTree);
-        if (!tree2) return send(404, { error: `\u6811\u4E0D\u5B58\u5728: ${attachTree}` });
+        if (!tree2)
+          return send(404, { error: `\u6811\u4E0D\u5B58\u5728: ${attachTree}` });
         assertAttachTarget({ sourceTreeId: attachTree, sourceEntry: srcEntry, targetTreeId, targetEntry });
         const srcKind = treeKindOf(srcEntry);
         let result;
@@ -39495,7 +41016,8 @@ async function handleRequest(event) {
           if (!founderHandle && isFounderMissing(srcEntry)) {
             return send(400, { error: "\u8BE5\u5BB6\u65CF\u6811\u5C1A\u672A\u767B\u8BB0\u59CB\u7956\uFF0C\u8BF7\u5148\u9009\u62E9\u8981\u6307\u5B9A\u4E3A\u59CB\u7956\u7684\u8282\u70B9" });
           }
-          if (!founderHandle) return send(404, { error: "\u8BE5\u5BB6\u65CF\u6811\u6CA1\u6709\u767B\u8BB0\u7684\u59CB\u7956\u8282\u70B9\uFF0C\u65E0\u6CD5\u6302\u8F7D" });
+          if (!founderHandle)
+            return send(404, { error: "\u8BE5\u5BB6\u65CF\u6811\u6CA1\u6709\u767B\u8BB0\u7684\u59CB\u7956\u8282\u70B9\uFF0C\u65E0\u6CD5\u6302\u8F7D" });
           result = await attachFounder({
             treeId: attachTree,
             founderHandle,
@@ -39508,7 +41030,8 @@ async function handleRequest(event) {
         }
         const now = (/* @__PURE__ */ new Date()).toISOString();
         for (const r of await colAll(FOUNDER_REQUEST_COLLECTION)) {
-          if (r.status !== "pending" || r.tree_id !== attachTree) continue;
+          if (r.status !== "pending" || r.tree_id !== attachTree)
+            continue;
           await colSet(FOUNDER_REQUEST_COLLECTION, r._id, {
             ...r,
             status: "approved",
@@ -39531,9 +41054,12 @@ async function handleRequest(event) {
       const remountRef = String(
         body.target_handle || body.master_handle || body.new_parent_handle || body.target_ref || ""
       ).trim();
-      if (!remountTree && !remountRegRef) return send(400, { error: "\u7F3A\u5C11 tree_id \u6216 registration_handle" });
-      if (!remountClanId) return send(400, { error: "\u7F3A\u5C11\u7956\u8C31\uFF1A\u8BF7\u7ED9\u51FA target_tree_id\uFF08\u6216 X-Tree-Id\uFF09" });
-      if (!remountRef) return send(400, { error: "\u8BF7\u9009\u62E9\u65B0\u7684\u843D\u70B9\u8282\u70B9\uFF08\u4E0D\u5F97\u9000\u56DE\u72EC\u7ACB\u6839\uFF09" });
+      if (!remountTree && !remountRegRef)
+        return send(400, { error: "\u7F3A\u5C11 tree_id \u6216 registration_handle" });
+      if (!remountClanId)
+        return send(400, { error: "\u7F3A\u5C11\u7956\u8C31\uFF1A\u8BF7\u7ED9\u51FA target_tree_id\uFF08\u6216 X-Tree-Id\uFF09" });
+      if (!remountRef)
+        return send(400, { error: "\u8BF7\u9009\u62E9\u65B0\u7684\u843D\u70B9\u8282\u70B9\uFF08\u4E0D\u5F97\u9000\u56DE\u72EC\u7ACB\u6839\uFF09" });
       try {
         const meta = await getMeta();
         const targetEntry = entryOf(meta, remountClanId);
@@ -39541,16 +41067,21 @@ async function handleRequest(event) {
           return send(400, { error: "\u6539\u6302\u53EA\u80FD\u843D\u5728\u7956\u8C31\u5185\uFF08\u666E\u901A\u5BB6\u65CF\u6811 \u2192 \u7956\u8C31\uFF09" });
         }
         const targetTree = await getTree(remountClanId);
-        if (!targetTree) return send(404, { error: `\u7956\u8C31\u4E0D\u5B58\u5728: ${remountClanId}` });
+        if (!targetTree)
+          return send(404, { error: `\u7956\u8C31\u4E0D\u5B58\u5728: ${remountClanId}` });
         let remountFamTree = remountTree;
         if (remountRegRef) {
-          const regPerson = targetTree.people?.[remountRegRef];
-          if (!regPerson) return send(404, { error: `\u7956\u8C31 ${remountClanId} \u4E2D\u627E\u4E0D\u5230\u767B\u8BB0\u955C\u50CF\u300C${remountRegRef}\u300D` });
-          if (!remountFamTree) remountFamTree = String(regPerson.external_tree || "");
+          const regPerson = (_h = targetTree.people) == null ? void 0 : _h[remountRegRef];
+          if (!regPerson)
+            return send(404, { error: `\u7956\u8C31 ${remountClanId} \u4E2D\u627E\u4E0D\u5230\u767B\u8BB0\u955C\u50CF\u300C${remountRegRef}\u300D` });
+          if (!remountFamTree)
+            remountFamTree = String(regPerson.external_tree || "");
         }
-        if (!remountFamTree) return send(400, { error: "\u7F3A\u5C11 tree_id\uFF08\u6216\u767B\u8BB0\u955C\u50CF handle\uFF09" });
+        if (!remountFamTree)
+          return send(400, { error: "\u7F3A\u5C11 tree_id\uFF08\u6216\u767B\u8BB0\u955C\u50CF handle\uFF09" });
         const remountHit = await resolveNode(remountRef, remountClanId, { targetTreeId: remountClanId });
-        if (!remountHit) return send(404, { error: `\u7956\u8C31 ${remountClanId} \u4E2D\u627E\u4E0D\u5230\u7F16\u53F7/\u53E5\u67C4\u4E3A\u300C${remountRef}\u300D\u7684\u8282\u70B9` });
+        if (!remountHit)
+          return send(404, { error: `\u7956\u8C31 ${remountClanId} \u4E2D\u627E\u4E0D\u5230\u7F16\u53F7/\u53E5\u67C4\u4E3A\u300C${remountRef}\u300D\u7684\u8282\u70B9` });
         if (remountHit.tree_id !== remountClanId) {
           return send(400, { error: `\u65B0\u843D\u70B9\u5FC5\u987B\u5728\u7956\u8C31 ${remountClanId} \u5185\uFF08\u4E0D\u5F97\u9000\u56DE\u72EC\u7ACB\u6839\uFF09` });
         }
@@ -39572,10 +41103,14 @@ async function handleRequest(event) {
       const directClanTitle = String(body.clan_title || "").trim();
       const directTargetTreeId = String(body.target_tree_id || MASTER_TREE_ID2).trim();
       const directMasterRef = String(body.master_handle || "").trim();
-      if (!directClanSurname) return send(400, { error: "\u8BF7\u586B\u5199\u59D3\u6C0F" });
-      if (!/^[\u4e00-\u9fa5]$/.test(directClanSurname)) return send(400, { error: "\u8BF7\u586B\u5199\u5355\u4E2A\u6C49\u5B57\u59D3\u6C0F" });
-      if (!directClanTitle) return send(400, { error: "\u8BF7\u586B\u5199\u7956\u8C31\u540D\u79F0" });
-      if (!directMasterRef) return send(400, { error: "\u7F3A\u5C11 master_handle" });
+      if (!directClanSurname)
+        return send(400, { error: "\u8BF7\u586B\u5199\u59D3\u6C0F" });
+      if (!/^[\u4e00-\u9fa5]$/.test(directClanSurname))
+        return send(400, { error: "\u8BF7\u586B\u5199\u5355\u4E2A\u6C49\u5B57\u59D3\u6C0F" });
+      if (!directClanTitle)
+        return send(400, { error: "\u8BF7\u586B\u5199\u7956\u8C31\u540D\u79F0" });
+      if (!directMasterRef)
+        return send(400, { error: "\u7F3A\u5C11 master_handle" });
       const directMasterHit = await resolveNode(directMasterRef, directTargetTreeId, { targetTreeId: directTargetTreeId });
       if (!directMasterHit) {
         return send(404, { error: `\u76EE\u6807\u6811 ${directTargetTreeId} \u4E2D\u627E\u4E0D\u5230\u7F16\u53F7/\u53E5\u67C4\u4E3A\u300C${directMasterRef}\u300D\u7684\u8282\u70B9` });
@@ -39609,7 +41144,8 @@ async function handleRequest(event) {
     if (pathname === "/admin/detach-founder" && method === "POST") {
       const body = parseBody(event);
       const fromTree = body.tree_id || treeId;
-      if (!fromTree) return send(400, { error: "\u7F3A\u5C11 X-Tree-Id" });
+      if (!fromTree)
+        return send(400, { error: "\u7F3A\u5C11 X-Tree-Id" });
       try {
         const meta = await getMeta();
         const fromEntry = entryOf(meta, fromTree);
@@ -39617,7 +41153,8 @@ async function handleRequest(event) {
         const isMasterSide = fromKind === TREE_KIND.MASTER || fromTree === MASTER_TREE_ID2;
         if (isMasterSide) {
           const masterRef = String(body.master_handle || body.target_handle || body.person_handle || "").trim();
-          if (!masterRef) return send(400, { error: "\u7F3A\u5C11 master_handle" });
+          if (!masterRef)
+            return send(400, { error: "\u7F3A\u5C11 master_handle" });
           const masterHit = await resolveNode(masterRef, MASTER_TREE_ID2);
           if (masterHit && masterHit.tree_id !== MASTER_TREE_ID2) {
             return send(404, { error: `\u7F16\u53F7/\u53E5\u67C4\u300C${masterRef}\u300D\u5C5E\u4E8E\u5BB6\u65CF\u6811 ${masterHit.tree_id}\uFF0C\u4E0D\u5728\u603B\u8C31` });
@@ -39633,7 +41170,7 @@ async function handleRequest(event) {
           if (!want && attachments.length + clanList.length > 1) {
             return send(400, { error: "\u8BF7\u9009\u62E9\u8981\u89E3\u9664\u7684\u6302\u8F7D\u6811" });
           }
-          const target = want || attachments[0]?.tree_id || clanList[0]?.tree_id || "";
+          const target = want || ((_i = attachments[0]) == null ? void 0 : _i.tree_id) || ((_j = clanList[0]) == null ? void 0 : _j.tree_id) || "";
           if (!target) {
             return send(400, {
               error: attachments.length || clanList.length ? "\u8BF7\u9009\u62E9\u8981\u89E3\u9664\u7684\u6302\u8F7D\u6811" : "\u8BE5\u8282\u70B9\u5F53\u524D\u6CA1\u6709\u6302\u8F7D\u6811"
@@ -39643,7 +41180,8 @@ async function handleRequest(event) {
             return send(200, await detachClanFromMaster({ treeId: target }));
           }
           const att = attachments.find((a) => a.tree_id === target);
-          if (!att) return send(400, { error: "\u8BE5\u4E0A\u5C42\u8282\u70B9\u672A\u6302\u8F7D\u5230\u8BE5\u6811" });
+          if (!att)
+            return send(400, { error: "\u8BE5\u4E0A\u5C42\u8282\u70B9\u672A\u6302\u8F7D\u5230\u8BE5\u6811" });
           return send(200, await detachFounder({
             treeId: target,
             founderHandle: att.founder_handle,
@@ -39655,16 +41193,18 @@ async function handleRequest(event) {
           await requireWriteUser(headers, fromTree, pathname, handle, false);
           return send(200, await detachClanFromMaster({ treeId: fromTree }));
         }
-        if (!body.person_handle) return send(400, { error: "\u7F3A\u5C11 person_handle" });
+        if (!body.person_handle)
+          return send(400, { error: "\u7F3A\u5C11 person_handle" });
         const detachHit = await resolveNode(String(body.person_handle).trim(), fromTree);
-        if (!detachHit) return send(404, { error: `\u627E\u4E0D\u5230\u7F16\u53F7/\u53E5\u67C4\u4E3A\u300C${body.person_handle}\u300D\u7684\u8282\u70B9` });
+        if (!detachHit)
+          return send(404, { error: `\u627E\u4E0D\u5230\u7F16\u53F7/\u53E5\u67C4\u4E3A\u300C${body.person_handle}\u300D\u7684\u8282\u70B9` });
         await requireWriteUser(headers, fromTree, pathname, detachHit.handle, false);
         const tree2 = await getTree(fromTree);
-        const founder = tree2?.people?.[detachHit.handle];
+        const founder = (_k = tree2 == null ? void 0 : tree2.people) == null ? void 0 : _k[detachHit.handle];
         return send(200, await detachFounder({
           treeId: fromTree,
           founderHandle: detachHit.handle,
-          masterTreeId: founder?.external_tree || ""
+          masterTreeId: (founder == null ? void 0 : founder.external_tree) || ""
         }));
       } catch (e) {
         return safeError(e);
@@ -39673,12 +41213,15 @@ async function handleRequest(event) {
     if (pathname === "/admin/reset-founder" && method === "POST") {
       const body = parseBody(event);
       const reqTree = String(body.tree_id || treeId || "").trim();
-      if (!reqTree) return send(400, { error: "\u7F3A\u5C11 X-Tree-Id" });
+      if (!reqTree)
+        return send(400, { error: "\u7F3A\u5C11 X-Tree-Id" });
       try {
         const u = await authUser(headers);
-        if (!u) return send(401, { error: "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C" });
+        if (!u)
+          return send(401, { error: "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C" });
         const tree2 = await getTree(reqTree);
-        if (!tree2) return send(404, { error: `\u6811\u4E0D\u5B58\u5728: ${reqTree}` });
+        if (!tree2)
+          return send(404, { error: `\u6811\u4E0D\u5B58\u5728: ${reqTree}` });
         const meta = await getMeta();
         const personHandle = String(body.person_handle || body.founder_handle || "").trim() || currentFounderHandle(tree2, entryOf(meta, reqTree));
         await requireWriteUser(headers, reqTree, pathname, personHandle, false);
@@ -39695,32 +41238,39 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/clan-info" && method === "GET") {
       const want = String(query.tree_id || treeId || "").trim();
-      if (!want) return send(400, { error: "\u7F3A\u5C11 tree_id" });
+      if (!want)
+        return send(400, { error: "\u7F3A\u5C11 tree_id" });
       const info = await clanInfo({ treeId: want });
-      if (info.kind !== TREE_KIND.CLAN) return send(400, { error: `\u8BE5\u6811\u4E0D\u662F\u7956\u8C31: ${want}` });
+      if (info.kind !== TREE_KIND.CLAN)
+        return send(400, { error: `\u8BE5\u6811\u4E0D\u662F\u7956\u8C31: ${want}` });
       return send(200, { ok: true, ...info });
     }
     if (pathname === "/admin/clan-request" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const body = parseBody(event);
       try {
         const meta = await getMeta();
         const reqTree = String(body.tree_id || treeId || "").trim();
         const anchorEntry = (reqTree ? entryOf(meta, reqTree) : null) || Object.values(meta.trees || {}).find((t) => clanSurnameOf(t) === String(body.surname || "").trim());
-        if (!anchorEntry) return send(400, { error: "\u672A\u627E\u5230\u8BE5\u59D3\u7684\u73B0\u6709\u5BB6\u65CF\u6811\uFF0C\u8BF7\u5148\u5EFA\u7ACB\u5BB6\u65CF\u6811\u518D\u7533\u8BF7\u7956\u8C31" });
+        if (!anchorEntry)
+          return send(400, { error: "\u672A\u627E\u5230\u8BE5\u59D3\u7684\u73B0\u6709\u5BB6\u65CF\u6811\uFF0C\u8BF7\u5148\u5EFA\u7ACB\u5BB6\u65CF\u6811\u518D\u7533\u8BF7\u7956\u8C31" });
         const surname = String(body.surname || "").trim() || clanSurnameOf(anchorEntry);
-        if (!/^[\u4e00-\u9fa5]$/.test(surname)) return send(400, { error: "\u8BF7\u586B\u5199\u5355\u4E2A\u6C49\u5B57\u59D3\u6C0F" });
+        if (!/^[\u4e00-\u9fa5]$/.test(surname))
+          return send(400, { error: "\u8BF7\u586B\u5199\u5355\u4E2A\u6C49\u5B57\u59D3\u6C0F" });
         if (clanSurnameOf(anchorEntry) && clanSurnameOf(anchorEntry) !== surname) {
           return send(400, { error: `\u6240\u9009\u5BB6\u65CF\u6811\u4E0D\u5C5E\u4E8E\u300C${surname}\u300D\u59D3` });
         }
         await requireWriteUser(headers, anchorEntry.tree_id, pathname, "", false);
         const masterRef = String(body.master_handle || body.target_handle || body.master_ref || "").trim();
-        if (!masterRef) return send(400, { error: "\u8BF7\u9009\u62E9\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u7684\u59CB\u7956\u8282\u70B9" });
+        if (!masterRef)
+          return send(400, { error: "\u8BF7\u9009\u62E9\u4E2D\u534E\u4E16\u672C\uFF08\u603B\u8C31\uFF09\u7684\u59CB\u7956\u8282\u70B9" });
         const masterHit = await resolveNode(masterRef, MASTER_TREE_ID2, { targetTreeId: MASTER_TREE_ID2 });
         const masterTree = await getTree(MASTER_TREE_ID2);
-        const masterPerson = masterHit ? masterTree?.people?.[masterHit.handle] : null;
-        if (!masterPerson) return send(404, { error: "\u6240\u9009\u4E2D\u534E\u4E16\u672C\u8282\u70B9\u4E0D\u5B58\u5728" });
+        const masterPerson = masterHit ? (_l = masterTree == null ? void 0 : masterTree.people) == null ? void 0 : _l[masterHit.handle] : null;
+        if (!masterPerson)
+          return send(404, { error: "\u6240\u9009\u4E2D\u534E\u4E16\u672C\u8282\u70B9\u4E0D\u5B58\u5728" });
         const masterHandle = masterHit.handle;
         const clauses = await colAll(CLAN_REQUEST_COLLECTION);
         if (clauses.some((r) => r.status === "pending" && r.surname === surname && r.master_handle === masterHandle)) {
@@ -39790,30 +41340,36 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/clan-requests" && method === "GET") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const user = await colGet("jiapu_users", u.phone);
-      if (!user) return send(401, { error: "\u7528\u6237\u4E0D\u5B58\u5728" });
+      if (!user)
+        return send(401, { error: "\u7528\u6237\u4E0D\u5B58\u5728" });
       const chief = user.role === "chief_editor";
       const anchor = chief ? null : await getAnchor(u.phone);
       const list2 = filterPendingClanRequests(await colAll(CLAN_REQUEST_COLLECTION), {
         chief,
-        myTreeIds: anchor?.tree_id ? [anchor.tree_id] : [],
+        myTreeIds: (anchor == null ? void 0 : anchor.tree_id) ? [anchor.tree_id] : [],
         myPhone: u.phone
       });
-      return send(200, { ok: true, list: list2, can_approve_all: chief, my_tree: anchor?.tree_id || "" });
+      return send(200, { ok: true, list: list2, can_approve_all: chief, my_tree: (anchor == null ? void 0 : anchor.tree_id) || "" });
     }
     if (pathname === "/admin/decide-clan" && method === "POST") {
       const body = parseBody(event);
       const rid = String(body.request_id || "").trim();
-      if (!rid) return send(400, { error: "\u7F3A\u5C11 request_id" });
+      if (!rid)
+        return send(400, { error: "\u7F3A\u5C11 request_id" });
       const approve = !(body.approve === false || body.action === "reject");
       try {
         const u = await authUser(headers);
-        if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+        if (!u)
+          return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
         const user = await colGet("jiapu_users", u.phone);
-        if (!user || user.role !== "chief_editor") return send(403, { error: "\u5EFA\u8C31\u5BA1\u6279\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
+        if (!user || user.role !== "chief_editor")
+          return send(403, { error: "\u5EFA\u8C31\u5BA1\u6279\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
         const request = await colGet(CLAN_REQUEST_COLLECTION, rid);
-        if (!request) return send(404, { error: "\u7533\u8BF7\u4E0D\u5B58\u5728" });
+        if (!request)
+          return send(404, { error: "\u7533\u8BF7\u4E0D\u5B58\u5728" });
         if (request.status !== "pending") {
           return send(400, { error: request.status === "approved" ? "\u8BE5\u7533\u8BF7\u5DF2\u901A\u8FC7" : "\u8BE5\u7533\u8BF7\u5DF2\u9A73\u56DE" });
         }
@@ -39823,8 +41379,11 @@ async function handleRequest(event) {
           let refundTxnId = "";
           if (feeRef && feeRef.txn_id) {
             const assets = await getAssets(request.requested_by);
-            const alreadyRefunded = (assets?.txs || []).some(
-              (t) => t?.type === "fee_refund" && t?.ref?.txn_id === feeRef.txn_id
+            const alreadyRefunded = ((assets == null ? void 0 : assets.txs) || []).some(
+              (t) => {
+                var _a4;
+                return (t == null ? void 0 : t.type) === "fee_refund" && ((_a4 = t == null ? void 0 : t.ref) == null ? void 0 : _a4.txn_id) === feeRef.txn_id;
+              }
             );
             if (!alreadyRefunded) {
               const lots = Array.isArray(feeRef.lots) ? feeRef.lots : [];
@@ -39878,7 +41437,8 @@ async function handleRequest(event) {
     if (pathname === "/revisions" && method === "GET") {
       try {
         const want = String(query.tree_id || treeId || "").trim();
-        if (!want) return send(400, { error: "\u7F3A\u5C11 tree_id" });
+        if (!want)
+          return send(400, { error: "\u7F3A\u5C11 tree_id" });
         const view = await getRevisionView(want, /* @__PURE__ */ new Date());
         view.wenpu_config = await getWenpuConfig();
         return send(200, view);
@@ -39888,8 +41448,10 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/wenpu-config" && method === "GET") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      if (u.role !== "chief_editor") return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (u.role !== "chief_editor")
+        return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
       try {
         return send(200, await getAdminWenpuConfig());
       } catch (e) {
@@ -39898,8 +41460,10 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/wenpu-config" && method === "PUT") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
-      if (u.role !== "chief_editor") return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (u.role !== "chief_editor")
+        return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
       try {
         const body = parseBody(event);
         const r = await setWenpuConfig({
@@ -39916,10 +41480,12 @@ async function handleRequest(event) {
     if (pathname === "/admin/revision/start" && method === "POST") {
       try {
         const u = await authUser(headers);
-        if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+        if (!u)
+          return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
         const body = parseBody(event);
         const want = String(body.tree_id || query.tree_id || treeId || "").trim();
-        if (!want) return send(400, { error: "\u7F3A\u5C11 tree_id" });
+        if (!want)
+          return send(400, { error: "\u7F3A\u5C11 tree_id" });
         const r = await startRevision({ treeId: want, phone: u.phone, role: u.role, now: /* @__PURE__ */ new Date() });
         return send(200, { ok: true, seq: r.seq, effective_at: r.effective_at, lock_at: r.lock_at, fee: r.fee });
       } catch (e) {
@@ -39929,10 +41495,12 @@ async function handleRequest(event) {
     if (pathname === "/admin/revision/save" && method === "POST") {
       try {
         const u = await authUser(headers);
-        if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+        if (!u)
+          return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
         const body = parseBody(event);
         const want = String(body.tree_id || query.tree_id || treeId || "").trim();
-        if (!want) return send(400, { error: "\u7F3A\u5C11 tree_id" });
+        if (!want)
+          return send(400, { error: "\u7F3A\u5C11 tree_id" });
         const r = await saveRevision({ treeId: want, seq: body.seq, items: body.items, role: u.role, phone: u.phone, now: /* @__PURE__ */ new Date() });
         return send(200, { ok: true, seq: r.seq, locked: r.locked, fee: r.fee, items: r.items, revision: r.revision, ...r.log_warning ? { log_warning: true } : {} });
       } catch (e) {
@@ -39941,8 +41509,10 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/reparent" && method === "POST") {
       const body = parseBody(event);
-      if (!body.person_handle) return send(400, { error: "\u7F3A\u5C11 person_handle" });
-      if (!String(body.new_parent_id || "").trim()) return send(400, { error: "\u8BF7\u586B\u5199\u65B0\u7236\u8282\u70B9\u7F16\u53F7" });
+      if (!body.person_handle)
+        return send(400, { error: "\u7F3A\u5C11 person_handle" });
+      if (!String(body.new_parent_id || "").trim())
+        return send(400, { error: "\u8BF7\u586B\u5199\u65B0\u7236\u8282\u70B9\u7F16\u53F7" });
       const reparentTreeId = body.tree_id || treeId || MASTER_TREE_ID2;
       let gate = null;
       try {
@@ -39962,18 +41532,22 @@ async function handleRequest(event) {
         });
         return send(200, result);
       } catch (e) {
-        return send(e.status || 400, errorPayload(e, gate?.refunded ? { fee_refunded: true } : {}));
+        return send(e.status || 400, errorPayload(e, (gate == null ? void 0 : gate.refunded) ? { fee_refunded: true } : {}));
       }
     }
     if (pathname === "/admin/sibling-reorder" && method === "POST") {
       const body = parseBody(event);
       const reorderFam = String(body.family_handle || "").trim();
       const reorderPerson = String(body.person_handle || "").trim();
-      if (!reorderFam) return send(400, { error: "\u7F3A\u5C11 family_handle" });
-      if (!reorderPerson) return send(400, { error: "\u7F3A\u5C11 person_handle" });
-      if (!Array.isArray(body.child_handles)) return send(400, { error: "\u7F3A\u5C11 child_handles\uFF08\u987B\u4E3A\u6570\u7EC4\uFF09" });
+      if (!reorderFam)
+        return send(400, { error: "\u7F3A\u5C11 family_handle" });
+      if (!reorderPerson)
+        return send(400, { error: "\u7F3A\u5C11 person_handle" });
+      if (!Array.isArray(body.child_handles))
+        return send(400, { error: "\u7F3A\u5C11 child_handles\uFF08\u987B\u4E3A\u6570\u7EC4\uFF09" });
       const reorderTreeId = String(body.tree_id || treeId || "").trim();
-      if (!reorderTreeId) return send(400, { error: "\u7F3A\u5C11 tree_id" });
+      if (!reorderTreeId)
+        return send(400, { error: "\u7F3A\u5C11 tree_id" });
       let gate = null;
       try {
         const u = await requireWriteUser(headers, reorderTreeId, pathname, reorderPerson, false);
@@ -39994,19 +41568,22 @@ async function handleRequest(event) {
         }
         return send(200, result);
       } catch (e) {
-        const payload = errorPayload(e, gate?.refunded ? { fee_refunded: true } : {});
+        const payload = errorPayload(e, (gate == null ? void 0 : gate.refunded) ? { fee_refunded: true } : {});
         return send(errorStatusOf(e, payload), payload);
       }
     }
     if (pathname === "/admin/delete-node" && method === "POST") {
       const body = parseBody(event);
-      if (!body.person_handle) return send(400, { error: "\u7F3A\u5C11 person_handle" });
+      if (!body.person_handle)
+        return send(400, { error: "\u7F3A\u5C11 person_handle" });
       const delTreeId = body.tree_id || treeId || "";
-      if (!delTreeId) return send(400, { error: "\u7F3A\u5C11 tree_id" });
+      if (!delTreeId)
+        return send(400, { error: "\u7F3A\u5C11 tree_id" });
       let gate = null;
       try {
         const delHit = await resolveNode(String(body.person_handle).trim(), delTreeId);
-        if (!delHit) return send(404, { error: `\u627E\u4E0D\u5230\u7F16\u53F7/\u53E5\u67C4\u4E3A\u300C${body.person_handle}\u300D\u7684\u8282\u70B9` });
+        if (!delHit)
+          return send(404, { error: `\u627E\u4E0D\u5230\u7F16\u53F7/\u53E5\u67C4\u4E3A\u300C${body.person_handle}\u300D\u7684\u8282\u70B9` });
         if (delHit.tree_id !== delTreeId) {
           return send(400, { error: `\u300C${body.person_handle}\u300D\u5C5E\u4E8E\u5BB6\u65CF\u6811 ${delHit.tree_id}\uFF0C\u8BF7\u5728\u8BE5\u6811\u5185\u5220\u9664` });
         }
@@ -40026,7 +41603,7 @@ async function handleRequest(event) {
         });
         return send(200, result);
       } catch (e) {
-        return send(e.status || 400, errorPayload(e, gate?.refunded ? { fee_refunded: true } : {}));
+        return send(e.status || 400, errorPayload(e, (gate == null ? void 0 : gate.refunded) ? { fee_refunded: true } : {}));
       }
     }
     if (pathname === "/admin/establish-branch" && method === "POST") {
@@ -40034,15 +41611,20 @@ async function handleRequest(event) {
       try {
         const body = parseBody(event);
         const u = await authUser(headers);
-        if (!u) throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
+        if (!u)
+          throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
         const reqUser = await colGet("jiapu_users", u.phone);
-        if (!reqUser) throw httpError4(401, "\u7528\u6237\u4E0D\u5B58\u5728");
-        if (reqUser.role === "guest") throw httpError4(403, "\u6E38\u5BA2\u65E0\u7F16\u8F91\u6743\u9650\uFF0C\u8BF7\u6CE8\u518C\u540E\u7F16\u8F91");
+        if (!reqUser)
+          throw httpError4(401, "\u7528\u6237\u4E0D\u5B58\u5728");
+        if (reqUser.role === "guest")
+          throw httpError4(403, "\u6E38\u5BA2\u65E0\u7F16\u8F91\u6743\u9650\uFF0C\u8BF7\u6CE8\u518C\u540E\u7F16\u8F91");
         if (reqUser.role !== "chief_editor" && reqUser.role !== "tree_steward") {
           throw httpError4(403, "\u7ACB\u652F\u9700\u8981\u672C\u5BB6\u65CF\u6811\u4E3B\u7406\u4EBA\uFF08tree_steward\uFF09\u6216\u603B\u7F16\u8F91\uFF08chief_editor\uFF09\u6743\u9650");
         }
-        if (!body.tree_id) throw httpError4(400, "\u7F3A\u5C11 tree_id");
-        if (!String(body.person_handle || "").trim()) throw httpError4(400, "\u7F3A\u5C11 person_handle");
+        if (!body.tree_id)
+          throw httpError4(400, "\u7F3A\u5C11 tree_id");
+        if (!String(body.person_handle || "").trim())
+          throw httpError4(400, "\u7F3A\u5C11 person_handle");
         const feeSeeds = await getBranchFeeSeeds();
         gate = feeGate(u.phone, "establish_branch");
         return send(
@@ -40058,7 +41640,8 @@ async function handleRequest(event) {
         );
       } catch (e) {
         const payload = errorPayload(e);
-        if (gate && gate.refunded) payload.fee_refunded = true;
+        if (gate && gate.refunded)
+          payload.fee_refunded = true;
         return send(e.status || payload.status || 500, payload);
       }
     }
@@ -40066,9 +41649,11 @@ async function handleRequest(event) {
       try {
         const body = parseBody(event);
         const u = await authUser(headers);
-        if (!u) throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
+        if (!u)
+          throw httpError4(401, "\u8BF7\u5148\u767B\u5F55\u540E\u518D\u8FDB\u884C\u7F16\u8F91\u64CD\u4F5C");
         const reqUser = await colGet("jiapu_users", u.phone);
-        if (!reqUser || reqUser.role !== "chief_editor") throw httpError4(403, "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650");
+        if (!reqUser || reqUser.role !== "chief_editor")
+          throw httpError4(403, "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650");
         const ratio = await getConvergeSpiritRatio();
         return send(
           200,
@@ -40086,9 +41671,11 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/create-tree" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const user = await colGet("jiapu_users", u.phone);
-      if (!user || user.role !== "chief_editor") return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
+      if (!user || user.role !== "chief_editor")
+        return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
       const body = parseBody(event);
       let charged = null;
       try {
@@ -40119,11 +41706,14 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/split-tree" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const user = await colGet("jiapu_users", u.phone);
-      if (!user || user.role !== "chief_editor") return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
+      if (!user || user.role !== "chief_editor")
+        return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
       const body = parseBody(event);
-      if (!body.tree_id || !body.ancestor_handle) return send(400, { error: "\u7F3A\u5C11 tree_id \u6216 ancestor_handle" });
+      if (!body.tree_id || !body.ancestor_handle)
+        return send(400, { error: "\u7F3A\u5C11 tree_id \u6216 ancestor_handle" });
       try {
         const result = await splitTree({
           treeId: body.tree_id,
@@ -40138,11 +41728,14 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/chain-append" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const user = await colGet("jiapu_users", u.phone);
-      if (!user || user.role !== "chief_editor") return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
+      if (!user || user.role !== "chief_editor")
+        return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
       const body = parseBody(event);
-      if (!body.tree_id || !body.parent_handle) return send(400, { error: "\u7F3A\u5C11 tree_id \u6216 parent_handle" });
+      if (!body.tree_id || !body.parent_handle)
+        return send(400, { error: "\u7F3A\u5C11 tree_id \u6216 parent_handle" });
       try {
         const result = await appendChainNode({
           treeId: body.tree_id,
@@ -40170,9 +41763,11 @@ async function handleRequest(event) {
       }
       if (batchKind === "master") {
         const u = await authUser(headers);
-        if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+        if (!u)
+          return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
         const user = await colGet("jiapu_users", u.phone);
-        if (!user || user.role !== "chief_editor") return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
+        if (!user || user.role !== "chief_editor")
+          return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
       } else {
         try {
           await requireWriteUser(headers, batchTreeId, pathname, body.parent_handle, false);
@@ -40194,26 +41789,31 @@ async function handleRequest(event) {
     }
     if (pathname === "/admin/remove-branch-link" && method === "POST") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
+      if (!u)
+        return send(401, { error: "\u672A\u767B\u5F55\u6216\u767B\u5F55\u5DF2\u8FC7\u671F" });
       const user = await colGet("jiapu_users", u.phone);
-      if (!user || user.role !== "chief_editor") return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
+      if (!user || user.role !== "chief_editor")
+        return send(403, { error: "\u9700\u8981\u603B\u7F16\u8F91\u6743\u9650" });
       const body = parseBody(event);
-      if (!body.tree_id || !body.person_handle) return send(400, { error: "\u7F3A\u5C11 tree_id \u6216 person_handle" });
+      if (!body.tree_id || !body.person_handle)
+        return send(400, { error: "\u7F3A\u5C11 tree_id \u6216 person_handle" });
       await removeBranchLink(body.tree_id, body.person_handle);
       return send(200, { ok: true });
     }
     if (pathname === "/search/global" && method === "GET") {
       const raw = String(query.query ?? "").trim();
-      if (!raw) return send(200, []);
+      if (!raw)
+        return send(200, []);
       const parsedLimit = parseInt(String(query.limit ?? ""), 10);
       const limit = Number.isFinite(parsedLimit) ? Math.min(100, Math.max(1, parsedLimit)) : 30;
       const qNorm = raw.replace(/\s+/g, "").toLowerCase();
       const qNum = numberOfId(raw);
-      const isMirrorNode2 = (p) => String(p?.external_mirror) === "true" && !!p?.external_person_handle;
+      const isMirrorNode2 = (p) => String(p == null ? void 0 : p.external_mirror) === "true" && !!(p == null ? void 0 : p.external_person_handle);
       const ctx = { treeCache: /* @__PURE__ */ new Map(), accessCache: /* @__PURE__ */ new Map(), realCache: /* @__PURE__ */ new Map() };
       const ctxTree = async (id) => {
         const key = String(id || "");
-        if (!key) return null;
+        if (!key)
+          return null;
         if (!ctx.treeCache.has(key)) {
           let t = null;
           try {
@@ -40227,45 +41827,57 @@ async function handleRequest(event) {
       };
       const ctxAccess = async (id, tree2) => {
         const key = String(id || "");
-        if (!ctx.accessCache.has(key)) ctx.accessCache.set(key, await resolveTreeAccess(headers, key, tree2));
+        if (!ctx.accessCache.has(key))
+          ctx.accessCache.set(key, await resolveTreeAccess(headers, key, tree2));
         return ctx.accessCache.get(key);
       };
       const meta = await getMeta();
       const trees = [];
-      for (const [key, entry] of Object.entries(meta?.trees || {})) {
-        const id = String(entry?.tree_id || key || "").trim();
-        if (!id) continue;
+      for (const [key, entry] of Object.entries((meta == null ? void 0 : meta.trees) || {})) {
+        const id = String((entry == null ? void 0 : entry.tree_id) || key || "").trim();
+        if (!id)
+          continue;
         const tree2 = await ctxTree(id);
-        if (!tree2 || !tree2.people) continue;
-        trees.push({ id, title: entry?.display_title || id, tree: tree2, ord: new Map(Object.keys(tree2.people).map((h, i) => [h, i])) });
+        if (!tree2 || !tree2.people)
+          continue;
+        trees.push({ id, title: (entry == null ? void 0 : entry.display_title) || id, tree: tree2, ord: new Map(Object.keys(tree2.people).map((h, i) => [h, i])) });
       }
       trees.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
       const treeById = new Map(trees.map((t) => [t.id, t]));
-      const treeRefOf = (id) => treeById.get(id) || { id, title: String(meta?.trees?.[id]?.display_title || id), tree: null, ord: null };
+      const treeRefOf = (id) => {
+        var _a4, _b2;
+        return treeById.get(id) || { id, title: String(((_b2 = (_a4 = meta == null ? void 0 : meta.trees) == null ? void 0 : _a4[id]) == null ? void 0 : _b2.display_title) || id), tree: null, ord: null };
+      };
       const MAX_MIRROR_HOPS = 32;
       const findPersonByHandle = async (treeId2, handle) => {
+        var _a4, _b2, _c2, _d2, _e2;
         const tip = String(treeId2 || "").trim();
         if (tip) {
-          const p = treeById.get(tip)?.tree?.people?.[handle];
-          if (p) return { treeId: tip, person: p };
+          const p = (_c2 = (_b2 = (_a4 = treeById.get(tip)) == null ? void 0 : _a4.tree) == null ? void 0 : _b2.people) == null ? void 0 : _c2[handle];
+          if (p)
+            return { treeId: tip, person: p };
         }
         for (const t of trees) {
-          const p = t.tree?.people?.[handle];
-          if (p) return { treeId: t.id, person: p };
+          const p = (_e2 = (_d2 = t.tree) == null ? void 0 : _d2.people) == null ? void 0 : _e2[handle];
+          if (p)
+            return { treeId: t.id, person: p };
         }
         return null;
       };
       const resolveRealBody = async (t, p) => {
         const ck = `${t.id}:${p.handle}`;
-        if (ctx.realCache.has(ck)) return ctx.realCache.get(ck);
+        if (ctx.realCache.has(ck))
+          return ctx.realCache.get(ck);
         const walk = async () => {
-          if (!isMirrorNode2(p)) return { treeId: t.id, person: p };
+          if (!isMirrorNode2(p))
+            return { treeId: t.id, person: p };
           let cur = p;
           let last = null;
           const seen2 = /* @__PURE__ */ new Set();
           for (let hop = 0; hop < MAX_MIRROR_HOPS; hop++) {
             const ref = String(cur.external_person_handle || "").trim();
-            if (!ref || seen2.has(ref)) return null;
+            if (!ref || seen2.has(ref))
+              return null;
             seen2.add(ref);
             let hit = null;
             try {
@@ -40273,8 +41885,10 @@ async function handleRequest(event) {
             } catch {
               hit = null;
             }
-            if (!hit) return last;
-            if (!isMirrorNode2(hit.person)) return hit;
+            if (!hit)
+              return last;
+            if (!isMirrorNode2(hit.person))
+              return hit;
             last = hit;
             cur = hit.person;
           }
@@ -40299,7 +41913,8 @@ async function handleRequest(event) {
       const hits = [];
       const pushHit = (t, p, matched, pinned) => {
         const k = `${t.id}:${p.handle}`;
-        if (seen.has(k)) return;
+        if (seen.has(k))
+          return;
         seen.add(k);
         hits.push({ t, p, matched, pinned: pinned === true });
       };
@@ -40311,52 +41926,66 @@ async function handleRequest(event) {
       }
       if (refHit) {
         const t = trees.find((x) => x.id === refHit.tree_id);
-        const p = t?.tree.people?.[refHit.handle];
+        const p = (_m = t == null ? void 0 : t.tree.people) == null ? void 0 : _m[refHit.handle];
         if (t && p) {
           const access = await ctxAccess(t.id, t.tree);
-          if (!access.isHiddenPerson(p.handle)) pushHit(t, p, "id", true);
+          if (!access.isHiddenPerson(p.handle))
+            pushHit(t, p, "id", true);
         }
       }
       for (const t of trees) {
         const access = await ctxAccess(t.id, t.tree);
         for (const p of Object.values(t.tree.people)) {
-          if (!p || !p.handle) continue;
-          if (seen.has(`${t.id}:${p.handle}`)) continue;
-          if (access.isHiddenPerson(p.handle)) continue;
+          if (!p || !p.handle)
+            continue;
+          if (seen.has(`${t.id}:${p.handle}`))
+            continue;
+          if (access.isHiddenPerson(p.handle))
+            continue;
           const pid = numberOfId(p.gramps_id);
-          if (qNum === null || pid === null || pid !== qNum) continue;
+          if (qNum === null || pid === null || pid !== qNum)
+            continue;
           pushHit(t, p, "id", false);
         }
       }
       for (const t of trees) {
         const access = await ctxAccess(t.id, t.tree);
         for (const p of Object.values(t.tree.people)) {
-          if (!p || !p.handle) continue;
-          if (seen.has(`${t.id}:${p.handle}`)) continue;
-          if (access.isHiddenPerson(p.handle)) continue;
+          if (!p || !p.handle)
+            continue;
+          if (seen.has(`${t.id}:${p.handle}`))
+            continue;
+          if (access.isHiddenPerson(p.handle))
+            continue;
           const hitName = [p.name, p.surname, p.given].some(
             (f) => String(f === void 0 || f === null ? "" : f).replace(/\s+/g, "").toLowerCase().includes(qNorm)
           );
-          if (!hitName) continue;
+          if (!hitName)
+            continue;
           pushHit(t, p, "name", false);
         }
       }
       const groups = /* @__PURE__ */ new Map();
       for (const h of hits) {
         const rel = await resolveRealBody(h.t, h.p);
-        const key = rel?.person?.handle || (isMirrorNode2(h.p) ? String(h.p.external_person_handle) : String(h.p.handle));
-        if (!groups.has(key)) groups.set(key, []);
+        const key = ((_n = rel == null ? void 0 : rel.person) == null ? void 0 : _n.handle) || (isMirrorNode2(h.p) ? String(h.p.external_person_handle) : String(h.p.handle));
+        if (!groups.has(key))
+          groups.set(key, []);
         groups.get(key).push(h);
       }
       const cmpRep = (a, b) => {
         const ai = a.matched === "id" ? 0 : 1;
         const bi = b.matched === "id" ? 0 : 1;
-        if (ai !== bi) return ai - bi;
+        if (ai !== bi)
+          return ai - bi;
         const am = isMirrorNode2(a.p) ? 1 : 0;
         const bm = isMirrorNode2(b.p) ? 1 : 0;
-        if (am !== bm) return am - bm;
-        if (a.t.id !== b.t.id) return a.t.id < b.t.id ? -1 : 1;
-        if (a.p.handle !== b.p.handle) return a.p.handle < b.p.handle ? -1 : 1;
+        if (am !== bm)
+          return am - bm;
+        if (a.t.id !== b.t.id)
+          return a.t.id < b.t.id ? -1 : 1;
+        if (a.p.handle !== b.p.handle)
+          return a.p.handle < b.p.handle ? -1 : 1;
         return 0;
       };
       const picked = [];
@@ -40380,12 +42009,16 @@ async function handleRequest(event) {
         }
       }
       picked.sort((a, b) => {
-        if (a.tier !== b.tier) return a.tier - b.tier;
+        var _a4, _b2;
+        if (a.tier !== b.tier)
+          return a.tier - b.tier;
         const am = isMirrorNode2(a.p) ? 1 : 0;
         const bm = isMirrorNode2(b.p) ? 1 : 0;
-        if (am !== bm) return am - bm;
-        if (a.t.id !== b.t.id) return a.t.id < b.t.id ? -1 : 1;
-        return (a.t.ord?.get(a.p.handle) ?? 0) - (b.t.ord?.get(b.p.handle) ?? 0);
+        if (am !== bm)
+          return am - bm;
+        if (a.t.id !== b.t.id)
+          return a.t.id < b.t.id ? -1 : 1;
+        return (((_a4 = a.t.ord) == null ? void 0 : _a4.get(a.p.handle)) ?? 0) - (((_b2 = b.t.ord) == null ? void 0 : _b2.get(b.p.handle)) ?? 0);
       });
       return send(200, picked.slice(0, limit).map(({ t, p, matched, restricted }) => {
         const row = { ...shape(t, p, matched), restricted };
@@ -40397,22 +42030,27 @@ async function handleRequest(event) {
     }
     if (pathname === "/search/marriage-candidates" && method === "GET") {
       const u = await authUser(headers);
-      if (!u) return send(401, { error: "\u767B\u5F55\u5DF2\u8FC7\u671F\u6216\u672A\u767B\u5F55" });
+      if (!u)
+        return send(401, { error: "\u767B\u5F55\u5DF2\u8FC7\u671F\u6216\u672A\u767B\u5F55" });
       const targetTreeId = String(query.tree_id ?? "").trim();
-      if (!targetTreeId) return send(400, { error: "\u7F3A\u5C11 tree_id" });
+      if (!targetTreeId)
+        return send(400, { error: "\u7F3A\u5C11 tree_id" });
       const raw = String(query.query ?? "").trim();
-      if (!raw) return send(200, { ok: true, tree_id: targetTreeId, candidates: [], total: 0 });
+      if (!raw)
+        return send(200, { ok: true, tree_id: targetTreeId, candidates: [], total: 0 });
       const wantGender = query.gender === "F" || query.gender === "M" ? query.gender : "";
       const parsedLimit = parseInt(String(query.limit ?? ""), 10);
       const limit = Number.isFinite(parsedLimit) ? Math.min(50, Math.max(1, parsedLimit)) : 20;
       const target = await getTree(targetTreeId);
-      if (!target || !target.people) return send(404, { error: `\u6811\u4E0D\u5B58\u5728: ${targetTreeId}` });
+      if (!target || !target.people)
+        return send(404, { error: `\u6811\u4E0D\u5B58\u5728: ${targetTreeId}` });
       const qNorm = raw.replace(/\s+/g, "").toLowerCase();
       const qNum = numberOfId(raw);
-      const isMirrorNode2 = (p) => String(p?.external_mirror) === "true";
+      const isMirrorNode2 = (p) => String(p == null ? void 0 : p.external_mirror) === "true";
       const genderOk = (p) => {
-        const g = String(p?.gender ?? "").trim().toUpperCase();
-        if (g !== "M" && g !== "F") return false;
+        const g = String((p == null ? void 0 : p.gender) ?? "").trim().toUpperCase();
+        if (g !== "M" && g !== "F")
+          return false;
         return wantGender ? g === wantGender : true;
       };
       const eligible = (p) => !!p && !!p.handle && !isMirrorNode2(p) && genderOk(p);
@@ -40439,13 +42077,16 @@ async function handleRequest(event) {
         }
       }
       for (const p of Object.values(target.people)) {
-        if (!p || !p.handle || seen.has(p.handle)) continue;
-        if (!eligible(p)) continue;
+        if (!p || !p.handle || seen.has(p.handle))
+          continue;
+        if (!eligible(p))
+          continue;
         const idHit = qNum !== null && numberOfId(p.gramps_id) === qNum;
         const nameHit = [p.name, p.surname, p.given].some(
           (f) => String(f === void 0 || f === null ? "" : f).replace(/\s+/g, "").toLowerCase().includes(qNorm)
         );
-        if (!idHit && !nameHit) continue;
+        if (!idHit && !nameHit)
+          continue;
         seen.add(p.handle);
         picked.push(p);
       }
@@ -40456,9 +42097,11 @@ async function handleRequest(event) {
         total: picked.length
       });
     }
-    if (!treeId) return send(400, { error: "\u7F3A\u5C11 X-Tree-Id" });
+    if (!treeId)
+      return send(400, { error: "\u7F3A\u5C11 X-Tree-Id" });
     const tree = await getTree(treeId);
-    if (!tree) return send(404, { error: `\u6811\u4E0D\u5B58\u5728: ${treeId}` });
+    if (!tree)
+      return send(404, { error: `\u6811\u4E0D\u5B58\u5728: ${treeId}` });
     if (pathname === "/people" && method === "POST") {
       await requireWriteUser(headers, treeId, pathname, null, true);
       const body = parseBody(event);
@@ -40496,7 +42139,7 @@ async function handleRequest(event) {
         return send(errorStatusOf(e, 400), { error: e.message });
       }
       try {
-        assertStartYearNotAfterDeath(body, putTree?.people?.[peMatch[1]]?.death_date);
+        assertStartYearNotAfterDeath(body, (_p = (_o = putTree == null ? void 0 : putTree.people) == null ? void 0 : _o[peMatch[1]]) == null ? void 0 : _p.death_date);
       } catch (e) {
         return send(errorStatusOf(e, 400), { error: e.message });
       }
@@ -40504,7 +42147,7 @@ async function handleRequest(event) {
       if (!hasPersonChanges(body)) {
         return send(400, { error: "\u8BF7\u6C42\u4F53\u4E0D\u5305\u542B\u53EF\u4FEE\u6539\u5185\u5BB9\uFF08\u59D3\u540D / \u6027\u522B / \u751F\u5352 / \u5065\u5728 / \u79F0\u53F7 / \u51FA\u751F\u5730 / \u5C45\u4F4F\u5730\uFF09" });
       }
-      const putPerson = putTree?.people?.[peMatch[1]];
+      const putPerson = (_q = putTree == null ? void 0 : putTree.people) == null ? void 0 : _q[peMatch[1]];
       if (putPerson) {
         const putDetail = await getDetail(treeId, peMatch[1]);
         if (isPersonUnchanged(body, putPerson, putDetail)) {
@@ -40523,7 +42166,7 @@ async function handleRequest(event) {
           op: "person_update",
           tree_id: treeId,
           person_handle: peMatch[1],
-          person_name: putTree?.people?.[peMatch[1]]?.name || ""
+          person_name: ((_s = (_r = putTree == null ? void 0 : putTree.people) == null ? void 0 : _r[peMatch[1]]) == null ? void 0 : _s.name) || ""
         });
         const putKind = await treeKindOfId(treeId, MASTER_TREE_ID2);
         const saved = await updatePerson(treeId, peMatch[1], body, {
@@ -40531,20 +42174,21 @@ async function handleRequest(event) {
           deceasedLocked: putKind === "master" || putKind === "clan",
           deceasedLockLabel: putKind === "clan" ? "\u7956\u8C31" : "\u603B\u8C31"
         });
-        detailSaved = saved?.detailSaved !== false;
+        detailSaved = (saved == null ? void 0 : saved.detailSaved) !== false;
       } catch (e) {
         const refunded = await refundQuietly(u.phone, charged, "\u4FDD\u5B58\u843D\u5E93\u5931\u8D25\uFF0C\u5DF2\u539F\u8DEF\u8FD4\u8FD8");
         const payload = errorPayload(e, refunded ? { fee_refunded: true } : {});
         return send(errorStatusOf(e, payload), payload);
       }
       const okBody = { ok: true, fee: feeResponse(charged) };
-      if (!detailSaved) okBody.detail_warning = "\u79F0\u53F7/\u6863\u6848\u4FE1\u606F\u672A\u4FDD\u5B58\uFF0C\u8BF7\u91CD\u8BD5";
+      if (!detailSaved)
+        okBody.detail_warning = "\u79F0\u53F7/\u6863\u6848\u4FE1\u606F\u672A\u4FDD\u5B58\uFF0C\u8BF7\u91CD\u8BD5";
       return send(200, okBody);
     }
     if (pathname === "/families" && method === "POST") {
       await requireWriteUser(headers, treeId, pathname, null, true);
       const body = parseBody(event);
-      const targetHandle = body.father_handle || body.mother_handle || body.child_ref_list?.[0]?.ref || "";
+      const targetHandle = body.father_handle || body.mother_handle || ((_u = (_t = body.child_ref_list) == null ? void 0 : _t[0]) == null ? void 0 : _u.ref) || "";
       if (targetHandle) {
         await requireWriteUser(headers, treeId, pathname, targetHandle, true);
       }
@@ -40554,9 +42198,11 @@ async function handleRequest(event) {
     const famMatch = pathname.match(/^\/families\/([^/]+)$/);
     if (famMatch && method === "PUT") {
       const fam = tree.families[famMatch[1]];
-      if (!fam) return send(404, { error: "family not found" });
-      const scopeHandle = fam.father_handle || fam.mother_handle || fam.child_handles?.[0] || "";
-      if (scopeHandle) await requireWriteUser(headers, treeId, pathname, scopeHandle, false);
+      if (!fam)
+        return send(404, { error: "family not found" });
+      const scopeHandle = fam.father_handle || fam.mother_handle || ((_v = fam.child_handles) == null ? void 0 : _v[0]) || "";
+      if (scopeHandle)
+        await requireWriteUser(headers, treeId, pathname, scopeHandle, false);
       const body = parseBody(event);
       await updateFamily(treeId, famMatch[1], body, { masterTreeId: MASTER_TREE_ID2 });
       return send(200, { ok: true });
@@ -40564,7 +42210,7 @@ async function handleRequest(event) {
     const readAccess = await resolveTreeAccess(headers, treeId, tree);
     if (pathname === "/tree/origin-candidates" && method === "GET") {
       const meta = await getMeta();
-      const entry = Object.values(meta?.trees || {}).find((t) => t && t.tree_id === treeId) || null;
+      const entry = Object.values((meta == null ? void 0 : meta.trees) || {}).find((t) => t && t.tree_id === treeId) || null;
       const hit = resolveOriginFounder(tree, entry);
       const founderHandle = hit && !readAccess.isHiddenPerson(hit.handle) ? hit.handle : "";
       const shape = (p) => ({ handle: p.handle, gramps_id: p.gramps_id || "", name: p.name || `${p.surname || ""}${p.given || ""}` });
@@ -40575,13 +42221,13 @@ async function handleRequest(event) {
           ...shape(p),
           generation: c.generation,
           birth_place: view,
-          is_current: !!entry?.origin_code && view.place_code === String(entry.origin_code)
+          is_current: !!(entry == null ? void 0 : entry.origin_code) && view.place_code === String(entry.origin_code)
         };
       }) : [];
       return send(200, {
         tree_id: treeId,
         founder: founderHandle ? shape(tree.people[founderHandle]) : null,
-        current: { origin_code: String(entry?.origin_code ?? ""), origin: String(entry?.origin ?? "") },
+        current: { origin_code: String((entry == null ? void 0 : entry.origin_code) ?? ""), origin: String((entry == null ? void 0 : entry.origin) ?? "") },
         candidates
       });
     }
@@ -40589,13 +42235,16 @@ async function handleRequest(event) {
     if (evMatch && method === "GET") {
       const index = await getEventIndex(treeId);
       const e = index.get(evMatch[1]);
-      if (!e) return send(404, { error: "event not found" });
+      if (!e)
+        return send(404, { error: "event not found" });
       return send(200, { handle: e.handle, type: e.type, date: { text: e.date }, place: e.place, description: e.description });
     }
     if (peMatch && method === "GET") {
       const person = tree.people[peMatch[1]];
-      if (!person) return send(404, { error: "person not found" });
-      if (readAccess.isHiddenPerson(person.handle)) return send(404, { error: "\u8BE5\u8282\u70B9\u6682\u4E0D\u53EF\u89C1\uFF08\u8FD1\u4EE3\u4E16\u8C31\u7CFB\u4EC5\u5BB6\u65CF\u6210\u5458\u53EF\u89C1\uFF09" });
+      if (!person)
+        return send(404, { error: "person not found" });
+      if (readAccess.isHiddenPerson(person.handle))
+        return send(404, { error: "\u8BE5\u8282\u70B9\u6682\u4E0D\u53EF\u89C1\uFF08\u8FD1\u4EE3\u4E16\u8C31\u7CFB\u4EC5\u5BB6\u65CF\u6210\u5458\u53EF\u89C1\uFF09" });
       const detail = await getDetail(treeId, person.handle);
       const mirrorReals = await buildMirrorRealBodies(tree, /* @__PURE__ */ new Set([person.handle]));
       return send(200, toRawPerson(tree, person, detail, mirrorReals.get(person.handle)));
@@ -40621,7 +42270,8 @@ async function handleRequest(event) {
     }
     if (pathname === "/search" && method === "GET") {
       const q = (query.query || "").toLowerCase();
-      if (!q) return send(200, []);
+      if (!q)
+        return send(200, []);
       const limit = parseInt(query.pagesize || "20", 10) || 20;
       const details = await getAllDetails(treeId);
       const detailMap = new Map(details.map((d) => [d.handle, d]));
@@ -40633,12 +42283,15 @@ async function handleRequest(event) {
         matched.push({ handle: p.handle, object: toRawPerson(tree, p, detailMap.get(p.handle), mirrorReals.get(p.handle)) });
       }
       for (const p of Object.values(tree.people)) {
-        if (readAccess.isHiddenPerson(p.handle)) continue;
-        if (matched.some((m) => m.handle === p.handle)) continue;
+        if (readAccess.isHiddenPerson(p.handle))
+          continue;
+        if (matched.some((m) => m.handle === p.handle))
+          continue;
         const hay = `${p.name}${p.surname}${p.given}`.toLowerCase();
         if (hay.includes(q)) {
           matched.push({ handle: p.handle, object: toRawPerson(tree, p, detailMap.get(p.handle), mirrorReals.get(p.handle)) });
-          if (matched.length >= limit) break;
+          if (matched.length >= limit)
+            break;
         }
       }
       return send(200, matched);
