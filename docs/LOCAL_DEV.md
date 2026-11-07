@@ -76,7 +76,7 @@ env -u PYTHONPATH ... .venv/bin/python scripts/run-gramps-webapi.py \
 
 ## 数据真源与测试（2026-10 起：本地直连云端）
 
-- 本地已改为**直连云端**（compat-api 的 ctrl 面板 `jiapu-api` 为 `COMPAT_SOURCE=cloud`，凭据经 shell source 自 `~/.config/jiapu/cloudbase.env` 注入）——**本地不再有数据真源**。
+- 本地已改为**直连云端**（compat-api 的 ctrl 面板 `jiapu-api` 为 `COMPAT_SOURCE=cloud`，凭据经 shell source 自 `~/.config/tencent-cloudbase/jiapu.env` 注入）——**本地不再有数据真源**。
 - 仓内 `migrate-output/` 已**归档**到：
   `/Users/kevin/jiazu-backups/2026-10-11-migrate-output-archive/migrate-output`（342 文件；旁有 `config/` 副本）。
 - `npm test` **默认读归档**：`package.json` 的 `test` 脚本把 `COMPAT_REAL_OUT` 缺省设为上述归档路径

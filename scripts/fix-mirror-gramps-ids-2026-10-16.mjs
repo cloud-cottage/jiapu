@@ -69,8 +69,8 @@
  *         `scripts/migrate-clan-founder-descendants-2026-10.mjs#readMeta`（:229-234）／`#loadTree`（:235-241）
  *         `scripts/upload-id-core-to-cloudbase.mjs#readCloudMeta`（:60-66）／`#uploadTreeMeta`（:106-123，每树一档）
  *     - 凭据：**环境变量优先**（`CB_ENV` / `CB_SECRET_ID` / `CB_SECRET_KEY` —— 与先例同源：先例运行前
- *       `set -a; . ~/.config/jiapu/cloudbase.env; set +a`）；**环境变量缺失时回退**读
- *       `~/.config/jiapu/cloudbase.env` 文件（脚本自己读，调用方无需 export）。凭据**绝不打印 / 绝不写日志 /
+ *       `set -a; . ~/.config/tencent-cloudbase/jiapu.env; set +a`）；**环境变量缺失时回退**读
+ *       `~/.config/tencent-cloudbase/jiapu.env` 文件（脚本自己读，调用方无需 export）。凭据**绝不打印 / 绝不写日志 /
  *       绝不进任何输出**，只允许键名级自证（「已加载键名：CB_ENV / CB_SECRET_ID / CB_SECRET_KEY」）。
  *     - 写（仅 `--apply` 时 · **统一走生产写路径 · 方案 A**）：**不自写上传 / 不自拼版本化路径 /
  *       不手动改 `_meta.storage_files`** —— 直接 `import` `cloudfunctions/compat-api/lib/store.js` 的**现有导出**，
@@ -118,7 +118,7 @@
  *   # 云端模式（真源 = CloudBase；dry-run 只读）
  *   node scripts/fix-mirror-gramps-ids-2026-10-16.mjs --source=cloud [--clan=<tree_id>] [--json=<path>]
  *   node scripts/fix-mirror-gramps-ids-2026-10-16.mjs --source=cloud \
- *        --apply --backup-dir=<dir>   # ⚠️ 必须双守卫；凭据取环境变量，缺失回退 ~/.config/jiapu/cloudbase.env
+ *        --apply --backup-dir=<dir>   # ⚠️ 必须双守卫；凭据取环境变量，缺失回退 ~/.config/tencent-cloudbase/jiapu.env
  *                                     # 写**走生产写路径**（lib/store.js：saveTree / mutateTreeMeta · 方案 A）
  *
  * 退出码：0 = dry-run 完成 / apply 成功 / 幂等无操作；1 = 前置复核、撞号断言或写后校验失败；2 = 用法 / 参数错误。
@@ -148,7 +148,7 @@ if (flag('--help') || flag('-h')) {
   console.log('  默认 dry-run（零写入）、默认 --source=snapshot。');
   console.log('  --source=snapshot：只写快照目录（--out-dir/--meta），绝不直连云端真源。');
   console.log('  --source=cloud   ：直连云端真源（云存储 trees/<tree_id>.json + 集合 jiapu_tree_meta 每树一档）。');
-  console.log('                     凭据：环境变量 CB_ENV / CB_SECRET_ID / CB_SECRET_KEY 优先，缺失回退 ~/.config/jiapu/cloudbase.env。');
+  console.log('                     凭据：环境变量 CB_ENV / CB_SECRET_ID / CB_SECRET_KEY 优先，缺失回退 ~/.config/tencent-cloudbase/jiapu.env。');
   console.log('  --apply 必须同时给 --backup-dir；覆盖 = 四类镜像 + 立支（快照/云端中存在时）。');
   process.exit(0);
 }
@@ -244,7 +244,7 @@ async function loadCloud() {
   }
   const credSource =
     missingEnv.length === 0
-      ? '环境变量（CB_ENV / CB_SECRET_ID / CB_SECRET_KEY；与先例同源：`set -a; . ~/.config/jiapu/cloudbase.env; set +a`）'
+      ? '环境变量（CB_ENV / CB_SECRET_ID / CB_SECRET_KEY；与先例同源：`set -a; . ~/.config/tencent-cloudbase/jiapu.env; set +a`）'
       : `环境变量 ${KEYS.filter((k) => fromEnv[k]).join('/') || '（无）'} + 凭据文件回退 ${missingEnv.join('/')}（${CLOUD_ENV_FILE}）`;
   const { default: cloudbase } = await import('@cloudbase/node-sdk'); // 先例同源：import cloudbase from '@cloudbase/node-sdk'
   const app = cloudbase.init({ env: cred.CB_ENV, secretId: cred.CB_SECRET_ID, secretKey: cred.CB_SECRET_KEY });

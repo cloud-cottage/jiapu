@@ -37,7 +37,7 @@
  *   - 树 JSON   ：云存储 `trees/<tree_id>.json`（fileID 取自集合 `jiapu_tree_meta` 的 `_meta` 档 `storage_files`）
  *   - 人物详情  ：集合 `jiapu_person_details`（`_id = "<tree_id>:<handle>"`）
  * 凭据**只走环境变量**（`CB_ENV` / `CB_SECRET_ID` / `CB_SECRET_KEY`），运行前：
- *   `set -a; . ~/.config/jiapu/cloudbase.env; set +a`
+ *   `set -a; . ~/.config/tencent-cloudbase/jiapu.env; set +a`
  * **本脚本只从环境变量读凭据，绝不打印密钥、不落盘。**
  *
  * ── 已知环境事实（写后校验必须容「传播延迟」）───────────────────────────────────────────
@@ -188,7 +188,7 @@ const EXPECTED_HANDLES = new Set(EXPECTED.map((t) => t.handle));
 const ENV = process.env.CB_ENV;
 const SECRET_ID = process.env.CB_SECRET_ID;
 const SECRET_KEY = process.env.CB_SECRET_KEY;
-if (!ENV) { console.error('❌ 缺少环境变量 CB_ENV（先 `set -a; . ~/.config/jiapu/cloudbase.env; set +a`）'); process.exit(2); }
+if (!ENV) { console.error('❌ 缺少环境变量 CB_ENV（先 `set -a; . ~/.config/tencent-cloudbase/jiapu.env; set +a`）'); process.exit(2); }
 if (!SECRET_ID || !SECRET_KEY) { console.error('❌ 缺少环境变量 CB_SECRET_ID / CB_SECRET_KEY（凭据只走环境变量，绝不入 argv）'); process.exit(2); }
 const app = cloudbase.init({ env: ENV, secretId: SECRET_ID, secretKey: SECRET_KEY });
 const db = app.database();
