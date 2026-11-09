@@ -773,3 +773,34 @@ export function inviteErrorText(e: unknown, fallback = INVITE_FAIL): string {
   if (status === 400) return msg && msg !== '处理邀请失败 (400)' ? msg : INVITE_ERR_HANDLED;
   return msg || fallback;
 }
+
+// ---- 「第几天标识强化（B 版）」新增单点（**纯追加**：上文既有行 / 既有函数一字未改） ----
+//
+// 「我的」页签到卡 B 版只新增两条**周期位**文案：卡头主读数 ＋ 今日格页签换词。
+// 两者均只报 `cycle_day`（周期位），与卡头连签徽章 `signinStreakBadgeText`（累计连签）**分工不互代**
+// （徽章字面与门控一字不动）；周期天数 7 **写死在本模块**，调用方不传。
+
+/**
+ * 卡头主读数（**唯一拼装点**；逐字体例 `第 N 天 / 共 7 天`）—— 落点 = 签到卡卡头文字列内、
+ * 副标题 `.scene-hint` 之下。`cycleDay` = **今日格**的 `cycle_day`（今日格识别在组件内，
+ * 见 `components/signin-card/signin-card.vue` 的 `todayCell`）。
+ * - 非法值（`undefined` / `null` / `NaN` / ≤0）⇒ `第 1 天 / 共 7 天`（**不显 NaN、不臆造**）；
+ * - 周期天数恒 **7**（签到周期 7 天写死，不由调用方传入）。
+ */
+export function signinProgressText(cycleDay: unknown): string {
+  const n = Math.floor(Number(cycleDay));
+  const day = Number.isFinite(n) && n > 0 ? n : 1;
+  return `第 ${day} 天 / 共 7 天`;
+}
+
+/**
+ * **今日格**页签文案（**唯一拼装点**；逐字体例 `今天 · 第 N 天`）。
+ * 与其余 6 格的既有 `signinDayLabel`（`第 N 天`）**并行不互代**：既有函数**一字未改**、
+ * 非今日格继续用它；`cycle_day` 非法 ⇒ `今天 · 第 1 天`（同上，不显 NaN、不臆造）。
+ * ⚠️ 「今天」是**时间标识**（页签橙色高亮同源），格子状态仍由 ✓ / 底色表达 ⇒ 本函数**不接收 state**。
+ */
+export function signinTodayDayLabel(cycleDay: unknown): string {
+  const n = Math.floor(Number(cycleDay));
+  const day = Number.isFinite(n) && n > 0 ? n : 1;
+  return `今天 · 第 ${day} 天`;
+}
