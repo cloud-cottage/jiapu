@@ -70,13 +70,14 @@
             <!--
               顶部「页签」日标签（米黄圆角横条、深棕粗体；今日 = 橙色高亮 #FF8C1A 且**唯一强高亮**）。
               R-2：页签只报「第 N 天」，**不带大奖字样**（不传 is_bonus）——「连签 7 天大奖」语义唯一归属大奖列。
-              B 版：**今日格**页签换词 `今天 · 第 N 天`（单点 signinTodayDayLabel），
+              B 版 · 2026-11-09 收词：**今日格**页签 = 单点常量 `SIGNIN_TODAY_TAB`（恒「今天」、**不带第 N 天** ——
+              周期位唯一归卡头主读数 `signinProgressText`，防双报 ＋ 防窄格折行），今日页签 = 12px 深红字 #4A0D0D；
               其余 6 格仍走既有 `signinDayLabel`（`第 N 天`，一字未改）并弱化字号 / 透明度。
-              今日页签改**左对齐**（left 4px、去居中位移、max-width 让出右上角）—— 为「今」角章让位，
-              防 12px 长文案被角章盖住（字号 / padding / top 仍按裁定值）。
+              今日页签**左对齐**（left 4px、transform:none、max-width calc(100% - 14px)、padding 2px 6px、
+              white-space: nowrap）—— 为「今」角章让位，且 360 / 390 / 750 三档**单行不溢出内容盒**（几何实测见 QA）。
             -->
             <view class="cell-tab" :class="{ 'cell-tab-today': isTodayCell(slot.day) }">
-              <text class="cell-tab-text">{{ isTodayCell(slot.day) ? signinTodayDayLabel(slot.day.cycle_day) : signinDayLabel(slot.day.cycle_day) }}</text>
+              <text class="cell-tab-text">{{ isTodayCell(slot.day) ? SIGNIN_TODAY_TAB : signinDayLabel(slot.day.cycle_day) }}</text>
             </view>
             <!--
               「今」角章（B 版新增）：22px 圆形骑在今日格右上角（right -7 / top -12），字面 = 单字装饰
@@ -163,7 +164,7 @@
  *   补签二次确认、签到 409 处理、文案/toast 拼装全部留在「我的」页（`pages/mine/index.vue`）；
  * - 文案字面**单点 = `business/asset-text.ts`**（含此前纯追加的 `SIGNIN_BONUS_FLAG` /
  *   `SIGNIN_CELL_MADEUP` / `signinStreakBadgeText`，既有字面一字未改；B 版再纯追加
- *   `signinProgressText`（卡头主读数）/ `signinTodayDayLabel`（今日格页签））；
+ *   `signinProgressText`（卡头主读数）/ `SIGNIN_TODAY_TAB`（今日格页签「今天」，2026-11-09 收词）；
  * - **B 版第几天标识强化**：卡头主读数 `第 N 天 / 共 7 天` ＋ 今日格主角化（scale / 金环 / 「今」角章 /
  *   页签换词与字号）—— 今日格识别只看出参 `todayCell`（最后一个非 `future` 格），**不自算日期、不硬编时区**；
  * - 图标 = `business/icons.ts` 单点（真实道具图标，未知 kind 不渲染、不回退）；
@@ -187,7 +188,7 @@ import {
   SIGNIN_CELL_MADEUP,
   signinQtyBadge,
   signinDayLabel,
-  signinTodayDayLabel,
+  SIGNIN_TODAY_TAB,
   signinProgressText,
   signinStreakBadgeText,
 } from '@/business/asset-text';
@@ -397,10 +398,11 @@ function isMadeup(day: SigninCalendarDay): boolean {
 /* B 版卡头**主读数**（第 N 天 / 共 7 天；新增一行，位置 = .scene-hint 之下）。
    本行落在顶部遮罩窄带（.scene-scrim 恒 100%×60px，**既有量测口径不动**）**之外**、且正压插画亮块 ⇒
    自带深红半透底 pill（#4A0D0D 系 rgba(74,13,13,.75) ＋ 细金描边）保证对比，不靠 scrim 加高。
-   红金羊皮固定配色、纯 CSS；display:block ＋ align-items:flex-start 的卡头文字列 ⇒ pill 按内容收宽。 */
+   红金羊皮固定配色、纯 CSS；display:block ＋ align-items:flex-start 的卡头文字列 ⇒ pill 按内容收宽。
+   2026-11-09：字号 11px → **12px**（Zang 裁定；nowrap 保留，360 档实测不溢出卡宽、对比度仍 ≥ 4.5:1）。 */
 .scene-progress {
   display: block; margin-top: 2px; padding: 1px 7px;
-  font-size: 11px; font-weight: bold; line-height: 1.4; white-space: nowrap;
+  font-size: 12px; font-weight: bold; line-height: 1.4; white-space: nowrap;
   color: #FFE9B8;
   background: rgba(74, 13, 13, 0.75);
   border: 1px solid rgba(232, 195, 106, 0.55);
@@ -454,18 +456,22 @@ function isMadeup(day: SigninCalendarDay): boolean {
   opacity: .88; /* 只挂本层一处（叠在 .cell-tab-text 上会与 .88 相乘 ⇒ 变 .77，弱化过头） */
 }
 .cell-tab-text { font-size: 9px; font-weight: bold; color: #5A3210; line-height: 1.35; word-break: break-all; text-align: center; display: block; }
-/* 今日页签（B 版 §5）：12px / padding 2px 7px / top -11px，橙色高亮保留（「今天」是时间标识、非状态标识）。
-   另**改左对齐 + max-width 让出右上角**：给「今」角章（right -7px，伸入格内 15px）让位 ——
-   12px 的 `今天 · 第 N 天` 居中排会伸到角章底下被盖住；此为位置微调，字号 / padding / top 一律按裁定值。 */
+/* 今日页签（B 版 §5 · 2026-11-09 窄屏收口）：12px / padding 2px 6px / top -11px，橙色高亮保留（「今天」是时间标识、非状态标识）。
+   **左对齐 + 宽度放宽 + nowrap**：left 4px、transform:none、max-width calc(100% - 14px)（原 −18px）、white-space: nowrap ——
+   给「今」角章（right -7px，伸入格内 15px）让位的同时，360 / 390 / 750 三档**恒单行且不溢出内容盒**
+   （文案已收「今天」二字 + 12px ⇒ 最宽 24px 文本 ≤ 内容盒；几何实测见 QA）。
+   字色 #FFF6EA → #4A0D0D：橙底（#FFA13F→#FF8C1A）上浅字实测仅 1.96~2.44:1 < 4.5:1，深红字实测 5.60~6.89:1（WCAG AA）。
+   橙色底 / 描边一字不改；其余 6 格页签配色一字不动。 */
 .cell-tab-today {
   background: linear-gradient(180deg, #FFA13F, #FF8C1A); /* 橙色高亮保留（既有值一字未改） */
   border-color: #D96F0A;
   top: -11px; left: 4px; transform: none;
-  max-width: calc(100% - 18px);
-  padding: 2px 7px;
+  max-width: calc(100% - 14px);
+  padding: 2px 6px;
+  white-space: nowrap;
   opacity: 1; /* 今日格不弱化（§7 只弱化其余 6 格） */
 }
-.cell-tab-today .cell-tab-text { color: #FFF6EA; font-size: 12px; }
+.cell-tab-today .cell-tab-text { color: #4A0D0D; font-size: 12px; }
 
 /* 图标 ＋ 数量角标 ＋ 打勾的叠放容器（多件基础项自动折行；角标压在各自图标左上角） */
 .cell-body { position: relative; width: 100%; flex: 1; min-height: 26px; display: flex; align-items: center; justify-content: center; }
@@ -497,11 +503,15 @@ function isMadeup(day: SigninCalendarDay): boolean {
 
 /* 状态①：已签 = 置淡 ＋ 打勾 */
 .cell-signed { opacity: 0.62; }
-/* 状态②：待签（今日）= 橙描边高亮 ＋ 呼吸光晕（S-10 CSS 动效；R-1：全卡唯一动画格） */
+/* 状态②：待签（今日）= 橙描边高亮 ＋ 呼吸光晕（S-10 CSS 动效；R-1：全卡唯一动画格）。
+   2026-11-09 修：keyframes **补入 .cell-today-hero 的静态金环 / 投影** —— 动画声明优先于普通声明，
+   原两帧只写橙色 ⇒ 运行期把静态 `0 0 0 2px rgba(255,199,115,.55)` ＋ `0 6px 16px rgba(255,140,26,.5)` 整组盖掉。
+   现两帧恒带金环（动画期外环不丢）、橙晕仍保留渐变（0/100% 静态橙晕 → 50% 加 `0 0 10px 3px rgba(255,140,26,.55)`）；
+   **只动 box-shadow、不写 transform**（避免与 scale(1.08) 打架，§18-13-5①）。 */
 .cell-today { border-color: #FF8C1A; animation: cell-breathe 2.2s ease-in-out infinite; }
 @keyframes cell-breathe {
-  0%, 100% { box-shadow: 0 2px 4px rgba(58, 8, 8, 0.3), 0 0 0 2px rgba(255, 140, 26, 0.35); }
-  50% { box-shadow: 0 2px 4px rgba(58, 8, 8, 0.3), 0 0 10px 3px rgba(255, 140, 26, 0.55); }
+  0%, 100% { box-shadow: 0 0 0 2px rgba(255, 199, 115, 0.55), 0 6px 16px rgba(255, 140, 26, 0.5), 0 2px 4px rgba(58, 8, 8, 0.3); }
+  50% { box-shadow: 0 0 0 2px rgba(255, 199, 115, 0.55), 0 0 10px 3px rgba(255, 140, 26, 0.55), 0 6px 16px rgba(255, 140, 26, 0.5), 0 2px 4px rgba(58, 8, 8, 0.3); }
 }
 /* 状态③：漏签 = 虚线描边可点补签（底色略沉；R-1：描边降为低饱和 #B08A78，不抢今日橙、无光晕；
    点击 → 页面二次确认，判据在页面） */
@@ -620,7 +630,9 @@ function isMadeup(day: SigninCalendarDay): boolean {
 /* 今日奖励入口行（子包入口，不显示 x/3 进度；行→卡底间距由卡 padding-bottom 16px 保证 ≥ 12px，R-6） */
 .scene-reward { display: block; margin-top: 10px; font-size: 12px; color: #F6D9A0; text-align: center; text-decoration: underline; }
 
-/* 动效降级（H5 无障碍；小程序端忽略此查询、保持动效） */
+/* 动效降级（H5 无障碍；小程序端忽略此查询、保持动效）。
+   2026-11-09 口径（Zang 改裁 · §18-13-5⑥）：降级块**只关动画** —— `.cell-today-hero` 的
+   `scale(1.08)` 是**静态强调、不属动效 ⇒ 保留**（不纳入降级，不写 transform / 不清投影）。 */
 /* #ifdef H5 */
 @media (prefers-reduced-motion: reduce) {
   .cell-today, .prize-frame { animation: none; }

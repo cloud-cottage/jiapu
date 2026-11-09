@@ -776,8 +776,10 @@ export function inviteErrorText(e: unknown, fallback = INVITE_FAIL): string {
 
 // ---- 「第几天标识强化（B 版）」新增单点（**纯追加**：上文既有行 / 既有函数一字未改） ----
 //
-// 「我的」页签到卡 B 版只新增两条**周期位**文案：卡头主读数 ＋ 今日格页签换词。
-// 两者均只报 `cycle_day`（周期位），与卡头连签徽章 `signinStreakBadgeText`（累计连签）**分工不互代**
+// 「我的」页签到卡 B 版文案单点两条：卡头主读数 `signinProgressText`（**唯一周期位**）＋
+// 今日格页签常量 `SIGNIN_TODAY_TAB`（**只报「今天」、不带周期位** —— 2026-11-09 裁定：
+// 周期位由卡头主读数独家承担，页签不再重复报「第 N 天」，防双报、防窄格折行）。
+// 两者与卡头连签徽章 `signinStreakBadgeText`（累计连签）**分工不互代**
 // （徽章字面与门控一字不动）；周期天数 7 **写死在本模块**，调用方不传。
 
 /**
@@ -794,13 +796,11 @@ export function signinProgressText(cycleDay: unknown): string {
 }
 
 /**
- * **今日格**页签文案（**唯一拼装点**；逐字体例 `今天 · 第 N 天`）。
- * 与其余 6 格的既有 `signinDayLabel`（`第 N 天`）**并行不互代**：既有函数**一字未改**、
- * 非今日格继续用它；`cycle_day` 非法 ⇒ `今天 · 第 1 天`（同上，不显 NaN、不臆造）。
- * ⚠️ 「今天」是**时间标识**（页签橙色高亮同源），格子状态仍由 ✓ / 底色表达 ⇒ 本函数**不接收 state**。
+ * **今日格**页签文案（**唯一落点**；字面 = `今天`，**逐字、不带周期位**）。
+ * - 与其余 6 格的既有 `signinDayLabel`（`第 N 天`）**并行不互代**：既有函数**一字未改**、
+ *   非今日格继续用它；
+ * - **周期位（第 N 天）唯一归卡头主读数 `signinProgressText`** —— 页签只报时间标识，**不重复报周期位**
+ *   （防双报 ＋ 防窄格折行：12px 长文案在 360 档格内必然溢出 / 折行，2026-11-09 裁定收词）；
+ * - ⚠️ 「今天」是**时间标识**（页签橙色高亮同源），格子状态仍由 ✓ / 底色表达 ⇒ 本常量**不接收参数**。
  */
-export function signinTodayDayLabel(cycleDay: unknown): string {
-  const n = Math.floor(Number(cycleDay));
-  const day = Number.isFinite(n) && n > 0 ? n : 1;
-  return `今天 · 第 ${day} 天`;
-}
+export const SIGNIN_TODAY_TAB = '今天';
