@@ -939,7 +939,7 @@ test('路由 · 四条写路由未登录一律 401（无 Bearer / 无效 Bearer�
 
 test('路由 · K1 权限放开：非本树成员的普通登录用户镶嵌 200 + 灌注 200（无 403 档）', async () => {
   const treeId = nextTree();
-  await setAssets(OTHER, { jades: [jadeOf('jd_k1', null)], seeds: [seedLot(50, 400, 'sl_k1')] });
+  await setAssets(OTHER, { jades: [jadeOf('jd_k1', null)], seeds: [seedLotFromNow(50, 400, 'sl_k1')] });
   const otherAnchor = await store.colGet('jiapu_anchors', OTHER);
   // 夹具前提（本文件 seed）：只有 MEMBER 有锚点（sp_f0）；OTHER = **无锚点的普通登录用户**
   assert.equal(otherAnchor, null, '夹具前提：OTHER 无 jiapu_anchors 记录（登录非成员）');
@@ -986,7 +986,7 @@ test('路由 · K1 权限放开：非本树成员的普通登录用户镶嵌 200
 test('路由 · 灌注籽不足 → 409 整单拒绝（code=ASSET_INSUFFICIENT + need/current），灵气与流水不变', async () => {
   const treeId = nextTree();
   const phone = await newUser();
-  await setAssets(phone, { jades: [jadeOf('jd_poor', null)], seeds: [seedLot(5, 400, 'sl_poor')] });
+  await setAssets(phone, { jades: [jadeOf('jd_poor', null)], seeds: [seedLotFromNow(5, 400, 'sl_poor')] });
   assert.equal((await call('/spirit/mount-jade', 'POST', bearer(phone), {}, { tree_id: treeId, jade_id: 'jd_poor' })).statusCode, 200);
 
   const res = await call('/spirit/charge', 'POST', bearer(phone), {}, { tree_id: treeId, plan: 'monthly' });
