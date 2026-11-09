@@ -74,18 +74,10 @@
               周期位唯一归卡头主读数 `signinProgressText`，防双报 ＋ 防窄格折行），今日页签 = 12px 深红字 #4A0D0D；
               其余 6 格仍走既有 `signinDayLabel`（`第 N 天`，一字未改）并弱化字号 / 透明度。
               今日页签**左对齐**（left 4px、transform:none、max-width calc(100% - 14px)、padding 2px 6px、
-              white-space: nowrap）—— 为「今」角章让位，且 360 / 390 / 750 三档**单行不溢出内容盒**（几何实测见 QA）。
+              white-space: nowrap）—— 360 / 390 / 750 三档**单行不溢出内容盒**（几何实测见 QA）。
             -->
             <view class="cell-tab" :class="{ 'cell-tab-today': isTodayCell(slot.day) }">
               <text class="cell-tab-text">{{ isTodayCell(slot.day) ? SIGNIN_TODAY_TAB : signinDayLabel(slot.day.cycle_day) }}</text>
-            </view>
-            <!--
-              「今」角章（B 版新增）：22px 圆形骑在今日格右上角（right -7 / top -12），字面 = 单字装饰
-              「今」（同主按钮字形 CTA_GLYPH='签' 先例：装饰字形、非文案句，故直接写在模板）；
-              pointer-events: none ⇒ 点按仍落到日格本体、走既有 emit('cell')（口径不变）。
-            -->
-            <view v-if="isTodayCell(slot.day)" class="cell-today-mark">
-              <text class="cell-today-mark-text">今</text>
             </view>
             <view class="cell-body">
               <view class="cell-items">
@@ -165,7 +157,7 @@
  * - 文案字面**单点 = `business/asset-text.ts`**（含此前纯追加的 `SIGNIN_BONUS_FLAG` /
  *   `SIGNIN_CELL_MADEUP` / `signinStreakBadgeText`，既有字面一字未改；B 版再纯追加
  *   `signinProgressText`（卡头主读数）/ `SIGNIN_TODAY_TAB`（今日格页签「今天」，2026-11-09 收词）；
- * - **B 版第几天标识强化**：卡头主读数 `第 N 天 / 共 7 天` ＋ 今日格主角化（scale / 金环 / 「今」角章 /
+ * - **B 版第几天标识强化**：卡头主读数 `第 N 天 / 共 7 天` ＋ 今日格主角化（scale / 金环 /
  *   页签换词与字号）—— 今日格识别只看出参 `todayCell`（最后一个非 `future` 格），**不自算日期、不硬编时区**；
  * - 图标 = `business/icons.ts` 单点（真实道具图标，未知 kind 不渲染、不回退）；
  * - 版式 = S-4 · R-8 口径（2 行 × 5 列：r1c1 艺术位 ＋ 7 日格；第 5 列纵跨大奖列；连签徽章在卡头）；
@@ -264,7 +256,7 @@ const badgeText = computed(() => signinStreakBadgeText(props.streak));
  * 窗口内「今日之后」的格必为 `future` ⇒ 最后一个非 `future` 格即今天（**今日已签时该格是 `signed` 而非 `today`**，
  * 故不得用 `state === 'today'` 单独判今日）。
  * 退化顺序（**不臆造、不抛错**）：全为 `future`（异常）⇒ 回退 `state === 'today'` 的格
- * ⇒ 再回退 `cycle_day === 1` 的格 ⇒ 日历为空 ⇒ `null`（模板据此与网格同步不渲染主读数 / 角章）。
+ * ⇒ 再回退 `cycle_day === 1` 的格 ⇒ 日历为空 ⇒ `null`（模板据此与网格同步不渲染主读数，页签回退 `signinDayLabel`）。
  * ⚠️ 纪律（同 `pages/mine/index.vue` 的同款注释）：**严禁**在组件内自算「今天」日期串或硬编时区。
  */
 const todayCell = computed<SigninGridCell | null>(() => {
@@ -458,7 +450,7 @@ function isMadeup(day: SigninCalendarDay): boolean {
 .cell-tab-text { font-size: 9px; font-weight: bold; color: #5A3210; line-height: 1.35; word-break: break-all; text-align: center; display: block; }
 /* 今日页签（B 版 §5 · 2026-11-09 窄屏收口）：12px / padding 2px 6px / top -11px，橙色高亮保留（「今天」是时间标识、非状态标识）。
    **左对齐 + 宽度放宽 + nowrap**：left 4px、transform:none、max-width calc(100% - 14px)（原 −18px）、white-space: nowrap ——
-   给「今」角章（right -7px，伸入格内 15px）让位的同时，360 / 390 / 750 三档**恒单行且不溢出内容盒**
+   360 / 390 / 750 三档**恒单行且不溢出内容盒**
    （文案已收「今天」二字 + 12px ⇒ 最宽 24px 文本 ≤ 内容盒；几何实测见 QA）。
    字色 #FFF6EA → #4A0D0D：橙底（#FFA13F→#FF8C1A）上浅字实测仅 1.96~2.44:1 < 4.5:1，深红字实测 5.60~6.89:1（WCAG AA）。
    橙色底 / 描边一字不改；其余 6 格页签配色一字不动。 */
@@ -539,20 +531,6 @@ function isMadeup(day: SigninCalendarDay): boolean {
 }
 /* 已签的今日格：整格 opacity 由 .62 放宽到 **.82**（其余已签格仍 .62 —— 特异性 0,2,0 > .cell-signed 的 0,1,0） */
 .cell-today-hero.cell-signed { opacity: 0.82; }
-
-/* ---- B 版「今」角章（新增）：22px 圆形骑今日格右上角 ----
-   金 radial 渐变 ＋ 深红描边 ＋ 深字（红金羊皮固定配色，不随夜间模式反转；纯 CSS、零图片）；
-   pointer-events: none ⇒ 点按仍落到日格本体、走既有 emit('cell')（点击口径不变）。 */
-.cell-today-mark {
-  position: absolute; right: -7px; top: -12px;
-  width: 22px; height: 22px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(circle at 35% 30%, #FFD98C, #E09A2E 70%, #B8761B);
-  border: 1.5px solid #7A1610;
-  box-shadow: 0 2px 5px rgba(58, 8, 8, 0.5);
-  pointer-events: none;
-}
-.cell-today-mark-text { font-size: 12px; font-weight: bold; color: #6B1A0C; line-height: 1; }
 
 /* ---- 第 5 列：连签 7 天大奖列（纵跨 2 行；R-4：红绸缎面高光条纹 ＋ 鎏金描边；S-6）
    视觉权重**降一档**（金边 3px→2px、金色降饱和、内发光 0.28→0.18）⇒ 主按钮成为全卡唯一第一焦点；
