@@ -1768,3 +1768,74 @@
 
 - **状态 = 已实现（Kong）· 已独立质检（Neng 两轮 · 复检 16/16 PASS）· 未上云（本节只登记）**；**☐ H5 未推 / 未部署 · ☐ 小程序未重打上传** —— **不得写「已上线 / 已上传 / 已验收」**。
 - **本登记 = 制度登记单（Jing · 只改文档）**：**未改任何代码 / `frontend/**` / `cloudfunctions/**` / `scripts/**` / `config/**` / `migrate-output/`**；**未碰任何 `docs/*.qa.md`**（§0-5）；**未跑构建 / 未跑测试 / 未打包 / 未部署 / 未上传**；**未 `git add` / `commit` / `push`**；**未改 §0–§87 任何历史行**（**纯追加**）。
+
+## §89 环境迁移：jiapu 从旧环境迁入 `liwu-cny1313`（**已执行 · 生产已切换 · 已线上验证** · **旧环境一律未动、未销号** · **2026-11-09 · 只追加 · 不改 §0–§88 任何行**）（Zang 执行 · Jing 登记）
+
+> **编号（对账用 · 硬）**：落笔前现证 `grep -n '^## ' docs/PENDING_DEPLOY.md` ⇒ 最大节号 = **§88**（`:1712`）⇒ 续编 **§89**。
+> **性质**：本节 = **迁移执行事实登记（已发生 · 非待办）**；**下列读数均为 Zang 2026-11-09 实测，逐字照录、不得改数字**。
+> **状态词（硬）**：**已执行 · 生产已切换 · 已线上验证（读路径）**；**写路径未实测** —— **不得**写「全链路已验证 / 已回滚演练 / 全绿」。
+
+### §89-1 范围与目标
+
+- **迁移**：旧环境 `liwu-d8gek6jjdab1d087c` → 新环境 `liwu-cny1313-d1gb2fukyb7cb19bb`；**生产已切换并验证**。
+- **范围** = 数据面（集合 / 文档 / 索引 / 存储对象）＋ `storage_files` 环境前缀改写 ＋ 云函数 `compat-api` ＋ HTTP 网关 ＋ 前端 `VITE_API_BASE` ＋ 本地 dev ＋ 仓内 `cloudbaserc.json`。
+- **红线**：旧环境函数 / 集合 / 存储 / 静态托管**一律未动、未销号**（§89-8）。
+
+### §89-2 数据面读数（工具 = `/Users/kevin/bistro/liwu/scripts/migration` · `node migrate.mjs all --projects jiapu --yes`）
+
+- 集合 **21** 个（`jiapu_*` 前缀全部）、文档 **502 / 502**、索引逐集合比对不符 **0**；
+- 存储前缀 `trees/`：**94 文件 / 3,584,484 B**，源目标字节相等；
+- 汇总读数：dump 202s · transfer-storage 18s · load 186s · indexes 8s · verify 9s，**均退出码 0**；
+- 收尾又做一次增量 `dump + load`（**`REFRESH_DONE`**，**502 导入 / 异常 0**，绝大多数文档报「已一致(跳过)」）。
+
+### §89-3 `storage_files` 环境前缀改写（**迁移必须项**）
+
+- `jiapu_tree_meta._meta.storage_files` 的 **21 / 21** 条原本指向旧环境 bucket `cloud://liwu-d8gek6jjdab1d087c.6c69-liwu-d8gek6jjdab1d087c-1463728495/…` ⇒ 在**新环境**改写为 `cloud://liwu-cny1313-d1gb2fukyb7cb19bb.6c69-liwu-cny1313-d1gb2fukyb7cb19bb-1463728495/…`（对象已搬到同一 key）；
+- 写后读回 **mismatch = 0**；**21 / 21** 条 fileID 均可 `downloadFile`；
+- 备份 = `/tmp/jiapu-storage-files-before-2026-11-09T11-12-20-783Z.json`；**旧环境该文档未动**。
+
+### §89-4 云函数与 HTTP 网关
+
+- **云函数**：`compat-api` 已部署到新环境（`tcb fn deploy compat-api -e liwu-cny1313-d1gb2fukyb7cb19bb`）⇒ 运行环境 **Nodejs16.13** · 内存 **512 MB** · 超时 **20s** · 执行方法 `index.main` · 环境变量 `MASTER_TREE_ID=zhonghua; COMPAT_SOURCE=cloud` · 代码大小 **6,135,731 B** · 修改时间 **2026-11-09 19:13:06**。
+- **网关**：`tcb service create -e liwu-cny1313-d1gb2fukyb7cb19bb -p /jiapu-api -f compat-api` ⇒ 地址 **https://liwu-cny1313-d1gb2fukyb7cb19bb.service.tcloudbase.com/jiapu-api**（与 `…-1463728495.ap-shanghai.app.tcloudbase.com/jiapu-api` 同效；CORS：`access-control-allow-origin: *`、允许头 `Content-Type,Authorization,X-Tree-Id`）。
+- **特意用 `/jiapu-api` 而不复用 `/api`**：新环境已有 `/api/xiai` 与 `/api/cloudbase-proxy` 两条路由，**避开前缀冲突**。
+
+### §89-5 前端与本地 dev
+
+- **Vercel**（项目 `prj_0uH16ij1L5sgfp0pL5OJZ8JtMXxh` · team `team_E3f4qyOhw7uTfpeK0FQrbATE`）：Production env **`VITE_API_BASE`** 由 `https://liwu-d8gek6jjdab1d087c.service.tcloudbase.com/api` 改为 **`https://liwu-cny1313-d1gb2fukyb7cb19bb.service.tcloudbase.com/jiapu-api`**，并**重新部署同一 commit** ⇒ 部署 **`dpl_9SPneMRVsPdiLTGoaDZgutSSHo5D`** · **READY** · 已绑定 `www.jiapu100.com`。
+- **本地 dev**：`~/.config/tencent-cloudbase/jiapu.env` 的 `CB_ENV` 改指新环境（**chmod 600 未变**），经 ctrl 面板重启 sid `jiapu-api`（新 PID **90906**）；`curl http://127.0.0.1:3100/api/tree-meta` 已返新环境 `cloud://` 前缀。
+- **仓内配置**：`cloudbaserc.json` 的 `envId` 改为新环境（同步改动，**未 push**）；仓内运行期代码已无旧 env 字面（grep 排除 docs 与历史一次性脚本后 **0 命中**）。
+
+### §89-6 生产验证（**Zang 实测 · 读路径**）
+
+1. `www.jiapu100.com` 首页 **200**，`bodyLen 29908`、列表 **14 行**真实家谱；
+2. 线上 chunk（`assets/index-CpuQs4ZD.js`）内新 host 命中 **1**、旧 host **0**；
+3. 首页实际请求命中新 host 的 `/tree-meta`、`/tree/rank-index`、`/geo/tree-index`；
+4. 深链 `/ji_23395_01` **200** 且渲染「季氏费县白露家族 · 共 58 人 · 始祖：季花」⇒ **云函数按新 `storage_files` 读到了对象存储里的树 JSON**。
+
+### §89-7 未测面与回滚（**如实登记 · 不得写成已验证**）
+
+1. **写路径未实测**：迁后新环境的**真实写请求**（建 / 改树、签到、发放）尚未跑（**无可用登录凭据**），需首次真实写入自然覆盖；**可观测判据 = 新环境对应集合文档数变化**。
+2. **静态托管不迁**：jiapu 的 H5 现由 **Vercel** 提供（`www.jiapu100.com`）；旧环境 `/jiazu/` 子目录（历史产物）**本轮不搬、不再使用**，登记即可。
+3. **小程序产物**未重打、未上传（客户端 env 由后端域名决定，**无硬编码 env id**）。
+4. **未做回滚演练**；回滚 = 把 Vercel `VITE_API_BASE` 改回旧值 ＋ 重建（**旧环境数据完整可回**）。
+
+### §89-8 红线（**旧环境不销号**）
+
+- 旧环境 `liwu-d8gek6jjdab1d087c` 的**函数 / 集合 / 存储 / 静态托管一律未动、未销号**；旧环境 `jiapu_tree_meta` 文档**未改**（§89-3）；回滚依赖此完整性。
+- **本登记 = 制度登记单（Jing · 只改本文件）**：**只改 `docs/PENDING_DEPLOY.md`**；**不碰 `AGENTS.md`**；**不改代码 / 配置 / 真源**（`migrate-output/` / `config/` 只读）；**未 `git add` / `commit` / `push`**；**未改 §0–§88 任何历史行**（**纯追加**）。
+
+### §89-9 命令清单（**可直接复现**）
+
+```bash
+# 1) 数据面（工具仓 /Users/kevin/bistro/liwu/scripts/migration）
+node migrate.mjs all --projects jiapu --yes
+# 2) 云函数部署到新环境
+tcb fn deploy compat-api -e liwu-cny1313-d1gb2fukyb7cb19bb
+# 3) HTTP 网关（/jiapu-api，避开新环境既有 /api/xiai 与 /api/cloudbase-proxy）
+tcb service create -e liwu-cny1313-d1gb2fukyb7cb19bb -p /jiapu-api -f compat-api
+# 4) 本地 dev 读回（需 ctrl 面板 sid jiapu-api 已重启）
+curl http://127.0.0.1:3100/api/tree-meta
+```
+
+- **生产验证命令不在本节臆造**：§89-6 四条读数均为 Zang 实测结果，**逐字照录**。
