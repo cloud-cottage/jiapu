@@ -120,6 +120,15 @@ const jadeOf = (id, expDays = null) => ({
   source: 'synthesis',
 });
 
+/** 以**真实时钟**为基准的籽批次（仅供**路由级**用例：产品内部用真实 now，夹具不得用冻结的 T0，否则随日期流逝必然过期） */
+const seedLotFromNow = (qty, days, id, source = 'admin') => ({
+  id,
+  qty,
+  expires_at: new Date(Date.now() + days * DAY).toISOString(),
+  source,
+  created_at: new Date().toISOString(),
+});
+
 /** 直接写个人资产（绕过被测模块，仅夹具） */
 async function setAssets(phone, { seeds = [], bamboos = [], jades = [] } = {}) {
   await el.withAssets(phone, (user) => {
@@ -1032,7 +1041,7 @@ test('路由 · 镶嵌守卫：总谱 400 / 二次镶嵌 409 / 跨树同玉 409 
 
 test('路由 · 合成：不足 999 → 409（code/need/current，籽与玉都不变）；够 999 → 200 永久玉', async () => {
   const phone = await newUser();
-  await setAssets(phone, { seeds: [seedLot(10, 400, 'sl_short')] });
+  await setAssets(phone, { seeds: [seedLotFromNow(10, 60, 'sl_short')] });
 
   const short = await call('/assets/synthesize-jade', 'POST', bearer(phone));
   assert.equal(short.statusCode, 409, short.body);
@@ -1047,7 +1056,7 @@ test('路由 · 合成：不足 999 → 409（code/need/current，籽与玉都�
   assert.equal(after1.seeds[0].qty, 10, '整单拒绝：籽未扣');
   assert.equal(after1.jades.length, 0, '整单拒绝：不产玉');
 
-  await setAssets(phone, { seeds: [seedLot(999, 400, 'sl_full')] });
+  await setAssets(phone, { seeds: [seedLotFromNow(999, 400, 'sl_full')] });
   const full = await call('/assets/synthesize-jade', 'POST', bearer(phone));
   assert.equal(full.statusCode, 200, full.body);
   const f = jsonOf(full);
